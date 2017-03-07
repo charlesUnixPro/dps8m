@@ -133,20 +133,23 @@ static void writeOperands (void)
         // Get the indirect word
         //
 
-        word36 indword;
-        word18 indwordAddress = cpu.TPR.CA;
-        Read (indwordAddress, & indword, INDIRECT_WORD_FETCH);
+        word18 saveCA = cpu.TPR.CA;
+
+        //word18 indwordAddress = cpu.TPR.CA;
+        //Read2 (indwordAddress, cpu.itxPair, INDIRECT_WORD_FETCH);
+        //ReadIndirect ();
+        Read (cpu.TPR.CA, cpu.itxPair, OPERAND_READ);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands IT indword=%012"PRIo64"\n", indword);
+                   "writeOperands IT indword=%012"PRIo64"\n", cpu.itxPair[0]);
 
         //
         // Parse and validate the indirect word
         //
 
-        word18 Yi = GET_ADDR (indword);
-        cpu.ou.characterOperandSize = GET_TB (GET_TAG (indword));
-        cpu.ou.characterOperandOffset = GET_CF (GET_TAG (indword));
+        word18 Yi = GET_ADDR (cpu.itxPair[0]);
+        cpu.ou.characterOperandSize = GET_TB (GET_TAG (cpu.itxPair[0]));
+        cpu.ou.characterOperandOffset = GET_CF (GET_TAG (cpu.itxPair[0]));
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "writeOperands IT size=%o offset=%o Yi=%06o\n",
@@ -243,7 +246,8 @@ static void writeOperands (void)
                    cpu.ou.characterOperandSize, cpu.ou.characterOperandOffset);
 
         // Restore the CA; Read/Write() updates it.
-        cpu.TPR.CA = indwordAddress;
+        //cpu.TPR.CA = indwordAddress;
+        cpu.TPR.CA = saveCA;
 
         return;
       } // IT
@@ -2195,26 +2199,26 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
         // Get the indirect word
         //
 
-        word36 indword;
-        Read (cpu.TPR.CA, & indword, INDIRECT_WORD_FETCH);
+        //Read2 (cpu.TPR.CA, cpu.itxPair, INDIRECT_WORD_FETCH);
+        Read (cpu.TPR.CA, cpu.itxPair, OPERAND_READ);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "update IT indword=%012"PRIo64"\n", indword);
+                   "update IT indword=%012"PRIo64"\n", cpu.itxPair[0]);
 
         //
         // Parse and validate the indirect word
         //
 
-        word18 Yi = GET_ADDR (indword);
-        cpu.ou.characterOperandSize = GET_TB (GET_TAG (indword));
-        cpu.ou.characterOperandOffset = GET_CF (GET_TAG (indword));
+        word18 Yi = GET_ADDR (cpu.itxPair[0]);
+        cpu.ou.characterOperandSize = GET_TB (GET_TAG (cpu.itxPair[0]));
+        cpu.ou.characterOperandOffset = GET_CF (GET_TAG (cpu.itxPair[0]));
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "update IT size=%o offset=%o Yi=%06o\n",
                    cpu.ou.characterOperandSize, cpu.ou.characterOperandOffset,
                    Yi);
 
-        word12 tally = GET_TALLY (indword);    // 12-bits
+        word12 tally = GET_TALLY (cpu.itxPair[0]);    // 12-bits
 
         if (Td == IT_SCR)
           {
@@ -2285,18 +2289,18 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
 
         SC_I_TALLY (tally == 0);
 
-        indword = (word36) (((word36) Yi << 18) |
+        cpu.itxPair[0] = (word36) (((word36) Yi << 18) |
                             (((word36) tally & 07777) << 6) |
                             cpu.ou.characterOperandSize |
                             cpu.ou.characterOperandOffset);
 
 //sim_printf ("XXX this has got to be wrong; OPERAND_WRITE?\n");
         //Write (cpu.TPR.CA, indword, INDIRECT_WORD_FETCH);
-        Write (cpu.TPR.CA, indword, OPERAND_STORE);
+        Write (cpu.TPR.CA, cpu.itxPair[0], OPERAND_STORE);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "update IT wrote tally word %012"PRIo64" to %06o\n",
-                   indword, cpu.TPR.CA);
+                   cpu.itxPair[0], cpu.TPR.CA);
       } // SC/SCR
 
 ///

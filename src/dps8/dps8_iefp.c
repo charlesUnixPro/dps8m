@@ -987,3 +987,17 @@ B29:
   }
 
 
+t_stat ReadIndirect (void)
+  {
+    if (cpu.TPR.CA & 1) // is odd?
+      {
+        Read (cpu.TPR.CA, cpu.itxPair, INDIRECT_WORD_FETCH);
+        cpu.itxPair[1] = MASK36; // fill with ones for debugging
+      }
+    else
+      {
+        Read2 (cpu.TPR.CA, cpu.itxPair, INDIRECT_WORD_FETCH);
+      }
+    return SCPE_OK;
+  }
+

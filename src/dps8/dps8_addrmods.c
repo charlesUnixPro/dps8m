@@ -284,16 +284,16 @@ static void doITS (void)
 
 
 // CANFAULT
-static void doITSITP (word18 address, word36 indword, word6 Tag, word6 * newtag)
+static void doITSITP (word6 Tag, word6 * newtag)
   {
-    word6 indTag = GET_TAG  (indword);
+    word6 indTag = GET_TAG (cpu.itxPair [0]);
 
-    sim_debug  (DBG_APPENDING, &  cpu_dev,
-                "doITS/ITP: indword:%012"PRIo64" Tag:%o\n",
-                indword, Tag);
+    sim_debug (DBG_APPENDING, & cpu_dev,
+               "doITS/ITP: %012"PRIo64" %012"PRIo64" Tag:%o\n",
+               cpu.itxPair[0], cpu.itxPair[1], Tag);
 
     if (! ((GET_TM (Tag) == TM_IR || GET_TM (Tag) == TM_RI) &&
-           (ISITP (indword) || ISITS (indword))))
+           (ISITP (cpu.itxPair[0]) || ISITS (cpu.itxPair[0]))))
       {
         sim_debug (DBG_APPENDING, & cpu_dev, "doITSITP: faulting\n");
         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
@@ -321,13 +321,13 @@ static void doITSITP (word18 address, word36 indword, word6 Tag, word6 * newtag)
     // address modifier will cause an illegal procedure, illegal modifier,
     // fault.
 
-    cpu.itxPair [0] = indword;
+    //cpu.itxPair [0] = indword;
 
-    Read (address + 1, & cpu.itxPair [1], INDIRECT_WORD_FETCH);
+    //Read (address + 1, & cpu.itxPair [1], INDIRECT_WORD_FETCH);
 
-    sim_debug (DBG_APPENDING, & cpu_dev,
-               "doITS/ITP: YPair= %012"PRIo64" %012"PRIo64"\n",
-               cpu.itxPair [0], cpu.itxPair [1]);
+    //sim_debug (DBG_APPENDING, & cpu_dev,
+               //"doITS/ITP: YPair= %012"PRIo64" %012"PRIo64"\n",
+               //cpu.itxPair [0], cpu.itxPair [1]);
 
     if (ISITS (indTag))
         doITS ();
@@ -597,11 +597,11 @@ startCA:;
         // in case it turns out to be a ITS/ITP
         iTAG = cpu.rTAG;
 
-        word36 indword;
 #ifdef OLDCYCLE
-        Read (tmpCA, & indword, INDIRECT_WORD_FETCH); //TM_RI);
+        Read2 (tmpCA, cpu.itxPair, INDIRECT_WORD_FETCH); //TM_RI);
 #else
-        Read (cpu.TPR.CA, & indword, INDIRECT_WORD_FETCH); //TM_RI);
+        //Read2 (cpu.TPR.CA, cpu.itxPair, INDIRECT_WORD_FETCH); //TM_RI);
+        ReadIndirect ();
 #endif
 
         // "In the case of RI modification, only one indirect reference is made
@@ -611,17 +611,17 @@ startCA:;
 
         if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
           {
-             indword &= ~ INST_M_TAG;
-             indword |= TM_R | GET_TD (iTAG);
+             cpu.itxPair[0] &= ~ INST_M_TAG;
+             cpu.itxPair[0] |= TM_R | GET_TD (iTAG);
            }
 
         // (Closed) Ticket 15: Check for fault causing tags before updating
         // the IWB, so the instruction restart will reload the offending
         // indirect word.
 
-        if (GET_TM (GET_TAG (indword)) == TM_IT)
+        if (GET_TM (GET_TAG (cpu.itxPair[0])) == TM_IT)
           {
-            if (GET_TD (GET_TAG (indword)) == IT_F2)
+            if (GET_TD (GET_TAG (cpu.itxPair[0])) == IT_F2)
               {
 #ifdef OLDCYCLE
                 cpu.TPR.CA = tmpCA;
@@ -629,7 +629,7 @@ startCA:;
                 doFault (FAULT_F2, (_fault_subtype) {.bits=0},
                          "RI_MOD: IT_F2 (0)");
               }
-            if (GET_TD (GET_TAG (indword)) == IT_F3)
+            if (GET_TD (GET_TAG (cpu.itxPair[0])) == IT_F3)
               {
 #ifdef OLDCYCLE
                 cpu.TPR.CA = tmpCA;
@@ -639,24 +639,24 @@ startCA:;
               }
           }
 
-        if (ISITP (indword) || ISITS (indword))
+        if (ISITP (cpu.itxPair[0]) || ISITS (cpu.itxPair[0]))
           {
 #ifdef OLDCYCLE
-            doITSITP (tmpCA, indword, iTAG, & cpu.rTAG);
+            doITSITP (iTAG, & cpu.rTAG);
 #else
-            doITSITP (cpu.TPR.CA, indword, iTAG, & cpu.rTAG);
+            doITSITP (iTAG, & cpu.rTAG);
 #endif
           }
         else
           {
-            cpu.TPR.CA = GETHI (indword);
-            cpu.rTAG = GET_TAG (indword);
+            cpu.TPR.CA = GETHI (cpu.itxPair[0]);
+            cpu.rTAG = GET_TAG (cpu.itxPair[0]);
             cpu.rY = cpu.TPR.CA;
           }
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "RI_MOD: indword=%012"PRIo64" TPR.CA=%06o rTAG=%02o\n",
-                   indword, cpu.TPR.CA, cpu.rTAG);
+                   "RI_MOD: cpu.itxPair[0]=%012"PRIo64" TPR.CA=%06o rTAG=%02o\n",
+                   cpu.itxPair[0], cpu.TPR.CA, cpu.rTAG);
         // If repeat, the indirection chain is limited, so it is not needed
         // to clear the tag; the delta code later on needs the tag to know
         // which X register to update
@@ -692,19 +692,19 @@ startCA:;
         // in case it turns out to be a ITS/ITP
         iTAG = cpu.rTAG;
 
-        word36 indword;
         word18 saveCA = cpu.TPR.CA;
-        Read (cpu.TPR.CA, & indword, INDIRECT_WORD_FETCH);
+        //Read2 (cpu.TPR.CA, cpu.itxPair, INDIRECT_WORD_FETCH);
+        ReadIndirect ();
 
-        if (ISITP (indword) || ISITS (indword))
+        if (ISITP (cpu.itxPair[0]) || ISITS (cpu.itxPair[0]))
           {
-            doITSITP (cpu.TPR.CA, indword, iTAG, & cpu.rTAG);
+            doITSITP (iTAG, & cpu.rTAG);
           }
         else
           {
-            cpu.TPR.CA = GETHI (indword);
+            cpu.TPR.CA = GETHI (cpu.itxPair[0]);
             cpu.rY = cpu.TPR.CA;
-            cpu.rTAG = GET_TAG (indword);
+            cpu.rTAG = GET_TAG (cpu.itxPair[0]);
           }
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -715,10 +715,10 @@ startCA:;
         // IR_MOD_2:;
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "IR_MOD1: indword=%012"PRIo64
+                   "IR_MOD1: cpu.itxPair[0]=%012"PRIo64
                    " TPR.CA=%06o Tm=%o Td=%02o (%s)\n",
-                   indword, cpu.TPR.CA, Tm, Td,
-                   getModString (GET_TAG (indword)));
+                   cpu.itxPair[0], cpu.TPR.CA, Tm, Td,
+                   getModString (GET_TAG (cpu.itxPair[0])));
 
         switch (Tm)
           {
@@ -1005,19 +1005,19 @@ startCA:;
                            "IT_MOD(IT_I): reading indirect word from %06o\n",
                            cpu.TPR.CA);
 
-                word36 indword;
 { static bool first = true;
 if (first) {
 first = false;
 sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n");
 }}
-                Read (cpu.TPR.CA, & indword, INDIRECT_WORD_FETCH);
+                //Read2 (cpu.TPR.CA, cpu.itxPair, INDIRECT_WORD_FETCH);
+                ReadIndirect ();
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_I): indword=%012"PRIo64"\n",
-                           indword);
+                           cpu.itxPair[0]);
 
-                cpu.TPR.CA = GET_ADDR (indword);
+                cpu.TPR.CA = GET_ADDR (cpu.itxPair[0]);
 
                 updateIWB (cpu.TPR.CA, 0);
 
