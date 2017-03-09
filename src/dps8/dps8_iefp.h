@@ -24,3 +24,5 @@ t_stat Read16 (word18 address, word36 * result);
 t_stat WritePage (word18 address, word36 * data);
 t_stat ReadPage (word18 address, word36 * result);
 t_stat ReadIndirect (void);
+void ReadTraOp (void);
+void ReadRTCDOp (void);

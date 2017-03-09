@@ -206,7 +206,6 @@ static char * operandSTR (void)
 }
 #endif
 
-
 static void doITP (void)
   {
     sim_debug (DBG_APPENDING, & cpu_dev,

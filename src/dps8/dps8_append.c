@@ -2220,9 +2220,9 @@ J:;
       };
     if (isInd [(* data) & MASK6])
       {
-        // C(Y)0,17 C(IWB) → 0,17
-        // C(Y)30,35 C(IWB) → 30,35
-        // 0 C(IWB) → 29
+        // C(Y)0,17 -> C(IWB)0,17
+        // C(Y)30,35 -> C(IWB)30,35
+        // 0 -> C(IWB)29
         updateIWB (GET_OFFSET (* data), (* data) & MASK6);
       }
 
@@ -2234,9 +2234,20 @@ J:;
 //
 ////////////////////////////////////////
 
-K:; // Indirect operand fetch
+K:; // RTCD operand fetch
 
     sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(K)\n");
+
+    // C(Y)3,17 ->  C(TPR.TSR)
+    cpu.TPR.TSR = GETHI (* data) & MASK15;
+
+    // C(Y+1)0,17 -> C(TPR.CA) 
+    cpu.TPR.CA = GETHI (* (data + 1));
+
+// Believed, not documented...
+
+    // C(Y)18,20 -> C(TPR.TRR)
+    cpu.TPR.TRR = getbits36_3 (* data, 18);
 
     // C(TPR.TRR) >= C(PPR.PRR)?
     if (cpu.TPR.TRR >= cpu.PPR.PRR)
@@ -2258,7 +2269,7 @@ K:; // Indirect operand fetch
         cpu.PR[4].RNR =
         cpu.PR[5].RNR =
         cpu.PR[6].RNR =
-        cpu.PR[7].RNR = cpu.PPR.PRR;
+        cpu.PR[7].RNR = cpu.TPR.TRR;
       }
 
     // C(TPR.TRR) -> C(PPR.PRR)
@@ -2296,14 +2307,11 @@ L:; // Transfer or instruction fetch
 KL:
     sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(KL)\n");
 
-// If PSR:IC is updated here, things like TSX get lost.
-// Trust CONT_TRA to catch this
-#if 0
     // C(TPR.TSR) -> C(PPR.PSR)
     cpu.PPR.PSR = cpu.TPR.TSR;
     // C(TPR.CA) -> C(PPR.IC) 
     cpu.PPR.IC = cpu.TPR.CA;
-#endif
+
     goto M;
 
 M: // Post CALL6 PR set
@@ -2335,11 +2343,14 @@ N: // CALL6
       {
         // C(PR6.SNR) -> C(PR7.SNR) 
         cpu.PR[7].SNR = cpu.PR[6].SNR;
+        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(N) PR7.SNR = PR6.SNR %05o\n", cpu.PR[7].SNR);
       }
     else
       {
         // C(DSBR.STACK) || C(TPR.TRR) -> C(PR7.SNR)
-        cpu.PR[7].SNR = (cpu.DSBR.STACK << 3) || cpu.TPR.TRR;
+        cpu.PR[7].SNR = ((word15) (cpu.DSBR.STACK << 3)) | cpu.TPR.TRR;
+        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(N) STACK %05o TRR %o\n", cpu.DSBR.STACK, cpu.TPR.TRR);
+        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(N) PR7.SNR = STACK||TRR  %05o\n", cpu.PR[7].SNR);
       }
 
     // C(TPR.TRR) -> C(PR7.RNR)
@@ -2366,6 +2377,7 @@ N: // CALL6
 O:; // ITS
 
     sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(O)\n");
+    sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(O) TRR %o RSDWH.R1 %o ITS.RNR %o\n", cpu.TPR.TRR, cpu.RSDWH_R1, (word3) (((* data) >> (18 - 3)) & MASK3));
 
     // C(TPR.TRR) >= RSDWH.R1?
     if (cpu.TPR.TRR >= cpu.RSDWH_R1)
@@ -2375,6 +2387,7 @@ O:; // ITS
           goto Exit;
         // C(Y)18,20 -> C(TPR.TRR)
         cpu.TPR.TRR = (((* data) >> (18 - 3)) & MASK3);
+        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(O) Set TRR from ITS [a] %o\n", cpu.TPR.TRR);
         goto Exit;
       }
     // C(Y)18,20 ≥ RSDWH.R1?
@@ -2382,11 +2395,13 @@ O:; // ITS
       {
         // C(Y)18,20 -> C(TPR.TRR)
         cpu.TPR.TRR = (((* data) >> (18 - 3)) & MASK3);
+        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(O) Set TRR from ITS [b] %o\n", cpu.TPR.TRR);
       }
     else
       {
         // RSDWH.R1 -> C(TPR.TRR)
         cpu.TPR.TRR = cpu.RSDWH_R1;
+        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(O) Set TRR from RSDWH_R1 [c] %o\n", cpu.TPR.TRR);
       }
     goto Exit;
     
@@ -2425,6 +2440,13 @@ Exit:;
     PNL (cpu.APUDataBusAddr = finalAddress;)
 
     PNL (L68_ (cpu.apu.state |= apu_FA;))
+
+    sim_debug (DBG_APPENDING, & cpu_dev,
+               "doAppendCycle (Exit) PRR %o PSR %05o P %o IC %06o\n",
+               cpu.PPR.PRR, cpu.PPR.PSR, cpu.PPR.P, cpu.PPR.IC);
+    sim_debug (DBG_APPENDING, & cpu_dev,
+               "doAppendCycle (Exit) TRR %o TSR %05o TBR %02o CA %06o\n",
+               cpu.TPR.TRR, cpu.TPR.TSR, cpu.TPR.TBR, cpu.TPR.CA);
 
     //cpu . TPR . CA = address;
     return finalAddress;    // or 0 or -1???

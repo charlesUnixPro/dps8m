@@ -27,6 +27,7 @@
 #include "dps8_append.h"
 #include "dps8_iefp.h"
 #include "dps8_utils.h"
+#include "dps8_addrmods.h"
 #include "hdbg.h"
 
 // new Read/Write stuff ...
@@ -999,5 +1000,23 @@ t_stat ReadIndirect (void)
         Read2 (cpu.TPR.CA, cpu.itxPair, INDIRECT_WORD_FETCH);
       }
     return SCPE_OK;
+  }
+
+void ReadTraOp (void)
+  {
+    doComputedAddressFormation ();
+    Read (cpu.TPR.CA, &cpu.CY, OPERAND_READ);
+    if (! (get_addr_mode () == APPEND_mode || cpu.cu.TSN_VALID [0] || get_went_appending ()))
+      {
+        cpu.PPR.IC = cpu.TPR.CA;
+        cpu.PPR.PSR = 0;
+      }
+    sim_debug (DBG_TRACE, & cpu_dev, "ReadTraOp %05o:%06o\n", cpu.PPR.PSR, cpu.PPR.IC);
+  }
+
+void ReadRTCDOp (void)
+  {
+    doComputedAddressFormation ();
+    Read2 (cpu.TPR.CA, cpu.Ypair, RTCD_OPERAND_FETCH);
   }
 

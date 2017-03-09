@@ -437,7 +437,6 @@ static void readOperands (void)
         return;
       } // IT
 
-
     ReadOP (cpu.TPR.CA, OPERAND_READ);
 
     return;
@@ -1152,9 +1151,11 @@ void fetchInstruction (word18 addr)
 
     memset (p, 0, sizeof (struct DCDstruct));
 
+#if 0
     // since the next memory cycle will be a instruction fetch setup TPR
     cpu.TPR.TRR = cpu.PPR.PRR;
     cpu.TPR.TSR = cpu.PPR.PSR;
+#endif
 
     if (get_addr_mode () == ABSOLUTE_mode)
       {
@@ -1985,7 +1986,6 @@ sim_debug (DBG_TRACE, & cpu_dev, "b29, ci->address %o\n", ci->address);
         for (uint n = 0; n < info->ndes; n += 1)
           {
             CPT (cpt2U, 29 + n); // EIS operand fetch (29, 30, 31)
-#if 0
 // XXX This is a bit of a hack; In general the code is good about
 // setting up for bit29 or PR operations by setting up TPR, but
 // assumes that the 'else' case can be ignored when it should set
@@ -1996,14 +1996,17 @@ sim_debug (DBG_TRACE, & cpu_dev, "b29, ci->address %o\n", ci->address);
 // to the condition we know it should be in.
             cpu.TPR.TRR = cpu.PPR.PRR;
             cpu.TPR.TSR = cpu.PPR.PSR;
+#if 0
 { static bool first = true;
 if (first) {
 first = false;
 sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n");
 }}
 #else
+            //Read (cpu.PPR.IC + 1 + n, & cpu.currentEISinstruction.op[n],
+                  //INSTRUCTION_FETCH);
             Read (cpu.PPR.IC + 1 + n, & cpu.currentEISinstruction.op[n],
-                  INSTRUCTION_FETCH);
+                  APU_DATA_READ);
 #endif
           }
         PNL (cpu.IWRAddr = cpu.currentEISinstruction.op[0]);
@@ -2041,6 +2044,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
 
                 cpu.TPR.CA = (cpu.PAR[n].WORDNO + SIGNEXT15_18 (offset))
                              & MASK18;
+                cpu.TPR.TBR = GET_PR_BITNO (n);
 
                 if (! (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl))
                   updateIWB (cpu.TPR.CA, GET_TAG (IWB_IRODD));
@@ -2110,6 +2114,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
             cpu.iefpFinalAddress = cpu.TPR.CA;
           }
 
+        //if (READOP (ci) && ! ((bool) (ci->info->flags & TRANSFER_INS)))
         if (READOP (ci))
           {
             CPT (cpt2L, 2); // Read operands
@@ -2175,6 +2180,13 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
           }
 #endif
         writeOperands ();
+      }
+
+    else if (ci->info->flags & PREPARE_CA)
+      {
+        // 'EPP ITS; TRA' confuses the APU by leaving last_cycle 
+        // at INDIRECT_WORD_FETCH; defoobarize the APU:
+        fauxDoAppendCycle (OPERAND_READ);
       }
 
 ///
@@ -5109,30 +5121,12 @@ static t_stat DoBasicInstruction (void)
         case 0713:  // call6
 
           CPTUR (cptUsePRn + 7);
-          if (cpu.TPR.TRR > cpu.PPR.PRR)
-          {
-              sim_debug (DBG_APPENDING, & cpu_dev,
-                         "call6 access violation fault (outward call)");
-              doFault (FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV9},
-                       "call6 access violation fault (outward call)");
-          }
-          if (cpu.TPR.TRR < cpu.PPR.PRR)
-            cpu.PR[7].SNR = (word15) (((word15) (cpu.DSBR.STACK << 3)) |
-                             cpu.TPR.TRR) & MASK15;
-          if (cpu.TPR.TRR == cpu.PPR.PRR)
-            cpu.PR[7].SNR = cpu.PR[6].SNR;
-          cpu.PR[7].RNR = cpu.TPR.TRR;
-          if (cpu.TPR.TRR == 0)
-            cpu.PPR.P = cpu.SDW->P;
-          else
-            cpu.PPR.P = 0;
-          cpu.PR[7].WORDNO = 0;
-          SET_PR_BITNO (7, 0);
-          cpu.PPR.PRR = cpu.TPR.TRR;
-          cpu.PPR.PSR = cpu.TPR.TSR;
-          cpu.PPR.IC = cpu.TPR.CA;
+
+          //ReadOP (cpu.TPR.CA, RTCD_OPERAND_FETCH);
+          ReadTraOp ();
           sim_debug (DBG_TRACE, & cpu_dev,
-                     "call6 PPR.PRR %o\n", cpu.PPR.PRR);
+                     "call6 PRR %o PSR %o\n", cpu.PPR.PRR, cpu.PPR.PSR);
+
           return CONT_TRA;
 
 
@@ -5148,6 +5142,8 @@ static t_stat DoBasicInstruction (void)
 
             // C(Y)0,17 -> C(PPR.IC)
             // C(Y)18,31 -> C(IR)
+            //ReadOP (cpu.TPR.CA, OPERAND_READ);
+            ReadTraOp ();
 
             word18 tempIR = GETLO (cpu.CY) & 0777770;
             // Assuming 'mask privileged mode' is 'temporary absolute mode'
@@ -5189,7 +5185,6 @@ static t_stat DoBasicInstruction (void)
             //           "RET ABS  was %d now %d\n",
             //           TST_I_ABS ? 1 : 0,
             //           TSTF (tempIR, I_ABS) ? 1 : 0);
-            cpu.PPR.IC = GETHI (cpu.CY);
             CPTUR (cptUseIR);
             cpu.cu.IR = tempIR;
 
@@ -5212,59 +5207,8 @@ static t_stat DoBasicInstruction (void)
           //   fetch is equal to C(PPR.PRR) (which is 0 in absolute mode)
           //   implying that control is always transferred into ring 0.
           //
-          // This behavior is accomplished by ReadOP(); it detects the
-          // RTCD operand and forces RTCD_OPERAND_FETCH.
 
-          // C(Y-pair)3,17 -> C(PPR.PSR)
-          // Maximum of C(Y-pair)18,20; C(TPR.TRR); C(SDW.R1) -> C(PPR.PRR)
-          // C(Y-pair)36,53 -> C(PPR.IC)
-          // If C(PPR.PRR) = 0 then C(SDW.P) -> C(PPR.P);
-          // otherwise 0 -> C(PPR.P)
-          // C(PPR.PRR) -> C(PRn.RNR) for n = (0, 1, ..., 7)
-
-          //processorCycle = RTCD_OPERAND_FETCH;
-
-          sim_debug (DBG_TRACE, & cpu_dev,
-                     "RTCD even %012"PRIo64" odd %012"PRIo64"\n",
-                     cpu.Ypair[0], cpu.Ypair[1]);
-
-          // Flowchart "K"
-
-          // C(Y-pair)3,17 -> C(PPR.PSR)
-          cpu.PPR.PSR = GETHI (cpu.Ypair[0]) & 077777LL;
-
-          // C(Y+1)0,17 -> C(TPR.CA) 
-          cpu.TPR.CA = GET_OFFSET (cpu.Ypair[0]);
-
-          // C(TPR.TRR) -> C(PPR.PRR)
-          cpu.PPR.PRR = cpu.TPR.TRR;
-
-          // XXX ticket #16
-          // Maximum of C(Y-pair)18,20; C(TPR.TRR); C(SDW.R1) -> C(PPR.PRR)
-          cpu.PPR.PRR = max3 (((GETLO (cpu.Ypair[0]) >> 15) & 7),
-                              cpu.TPR.TRR,
-                              cpu.RSDWH_R1);
-
-          // C(Y-pair)36,53 -> C(PPR.IC)
-          cpu.PPR.IC = GETHI (cpu.Ypair[1]);
-
-          sim_debug (DBG_TRACE, & cpu_dev,
-                     "RTCD %05o:%06o\n", cpu.PPR.PSR, cpu.PPR.IC);
-
-          // If C(PPR.PRR) = 0 then C(SDW.P) -> C(PPR.P);
-          // otherwise 0 -> C(PPR.P)
-          if (cpu.PPR.PRR == 0)
-            cpu.PPR.P = cpu.SDW->P;
-          else
-            cpu.PPR.P = 0;
-
-          sim_debug (DBG_TRACE, & cpu_dev,
-                     "RTCD PPR.PRR %o PPR.P %o\n", cpu.PPR.PRR, cpu.PPR.P);
-
-          // C(PPR.PRR) -> C(PRn.RNR) for n = (0, 1, ..., 7)
-          //for (int n = 0 ; n < 8 ; n += 1)
-          //  PR[n].RNR = cpu.PPR.PRR;
-
+          ReadRTCDOp ();
           // RTCD always ends up in append mode.
           set_addr_mode (APPEND_mode);
             
@@ -5278,10 +5222,8 @@ static t_stat DoBasicInstruction (void)
           // otherwise, no change to C(PPR)
           if (TST_I_EOFL)
             {
-              cpu.PPR.IC = cpu.TPR.CA;
-              cpu.PPR.PSR = cpu.TPR.TSR;
-              CLR_I_EOFL;
-              readOperands ();
+              //ReadOP (cpu.TPR.CA, OPERAND_READ);
+              ReadTraOp ();
               return CONT_TRA;
             }
           break;
@@ -5292,11 +5234,7 @@ static t_stat DoBasicInstruction (void)
           //  C(TPR.TSR) -> C(PPR.PSR)
           if (TST_I_EUFL)
             {
-              cpu.PPR.IC = cpu.TPR.CA;
-              cpu.PPR.PSR = cpu.TPR.TSR;
-
-              CLR_I_EUFL;
-              readOperands ();
+              ReadTraOp ();
               return CONT_TRA;
             }
           break;
@@ -5308,9 +5246,7 @@ static t_stat DoBasicInstruction (void)
           //  C(TPR.TSR) -> C(PPR.PSR)
           if (TST_I_NEG)
             {
-              cpu.PPR.IC = cpu.TPR.CA;
-              cpu.PPR.PSR = cpu.TPR.TSR;
-              readOperands ();
+              ReadTraOp ();
               return CONT_TRA;
             }
           break;
@@ -5321,9 +5257,7 @@ static t_stat DoBasicInstruction (void)
           //   C(TPR.TSR) -> C(PPR.PSR)
           if (!TST_I_CARRY)
             {
-              cpu.PPR.IC = cpu.TPR.CA;
-              cpu.PPR.PSR = cpu.TPR.TSR;
-              readOperands ();
+              ReadTraOp ();
               return CONT_TRA;
             }
           break;
@@ -5334,9 +5268,7 @@ static t_stat DoBasicInstruction (void)
           //     C(TPR.TSR) -> C(PPR.PSR)
           if (!TST_I_ZERO)
             {
-              cpu.PPR.IC = cpu.TPR.CA;
-              cpu.PPR.PSR = cpu.TPR.TSR;
-              readOperands ();
+              ReadTraOp ();
               return CONT_TRA;
             }
           break;
@@ -5347,11 +5279,8 @@ static t_stat DoBasicInstruction (void)
           //   C(TPR.TSR) -> C(PPR.PSR)
           if (TST_I_OFLOW)
             {
-              cpu.PPR.IC = cpu.TPR.CA;
-              cpu.PPR.PSR = cpu.TPR.TSR;
-
               CLR_I_OFLOW;
-              readOperands ();
+              ReadTraOp ();
               return CONT_TRA;
             }
           break;
@@ -5362,11 +5291,7 @@ static t_stat DoBasicInstruction (void)
           //   C(TPR.TSR) -> C(PPR.PSR)
           if (! (TST_I_NEG))
             {
-              cpu.PPR.IC = cpu.TPR.CA;
-              cpu.PPR.PSR = cpu.TPR.TSR;
-
-              readOperands ();
-
+              ReadTraOp ();
               return CONT_TRA;
             }
           break;
@@ -5374,26 +5299,7 @@ static t_stat DoBasicInstruction (void)
         case 0710:  // tra
           // C(TPR.CA) -> C(PPR.IC)
           // C(TPR.TSR) -> C(PPR.PSR)
-          cpu.PPR.IC = cpu.TPR.CA;
-          cpu.PPR.PSR = cpu.TPR.TSR;
-          sim_debug (DBG_TRACE, & cpu_dev, "TRA %05o:%06o\n",
-                     cpu.PPR.PSR, cpu.PPR.IC);
-#if 0
-          if (cpu.bar_attempt)
-            {
-sim_printf ("do bar attempt\n");
-              set_addr_mode (APPEND_mode);
-            }
-          else 
-#endif
-// Abstracted to CPU state machine
-#if 0
-          if (TST_I_ABS && get_went_appending ())
-            {
-              set_addr_mode (APPEND_mode);
-            }
-#endif
-
+          ReadTraOp ();
           return CONT_TRA;
 
         case 0603:  // trc
@@ -5402,11 +5308,7 @@ sim_printf ("do bar attempt\n");
           //    C(TPR.TSR) -> C(PPR.PSR)
           if (TST_I_CARRY)
             {
-              cpu.PPR.IC = cpu.TPR.CA;
-              cpu.PPR.PSR = cpu.TPR.TSR;
-
-              readOperands ();
-
+              ReadTraOp ();
               return CONT_TRA;
             }
           break;
@@ -5433,25 +5335,9 @@ sim_printf ("do bar attempt\n");
               n = (opcode & 3);
             else
               n = (opcode & 3) + 4;
-
             CPTUR (cptUsePRn + n);
 
-#if 0
-done by append cycle now
-            // XXX According to figure 8.1, all of this is done by the
-            //  append unit.
-            cpu.PR[n].RNR = cpu.PPR.PRR;
-
-// According the AL39, the PSR is 'undefined' in absolute mode.
-// ISOLTS thinks means don't change the operand
-            if (get_addr_mode () == APPEND_mode)
-              cpu.PR[n].SNR = cpu.PPR.PSR;
-            cpu.PR[n].WORDNO = (cpu.PPR.IC + 1) & MASK18;
-            SET_PR_BITNO (n, 0);
-#endif
-            cpu.PPR.IC = cpu.TPR.CA;
-            cpu.PPR.PSR = cpu.TPR.TSR;
-
+            ReadTraOp ();
           }
           return CONT_TRA;
 
@@ -5463,21 +5349,8 @@ done by append cycle now
                        (_fault_subtype) {.fault_acv_subtype=ACV15},
                        "TSS boundary violation");
             }
-          // AL39 is misleading; the BAR base is added in by the
-          // instruction fetch.
-          // C(TPR.CA) + (BAR base) -> C(PPR.IC)
-          // C(TPR.TSR) -> C(PPR.PSR)
-          cpu.PPR.IC = cpu.TPR.CA /* + (cpu.BAR.BASE << 9) */;
-          cpu.PPR.PSR = cpu.TPR.TSR;
-
+          ReadTraOp ();
           CLR_I_NBAR;
-// Abstracted to CPU state machine
-#if 0
-          if (TST_I_ABS && get_went_appending ())
-            {
-              set_addr_mode (APPEND_mode);
-            }
-#endif
           return CONT_TRA;
 
         case 0700:  // tsx0
@@ -5492,9 +5365,12 @@ done by append cycle now
           //   C(PPR.IC) + 1 -> C(Xn)
           // C(TPR.CA) -> C(PPR.IC)
           // C(TPR.TSR) -> C(PPR.PSR)
-          cpu.rX[opcode & 07] = (cpu.PPR.IC + 1) & MASK18;
-          cpu.PPR.IC = cpu.TPR.CA;
-          cpu.PPR.PSR = cpu.TPR.TSR;
+          {
+            // We can't set Xn yet as the CAF may refer to Xn
+            word18 ret = (cpu.PPR.IC + 1) & MASK18;
+            ReadTraOp ();
+            cpu.rX[opcode & 07] = ret;
+          }
           return CONT_TRA;
 
         case 0607:  // ttf
@@ -5504,11 +5380,7 @@ done by append cycle now
           // otherwise, no change to C(PPR)
           if (TST_I_TALLY == 0)
             {
-              cpu.PPR.IC = cpu.TPR.CA;
-              cpu.PPR.PSR = cpu.TPR.TSR;
-
-              readOperands ();
-
+              ReadTraOp ();
               return CONT_TRA;
             }
           break;
@@ -5520,11 +5392,7 @@ done by append cycle now
           // otherwise, no change to C(PPR)
           if (TST_I_ZERO)
             {
-              cpu.PPR.IC = cpu.TPR.CA;
-              cpu.PPR.PSR = cpu.TPR.TSR;
-
-              readOperands ();
-
+              ReadTraOp ();
               return CONT_TRA;
             }
           break;
@@ -7820,14 +7688,10 @@ static t_stat DoEISInstruction (void)
             // C(TPR.CA) -> C(PPR.IC)
             // C(TPR.TSR) -> C(PPR.PSR)
             if (cpu.cu.IR & (I_NEG | I_ZERO))
-            {
-                cpu.PPR.IC = cpu.TPR.CA;
-                cpu.PPR.PSR = cpu.TPR.TSR;
-
-                readOperands ();
-
+              {
+                ReadTraOp ();
                 return CONT_TRA;
-            }
+              }
             break;
 
         case 0605:  // tpnz
@@ -7836,11 +7700,7 @@ static t_stat DoEISInstruction (void)
             //  C(TPR.TSR) -> C(PPR.PSR)
             if (! (cpu.cu.IR & I_NEG) && ! (cpu.cu.IR & I_ZERO))
             {
-                cpu.PPR.IC = cpu.TPR.CA;
-                cpu.PPR.PSR = cpu.TPR.TSR;
-
-                readOperands ();
-
+                ReadTraOp ();
                 return CONT_TRA;
             }
             break;
@@ -7851,11 +7711,7 @@ static t_stat DoEISInstruction (void)
             //  C(TPR.TSR) -> C(PPR.PSR)
             if (!TST_I_TRUNC)
             {
-                cpu.PPR.IC = cpu.TPR.CA;
-                cpu.PPR.PSR = cpu.TPR.TSR;
-
-                readOperands ();
-
+                ReadTraOp ();
                 return CONT_TRA;
             }
             break;
@@ -7866,13 +7722,8 @@ static t_stat DoEISInstruction (void)
             //  C(TPR.TSR) -> C(PPR.PSR)
             if (TST_I_TRUNC)
             {
-                cpu.PPR.IC = cpu.TPR.CA;
-                cpu.PPR.PSR = cpu.TPR.TSR;
-
                 CLR_I_TRUNC;
-
-                readOperands ();
-
+                ReadTraOp ();
                 return CONT_TRA;
             }
             break;
@@ -7884,11 +7735,7 @@ static t_stat DoEISInstruction (void)
             // otherwise, no change to C(PPR)
             if (TST_I_TALLY)
             {
-                cpu.PPR.IC = cpu.TPR.CA;
-                cpu.PPR.PSR = cpu.TPR.TSR;
-
-                readOperands ();
-
+                ReadTraOp ();
                 return CONT_TRA;
             }
             break;

@@ -2500,23 +2500,6 @@ int OPSIZE (void)
 t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp)
 {
     CPT (cpt1L, 6); // ReadOP
-    DCDstruct * i = & cpu.currentInstruction;
-        
-    // rtcd is an annoying edge case; ReadOP is called before the instruction
-    // is executed, so it's setting processorCycle to RTCD_OPERAND_FETCH is
-    // too late. Special case it here by noticing that this is an RTCD
-    // instruction
-    if (cyctyp == OPERAND_READ && i -> opcode == 0610 && ! i -> opcodeX)
-    {
-        addr &= 0777776;   // make even
-#ifdef RALRx
-        Read2 (addr, cpu.Ypair, RTCD_OPERAND_FETCH);
-#else
-        Read (addr + 0, cpu.Ypair + 0, RTCD_OPERAND_FETCH);
-        Read (addr + 1, cpu.Ypair + 1, RTCD_OPERAND_FETCH);
-#endif
-        return SCPE_OK;
-    }
 
     switch (OPSIZE ())
     {
