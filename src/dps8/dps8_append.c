@@ -1686,7 +1686,8 @@ A:;
 //
 
     // Is OPCODE call6?
-    if ((! instructionFetch) && i->info->flags & CALL6_INS)
+    //if ((! instructionFetch) && i->info->flags & CALL6_INS)
+    if (thisCycle == OPERAND_READ && (i->info->flags & CALL6_INS))
       goto E;
 
     // If the instruction is a transfer operand or we are doing an instruction
