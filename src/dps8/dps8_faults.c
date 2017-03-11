@@ -495,6 +495,9 @@ else if (faultNumber == FAULT_ACV)
 // only time an EIS instruction could be executing is during EXEC_cycle.
 // I am also assuming that only multi-word EIS instructions are of interest.
 // Testing faultNumber fixes ISOLTS 890-04a
+    SC_I_MIF (cpu.cycle == EXEC_cycle &&
+        cpu.currentInstruction.info->ndes > 0);
+    sim_debug (DBG_TRACE, & cpu_dev, "MIF %o\n", TST_I_MIF);
 #if 0
 sim_debug (DBG_FAULT, & cpu_dev, "cycle %u ndes %u fn %u v %u\n", cpu.cycle, cpu.currentInstruction.info->ndes, faultNumber, (cpu . cycle == EXEC_cycle && cpu . currentInstruction . info -> ndes > 0) || faultNumber == FAULT_IPR);
     SC_I_MIF (cpu . cycle == EXEC_cycle &&
@@ -744,8 +747,9 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
 // only time an EIS instruction could be executing is during EXEC_cycle.
 // I am also assuming that only multi-word EIS instructions are of interest.
 #if 1
-    SC_I_MIF (cpu . cycle == EXEC_cycle &&
-        cpu . currentInstruction . info -> ndes > 0);
+    SC_I_MIF (cpu.cycle == EXEC_cycle &&
+        cpu.currentInstruction.info->ndes > 0);
+    sim_debug (DBG_TRACE, & cpu_dev, "MIF %o\n", TST_I_MIF);
 #endif
 
     // History registers

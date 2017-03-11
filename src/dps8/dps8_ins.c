@@ -2685,7 +2685,7 @@ static t_stat doInstruction (void)
     // is an indicator bit if it is always 0 when you check it?). Clear it if
     // an multiword EIS is at bat.
     // NB: Never clearing it renders Multics unbootable.
-    if (i->info->ndes > 0)
+    //if (i->info->ndes > 0)
       CLR_I_MIF;
 
 #ifdef L68
