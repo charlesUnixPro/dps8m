@@ -2041,6 +2041,7 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                     //processorCycle = INSTRUCTION_FETCH;
                     // fetch next instruction into current instruction struct
                     clr_went_appending (); // XXX not sure this is the right place
+                    cpu.cu.TSN_VALID [0] = 0;
                     PNL (cpu.prepare_state = ps_PIA);
                     PNL (L68_ (cpu.INS_FETCH = true;))
                     fetchInstruction (cpu.PPR.IC);
