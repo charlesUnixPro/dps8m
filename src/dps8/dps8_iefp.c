@@ -1008,6 +1008,26 @@ void ReadTraOp (void)
     Read (cpu.TPR.CA, &cpu.CY, OPERAND_READ);
     if (! (get_addr_mode () == APPEND_mode || cpu.cu.TSN_VALID [0] || get_went_appending ()))
       {
+        if (cpu.currentInstruction.info->flags & TSPN_INS)
+          {
+            word3 n;
+            if (cpu.currentInstruction.opcode <= 0273)
+              n = (cpu.currentInstruction.opcode & 3);
+            else
+              n = (cpu.currentInstruction.opcode & 3) + 4;
+
+            // C(PPR.PRR) -> C(PRn .RNR)
+            // C(PPR.PSR) -> C(PRn .SNR)
+            // C(PPR.IC) -> C(PRn .WORDNO)
+            // 000000 -> C(PRn .BITNO)
+            cpu.PR[n].RNR = cpu.PPR.PRR;
+// According the AL39, the PSR is 'undefined' in absolute mode.
+// ISOLTS thinks means don't change the operand
+            if (get_addr_mode () == APPEND_mode)
+              cpu.PR[n].SNR = cpu.PPR.PSR;
+            cpu.PR[n].WORDNO = (cpu.PPR.IC + 1) & MASK18;
+            SET_PR_BITNO (n, 0);
+          }
         cpu.PPR.IC = cpu.TPR.CA;
         cpu.PPR.PSR = 0;
       }
