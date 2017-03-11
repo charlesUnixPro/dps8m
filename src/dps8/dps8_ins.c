@@ -5222,6 +5222,7 @@ static t_stat DoBasicInstruction (void)
           // otherwise, no change to C(PPR)
           if (TST_I_EOFL)
             {
+              CLR_I_EOFL;
               //ReadOP (cpu.TPR.CA, OPERAND_READ);
               ReadTraOp ();
               return CONT_TRA;
@@ -5234,6 +5235,7 @@ static t_stat DoBasicInstruction (void)
           //  C(TPR.TSR) -> C(PPR.PSR)
           if (TST_I_EUFL)
             {
+              CLR_I_EUFL;
               ReadTraOp ();
               return CONT_TRA;
             }
