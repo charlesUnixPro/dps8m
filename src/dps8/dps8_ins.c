@@ -1183,7 +1183,7 @@ void fetchInstruction (word18 addr)
       {
         CPT (cpt2U, 12); // fetch 
         Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH);
-#ifdef ISOLTS
+#ifdef xISOLTS
 // ISOLTS test pa870 expects IRODD to be set up.
 // If we are fetching an even instruction, also fetch the odd.
 // If we are fetching an odd instruction, copy it to IRODD as
@@ -1324,7 +1324,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  ISB29,
+                  ISB29, cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
 #else
@@ -5145,6 +5145,7 @@ static t_stat DoBasicInstruction (void)
             //ReadOP (cpu.TPR.CA, OPERAND_READ);
             ReadTraOp ();
 
+            cpu.PPR.IC = GETHI (cpu.CY);
             word18 tempIR = GETLO (cpu.CY) & 0777770;
             // Assuming 'mask privileged mode' is 'temporary absolute mode'
             if (is_priv_mode ()) // abs. or temp. abs. or priv.
@@ -5187,7 +5188,6 @@ static t_stat DoBasicInstruction (void)
             //           TSTF (tempIR, I_ABS) ? 1 : 0);
             CPTUR (cptUseIR);
             cpu.cu.IR = tempIR;
-
             return CONT_TRA;
           }
 
