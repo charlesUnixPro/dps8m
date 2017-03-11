@@ -475,6 +475,10 @@ startCA:;
 
             //cpu.TPR.CA = cpu.ou.directOperand;
             //updateIWB (identity) // known that rTag is DL or DU
+            sim_debug (DBG_TRACE, & cpu_dev, "dl/du do %012llo IWB %012llo\n", cpu.ou.directOperand, IWB_IRODD);
+            updateIWB ((Td == TD_DU ? (cpu.ou.directOperand >> 18) :
+                                       cpu.ou.directOperand) & MASK18,
+                        cpu.rTAG);
             return SCPE_OK;
           }
 
@@ -665,6 +669,7 @@ startCA:;
 #ifdef OLDCYCLE
         updateIWB (cpu.TPR.CA, cpu.rTAG);
 #endif
+        sim_debug (DBG_TRACE, & cpu_dev, "skipping updateIWB CA %06o tag %02o\n", cpu.TPR.CA, cpu.rTAG);
         goto startCA;
       } // RI_MOD
 
