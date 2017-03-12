@@ -1818,6 +1818,7 @@ E:;
 //
 
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E): CALL6\n");
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E): E %o G %o PSR %05o TSR %05o CA %06o EB %06o R %o%o%o TRR %o PRR %o\n", cpu.SDW->E, cpu.SDW->G, cpu.PPR.PSR, cpu.TPR.TSR, cpu.TPR.CA, cpu.SDW->EB, cpu.SDW->R1, cpu.SDW->R2, cpu.SDW->R3, cpu.TPR.TRR, cpu.PPR.PRR);
 
     //SDW.E set ON?
     if (!cpu . SDW->E)
