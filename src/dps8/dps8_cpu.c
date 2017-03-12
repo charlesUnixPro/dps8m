@@ -2516,7 +2516,7 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp)
         case 8:
             CPT (cpt1L, 9); // oct word
             addr &= 0777770;   // make on 8-word boundary
-            Read8 (addr, cpu.Yblock8);
+            Read8 (addr, cpu.Yblock8, false);
             break;
         case 16:
             CPT (cpt1L, 10); // 16 words
@@ -2559,7 +2559,7 @@ t_stat WriteOP(word18 addr, UNUSED _processor_cycle_type cyctyp)
         case 8:
             CPT (cpt1L, 14); // 8 words
             addr &= 0777770;   // make on 8-word boundary
-            Write8 (addr, cpu.Yblock8);
+            Write8 (addr, cpu.Yblock8, false);
             break;
         case 16:
             CPT (cpt1L, 15); // 16 words

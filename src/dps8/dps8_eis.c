@@ -525,7 +525,7 @@ static void EISWriteCache (EISaddr * p)
               }
 { long eisaddr_idx = EISADDR_IDX (p);
 sim_debug (DBG_TRACEEXT, & cpu_dev, "EIS %ld Write8 TRR %o TSR %05o\n", eisaddr_idx, cpu.TPR.TRR, cpu.TPR.TSR); }
-            Write8 (p->cachedAddr, p -> cachedParagraph);
+            Write8 (p->cachedAddr, p -> cachedParagraph, true);
           }
         else
           {
@@ -544,7 +544,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "EIS %ld Write8 TRR %o TSR %05o\n", eisaddr_
               }
 { long eisaddr_idx = EISADDR_IDX (p);
 sim_debug (DBG_TRACEEXT, & cpu_dev, "EIS %ld Write8 NO PR TRR %o TSR %05o\n", eisaddr_idx, cpu.TPR.TRR, cpu.TPR.TSR); }
-            Write8 (p->cachedAddr, p -> cachedParagraph);
+            Write8 (p->cachedAddr, p -> cachedParagraph, false);
           }
       }
     p -> cacheDirty = false;
@@ -577,7 +577,7 @@ static void EISReadCache (EISaddr * p, word18 address)
         cpu.TPR.TSR = p -> SNR;
 { long eisaddr_idx = EISADDR_IDX (p);
 sim_debug (DBG_TRACEEXT, & cpu_dev, "EIS %ld Read8 TRR %o TSR %05o\n", eisaddr_idx, cpu.TPR.TRR, cpu.TPR.TSR); }
-        Read8 (paragraphAddress, p -> cachedParagraph);
+        Read8 (paragraphAddress, p -> cachedParagraph, true);
 
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
           {
@@ -597,7 +597,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "EIS %ld Read8 TRR %o TSR %05o\n", eisaddr_i
         
 { long eisaddr_idx = EISADDR_IDX (p);
 sim_debug (DBG_TRACEEXT, & cpu_dev, "EIS %ld Read8 NO PR TRR %o TSR %05o\n", eisaddr_idx, cpu.TPR.TRR, cpu.TPR.TSR); }
-        Read8 (paragraphAddress, p -> cachedParagraph);
+        Read8 (paragraphAddress, p -> cachedParagraph, false);
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
           {
             for (uint i = 0; i < 8; i ++)
@@ -732,7 +732,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
       {
         cpu.TPR.TRR = p -> RNR;
         cpu.TPR.TSR = p -> SNR;
-        ReadPage (addressN, data);
+        ReadPage (addressN, data, true);
 
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
           {
@@ -756,7 +756,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
         cpu.TPR.TSR = cpu.PPR.PSR;
           //}
         
-        ReadPage (addressN, data);
+        ReadPage (addressN, data, false);
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
           {
             for (uint i = 0; i < PGSZ; i ++)
@@ -792,7 +792,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
       {
         cpu.TPR.TRR = p -> RNR;
         cpu.TPR.TSR = p -> SNR;
-        WritePage (addressN, data);
+        WritePage (addressN, data, true);
 
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
           {
@@ -816,7 +816,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
         cpu.TPR.TSR = cpu.PPR.PSR;
           //}
         
-        WritePage (addressN, data);
+        WritePage (addressN, data, false);
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
           {
             for (uint i = 0; i < PGSZ; i ++)

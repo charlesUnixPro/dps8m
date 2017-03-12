@@ -181,14 +181,14 @@ B29:;
     return SCPE_UNK;
   }
 
-t_stat Read8 (word18 address, word36 * result)
+t_stat Read8 (word18 address, word36 * result, bool isAR)
   {
     //cpu.iefpFinalAddress = address;
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
 
     bool isBAR = get_bar_mode ();
 
-    if (cpu.cu.TSN_VALID [0] || get_went_appending ())
+    if (isAR || cpu.cu.TSN_VALID [0] || get_went_appending ())
       {
         goto B29;
       }
@@ -367,7 +367,7 @@ B29:;
     return SCPE_UNK;
   }
 
-t_stat ReadPage (word18 address, word36 * result)
+t_stat ReadPage (word18 address, word36 * result, bool isAR)
   {
     if ((address & PGMK) != 0)
       {
@@ -387,7 +387,7 @@ t_stat ReadPage (word18 address, word36 * result)
     // Correct version
     bool isBAR = get_bar_mode ();
 
-    if (cpu.cu.TSN_VALID [0] || get_went_appending ())
+    if (isAR || cpu.cu.TSN_VALID [0] || get_went_appending ())
       {
         goto B29;
       }
@@ -616,7 +616,7 @@ B29:
   }
 
 
-t_stat Write8 (word18 address, word36 * data)
+t_stat Write8 (word18 address, word36 * data, bool isAR)
   {
     address &= paragraphMask; // Round to 8 word boundarryt
     //cpu.iefpFinalAddress = address;
@@ -624,7 +624,7 @@ t_stat Write8 (word18 address, word36 * data)
 
     bool isBAR = get_bar_mode ();
 
-    if (cpu.cu.TSN_VALID [0] || get_went_appending ())
+    if (isAR || cpu.cu.TSN_VALID [0] || get_went_appending ())
       goto B29;
     
     
@@ -895,7 +895,7 @@ B29:
     return SCPE_UNK;
   }
 
-t_stat WritePage (word18 address, word36 * data)
+t_stat WritePage (word18 address, word36 * data, bool isAR)
   {
     if ((address & PGMK) != 0)
       {
@@ -907,7 +907,7 @@ t_stat WritePage (word18 address, word36 * data)
 
     bool isBAR = get_bar_mode ();
 
-    if (cpu.cu.TSN_VALID [0] || get_went_appending ())
+    if (isAR || cpu.cu.TSN_VALID [0] || get_went_appending ())
       goto B29;
     
     
