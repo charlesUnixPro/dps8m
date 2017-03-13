@@ -473,12 +473,15 @@ startCA:;
                        "R_MOD: directOperand = %012"PRIo64"\n",
                        cpu.ou.directOperand);
 
+#ifdef XEF_IND
             //cpu.TPR.CA = cpu.ou.directOperand;
             //updateIWB (identity) // known that rTag is DL or DU
+#else
             sim_debug (DBG_TRACE, & cpu_dev, "dl/du do %012llo IWB %012llo\n", cpu.ou.directOperand, IWB_IRODD);
             updateIWB ((Td == TD_DU ? (cpu.ou.directOperand >> 18) :
                                        cpu.ou.directOperand) & MASK18,
                         cpu.rTAG);
+#endif
             return SCPE_OK;
           }
 
@@ -593,7 +596,7 @@ startCA:;
         // register modification value, so we want to prevent it from 
         // happening again on restart
 
-#ifdef OLDCYCLE
+#ifdef XSF_IND // OLDCYCLE
         updateIWB (cpu.TPR.CA, TM_RI | TD_N);
 #endif
 
@@ -666,10 +669,11 @@ startCA:;
         if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
           return SCPE_OK;
 
-#ifdef OLDCYCLE
+#ifdef XSF_IND // OLDCYCLE
         updateIWB (cpu.TPR.CA, cpu.rTAG);
-#endif
+#else
         sim_debug (DBG_TRACE, & cpu_dev, "skipping updateIWB CA %06o tag %02o\n", cpu.TPR.CA, cpu.rTAG);
+#endif
         goto startCA;
       } // RI_MOD
 
@@ -776,7 +780,7 @@ startCA:;
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
                                "IR_MOD(TM_R): TPR.CA=%06o\n", cpu.TPR.CA);
 
-#ifdef OLDCYCLE
+#ifdef XSF_IND // OLDCYCLE
                     updateIWB (cpu.TPR.CA, 0);
 #endif
                   }
@@ -822,7 +826,7 @@ startCA:;
 
             case TM_IR:
               {
-#ifdef OLDCYCLE
+#ifdef XSF_IND // OLDCYCLE
                 updateIWB (cpu.TPR.CA, cpu.rTAG); // XXX guessing here...
 #endif
                 goto IR_MOD;

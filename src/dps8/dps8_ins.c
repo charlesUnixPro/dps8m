@@ -1520,6 +1520,9 @@ IF1 sim_printf ("trapping opcode match......\n");
     if (ci->restart)
       goto restart_1;
 
+#ifdef XSF_IND
+    cpu.cu.XSF = 0;
+#endif
     CPT (cpt2U, 14); // non-restart processing
     // Set Address register empty
     PNL (L68_ (cpu.AR_F_E = false;))
@@ -1835,7 +1838,9 @@ restart_1:
 
     cpu.du.JMP = (word3) info->ndes;
     cpu.dlyFlt = false;
+#ifndef XSF_IND
     cpu.cu.XSF = 0;
+#endif
 
 ///
 /// executeInstruction: RPT/RPD/RPL special processing for 'first time'
@@ -2187,6 +2192,11 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
         // 'EPP ITS; TRA' confuses the APU by leaving last_cycle 
         // at INDIRECT_WORD_FETCH; defoobarize the APU:
         fauxDoAppendCycle (OPERAND_READ);
+#ifdef XSF_IND
+        cpu.TPR.TRR = cpu.PPR.PRR;
+        cpu.TPR.TSR = cpu.PPR.PSR;
+        cpu.TPR.TBR = 0;
+#endif
       }
 
 ///
