@@ -1447,7 +1447,7 @@ uint getCPUnum (void)
 static void panelProcessEvent (void)
   {
     // INITIALIZE pressed; treat at as a BOOT.
-    if (cpu.panelInitialize) 
+    if (cpu.panelInitialize && cpu.DATA_panel_s_trig_sw == 0) 
       {
          // Wait for release
          while (cpu.panelInitialize) 
@@ -1460,7 +1460,8 @@ static void panelProcessEvent (void)
          doBoot ();
       }
     // EXECUTE pressed; EXECUTE PB set, EXECUTE FAULT set
-    if (cpu.DATA_panel_execute_sw && // EXECUTE buttton
+    if (cpu.DATA_panel_s_trig_sw == 0 &&
+        cpu.DATA_panel_execute_sw && // EXECUTE buttton
         cpu.DATA_panel_scope_sw && // 'EXECUTE PB/SCOPE REPEAT' set to PB
         cpu.DATA_panel_exec_sw == 0) // 'EXECUTE SWITCH/EXECUTE FAULT' set to FAULT
       {

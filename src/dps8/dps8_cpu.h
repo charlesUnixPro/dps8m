@@ -1615,8 +1615,8 @@ typedef struct
     word1 panel7_enabled_light_state;
 // The state of the panel switches
     volatile word15 APU_panel_segno_sw;
-    volatile word1  APU_panel_enable_match_ptw_sw;
-    volatile word1  APU_panel_enable_match_sdw_sw;
+    volatile word1  APU_panel_enable_match_ptw_sw;  // lock
+    volatile word1  APU_panel_enable_match_sdw_sw;  // lock
     volatile word1  APU_panel_scroll_select_ul_sw;
     volatile word4  APU_panel_scroll_select_n_sw;
     volatile word4  APU_panel_scroll_wheel_sw;
@@ -1636,15 +1636,15 @@ typedef struct
     volatile word4  DATA_panel_addr_stop_sw;
     volatile word1  DATA_panel_enable_sw;
     volatile word1  DATA_panel_validate_sw;
-    volatile word1  DATA_panel_auto_fast_sw;
-    volatile word1  DATA_panel_auto_slow_sw;
-    volatile word4  DATA_panel_cycle_sw;
-    volatile word1  DATA_panel_step_sw;
+    volatile word1  DATA_panel_auto_fast_sw;  // lock
+    volatile word1  DATA_panel_auto_slow_sw;  // lock
+    volatile word4  DATA_panel_cycle_sw;  // lock
+    volatile word1  DATA_panel_step_sw;  // lock
     volatile word1  DATA_panel_s_trig_sw;
-    volatile word1  DATA_panel_execute_sw;
+    volatile word1  DATA_panel_execute_sw;  // lock
     volatile word1  DATA_panel_scope_sw;
-    volatile word1  DATA_panel_init_sw;
-    volatile word1  DATA_panel_exec_sw;
+    volatile word1  DATA_panel_init_sw;  // lock
+    volatile word1  DATA_panel_exec_sw;  // lock
     volatile word4  DATA_panel_hr_sel_sw;
     volatile word4  DATA_panel_trackers_sw;
     volatile bool panelInitialize;
