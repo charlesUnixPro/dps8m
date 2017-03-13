@@ -276,6 +276,12 @@ B29:;
 
 t_stat Read16 (word18 address, word36 * result)
   {
+#if 1
+    address &= paragraphMask; // Round to 8 word boundary
+    Read8 (address, result, false);
+    Read8 (address + 8, result + 8, false);
+    return SCPE_OK;
+#else
     //cpu.iefpFinalAddress = address;
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
 
@@ -365,6 +371,7 @@ B29:;
           }
       }
     return SCPE_UNK;
+#endif
   }
 
 t_stat ReadPage (word18 address, word36 * result, bool isAR)
@@ -712,6 +719,11 @@ B29:
 t_stat Write16 (word18 address, word36 * data)
   {
     address &= paragraphMask; // Round to 8 word boundary
+#if 1
+    Write8 (address, data, false);
+    Write8 (address + 8, data + 8, false);
+    return SCPE_OK;
+#else
     //cpu.iefpFinalAddress = address;
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
 
@@ -800,11 +812,19 @@ B29:
           }
       }
     return SCPE_UNK;
+#endif
   }
 
 t_stat Write32 (word18 address, word36 * data)
   {
     address &= paragraphMask; // Round to 8 word boundary
+#if 1
+    Write8 (address, data, false);
+    Write8 (address + 8, data + 8, false);
+    Write8 (address + 16, data + 16, false);
+    Write8 (address + 24, data + 24, false);
+    return SCPE_OK;
+#else
     //cpu.iefpFinalAddress = address;
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
 
@@ -893,6 +913,7 @@ B29:
           }
       }
     return SCPE_UNK;
+#endif
   }
 
 t_stat WritePage (word18 address, word36 * data, bool isAR)
