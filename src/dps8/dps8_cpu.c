@@ -1014,9 +1014,9 @@ static void cpun_reset2 (UNUSED uint cpun)
     cpu.cu.SD_ON = 1;
     cpu.cu.PT_ON = 1;
 #else
-// If WAM emulation is not enabled lie and say it is...
-    cpu.cu.SD_ON = 1;
-    cpu.cu.PT_ON = 1;
+// If WAM emulation is not enabled in the build, mark it disabled
+    cpu.cu.SD_ON = 0;
+    cpu.cu.PT_ON = 0;
 #endif
  
     setCpuCycle (FETCH_cycle);
