@@ -1517,6 +1517,13 @@ IF1 sim_printf ("trapping opcode match......\n");
 /// executeInstruction: Non-restart processing
 ///
 
+    if (!ci->restart || info->ndes > 0) // until we implement EIS restart
+    {
+        cpu.cu.TSN_VALID[0] = 0;
+        cpu.cu.TSN_VALID[1] = 0;
+        cpu.cu.TSN_VALID[2] = 0;
+    }
+
     if (ci->restart)
       goto restart_1;
 
@@ -1530,9 +1537,9 @@ IF1 sim_printf ("trapping opcode match......\n");
     // Reset the fault counter
     cpu.cu.APUCycleBits &= 07770;
 
-    cpu.cu.TSN_VALID[0] = 0;
-    cpu.cu.TSN_VALID[1] = 0;
-    cpu.cu.TSN_VALID[2] = 0;
+    //cpu.cu.TSN_VALID[0] = 0;
+    //cpu.cu.TSN_VALID[1] = 0;
+    //cpu.cu.TSN_VALID[2] = 0;
 
     // If executing the target of XEC/XED, check the instruction is allowed
     if (cpu.isXED)
@@ -1794,7 +1801,7 @@ restart_1:
 #if 1
     cpu.TPR.CA = ci->address;
     cpu.iefpFinalAddress = cpu.TPR.CA;
-    cpu.rY = cpu.TPR.CA;
+    //cpu.rY = cpu.TPR.CA;
 #else
     cpu.iefpFinalAddress = ci->address;
     cpu.rY = ci->address;
@@ -1981,6 +1988,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "b29, ci->address %o\n", ci->address);
     if (info->ndes > 0)
       {
         CPT (cpt2U, 27); // EIS operand processing
+        sim_debug (DBG_APPENDING, &cpu_dev, "initialize EIS descriptors\n");
         // This must not happen on instruction restart
         if (! ci->restart)
           {
@@ -2011,7 +2019,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
             //Read (cpu.PPR.IC + 1 + n, & cpu.currentEISinstruction.op[n],
                   //INSTRUCTION_FETCH);
             Read (cpu.PPR.IC + 1 + n, & cpu.currentEISinstruction.op[n],
-                  APU_DATA_READ);
+                  OPERAND_READ);
 #endif
           }
         PNL (cpu.IWRAddr = cpu.currentEISinstruction.op[0]);
@@ -2695,7 +2703,7 @@ static t_stat doInstruction (void)
     // is an indicator bit if it is always 0 when you check it?). Clear it if
     // an multiword EIS is at bat.
     // NB: Never clearing it renders Multics unbootable.
-    //if (i->info->ndes > 0)
+    if (i->info->ndes > 0)
       CLR_I_MIF;
 
 #ifdef L68

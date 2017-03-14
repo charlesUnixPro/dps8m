@@ -3,6 +3,7 @@
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
  Copyright 2015 by Eric Swenson
+ Copyright 2017 by Michal Tomek
 
  All rights reserved.
 
@@ -38,7 +39,7 @@ t_stat Read (word18 address, word36 * result, _processor_cycle_type cyctyp)
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
     bool isBAR = get_bar_mode ();
 
-    if (cpu.cu.TSN_VALID [0] || get_went_appending ())
+    if (get_went_appending () || (cyctyp == APU_DATA_READ && cpu.cu.TSN_VALID [0]))
       {
         //if (isBAR)
           //sim_printf ("went appending fired in BAR mode\n"); 
@@ -112,7 +113,7 @@ t_stat Read2 (word18 address, word36 * result, _processor_cycle_type cyctyp)
 
     bool isBAR = get_bar_mode ();
 
-    if (cpu.cu.TSN_VALID [0] || get_went_appending ())
+    if (get_went_appending () || (cyctyp == APU_DATA_READ && cpu.cu.TSN_VALID [0]))
       {
         goto B29;
       }
@@ -500,7 +501,7 @@ t_stat Write(word18 address, word36 data, _processor_cycle_type cyctyp)
     // Correct version
     bool isBAR = get_bar_mode ();
 
-    if (cpu.cu.TSN_VALID [0] || get_went_appending ())
+    if (get_went_appending () || (cyctyp == APU_DATA_STORE && cpu.cu.TSN_VALID [0]))
         goto B29;
     
     
@@ -561,7 +562,7 @@ t_stat Write2 (word18 address, word36 * data, _processor_cycle_type cyctyp)
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
     bool isBAR = get_bar_mode ();
 
-    if (cpu.cu.TSN_VALID [0] || get_went_appending ())
+    if (get_went_appending () || (cyctyp == APU_DATA_STORE && cpu.cu.TSN_VALID [0]))
       goto B29;
     
     switch (get_addr_mode ())

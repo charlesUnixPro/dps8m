@@ -1190,6 +1190,7 @@ sim_printf ("setupOperandDescriptor %012"PRIo64"\n", IWB_IRODD);
             e -> addr [k - 1].address = address;
 #endif
             cpu.cu.TSN_PRNO[k-1] = n;
+            cpu.cu.TSN_VALID[k-1] = 1;
             e -> addr [k - 1].SNR = cpu.PR [n].SNR;
             e -> addr [k - 1].RNR = max3 (cpu.PR [n].RNR,
                                             cpu.TPR.TRR,
@@ -1342,6 +1343,7 @@ static void parseAlphanumericOperandDescriptor (uint k, uint useTA, bool allowDU
 //IF1 sim_printf ("initial ARn_BITNO %u %u\n", k, ARn_BITNO);
         
         cpu.cu.TSN_PRNO[k-1] = n;
+        cpu.cu.TSN_VALID[k-1] = 1;
         e -> addr [k - 1].SNR = cpu.PR [n].SNR;
         e -> addr [k - 1].RNR = max3 (cpu.PR [n].RNR, cpu.TPR.TRR, cpu.PPR.PRR);
 
@@ -1557,6 +1559,7 @@ static void parseArgOperandDescriptor (uint k, fault_ipr_subtype_ *mod_fault)
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
         cpu.cu.TSN_PRNO[k-1] = n;
+        cpu.cu.TSN_VALID[k-1] = 1;
         e -> addr [k - 1].SNR = cpu.PR[n].SNR;
         e -> addr [k - 1].RNR = max3 (cpu.PR [n].RNR, cpu.TPR.TRR, cpu.PPR.PRR);
         e -> addr [k - 1].mat = viaPR;
@@ -1608,6 +1611,7 @@ static void parseNumericOperandDescriptor (int k, fault_ipr_subtype_ *mod_fault)
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
 
         cpu.cu.TSN_PRNO[k-1] = n;
+        cpu.cu.TSN_VALID[k-1] = 1;
         e->addr[k-1].SNR = cpu.PR[n].SNR;
         e->addr[k-1].RNR = max3(cpu.PR[n].RNR, cpu.TPR.TRR, cpu.PPR.PRR);
 
@@ -1826,6 +1830,7 @@ static void parseBitstringOperandDescriptor (int k, fault_ipr_subtype_ *mod_faul
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         cpu.cu.TSN_PRNO[k-1] = n;
+        cpu.cu.TSN_VALID[k-1] = 1;
         e->addr[k-1].SNR = cpu.PR[n].SNR;
         e->addr[k-1].RNR = max3(cpu.PR[n].RNR, cpu.TPR.TRR, cpu.PPR.PRR);
         e->addr[k-1].mat = viaPR;   // ARs involved
