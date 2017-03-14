@@ -1853,7 +1853,7 @@ E:;
       goto E1;
     
     // C(PPR.PSR) = C(TPR.TSR)?
-    if (cpu.PPR.PSR == cpu.TPR.TSR)
+    if (cpu.PPR.PSR == cpu.TPR.TSR && ! TST_I_ABS)
       goto E1;
     
     // XXX This doesn't seem right
