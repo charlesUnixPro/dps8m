@@ -674,6 +674,7 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set cpu1 config=speed=0");
 
     doIniLine ("set cpu1 config=dis_enable=enable");
+    doIniLine ("set cpu1 config=steady_clock=disable");
     doIniLine ("set cpu1 config=halt_on_unimplemented=disable");
     doIniLine ("set cpu1 config=tro_enable=enable");
 

@@ -2399,6 +2399,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     sim_printf("Processor mode:           %s [%o]\n", cpu.switches.proc_mode ? "Multics" : "GCOS", cpu.switches.proc_mode);
     sim_printf("Processor speed:          %02o(8)\n", cpu.switches.proc_speed);
     sim_printf("DIS enable:               %01o(8)\n", cpu.switches.dis_enable);
+    sim_printf("Steady clock:             %01o(8)\n", scu [0].steady_clock);
     sim_printf("Halt on unimplemented:    %01o(8)\n", cpu.switches.halt_on_unimp);
     sim_printf("Disable SDWAM/PTWAM:      %01o(8)\n", cpu.switches.disable_wam);
     //sim_printf("Bullet time:              %01o(8)\n", cpu.switches.bullet_time);
@@ -2426,6 +2427,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
 //           speed = n
 //    Hacks:
 //           dis_enable = n
+//           steadyclock = on|off
 //           halt_on_unimplmented = n
 //           disable_wam = n
 //           report_faults = n
@@ -2563,6 +2565,7 @@ static config_list_t cpu_config_list [] =
     // Hacks
 
     { "dis_enable", 0, 1, cfg_on_off }, 
+    { "steady_clock", 0, 1, cfg_on_off },
     { "halt_on_unimplemented", 0, 1, cfg_on_off },
     { "disable_wam", 0, 1, cfg_on_off },
     { "report_faults", 0, 2, NULL },
@@ -2657,6 +2660,8 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
           cpu.switches.store_size [port_num] = (uint) v;
         else if (strcmp (p, "dis_enable") == 0)
           cpu.switches.dis_enable = (uint) v;
+        else if (strcmp (p, "steady_clock") == 0)
+          scu[0].steady_clock = (uint) v;
         else if (strcmp (p, "halt_on_unimplemented") == 0)
           cpu.switches.halt_on_unimp = (uint) v;
         else if (strcmp (p, "disable_wam") == 0)
