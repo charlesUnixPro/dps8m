@@ -38,14 +38,18 @@ $(warning ####)
 CFLAGS += -DTESTING
 endif
 
+ifeq ($(OS),Windows_NT)
+CROSS=MINGW64
+endif
+
 LIBS += -luv
 
 CFLAGS += -pthread
 LIBS += -lpthread
 
 ifeq ($(CROSS),MINGW64)
-CFLAGS += -DCROSS_MINGW64
-LIBS += -lwinmm -lws2_32 -lmingwex -luv -lwsock32 -lws2_32
+CFLAGS += -DCROSS_MINGW64 -Wno-misleading-indentation -I../../../libuv/include
+LIBS += -lwinmm -lws2_32 -lmingwex -luv -lwsock32 -lws2_32 -L../../../libuv/.libs
 endif
 
 CFLAGS += -I../decNumber -I$(SIMHx)
@@ -64,9 +68,10 @@ endif
 # Configuration switches
 
 ifeq ($(CROSS),MINGW64)
-LOCALLIBS = $(SIMHx)/simh.a ../decNumber/decNumber.a ../gnulib/gnulib.a
+LOCALLIBS += $(SIMHx)/simh.a ../decNumber/decNumber.a 
+#../gnulib/gnulib.a
 else
-LOCALLIBS = $(SIMHx)/simh.a ../decNumber/decNumber.a 
+LOCALLIBS += $(SIMHx)/simh.a ../decNumber/decNumber.a 
 endif
 
 # simh requires -ldl
@@ -218,9 +223,9 @@ blinkenLightsCurses : blinkenLightsCurses.c shm.o
 
 #all : blinkenLightsCurses
 
-dps8$(EXE) : $(OBJS) $(LOCALLIBS) 
+dps8$(EXE) : $(OBJS) $(LOCALOBJS) $(LOCALLIBS) 
 	@echo LD dps8$(EXE)
-	@$(LD)  -o dps8$(EXE) $(OBJS) $(LDFLAGS) $(LOCALLIBS) $(LIBS)
+	@$(LD)  -o dps8$(EXE) $(OBJS) $(LDFLAGS) $(LOCALOBJS) $(LOCALLIBS) $(LIBS)
 
 .PHONY: FORCE
 

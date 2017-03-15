@@ -1649,7 +1649,6 @@ int scu_set_interrupt (uint scu_unit_num, uint inum)
 static void deliverInterrupts (uint scu_unit_num)
   {
     sim_debug (DBG_DEBUG, & scu_dev, "deliverInterrupts %o\n", scu_unit_num);
-    sim_debug (DBG_DEBUG, & scu_dev, "deliverInterrupts %o\n", scu_unit_num);
     for (uint cpun = 0; cpun < cpu_dev.numunits; cpun ++)
       {
         cpus[cpun].events.XIP[scu_unit_num] = false;

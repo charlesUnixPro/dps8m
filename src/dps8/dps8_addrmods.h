@@ -10,3 +10,4 @@
  */
 
 t_stat doComputedAddressFormation (void);
+void updateIWB (word18 addr, word6 tag);

@@ -77,6 +77,10 @@ void (*sim_vm_init) (void) = & dps8_init;    //CustomCmds;
 static pid_t dps8m_sid; // Session id
 #endif
 
+#ifdef PANEL
+void panelScraper (void);
+#endif
+
 static t_stat dps_debug_mme_cntdwn (UNUSED int32 arg, const char * buf);
 static t_stat dps_debug_skip (int32 arg, const char * buf);
 static t_stat dps_debug_start (int32 arg, const char * buf);
@@ -216,6 +220,9 @@ static void dps8_init(void)
     absi_init ();
 #endif
     defaultBaseSystem (0, NULL);
+#ifdef PANEL
+    panelScraper ();
+#endif
 }
 
 uint64 sim_deb_start = 0;
@@ -626,6 +633,7 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
 
     doIniLine ("set cpu0 config=dis_enable=enable");
     doIniLine ("set cpu0 config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu config=disable_wam=enable");
     doIniLine ("set cpu0 config=tro_enable=enable");
 
 

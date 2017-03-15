@@ -9,6 +9,7 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
+//#define USE_SID
 // shared memory library
 
 #include <stdio.h>
@@ -54,6 +55,9 @@ void * create_shm (char * key, pid_t system_pid, size_t size)
   {
     void * p;
     char buf [256];
+#ifndef USE_SID
+    system_pid = 0;
+#endif
     sprintf (buf, "/dps8m.%u.%s", system_pid, key);
     shm_unlink (buf);
     int fd = shm_open (buf, O_CREAT | O_RDWR | O_EXCL, S_IRUSR | S_IWUSR);
@@ -98,6 +102,9 @@ void * open_shm (char * key, pid_t system_pid, size_t size)
   {
     void * p;
     char buf [256];
+#ifndef USE_SID
+    system_pid = 0;
+#endif
     sprintf (buf, "/dps8m.%u.%s", system_pid, key);
     // Try to create it; it sucessful, then something is wrong, it should
     // already exist

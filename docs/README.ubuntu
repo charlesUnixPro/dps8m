@@ -1,0 +1,28 @@
+Build the emulator:
+
+    cd
+    git clone https://github.com/libuv/libuv.git
+    cd libuv
+    sh autogen.sh
+    ./configure
+    make
+    sudo make install
+
+    cd
+    git clone git://git.code.sf.net/p/dps8m/code dps8m-code
+    cd dps8m-code/src/dps8
+    git checkout rc7
+    make
+
+Download QuickStart
+
+    cd
+    wget https://sourceforge.net/projects/dps8m/files/QuickStart_MR12.6e_rc7a1/QuickStart_MR12.6e_rc7a1.zip
+    unzip QuickStart_MR12.6e_rc7a1.zip
+
+Run QuickStart
+
+    cd QuickStart_MR12.6e_rc7a1
+    ../dps8m-code/src/dps8/dps8 MR_boot.ini
+
+

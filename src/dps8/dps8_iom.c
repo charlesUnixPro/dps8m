@@ -240,6 +240,7 @@ static inline void iom_core_read2 (word24 addr, word36 *even, word36 *odd, UNUSE
     * even = M [addr ++] & DMASK;
     * odd =  M [addr]    & DMASK;
   }
+
 static inline void iom_core_write (word24 addr, word36 data, UNUSED const char * ctx)
   {
     M [addr] = data & DMASK;
@@ -2157,7 +2158,6 @@ if (! ptro) sim_printf ("------------------> NO PTRO\n");
 
 static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics pic)
   {
-//sim_printf ("send_general_interrupt %u %u\n", chan, pic);
 
     uint imw_addr;
     uint chan_group = chan < 32 ? 1 : 0;

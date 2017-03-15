@@ -473,9 +473,17 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 // EIS instructions are not used in fault/interrupt pairs, so the
 // only time an EIS instruction could be executing is during EXEC_cycle.
 // I am also assuming that only multi-word EIS instructions are of interest.
-#if 1
+// Testing faultNumber fixes ISOLTS 890-04a
+    SC_I_MIF (cpu.cycle == EXEC_cycle &&
+        cpu.currentInstruction.info->ndes > 0);
+    sim_debug (DBG_TRACE, & cpu_dev, "MIF %o\n", TST_I_MIF);
+#if 0
+sim_debug (DBG_FAULT, & cpu_dev, "cycle %u ndes %u fn %u v %u\n", cpu.cycle, cpu.currentInstruction.info->ndes, faultNumber, (cpu . cycle == EXEC_cycle && cpu . currentInstruction . info -> ndes > 0) || faultNumber == FAULT_IPR);
     SC_I_MIF (cpu . cycle == EXEC_cycle &&
         cpu . currentInstruction . info -> ndes > 0);
+    //SC_I_MIF ((cpu . cycle == EXEC_cycle &&
+        //cpu . currentInstruction . info -> ndes > 0) ||
+        //faultNumber == FAULT_IPR);
 #endif
 
     if (faultNumber == FAULT_ACV)
@@ -531,11 +539,11 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
       {
         if (subFault.fault_ipr_subtype & FR_ILL_OP)
           cpu . cu . OEB_IOC = 1;
-        else if (subFault.fault_ipr_subtype & FR_ILL_MOD)
+        if (subFault.fault_ipr_subtype & FR_ILL_MOD)
           cpu . cu . EOFF_IAIM = 1;
-        else if (subFault.fault_ipr_subtype & FR_ILL_SLV)
+        if (subFault.fault_ipr_subtype & FR_ILL_SLV)
           cpu . cu . ORB_ISP = 1;
-        else if (subFault.fault_ipr_subtype & FR_ILL_DIG)
+        if (subFault.fault_ipr_subtype & FR_ILL_DIG)
           cpu . cu . ROFF_IPR = 1;
       }
     else if (faultNumber == FAULT_CMD)
@@ -695,8 +703,9 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
 // only time an EIS instruction could be executing is during EXEC_cycle.
 // I am also assuming that only multi-word EIS instructions are of interest.
 #if 1
-    SC_I_MIF (cpu . cycle == EXEC_cycle &&
-        cpu . currentInstruction . info -> ndes > 0);
+    SC_I_MIF (cpu.cycle == EXEC_cycle &&
+        cpu.currentInstruction.info->ndes > 0);
+    sim_debug (DBG_TRACE, & cpu_dev, "MIF %o\n", TST_I_MIF);
 #endif
 
     // History registers
