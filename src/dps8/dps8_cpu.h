@@ -745,6 +745,7 @@ typedef struct
     uint dis_enable;      // If non-zero, DIS works
     uint halt_on_unimp;   // If non-zero, halt CPU on unimplemented instruction
                           // instead of faulting
+    uint disable_wam;     // If non-zero, disable PTWAM, STWAM
     uint report_faults;   // If set, faults are reported and ignored
     uint tro_enable;   // If set, Timer runout faults are generated.
     uint drl_fatal;
