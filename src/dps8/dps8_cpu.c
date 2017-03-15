@@ -73,10 +73,8 @@ static t_stat cpu_set_initialize_and_clear (UNIT * uptr, int32 value, const char
 static t_stat cpu_show_nunits(FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat cpu_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
 
-#ifdef EV_POLL
 static uv_loop_t * ev_poll_loop;
 static uv_timer_t ev_poll_handle;
-#endif
 
 static MTAB cpu_mod[] = {
     {
@@ -449,7 +447,6 @@ static void getSerialNumber (void)
   }
 
 
-#ifdef EV_POLL
 // The 100Hz timer as expired; poll I/O
 
 static void ev_poll_cb (uv_timer_t * UNUSED handle)
@@ -468,7 +465,6 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
     absiProcessEvent ();
 #endif
   }
-#endif
 
 
     
@@ -500,10 +496,10 @@ void cpu_init (void)
 
     getSerialNumber ();
 
-#ifdef EV_POLL
     ev_poll_loop = uv_default_loop ();
     uv_timer_init (ev_poll_loop, & ev_poll_handle);
     // 10 ms == 100Hz
+#ifndef STEADY
     uv_timer_start (& ev_poll_handle, ev_poll_cb, 10, 10);
 #endif
   }
@@ -1028,6 +1024,27 @@ t_stat threadz_sim_instr (void)
       {
         reason = 0;
 
+#ifdef STEADY
+        static uint slowQueueSubsample = 0;
+        static uint queueSubsample = 0;
+        if (thisCPUnum == 0)
+          {
+            if (slowQueueSubsample ++ > 1024000) // ~ 1Hz
+              {
+                slowQueueSubsample = 0;
+                rdrProcessEvent ();
+              }
+            if (queueSubsample ++ > 10240) // ~ 100Hz
+              {
+                queueSubsample = 0;
+                //scpProcessEvent ();
+                fnpProcessEvent ();
+                consoleProcess ();
+                absiProcessEvent ();
+                PNL (panelProcessEvent ());
+              }
+          }
+#endif
         cpu.cycleCnt ++;
 
         if (cpu.havelock)
@@ -1044,6 +1061,7 @@ t_stat threadz_sim_instr (void)
         // Check every 1024 cycles (Est 12M cps, 24 cycles is 1 timer tick,
         // approx. 50 ticks).
 
+#ifndef STEADY
         if (++cpu.rTRsample > 1024)
           {
             cpu.rTRsample = 0;
@@ -1055,6 +1073,25 @@ t_stat threadz_sim_instr (void)
                 setG7fault (thisCPUnum, FAULT_TRO, fst_zero);
               }
          }
+#else
+        // Sync. the TR with the emulator clock.
+        cpu.rTRlsb ++;
+        // The emulator clock runs about 7x as fast at the Timer Register;
+        // see wiki page "CAC 08-Oct-2014"
+        //if (cpu.rTRlsb >= cpu.switches.trlsb)
+        if (cpu.rTRlsb >= 12)
+          {
+            cpu.rTRlsb = 0;
+            cpu.rTR = (cpu.rTR - 1) & MASK27;
+            //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o\n", rTR);
+            if (cpu.rTR == 0) // passing thorugh 0...
+              {
+                //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09"PRIo64"\n", rTR, MASK27);
+                if (cpu.switches.tro_enable)
+                  setG7fault (thisCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
+              }
+          }
+#endif
 
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
                    cycleStr (cpu.cycle));
@@ -1479,6 +1516,7 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
 // Neither of these require high resolution or high accuracy.
 //
 
+#ifndef STEADY
                     word27 ticks;
                     bool ovf;
                     currentTR (& ticks, & ovf);
@@ -1494,9 +1532,31 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                               }
                           }
                       }
+#else
+                    // 1/100 is .01 secs.
+                    // *1000 is 10  milliseconds
+                    // *1000 is 10000 microseconds
+                    // in uSec;
+                    usleep (10000);
+                    // this ignores the amount of time since the last poll;
+                    // worst case is the poll delay of 1/50th of a second.
+                    slowQueueSubsample += 10240; // ~ 1Hz
+                    queueSubsample += 10240; // ~100Hz
+                    sim_interval = 0;
+                    // Timer register runs at 512 KHz
+                    // 512000 is 1 second
+                    // 512000/100 -> 5120  is .01 second
+
+                    // Would we have underflowed while sleeping?
+                    if (cpu.rTR <= 5120)
+                      {
+                        if (cpu.switches.tro_enable)
+                          setG7fault (thisCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
+                      }
+                    cpu.rTR = (cpu.rTR - 5120) & MASK27;
+#endif
                     break;
                   }
-
                 cpu.wasXfer = false;
 
                 if (ret < 0)
