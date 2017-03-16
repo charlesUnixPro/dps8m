@@ -719,7 +719,7 @@ t_stat simh_hooks (void)
     if (stop_cpu)
       return STOP_STOP;
 
-#ifdef ISOLTS
+#ifdef xISOLTS
     if (thisCPUnum == 0)
 #endif
     // check clock queue 

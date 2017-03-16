@@ -111,7 +111,7 @@
 
 // debugging tool
 #ifdef ISOLTS
-#define IF1 if (currentRunningCPUnum)
+#define IF1 if (thisCPUnum)
 #else
 #define IF1 if (0)
 #endif

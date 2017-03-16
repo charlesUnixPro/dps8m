@@ -47,11 +47,13 @@ static pthread_mutex_t mem_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void lock_mem (void)
   {
+    sim_debug (DBG_TRACE, & cpu_dev, "lock_mem\n");
     pthread_mutex_lock (& mem_lock);
   }
 
 void unlock_mem (void)
   {
+    sim_debug (DBG_TRACE, & cpu_dev, "unlock_mem\n");
     pthread_mutex_unlock (& mem_lock);
   }
 

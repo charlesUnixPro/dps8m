@@ -3029,7 +3029,7 @@ static t_stat DoBasicInstruction (void)
         case 0454:  // stt
           {
             CPTUR (cptUseTR);
-#ifdef ISOLTS
+#ifdef xISOLTS
             if (thisCPUnum)
               cpu.CY = ((-- cpu.shadowTR) & MASK27) << 9;
             else
