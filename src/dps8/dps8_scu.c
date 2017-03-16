@@ -1691,6 +1691,7 @@ static void deliverInterrupts (uint scu_unit_num)
                   {
                     cpus[cpu_unit_num].events.XIP[scu_unit_num] = true;
                     setCPURun ((uint) cpu_unit_num, true);
+                    wakeCPU ((uint) cpu_unit_num);
                     sim_debug (DBG_DEBUG, & scu_dev,
                                "interrupt set for CPU %d SCU %d\n",
                                cpu_unit_num, scu_unit_num);

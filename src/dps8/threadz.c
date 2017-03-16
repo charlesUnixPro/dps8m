@@ -6,6 +6,7 @@
 
 #include "dps8.h"
 #include "dps8_sys.h"
+#include "dps8_faults.h"
 #include "dps8_cpu.h"
 #include "dps8_iom.h"
 
@@ -163,9 +164,6 @@ void sleepCPU (unsigned long nsec)
     rc = pthread_mutex_lock (& p->sleepLock);
     if (rc)
       sim_printf ("sleepCPU pthread_mutex_lock %d\n", rc);
-    //p->sleep = false;
-    //while (! p->sleep)
-    //  int n = 
     rc = pthread_cond_timedwait (& p->sleepCond,
                                  & p->sleepLock,
                                  & abstime);
@@ -175,6 +173,24 @@ void sleepCPU (unsigned long nsec)
     if (rc)
       sim_printf ("sleepCPU pthread_mutex_unlock %d\n", rc);
     //sim_printf ("pthread_cond_timedwait %lu %d\n", nsec, n);
+  }
+
+// Called to wake sleeping CPU; such as interrupt during DIS
+
+void wakeCPU (uint cpuNum)
+  {
+    int rc;
+    struct cpuThreadz_t * p = & cpuThreadz[cpuNum];
+    rc = pthread_mutex_lock (& p->sleepLock);
+    if (rc)
+      sim_printf ("wakeCPU pthread_mutex_lock %d\n", rc);
+    //p->run = run;
+    rc = pthread_cond_signal (& p->sleepCond);
+    if (rc)
+      sim_printf ("wakeCPU pthread_cond_signal %d\n", rc);
+    rc = pthread_mutex_unlock (& p->sleepLock);
+    if (rc)
+      sim_printf ("wakeCPU pthread_mutex_unlock %d\n", rc);
   }
 
 ////////////////////////////////////////////////////////////////////////////////
