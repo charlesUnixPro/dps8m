@@ -110,11 +110,11 @@
 #endif
 
 // debugging tool
-#ifdef ISOLTS
-#define IF1 if (thisCPUnum)
-#else
+//#ifdef ISOLTS
+//#define IF1 if (thisCPUnum)
+//#else
 #define IF1 if (0)
-#endif
+//#endif
 
 #define OSCAR
 

@@ -446,6 +446,38 @@ static void getSerialNumber (void)
       fclose (fp);
   }
 
+#ifdef STATS
+static void doStats (void)
+  {
+    static struct timespec statsTime;
+    static bool first = true;
+    if (first)
+      {
+        first = false;
+        clock_gettime (CLOCK_BOOTTIME, & statsTime);
+        sim_printf ("stats started\r\n");
+      }
+    else
+      {
+        struct timespec now, delta;
+        clock_gettime (CLOCK_BOOTTIME, & now);
+        timespec_diff (& statsTime, & now, & delta);
+        statsTime = now;
+        sim_printf ("stats %6ld.%02ld\r\n", delta.tv_sec,
+                    delta.tv_nsec / 10000000);
+
+        sim_printf ("Instruction counts\r\n");
+        for (uint i = 0; i < 8; i ++)
+          {
+            sim_printf (" %9lld", cpus[i].instrCnt);
+            cpus[i].instrCnt = 0;
+          }
+        sim_printf ("\r\n");
+
+        sim_printf ("\r\n");
+      }
+  }
+#endif
 
 // The 100Hz timer as expired; poll I/O
 
@@ -457,6 +489,9 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
       {
         oneHz = 0;
         rdrProcessEvent (); 
+#ifdef STATS
+        doStats ();
+#endif
       }
     //scpProcessEvent (); 
     fnpProcessEvent (); 
