@@ -464,6 +464,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
 #ifndef __MINGW64__
     absiProcessEvent ();
 #endif
+    PNL (panelProcessEvent ());
   }
 
 
@@ -519,7 +520,7 @@ static void cpun_reset2 (UNUSED uint cpun)
     cpu.PPR.PSR = 0;
     cpu.PPR.P = 1;
     cpu.RSDWH_R1 = 0;
-    cpu.rTR = 0;
+    cpu.rTR = MASK27;
     clock_gettime (CLOCK_BOOTTIME, & cpu.rTRTime);
 #if ISOLTS
     cpu.shadowTR = 0;
@@ -1070,6 +1071,7 @@ t_stat threadz_sim_instr (void)
             currentTR (& trunits, & ovf);
             if (ovf)
               {
+                clock_gettime (CLOCK_BOOTTIME, & cpu.rTRTime);
                 setG7fault (thisCPUnum, FAULT_TRO, fst_zero);
               }
          }
@@ -1528,6 +1530,7 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                           {
                             if (cpu.switches.tro_enable)
                               {
+                                clock_gettime (CLOCK_BOOTTIME, & cpu.rTRTime);
                                 setG7fault (thisCPUnum, FAULT_TRO, fst_zero);
                               }
                           }
