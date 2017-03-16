@@ -633,7 +633,7 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
 
     doIniLine ("set cpu0 config=dis_enable=enable");
     doIniLine ("set cpu0 config=halt_on_unimplemented=disable");
-    doIniLine ("set cpu config=disable_wam=enable");
+    doIniLine ("set cpu0 config=disable_wam=disable");
     doIniLine ("set cpu0 config=tro_enable=enable");
 
 
@@ -676,6 +676,7 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set cpu1 config=dis_enable=enable");
     doIniLine ("set cpu1 config=steady_clock=disable");
     doIniLine ("set cpu1 config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu1 config=disable_wam=disable");
     doIniLine ("set cpu1 config=tro_enable=enable");
 
 
@@ -717,6 +718,7 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
 
     doIniLine ("set cpu2 config=dis_enable=enable");
     doIniLine ("set cpu2 config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu2 config=disable_wam=disable");
     doIniLine ("set cpu2 config=tro_enable=enable");
 
 
@@ -758,6 +760,7 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
 
     doIniLine ("set cpu3 config=dis_enable=enable");
     doIniLine ("set cpu3 config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu3 config=disable_wam=disable");
     doIniLine ("set cpu3 config=tro_enable=enable");
 
 
@@ -799,6 +802,7 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
 
     doIniLine ("set cpu4 config=dis_enable=enable");
     doIniLine ("set cpu4 config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu4 config=disable_wam=disable");
     doIniLine ("set cpu4 config=tro_enable=enable");
 
 
@@ -840,6 +844,7 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
 
     doIniLine ("set cpu5 config=dis_enable=enable");
     doIniLine ("set cpu5 config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu5 config=disable_wam=disable");
     doIniLine ("set cpu5 config=tro_enable=enable");
 
 
@@ -881,6 +886,7 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
 
     doIniLine ("set cpu6 config=dis_enable=enable");
     doIniLine ("set cpu6 config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu6 config=disable_wam=disable");
     doIniLine ("set cpu6 config=tro_enable=enable");
 
 
@@ -922,6 +928,7 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
 
     doIniLine ("set cpu7 config=dis_enable=enable");
     doIniLine ("set cpu7 config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu7 config=disable_wam=disable");
     doIniLine ("set cpu7 config=tro_enable=enable");
 
 
