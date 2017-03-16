@@ -2,6 +2,7 @@
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2017 by Michal Tomek
 
  All rights reserved.
 
@@ -382,9 +383,9 @@ char * strSDW0 (_sdw0 * SDW)
     static char buff [256];
     
     //if (SDW->ADDR == 0 && SDW->BOUND == 0) // need a better test
-    if (! SDW -> DF) 
-      sprintf (buff, "*** Uninitialized ***");
-    else
+    //if (! SDW -> DF) 
+    //  sprintf (buff, "*** Uninitialized ***");
+    //else
       sprintf (buff, "ADDR=%06o R1=%o R2=%o R3=%o F=%o FC=%o BOUND=%o R=%o E=%o W=%o P=%o U=%o G=%o C=%o EB=%o",
                SDW -> ADDR, SDW -> R1, SDW -> R2, SDW -> R3, SDW -> DF,
                SDW -> FC, SDW -> BOUND, SDW -> R, SDW -> E, SDW -> W,
@@ -426,8 +427,8 @@ static t_stat dpsCmd_DumpSegmentTable()
             PTW1.DF = TSTBIT(PTWx1, 2);
             PTW1.FC = PTWx1 & 3;
            
-            if (PTW1.DF == 0)
-                continue;
+            //if (PTW1.DF == 0)
+            //    continue;
             sim_printf ("%06o  Addr %06o U %o M %o F %o FC %o\n", 
                         segno, PTW1.ADDR, PTW1.U, PTW1.M, PTW1.DF, PTW1.FC);
             sim_printf ("    Target segment page table\n");
@@ -455,8 +456,8 @@ static t_stat dpsCmd_DumpSegmentTable()
                 SDW0.C = TSTBIT(SDWodd, 14);
                 SDW0.EB = SDWodd & 037777;
 
-                if (SDW0.DF == 0)
-                    continue;
+                //if (SDW0.DF == 0)
+                //    continue;
                 sim_printf ("    %06o Addr %06o %o,%o,%o F%o BOUND %06o %c%c%c%c%c\n",
                           tspt, SDW0.ADDR, SDW0.R1, SDW0.R2, SDW0.R3, SDW0.DF, SDW0.BOUND, SDW0.R ? 'R' : '.', SDW0.E ? 'E' : '.', SDW0.W ? 'W' : '.', SDW0.P ? 'P' : '.', SDW0.U ? 'U' : '.');
                 //for (word18 offset = 0; ((offset >> 4) & 037777) <= SDW0.BOUND; offset += 1024)
@@ -987,7 +988,7 @@ void cpu_init (void)
 // Put state information into the unused high order bits.
 #define MEM_UNINITIALIZED 0x4000000000000000LLU
 
-static void cpun_reset2 (uint cpun)
+static void cpun_reset2 (UNUSED uint cpun)
 {
 #ifdef ROUND_ROBIN
     setCPUnum (cpun);
@@ -1013,9 +1014,9 @@ static void cpun_reset2 (uint cpun)
     cpu.cu.SD_ON = 1;
     cpu.cu.PT_ON = 1;
 #else
-// If WAM emulation is not enabled lie and say it is...
-    cpu.cu.SD_ON = 1;
-    cpu.cu.PT_ON = 1;
+// If WAM emulation is not enabled in the build, mark it disabled
+    cpu.cu.SD_ON = 0;
+    cpu.cu.PT_ON = 0;
 #endif
  
     setCpuCycle (FETCH_cycle);
@@ -1028,6 +1029,10 @@ static void cpun_reset2 (uint cpun)
 
     cpu.faultRegister [0] = 0;
     cpu.faultRegister [1] = 0;
+
+#ifdef RAPRx
+    cpu.apu.lastCycle = UNKNOWN_CYCLE;
+#endif
 
     memset (& cpu.PPR, 0, sizeof (struct _ppr));
 
@@ -1697,7 +1702,8 @@ setCPU:;
         cpu.rTRlsb ++;
         // The emulator clock runs about 7x as fast at the Timer Register;
         // see wiki page "CAC 08-Oct-2014"
-        if (cpu.rTRlsb >= cpu.switches.trlsb)
+        //if (cpu.rTRlsb >= cpu.switches.trlsb)
+        if (cpu.rTRlsb >= 12)
           {
             cpu.rTRlsb = 0;
             cpu.rTR = (cpu.rTR - 1) & MASK27;
@@ -1735,6 +1741,12 @@ setCPU:;
                 // present register.  
 
                 uint intr_pair_addr = get_highest_intr ();
+#ifdef LOOPTRC
+{ void elapsedtime (void);
+elapsedtime ();
+ sim_printf (" intr %u PSR:IC %05o:%06o\r\n", intr_pair_addr, cpu.PPR.PSR, cpu.PPR.IC);
+}
+#endif
                 cpu.cu.FI_ADDR = (word5) (intr_pair_addr / 2);
                 cu_safe_store ();
 
@@ -1947,6 +1959,11 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                 if ((cpu.PPR.IC % 2) == 0)
                   cpu.wasInhibited = false;
 
+                if (cpu.g7_flag)
+                  {
+                    cpu.g7_flag = false;
+                    doG7Fault ();
+                  }
                 if (cpu.interrupt_flag)
                   {
 // This is the only place cycle is set to INTERRUPT_cycle; therefore
@@ -1955,11 +1972,6 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                     CPT (cpt1U, 15); // interrupt
                     setCpuCycle (INTERRUPT_cycle);
                     break;
-                  }
-                if (cpu.g7_flag)
-                  {
-                    cpu.g7_flag = false;
-                    doG7Fault ();
                   }
                 cpu.lufCounter ++;
 
@@ -2029,6 +2041,7 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                     //processorCycle = INSTRUCTION_FETCH;
                     // fetch next instruction into current instruction struct
                     clr_went_appending (); // XXX not sure this is the right place
+                    cpu.cu.TSN_VALID [0] = 0;
                     PNL (cpu.prepare_state = ps_PIA);
                     PNL (L68_ (cpu.INS_FETCH = true;))
                     fetchInstruction (cpu.PPR.IC);
@@ -2485,53 +2498,41 @@ int OPSIZE (void)
 }
 
 // read instruction operands
-t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
+t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp)
 {
     CPT (cpt1L, 6); // ReadOP
-    DCDstruct * i = & cpu.currentInstruction;
-        
-    // rtcd is an annoying edge case; ReadOP is called before the instruction
-    // is executed, so it's setting processorCycle to RTCD_OPERAND_FETCH is
-    // too late. Special case it here by noticing that this is an RTCD
-    // instruction
-    if (cyctyp == OPERAND_READ && i -> opcode == 0610 && ! i -> opcodeX)
-    {
-        addr &= 0777776;   // make even
-        Read (addr + 0, cpu.Ypair + 0, RTCD_OPERAND_FETCH, b29);
-        Read (addr + 1, cpu.Ypair + 1, RTCD_OPERAND_FETCH, b29);
-        return SCPE_OK;
-    }
 
     switch (OPSIZE ())
     {
         case 1:
             CPT (cpt1L, 7); // word
-            Read (addr, &cpu.CY, cyctyp, b29);
+            Read (addr, &cpu.CY, cyctyp);
             return SCPE_OK;
         case 2:
             CPT (cpt1L, 8); // double word
             addr &= 0777776;   // make even
-            Read (addr + 0, cpu.Ypair + 0, cyctyp, b29);
-            Read (addr + 1, cpu.Ypair + 1, cyctyp, b29);
+            Read2 (addr, cpu.Ypair, cyctyp);
             break;
         case 8:
             CPT (cpt1L, 9); // oct word
             addr &= 0777770;   // make on 8-word boundary
-            for (uint j = 0 ; j < 8 ; j += 1)
-                Read (addr + j, cpu.Yblock8 + j, cyctyp, b29);
+            Read8 (addr, cpu.Yblock8, false);
             break;
         case 16:
             CPT (cpt1L, 10); // 16 words
-            addr &= 0777760;   // make on 16-word boundary
-            for (uint j = 0 ; j < 16 ; j += 1)
-                Read (addr + j, cpu.Yblock16 + j, cyctyp, b29);
-            
+            addr &= 0777770;   // make on 8-word boundary
+            Read16 (addr, cpu.Yblock16);
             break;
         case 32:
+{ static bool first = true;
+if (first) {
+first = false;
+sim_printf ("XXX Read32 w.r.t. lastCycle == indirect\n");
+}}
             CPT (cpt1L, 11); // 32 words
-            addr &= 0777760;   // make on 16-word boundary // XXX don't know
+            addr &= 0777740;   // make on 32-word boundary
             for (uint j = 0 ; j < 32 ; j += 1)
-                Read (addr + j, cpu.Yblock16 + j, cyctyp, b29);
+                Read (addr + j, cpu.Yblock32 + j, cyctyp);
             
             break;
     }
@@ -2542,40 +2543,36 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
 }
 
 // write instruction operands
-t_stat WriteOP(word18 addr, UNUSED _processor_cycle_type cyctyp, bool b29)
+t_stat WriteOP(word18 addr, UNUSED _processor_cycle_type cyctyp)
 {
     switch (OPSIZE ())
     {
         case 1:
             CPT (cpt1L, 12); // word
-            Write (addr, cpu.CY, OPERAND_STORE, b29);
-            return SCPE_OK;
+            Write (addr, cpu.CY, OPERAND_STORE);
+            break;
         case 2:
             CPT (cpt1L, 13); // double word
             addr &= 0777776;   // make even
-            Write (addr + 0, cpu.Ypair[0], OPERAND_STORE, b29);
-            Write (addr + 1, cpu.Ypair[1], OPERAND_STORE, b29);
+            Write2 (addr + 0, cpu.Ypair, OPERAND_STORE);
             break;
         case 8:
             CPT (cpt1L, 14); // 8 words
             addr &= 0777770;   // make on 8-word boundary
-            for (uint j = 0 ; j < 8 ; j += 1)
-                Write (addr + j, cpu.Yblock8[j], OPERAND_STORE, b29);
+            Write8 (addr, cpu.Yblock8, false);
             break;
         case 16:
             CPT (cpt1L, 15); // 16 words
-            addr &= 0777760;   // make on 16-word boundary
-            for (uint j = 0 ; j < 16 ; j += 1)
-                Write (addr + j, cpu.Yblock16[j], OPERAND_STORE, b29);
+            addr &= 0777770;   // make on 8-word boundary
+            Write16 (addr, cpu.Yblock16);
             break;
         case 32:
             CPT (cpt1L, 16); // 32 words
-            addr &= 0777760;   // make on 16-word boundary // XXX don't know
+            addr &= 0777740;   // make on 32-word boundary
             for (uint j = 0 ; j < 32 ; j += 1)
-                Write (addr + j, cpu.Yblock32[j], OPERAND_STORE, b29);
+                Write (addr + j, cpu.Yblock32[j], OPERAND_STORE);
             break;
     }
-    //cpu.TPR.CA = addr;  // restore address
     
     return SCPE_OK;
     
@@ -2663,7 +2660,7 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
     //if (watchBits [addr] && M[addr]==0)
       {
         //sim_debug (0, & cpu_dev, "read   %08o %012"PRIo64" (%s)\n",addr, M [addr], ctx);
-        sim_printf ("WATCH [%"PRIo64"] read   %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
+        sim_printf ("WATCH [%"PRId64"] read   %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
     *data = M[addr] & DMASK;
@@ -2709,7 +2706,7 @@ int core_write(word24 addr, word36 data, const char * ctx) {
     //if (watchBits [addr] && M[addr]==0)
       {
         //sim_debug (0, & cpu_dev, "write  %08o %012"PRIo64" (%s)\n",addr, M [addr], ctx);
-        sim_printf ("WATCH [%"PRIo64"] write  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
+        sim_printf ("WATCH [%"PRId64"] write  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
     sim_debug (DBG_CORE, & cpu_dev,
@@ -2765,7 +2762,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     //if (watchBits [addr] && M[addr]==0)
       {
         //sim_debug (0, & cpu_dev, "read2  %08o %012"PRIo64" (%s)\n",addr, M [addr], ctx);
-        sim_printf ("WATCH [%"PRIo64"] read2  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
+        sim_printf ("WATCH [%"PRId64"] read2  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
     *even = M[addr++] & DMASK;
@@ -2784,7 +2781,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     //if (watchBits [addr] && M[addr]==0)
       {
         //sim_debug (0, & cpu_dev, "read2  %08o %012"PRIo64" (%s)\n",addr, M [addr], ctx);
-        sim_printf ("WATCH [%"PRIo64"] read2  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
+        sim_printf ("WATCH [%"PRId64"] read2  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
 
@@ -2845,11 +2842,14 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     //if (watchBits [addr] && even==0)
       {
         //sim_debug (0, & cpu_dev, "write2 %08o %012"PRIo64" (%s)\n",addr, even, ctx);
-        sim_printf ("WATCH [%"PRIo64"] write2 %08o %012"PRIo64" (%s)\n", sim_timell (), addr, even, ctx);
+        sim_printf ("WATCH [%"PRId64"] write2 %08o %012"PRIo64" (%s)\n", sim_timell (), addr, even, ctx);
         traceInstruction (0);
       }
     M[addr++] = even;
     PNL (trackport (addr - 1, even));
+    sim_debug (DBG_CORE, & cpu_dev,
+               "core_write2 %08o %012"PRIo64" (%s)\n",
+                addr - 1, even, ctx);
 
     // If the even address is OK, the odd will be
     //nem_check (addr,  "core_write2 nem");
@@ -2858,11 +2858,14 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     //if (watchBits [addr] && odd==0)
       {
         //sim_debug (0, & cpu_dev, "write2 %08o %012"PRIo64" (%s)\n",addr, odd, ctx);
-        sim_printf ("WATCH [%"PRIo64"] write2 %08o %012"PRIo64" (%s)\n", sim_timell (), addr, odd, ctx);
+        sim_printf ("WATCH [%"PRId64"] write2 %08o %012"PRIo64" (%s)\n", sim_timell (), addr, odd, ctx);
         traceInstruction (0);
       }
     M[addr] = odd;
     PNL (trackport (addr, odd));
+    sim_debug (DBG_CORE, & cpu_dev,
+               "core_write2 %08o %012"PRIo64" (%s)\n",
+                addr, odd, ctx);
     return 0;
 }
 #endif
@@ -2924,7 +2927,7 @@ void decodeInstruction (word36 inst, DCDstruct * p)
     p->opcode  = GET_OP(inst);  // get opcode
     p->opcodeX = GET_OPX(inst); // opcode extension
     p->address = GET_ADDR(inst);// address field from instruction
-    p->a       = GET_A(inst);   // "A" - the indirect via pointer register flag
+    p->b29     = GET_A(inst);   // "A" - the indirect via pointer register flag
     p->i       = GET_I(inst);   // "I" - inhibit interrupt flag
     p->tag     = GET_TAG(inst); // instruction tag
     
@@ -2936,11 +2939,11 @@ void decodeInstruction (word36 inst, DCDstruct * p)
     
     // HWR 21 Dec 2013
     if (p->info->flags & IGN_B29)
-        p->a = 0;   // make certain 'a' bit is valid always
+        p->b29 = 0;   // make certain 'a' bit is valid always
 
     if (p->info->ndes > 0)
     {
-        p->a = 0;
+        p->b29 = 0;
         p->tag = 0;
         if (p->info->ndes > 1)
         {
@@ -3162,7 +3165,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     //sim_printf("Super user:               %01o(8)\n", cpu.switches.super_user);
     sim_printf("EPP hack:                 %01o(8)\n", cpu.switches.epp_hack);
     sim_printf("Halt on unimplemented:    %01o(8)\n", cpu.switches.halt_on_unimp);
-    sim_printf("Disable PTWAN/STWAM:      %01o(8)\n", cpu.switches.disable_wam);
+    sim_printf("Disable SDWAM/PTWAM:      %01o(8)\n", cpu.switches.disable_wam);
     //sim_printf("Bullet time:              %01o(8)\n", cpu.switches.bullet_time);
     sim_printf("Bullet time:              %01o(8)\n", scu [0].bullet_time);
     sim_printf("Disable kbd bkpt:         %01o(8)\n", cpu.switches.disable_kbd_bkpt);
@@ -3368,14 +3371,15 @@ static config_list_t cpu_config_list [] =
     { NULL, 0, 0, NULL }
   };
 
-static t_stat cpu_set_initialize_and_clear (UNIT * uptr, UNUSED int32 value,
+static t_stat cpu_set_initialize_and_clear (UNUSED UNIT * uptr, 
+                                            UNUSED int32 value,
                                             UNUSED const char * cptr, 
                                             UNUSED void * desc)
   {
-    long cpu_unit_num = UNIT_NUM (uptr);
     // Crashes console?
     //cpun_reset2 ((uint) cpu_unit_num);
 #ifdef ISOLTS
+    long cpu_unit_num = UNIT_NUM (uptr);
     cpu_state_t * cpun = cpus + cpu_unit_num;
     if (cpun->switches.useMap)
       {
@@ -3517,6 +3521,10 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
 
             case 22: // DISABLE_WAM
               cpu.switches.disable_wam = (uint) v;
+              if (v) {
+                  cpu.cu.SD_ON = 0;
+                  cpu.cu.PT_ON = 0;
+              }
               break;
 
             case 23: // BULLET_TIME

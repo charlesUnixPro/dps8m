@@ -2158,7 +2158,6 @@ static int doConnectChan (uint iomUnitIdx)
 
 static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics pic)
   {
-//sim_printf ("send_general_interrupt %u %u\n", chan, pic);
 
     uint imw_addr;
     uint chan_group = chan < 32 ? 1 : 0;

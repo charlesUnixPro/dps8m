@@ -329,10 +329,26 @@ bit-28 tp inhibit interrupts
  
 */
 
+#ifdef LOOPTRC
+#include <time.h>
+void elapsedtime (void);
+#endif
 // CANFAULT 
 void doFault (_fault faultNumber, _fault_subtype subFault, 
               const char * faultMsg)
   {
+#ifdef LOOPTRC
+if (faultNumber == FAULT_TRO)
+{
+ elapsedtime ();
+ sim_printf (" TRO PSR:IC %05o:%06o\r\n", cpu.PPR.PSR, cpu.PPR.IC);
+}
+else if (faultNumber == FAULT_ACV)
+{
+ elapsedtime ();
+ sim_printf (" ACV %012llo PSR:IC %05o:%06o\r\n", subFault.bits, cpu.PPR.PSR, cpu.PPR.IC);
+}
+#endif
 //if (currentRunningCPUnum)
     //sim_printf ("Fault %d(0%0o), sub %ld(0%lo), dfc %c, '%s'\n", 
                //faultNumber, faultNumber, subFault, subFault, 
@@ -479,7 +495,10 @@ void doFault (_fault faultNumber, _fault_subtype subFault,
 // only time an EIS instruction could be executing is during EXEC_cycle.
 // I am also assuming that only multi-word EIS instructions are of interest.
 // Testing faultNumber fixes ISOLTS 890-04a
-#if 1
+    SC_I_MIF (cpu.cycle == EXEC_cycle &&
+        cpu.currentInstruction.info->ndes > 0);
+    sim_debug (DBG_TRACE, & cpu_dev, "MIF %o\n", TST_I_MIF);
+#if 0
 sim_debug (DBG_FAULT, & cpu_dev, "cycle %u ndes %u fn %u v %u\n", cpu.cycle, cpu.currentInstruction.info->ndes, faultNumber, (cpu . cycle == EXEC_cycle && cpu . currentInstruction . info -> ndes > 0) || faultNumber == FAULT_IPR);
     SC_I_MIF (cpu . cycle == EXEC_cycle &&
         cpu . currentInstruction . info -> ndes > 0);
@@ -544,11 +563,11 @@ sim_debug (DBG_FAULT, & cpu_dev, "cycle %u ndes %u fn %u v %u\n", cpu.cycle, cpu
       {
         if (subFault.fault_ipr_subtype & FR_ILL_OP)
           cpu . cu . OEB_IOC = 1;
-        else if (subFault.fault_ipr_subtype & FR_ILL_MOD)
+        if (subFault.fault_ipr_subtype & FR_ILL_MOD)
           cpu . cu . EOFF_IAIM = 1;
-        else if (subFault.fault_ipr_subtype & FR_ILL_SLV)
+        if (subFault.fault_ipr_subtype & FR_ILL_SLV)
           cpu . cu . ORB_ISP = 1;
-        else if (subFault.fault_ipr_subtype & FR_ILL_DIG)
+        if (subFault.fault_ipr_subtype & FR_ILL_DIG)
           cpu . cu . ROFF_IPR = 1;
       }
     else if (faultNumber == FAULT_CMD)
@@ -728,8 +747,9 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
 // only time an EIS instruction could be executing is during EXEC_cycle.
 // I am also assuming that only multi-word EIS instructions are of interest.
 #if 1
-    SC_I_MIF (cpu . cycle == EXEC_cycle &&
-        cpu . currentInstruction . info -> ndes > 0);
+    SC_I_MIF (cpu.cycle == EXEC_cycle &&
+        cpu.currentInstruction.info->ndes > 0);
+    sim_debug (DBG_TRACE, & cpu_dev, "MIF %o\n", TST_I_MIF);
 #endif
 
     // History registers
