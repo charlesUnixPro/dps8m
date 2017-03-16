@@ -1,6 +1,8 @@
 // Threads wrappers
 
 #include <unistd.h>
+#include <unistd.h>
+#include <signal.h>
 
 #include "dps8.h"
 #include "dps8_sys.h"
@@ -431,4 +433,18 @@ void initThreadz (void)
   {
     // chnThreadz is sparse; make sure 'started' is false
     memset (chnThreadz, 0, sizeof (chnThreadz));
+  }
+
+// Set up per-thread signal handlers
+
+void int_handler (int signal);
+
+void setSignals (void)
+  {
+    struct sigaction act;
+    act.sa_handler = int_handler;
+    act.sa_flags = 0;
+    sigaction (SIGINT, & act, NULL);
+    //sigaction (SIGHUP, & act, NULL);
+    sigaction (SIGTERM, & act, NULL);
   }

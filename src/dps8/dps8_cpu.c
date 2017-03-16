@@ -978,6 +978,7 @@ void * cpuThreadMain (void * arg)
     
     sim_printf("CPU %c thread created\n", 'a' + myid);
 
+    setSignals ();
     threadz_sim_instr ();
     return NULL;
 
@@ -986,6 +987,8 @@ void * cpuThreadMain (void * arg)
 t_stat threadz_sim_instr (void)
   {
     t_stat reason = 0;
+
+    setSignals ();
 
     // This allows long jumping to the top of the state machine
     int val = setjmp(cpu.jmpMain);
@@ -1530,6 +1533,7 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                     if (! ovf)
                       {
                         sleepCPU ((unsigned long) ticks * 1953 /* 1953.125 */);
+#if 0
                         currentTR (& ticks, & ovf);
                         if (ovf)
                           {
@@ -1539,6 +1543,7 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                                 setG7fault (thisCPUnum, FAULT_TRO, fst_zero);
                               }
                           }
+#endif
                       }
 #else
                     // 1/100 is .01 secs.

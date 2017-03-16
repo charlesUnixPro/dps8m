@@ -172,3 +172,4 @@ void chnConnectDone (void);
 void setChnConnect (uint iomNum, uint chnNum);
 void chnRdyWait (uint iomNum, uint chnNum);
 void initThreadz (void);
+void setSignals (void);

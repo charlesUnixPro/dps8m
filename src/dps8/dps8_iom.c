@@ -2324,6 +2324,7 @@ void * chnThreadMain (void * arg)
           
     sim_printf("IOM %c Channel %u thread created\n", thisIOMnum + 'a', thisChnNum);
 
+    setSignals ();
     while (1)
       {
 //sim_printf("IOM %c Channel %u thread waiting\n", thisIOMnum + 'a', thisChnNum);
@@ -2341,6 +2342,7 @@ void * iomThreadMain (void * arg)
           
     sim_printf("IOM %c thread created\n", 'a' + myid);
 
+    setSignals ();
     while (1)
       {
 //sim_printf("IOM %c thread waiting\n", 'a' + myid);
