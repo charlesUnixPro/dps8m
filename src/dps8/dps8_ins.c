@@ -2690,6 +2690,8 @@ static t_stat DoBasicInstruction (void)
           break;
 
         case 0034: // ldac
+          if (! test_mem_lock ())
+            sim_printf ("ldac not mem locked!\n");
           cpu.rA = cpu.CY;
           SC_I_ZERO (cpu.rA == 0);
           SC_I_NEG (cpu.rA & SIGN36);
@@ -2786,6 +2788,8 @@ static t_stat DoBasicInstruction (void)
           break;
 
         case 0032: // ldqc
+          if (! test_mem_lock ())
+            sim_printf ("ldqc not mem locked!\n");
           cpu.rQ = cpu.CY;
           SC_I_ZERO (cpu.rQ == 0);
           SC_I_NEG (cpu.rQ & SIGN36);
@@ -2902,6 +2906,8 @@ static t_stat DoBasicInstruction (void)
           break;
 
         case 0354:  // stac
+          if (! test_mem_lock ())
+            sim_printf ("stac not mem locked!\n");
           if (cpu.CY == 0)
             {
               SET_I_ZERO;
@@ -2912,6 +2918,8 @@ static t_stat DoBasicInstruction (void)
           break;
 
         case 0654:  // stacq
+          if (! test_mem_lock ())
+            sim_printf ("stacq not mem locked!\n");
           if (cpu.CY == cpu.rQ)
             {
               cpu.CY = cpu.rA;

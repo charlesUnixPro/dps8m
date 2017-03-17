@@ -49,14 +49,40 @@ static pthread_mutex_t mem_lock = PTHREAD_MUTEX_INITIALIZER;
 void lock_mem (void)
   {
     sim_debug (DBG_TRACE, & cpu_dev, "lock_mem\n");
-    pthread_mutex_lock (& mem_lock);
+    int rc;
+    rc = pthread_mutex_lock (& mem_lock);
+    if (rc)
+      sim_printf ("lock_mem pthread_mutex_lock mem_lock %d\n", rc);
   }
 
 void unlock_mem (void)
   {
     sim_debug (DBG_TRACE, & cpu_dev, "unlock_mem\n");
-    pthread_mutex_unlock (& mem_lock);
+    int rc;
+    rc = pthread_mutex_unlock (& mem_lock);
+    if (rc)
+      sim_printf ("unlock_mem pthread_mutex_lock mem_lock %d\n", rc);
   }
+
+// assertion
+
+bool test_mem_lock (void)
+  {
+    sim_debug (DBG_TRACE, & cpu_dev, "test_mem_lock\n");
+    int rc;
+    rc = pthread_mutex_trylock (& mem_lock);
+    if (rc)
+      {
+         // couldn't lock; presumably already  
+         return true;
+      }
+    // lock acquired, it wasn't locked
+    rc = pthread_mutex_unlock (& mem_lock);
+    if (rc)
+      sim_printf ("test_mem_lock pthread_mutex_lock mem_lock %d\n", rc);
+    return false;   
+  }
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //

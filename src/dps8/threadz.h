@@ -83,6 +83,7 @@ void unlock_simh (void);
 // atomic memory lock
 void lock_mem (void);
 void unlock_mem (void);
+bool test_mem_lock (void);
 
 // CPU threads
 
