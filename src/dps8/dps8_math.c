@@ -451,7 +451,7 @@ void ufa (bool sub)
     int shift_count = -1;
     word1 allones = 1;
     word1 notallzeros = 0;
-    word1 last = 0;
+    //word1 last = 0;
     if (e1 == e2)
     {
         shift_count = 0;
@@ -463,7 +463,7 @@ void ufa (bool sub)
         bool sign = m1 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
-            last = m1 & 1;
+            //last = m1 & 1;
             allones &= m1 & 1;
             notallzeros |= m1 & 1;
             m1 >>= 1;
@@ -483,7 +483,7 @@ void ufa (bool sub)
         bool sign = m2 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
-            last = m2 & 1;
+            //last = m2 & 1;
             allones &= m2 & 1;
             notallzeros |= m2 & 1;
             m2 >>= 1;

@@ -5164,13 +5164,13 @@ static t_stat DoBasicInstruction (void)
           //  C(TPR.CA) -> C(PPR.IC)
           //  C(TPR.TSR) -> C(PPR.PSR)
           {
-            uint32 n;
-            if (opcode <= 0273)
-              n = (opcode & 3);
-            else
-              n = (opcode & 3) + 4;
-            CPTUR (cptUsePRn + n);
-
+            PNL (uint32 n;
+                 if (opcode <= 0273)
+                   n = (opcode & 3);
+                 else
+                   n = (opcode & 3) + 4;
+                 CPTUR (cptUsePRn + n);
+                )
             ReadTraOp ();
           }
           return CONT_TRA;

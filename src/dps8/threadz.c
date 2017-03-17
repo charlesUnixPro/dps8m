@@ -184,7 +184,7 @@ void sleepCPU (unsigned long nsec)
     struct cpuThreadz_t * p = & cpuThreadz[thisCPUnum];
     struct timespec abstime;
     clock_gettime (CLOCK_REALTIME, & abstime);
-    abstime.tv_nsec += nsec;
+    abstime.tv_nsec += (long int) nsec;
     abstime.tv_sec += abstime.tv_nsec / 1000000000;
     abstime.tv_nsec %= 1000000000;
     rc = pthread_mutex_lock (& p->sleepLock);
