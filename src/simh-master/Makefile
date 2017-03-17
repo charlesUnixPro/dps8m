@@ -1,6 +1,6 @@
 include ../Makefile.mk
 
-CFLAGS += -Wno-array-bounds -Wno-pointer-bool-conversion
+CFLAGS += -Wno-array-bounds -Wno-pointer-bool-conversion -Wno-unknown-warning-option
 C_SRCS = \
 scp.c \
 sim_console.c \
