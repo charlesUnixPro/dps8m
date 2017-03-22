@@ -286,7 +286,6 @@ slte.inc : system_book_12_3.ascii
 	./buildSLTE.sh
 
 locallibs_then_dps8 : 
-	#(cd ../simhv40-beta; $(MAKE))
 	(cd $(SIMHx); $(MAKE) -f Makefile)
 	(cd ../decNumber; $(MAKE))
 ifeq ($(CROSS),MINGW64)
@@ -329,7 +328,7 @@ zyre : ../lib/libzyre.so
 
 tags : $(C_SRCS) $(H_SRCS) dps8.sha1.txt
 	@echo TAGS
-	-@ctags $(C_SRCS) $(H_SRCS) ../simhv40-beta/*.[ch] ../decNumber/dec*.[ch]
+	-@ctags $(C_SRCS) $(H_SRCS) $(SIMHx)/*.[ch] ../decNumber/dec*.[ch]
 
 .PHONY : tapes
 

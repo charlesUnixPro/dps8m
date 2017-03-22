@@ -54,8 +54,7 @@ typedef enum
 
 typedef enum
   {
-    //ABORT_cycle /* = ABORT_CYCLE */,
-    FAULT_cycle /* = FAULT_CYCLE */,
+    FAULT_cycle,
     EXEC_cycle,
     FAULT_EXEC_cycle,
     FAULT_EXEC2_cycle,
@@ -702,7 +701,7 @@ struct DCDstruct
     uint32 opcode;        // opcode
     bool   opcodeX;       // opcode extension
     word18 address;       // bits 0-17 of instruction
-    word1  a;             // bit-29 - address via pointer register. Usually.
+    word1  b29;           // bit-29 - address via pointer register. Usually.
     bool   i;             // interrupt inhinit bit.
     word6  tag;           // instruction tag
     
@@ -858,6 +857,9 @@ enum {
 
 typedef struct
   {
+#ifdef RALRx
+    _processor_cycle_type lastCycle;
+#endif
 #ifdef PANEL
     word34 state;
 #endif
@@ -983,10 +985,9 @@ typedef struct
                    // 26-29 TSNC     Pointer register number for EIS operand #2
                    //                  26-28 PRNO Pointer register number
                    //                  29       PRNO is valid
-#ifdef EIS_PTR4
     word3 TSN_PRNO [3];
     word1 TSN_VALID [3];
-#endif
+#define ISB29 (cpu.cu.TSN_VALID [0])
 
                    // 30-35 TEMP BIT Current bit offset (TPR . TBR)
 
@@ -1556,6 +1557,7 @@ typedef struct
                   // an XEC or XED instruction
     bool isXED; // The instruction being executed is the target of an
                 // XEC instruction
+    //bool isb29; // The instruction has a valid bit 29 set when fetched
 
     DCDstruct currentInstruction;
     EISstruct currentEISinstruction;
@@ -1567,6 +1569,8 @@ typedef struct
     ou_unit_data_t ou;
     apu_unit_data_t apu;
     word36 faultRegister [2];
+
+    word36 itxPair [2];
 
     word36   rA;     // accumulator
     word36   rQ;     // quotient
@@ -1588,7 +1592,7 @@ typedef struct
     struct _bar BAR;   // Base Address Register
     struct _dsbr DSBR; // Descriptor Segment Base Register
 #ifndef WAM
-    _sdw SDWAM0; // Segment Descriptor Word Associative Memory
+    //_sdw SDWAM0; // Segment Descriptor Word Associative Memory
 #else
     _sdw SDWAM [N_WAM_ENTRIES]; // Segment Descriptor Word Associative Memory
 #ifdef L68
@@ -1715,7 +1719,7 @@ typedef struct
     word12 AM_tally;
 
 #ifndef WAM
-    _ptw PTWAM0;
+    //_ptw PTWAM0;
 #else
     _ptw PTWAM [N_WAM_ENTRIES];
 #ifdef L68
@@ -1834,8 +1838,8 @@ static inline void SET_AR_CHAR_BITNO (uint n, word2 c, word4 b)
 bool sample_interrupts (void);
 t_stat simh_hooks (void);
 int OPSIZE (void);
-t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29);
-t_stat WriteOP (word18 addr, _processor_cycle_type acctyp, bool b29);
+t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp);
+t_stat WriteOP (word18 addr, _processor_cycle_type acctyp);
 
 #ifdef PANEL
 static inline void trackport (word24 a, word36 d)

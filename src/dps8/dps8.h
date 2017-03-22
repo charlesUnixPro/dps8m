@@ -67,6 +67,9 @@
 // Use evlib to manage i/o polling
 #define EV_POLL
 
+// Use XSF bit to manage APU 'last cycle == INDIRECT_WORD_FETCH
+#define XSF_IND
+
 #ifdef TESTING
 #else
 // Enable speed over debuggibility
@@ -87,6 +90,9 @@
 #ifdef __APPLE__
 #undef HDBG
 #endif
+
+// RALR register fixes
+#define RALRx
 
 // Enable round-robin multi-CPU
 //#define ROUND_ROBIN
@@ -241,22 +247,16 @@ typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 
 enum _processor_cycle_type {
     UNKNOWN_CYCLE = 0,
-    APPEND_CYCLE,
-    CA_CYCLE,
     OPERAND_STORE,
     OPERAND_READ,
-    DIVIDE_EXECUTION,
-    FAULT,
     INDIRECT_WORD_FETCH,
     RTCD_OPERAND_FETCH,
     //SEQUENTIAL_INSTRUCTION_FETCH,
     INSTRUCTION_FETCH,
-    APU_DATA_MOVEMENT,
-    ABORT_CYCLE,
-    FAULT_CYCLE,
-    EIS_OPERAND_DESCRIPTOR,  // change later for real MW EIS operand descriptors
-    EIS_OPERAND_STORE,
-    EIS_OPERAND_READ
+    //APU_DATA_MOVEMENT,
+    APU_DATA_READ,
+    APU_DATA_STORE,
+    ABSA_CYCLE
     
 };
 typedef enum _processor_cycle_type _processor_cycle_type;
@@ -265,26 +265,9 @@ typedef enum _processor_cycle_type _processor_cycle_type;
 //! some breakpoint stuff ...
 enum eMemoryAccessType {
     UnknownMAT       = 0,
-    InstructionFetch,
-    IndirectRead,
-    //IndirectWrite,
-    DataRead,
-    DataWrite,
     OperandRead,
     OperandWrite,
-    
-//    APUDataRead,        // append operations from absolute mode
-//    APUDataWrite,
-//    APUOperandRead,
-//    APUOperandWrite,
-
-    Call6Operand,
-    RTCDOperand = RTCD_OPERAND_FETCH,
-    
-    
-    // for EIS read operations
-    viaPR,      // EIS data access vis PR
-    PrepareCA,
+    viaPR
 };
 
 typedef enum eMemoryAccessType MemoryAccessType;
