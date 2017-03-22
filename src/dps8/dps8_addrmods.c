@@ -473,7 +473,7 @@ startCA:;
                        "R_MOD: directOperand = %012"PRIo64"\n",
                        cpu.ou.directOperand);
 
-#ifdef XEF_IND
+#ifdef XSF_IND
             //cpu.TPR.CA = cpu.ou.directOperand;
             //updateIWB (identity) // known that rTag is DL or DU
 #else
