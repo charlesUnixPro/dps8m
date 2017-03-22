@@ -474,7 +474,8 @@ static void modifyDSPTW(word15 segno)
 
 
 #ifdef WAM
-word6 calcHitAM(word6 LRU, uint hitLevel)
+#ifdef DPS8M
+static word6 calcHitAM(word6 LRU, uint hitLevel)
 {
     switch (hitLevel)
     {
@@ -491,6 +492,7 @@ word6 calcHitAM(word6 LRU, uint hitLevel)
           return 0;
      }
 }
+#endif
 
 static _sdw* fetchSDWfromSDWAM(word15 segno)
 {
@@ -721,7 +723,8 @@ t_stat dumpSDWAM (void)
     return SCPE_OK;
 }
 
-uint toBeDiscardedAM(word6 LRU)
+#ifdef DPS8M
+static uint toBeDiscardedAM(word6 LRU)
 {
 #if 0
     uint cA=0,cB=0,cC=0,cD=0;
@@ -740,6 +743,7 @@ uint toBeDiscardedAM(word6 LRU)
     if ((LRU & 025) == 001) return 2;
     return 3;
 }
+#endif
 #endif
 
 /**
@@ -2472,7 +2476,7 @@ P:; // ITP
 
 Exit:;
 
-    PNL (cpu.APUDataBusOffset = address;)
+    PNL (cpu.APUDataBusOffset = cpu.TPR.CA;)
     PNL (cpu.APUDataBusAddr = finalAddress;)
 
     PNL (L68_ (cpu.apu.state |= apu_FA;))

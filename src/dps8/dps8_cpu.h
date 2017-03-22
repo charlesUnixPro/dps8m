@@ -845,7 +845,7 @@ enum {
     apu_FSDN = 1ll << (33-23),    // 23     FSDN   Fetch SDW non-paged 
     apu_FPTW = 1ll << (33-24),    // 24   e FPTW   Fetch PTW
     apu_MPTW = 1ll << (33-25),    // 25   g MPTW   Modify PTW
-                                  // 26   f FPT2 // Fetch prepage
+    apu_FPTW2 = 1ll << (33-26),   // 26   f FPT2 // Fetch prepage
     apu_FAP  = 1ll << (33-27),    // 27   i FAP    Final address fetch from paged seg.
     apu_FANP = 1ll << (33-28),    // 28   h FANP   Final address fetch from non-paged segment
                                   // 29     FAAB   Final address absolute?
