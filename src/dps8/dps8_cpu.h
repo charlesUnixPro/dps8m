@@ -435,24 +435,39 @@ typedef struct mode_register
   {
     word36 r;
 #ifdef L68
-    word15 FFV;
-    word1 OC_TRAP;
-    word1 ADR_TRAP;
-    word9 OPCODE;
-    word1 OPCODEX;
+                    //  8M      L68
+    word15 FFV;     //  0       FFV     0 - 14
+    word1 OC_TRAP;  //  0       a           16
+    word1 ADR_TRAP; //  0       b           17
+    word9 OPCODE;   //  0       OPCODE 18 - 26
+    word1 OPCODEX;  //  0       OPCODE      27
 #endif
-    word1 sdpap;
-    word1 separ;
-    word1 emr;
-    word1 hrhlt;
+ // word1 cuolin;   //  a       c           18 control unit overlap inhibit
+ // word1 solin;    //  b       d           19 store overlap inhibit
+    word1 sdpap;    //  c       e           20 store incorrect data parity
+    word1 separ;    //  d       f           21 store incorrect ZAC
+ // word2 tm;       //  e       g      22 - 23 timing margins
+ // word2 vm;       //  f       h      24 - 25 voltage margins
+                    //  0       0           26 history register overflow trap
+                    //  0       0           27 strobe HR on opcode match
+    word1 hrhlt;    //  g       i           28 history register overflow trap
+
 #ifdef DPS8M
-    word1 hrxfr;
+    word1 hrxfr;    //  h       j           29 strobe HR on transfer made
 #endif
-    word1 ihr;
-    word1 ihrrs;
+#ifdef L68
+                    //  h       j           29 strobe HR on opcode match
+#endif
+    word1 ihr;      //  i       k           30 Enable HR
+    word1 ihrrs;    //  j                   31 HR reset options
+                    //          l           31 HR lock control
+                    //  k                   32 margin control
+                    //          m           32 test mode indicator
 #ifdef DPS8M
-    word1 hexfp;
+    word1 hexfp;    //  l       0           33 hex mode
 #endif
+                    //  0       0           34
+     word1 emr;     //  m       n           35 enable MR
   } _mode_register;
 #else
 typedef struct mode_register
@@ -730,6 +745,7 @@ typedef struct
     uint FLT_BASE; // normally 7 MSB of 12bit fault base addr
     uint cpu_num;  // zero for CPU 'A', one for 'B' etc.
     word36 data_switches;
+    word18 addr_switches;
     //uint port_enable; // 4 bits; enable ports A-D
     //word36 port_config; // Read by rsw instruction; format unknown
     //uint port_interlace; // 4 bits  Read by rsw instruction; 
@@ -1624,7 +1640,7 @@ typedef struct
     volatile word1  APU_panel_scroll_select_ul_sw;
     volatile word4  APU_panel_scroll_select_n_sw;
     volatile word4  APU_panel_scroll_wheel_sw;
-    volatile word18 APU_panel_addr_sw;
+    //volatile word18 APU_panel_addr_sw;
     volatile word18 APU_panel_enter_sw;
     volatile word18 APU_panel_display_sw;
     volatile word4  CP_panel_wheel_sw;

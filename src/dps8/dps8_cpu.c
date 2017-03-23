@@ -3144,6 +3144,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     sim_printf("Fault base:               %03o(8)\n", cpu.switches.FLT_BASE);
     sim_printf("CPU number:               %01o(8)\n", cpu.switches.cpu_num);
     sim_printf("Data switches:            %012"PRIo64"(8)\n", cpu.switches.data_switches);
+    sim_printf("Address switches:         %06o(8)\n", cpu.switches.addr_switches);
     for (int i = 0; i < N_CPU_PORTS; i ++)
       {
         sim_printf("Port%c enable:             %01o(8)\n", 'A' + i, cpu.switches.enable [i]);
@@ -3369,6 +3370,8 @@ static config_list_t cpu_config_list [] =
     /* 28 */ { "drl_fatal", 0, 1, cfg_on_off },
     /* 29 */ { "trlsb", 0, 256, NULL },
     /* 30 */ { "useMap", 0, 1, cfg_on_off },
+
+    /* 31 */ { "address", 0, 0777777, NULL },
     { NULL, 0, 0, NULL }
   };
 
@@ -3442,6 +3445,10 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
 
             case  2: // DATA
               cpu.switches.data_switches = (word36) v;
+              break;
+
+            case 31: // ADDRESS
+              cpu.switches.addr_switches = (word18) v;
               break;
 
             case  3: // MODE
