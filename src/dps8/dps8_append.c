@@ -1787,7 +1787,7 @@ C:;
     if (cpu.TPR.TRR < cpu.SDW->R1 ||
         cpu.TPR.TRR > cpu.SDW->R2)
       {
-        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(C) ACV5\n");
+        sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(C) ACV1\n");
         //Set fault ACV5 = OEB
         acvFault (ACV1, "doAppendCycle(C) C(SDW.R1 > C(TPR.TRR) > C(SDW.R2)");
       }
