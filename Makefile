@@ -16,3 +16,7 @@ install:
 clean:
 	cd src/dps8 && $(MAKE) clean
 
+kit:
+	cd src/dps8 && $(MAKE) dps8.sha1.txt
+	cp src/dps8/dps8.sha1.txt src/dps8/dps8.sha1.txt~
+	tar cfz source.tgz  `git ls-files | grep -v .gitignore | grep -v .metadata` src/dps8/dps8.sha1.txt~
