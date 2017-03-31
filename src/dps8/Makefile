@@ -103,7 +103,7 @@ endif
 #LIBS +- -lefence
 
 # link in gperftools 
-# LIBS += -lprofiler
+LIBS += -lprofiler
 
 ifneq ($(CROSS),MINGW64)
 C_SRCS  = ./dps8_absi.c
