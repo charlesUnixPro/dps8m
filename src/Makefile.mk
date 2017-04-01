@@ -8,7 +8,19 @@
 # See the LICENSE file at the top-level directory of this distribution and
 # at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
 
-msys_version := $(if $(findstring Msys, $(shell uname -o)),$(word 1, $(subst ., ,$(shell uname -r))),0)
+ifneq ($(OS),Windows_NT)
+  UNAME_S := $(shell uname -s)
+  ifeq ($(UNAME_S),Darwin)
+    OS = OSX
+  endif
+endif
+
+ifeq ($(OS), OSX)
+  msys_version = 0
+else
+  msys_version := $(if $(findstring Msys, $(shell uname -o)),$(word 1, $(subst ., ,$(shell uname -r))),0)
+endif
+
 ifeq ($(msys_version),0)
 else
   CROSS=MINGW64
@@ -43,6 +55,10 @@ ifeq ($(CROSS),MINGW64)
 endif
 else
     UNAME_S := $(shell uname -s)
+    ifeq ($(UNAME_S),Darwin)
+      CFLAGS += -I /usr/local/include
+      LDFLAGS += -L/usr/local/lib
+    endif
     ifeq ($(UNAME_S),FreeBSD)
       CFLAGS += -I /usr/local/include
       LDFLAGS += -L/usr/local/lib
