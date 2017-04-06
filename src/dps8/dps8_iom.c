@@ -215,8 +215,8 @@
 
 #include "dps8.h"
 #include "dps8_sys.h"
-#include "dps8_faults.h"
 #include "dps8_cpu.h"
+#include "dps8_faults.h"
 #include "dps8_utils.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"

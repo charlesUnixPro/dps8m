@@ -713,13 +713,9 @@ struct DCDstruct
 
 typedef struct
   {
-    //bool any;             // true if any of the below are true
-    //bool int_pending;
-    bool fault_pending;
-    int fault [N_FAULT_GROUPS];
+    volatile int fault [N_FAULT_GROUPS];
                           // only one fault in groups 1..6 can be pending
-    //bool interrupts [N_SCU_UNITS_MAX] [N_INTERRUPTS];
-    bool XIP [N_SCU_UNITS_MAX];
+    volatile bool XIP [N_SCU_UNITS_MAX];
   } events_t;
 
 // Physical Switches
@@ -730,9 +726,6 @@ typedef struct
     uint FLT_BASE; // normally 7 MSB of 12bit fault base addr
     uint cpu_num;  // zero for CPU 'A', one for 'B' etc.
     word36 data_switches;
-    //uint port_enable; // 4 bits; enable ports A-D
-    //word36 port_config; // Read by rsw instruction; format unknown
-    //uint port_interlace; // 4 bits  Read by rsw instruction; 
     uint assignment [N_CPU_PORTS];
     uint interlace [N_CPU_PORTS]; // 0/2/4
     uint enable [N_CPU_PORTS];
@@ -1551,7 +1544,6 @@ typedef struct
                   // an XEC or XED instruction
     bool isXED; // The instruction being executed is the target of an
                 // XEC instruction
-    //bool isb29; // The instruction has a valid bit 29 set when fetched
 
     DCDstruct currentInstruction;
     EISstruct currentEISinstruction;
@@ -1762,9 +1754,6 @@ typedef struct
     uint64 lufCounter;
     bool secret_addressing_mode;
     bool went_appending; // we will go....
-#if 0
-    bool bar_attempt;
-#endif
     // Map memory to port
     int scbank_map [N_SCBANKS];
     int scbank_pg_os [N_SCBANKS];
@@ -2008,24 +1997,19 @@ t_stat dpsCmd_Dump (int32 arg, const char *buf);
 t_stat dpsCmd_Init (int32 arg, const char *buf);
 t_stat dpsCmd_Segment (int32 arg, const char *buf);
 t_stat dpsCmd_Segments (int32 arg, const char *buf);
-//t_stat dumpKST (int32 arg, char * buf);
 t_stat memWatch (int32 arg, const char * buf);
-//_sdw0 *fetchSDW (word15 segno);
 _sdw *fetchSDW (word15 segno);
-//char *strSDW0 (_sdw0 *SDW);
 char *strSDW0 (char * buff, _sdw *SDW);
 int query_scbank_map (word24 addr);
 void cpu_init (void);
 void setup_scbank_map (void);
 #ifdef DPS8M
-//void addCUhist (word36 flags, word18 opcode, word24 address, word5 proccmd, word7 flags2);
 void addCUhist (void);
 void addDUOUhist (word36 flags, word18 ICT, word9 RS_REG, word9 flags2);
 void addAPUhist (word15 ESN, word21 flags, word24 RMA, word3 RTRR, word9 flags2);
 void addEAPUhist (word18 ZCA, word18 opcode);
 #endif
 #ifdef L68
-//void addCUhist (word36 flags, word18 opcode, word18 address, word5 proccmd, word4 sel, word9 flags2);
 void addCUhist (void);
 // XXX addDUhist
 void addOUhist (void);

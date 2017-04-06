@@ -11,6 +11,7 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
+#ifndef QUIET_UNUSED
 struct _fault_register {
     // even word
     bool    ILL_OP;     // IPR fault. An illegal operation code has been detected.
@@ -59,7 +60,9 @@ struct _fault_register {
     bool    PAR_SDWAM;  // A parity error has been detected in the SDWAM.
     bool    PAR_PTWAM;  // A parity error has been detected in the PTWAM.
 };
+#endif
 
+#ifndef QUIET_UNUSED
 struct dps8faults
 {
     int         fault_number;
@@ -70,12 +73,11 @@ struct dps8faults
     int         fault_group;
     bool        fault_pending;        // when true fault is pending and waiting to be processed
 };
+
 typedef struct dps8faults dps8faults;
+#endif
 
 extern char * faultNames [N_FAULTS];
-void check_events (void);
-void clearFaultCycle (void);
-void emCallReportFault (void);
 
 void cu_safe_restore (void);
 
@@ -110,4 +112,8 @@ void set_FFV_fault (uint f_fault_no);
 void do_FFV_fault (uint fault_number, const char * fault_msg);
 #endif
 
+static inline void clearFaultCycle (void)
+  {
+    cpu.bTroubleFaultCycle = false;
+  }
 

@@ -24,8 +24,8 @@
 #include "dps8_absi.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
-#include "dps8_faults.h"
 #include "dps8_cpu.h"
+#include "dps8_faults.h"
 #include "dps8_cable.h"
 
 #include "udplib.h"
