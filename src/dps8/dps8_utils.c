@@ -891,7 +891,6 @@ void putByte(word36 *dst, word9 data, int posn)
 //            offset = 0;
 //            break;
 //    }
-    //*dst = bitfieldInsert36(*dst, (word36)data, offset, 9);
     putbits36_9 (dst, (uint) posn * 9, data);
 }
 
@@ -921,7 +920,6 @@ void putChar(word36 *dst, word6 data, int posn)
 //            offset = 0;
 //            break;
 //    }
-    //*dst = bitfieldInsert36(*dst, (word36)data, offset, 6);
     putbits36_6 (dst, (uint) posn * 6, data);
 }
 
@@ -1420,122 +1418,11 @@ stripquotes(char *s)
     return trim(s);
 }
 
-#if 0
-/*!
- a - Bitfield to insert bits into.
- b - Bit pattern to insert.
- c - Bit offset number.
- d = Number of bits to insert.
- 
- Description
- 
- Returns the result of inserting bits B at offset C of length D in the bitfield A.
- */
-word72 bitfieldInsert72(word72 a, word72 b, int c, int d)
-{
-    word72 mask = ~((word72)-1 << d) << c;
-    mask = ~mask;
-    a &= mask;
-    return a | (b << c);
-}
-#endif
 
-#if 0
-/*!
- a - Bitfield to insert bits into.
- b - Bit pattern to insert.
- c - Bit offset number.
- d = Number of bits to insert.
- 
- Description
- 
- Returns the result of inserting bits B at offset C of length D in the bitfield A.
- 
- XXX: c & d should've been expressed in dps8 big-endian rather than little-endian numbering. Oh, well.
- 
- */
-word36 bitfieldInsert36(word36 a, word36 b, int c, int d)
-{
-    word36 mask = ~(0xffffffffffffffffLL << d) << c;
-    mask = ~mask;
-    a &= mask;
-    return a | (b << c);
-}
-#endif
 
-#if 0
-/*!
-a - Bitfield to insert bits into.
-b - Bit pattern to insert.
-c - Bit offset number.
-d = Number of bits to insert.
- 
- Description
- 
- Returns the result of inserting bits B at offset C of length D in the bitfield A.
-*/
-int bitfieldInsert(int a, int b, int c, int d)
-{
-    uint32 mask = ~(0xffffffff << d) << c;
-    mask = ~mask;
-    a &= mask;
-    return a | (b << c);
-}
-#endif
 
-#if 0
-/*!
- a -  Bitfield to extract bits from.
- b -  Bit offset number. Bit offsets start at 0.
- c - Number of bits to extract.
- 
- Description
- 
- Returns bits from offset b of length c in the bitfield a.
- */
-int bitfieldExtract(int a, int b, int c)
-{
-    int mask = ~((int)0xffffffff << c);
-    if (b > 0)
-        return (a >> b) & mask; // original pseudocode had b-1
-    else
-        return a & mask;
-}
-#endif
 
-#if 0
-/*!
- a -  Bitfield to extract bits from.
- b -  Bit offset number. Bit offsets start at 0.
- c - Number of bits to extract.
- 
- Description
- 
- Returns bits from offset b of length c in the bitfield a.
- NB: This would've been much easier to use of I changed, 'c', the bit offset to reflect the dps8s 36bit word!! Oh, well.
 
- */
-word36 bitfieldExtract36(word36 a, int b, int c)
-{
-    word36 mask = ~(0xffffffffffffffffLL  << c);
-    //printf("mask=%012"PRIo64"\n", mask);
-    if (b > 0)
-        return (a >> b) & mask; // original pseudocode had b-1
-    else
-        return a & mask;
-}
-#endif
-
-#if 0
-word72 bitfieldExtract72(word72 a, int b, int c)
-{
-    word72 mask = ~((word72)-1 << c);
-    if (b > 0)
-        return (a >> b) & mask; // original pseudocode had b-1
-    else
-        return a & mask;
-}
-#endif
 
 #ifndef QUIET_UNUSED
 /*!

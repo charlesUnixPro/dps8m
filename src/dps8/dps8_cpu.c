@@ -145,13 +145,7 @@ static DEBTAB cpu_dt[] = {
 // This is part of the simh interface
 const char *sim_stop_messages[] = {
     "Unknown error",           // SCPE_OK
-    "Unimplemented Opcode",    // STOP_UNIMP
-    "DIS instruction",         // STOP_DIS
-    "Breakpoint",              // STOP_BKPT
-    "BUG",                     // STOP_BUG
-    "Fault cascade",           // STOP_FLT_CASCADE
     "Halt",                    // STOP_HALT
-    "Illegal Opcode",          // STOP_ILLOP
     "Simulation stop",         // STOP_STOP
 };
 
@@ -2506,14 +2500,11 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
       }
     sim_printf("Processor mode:           %s [%o]\n", cpu.switches.proc_mode ? "Multics" : "GCOS", cpu.switches.proc_mode);
     sim_printf("Processor speed:          %02o(8)\n", cpu.switches.proc_speed);
-    sim_printf("DIS enable:               %01o(8)\n", cpu.switches.dis_enable);
     sim_printf("Steady clock:             %01o(8)\n", scu [0].steady_clock);
-    sim_printf("Halt on unimplemented:    %01o(8)\n", cpu.switches.halt_on_unimp);
     sim_printf("Disable SDWAM/PTWAM:      %01o(8)\n", cpu.switches.disable_wam);
     //sim_printf("Bullet time:              %01o(8)\n", cpu.switches.bullet_time);
     sim_printf("Report faults:            %01o(8)\n", cpu.switches.report_faults);
     sim_printf("TRO faults enabled:       %01o(8)\n", cpu.switches.tro_enable);
-    sim_printf("drl fatal enabled:        %01o(8)\n", cpu.switches.drl_fatal);
     sim_printf("useMap:                   %d\n",      cpu.switches.useMap);
 
     setCPUnum (save);
@@ -2534,16 +2525,13 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
 //           mode = n
 //           speed = n
 //    Hacks:
-//           dis_enable = n
 //           steadyclock = on|off
-//           halt_on_unimplmented = n
 //           disable_wam = n
 //           report_faults = n
 //               n = 0 don't
 //               n = 1 report
 //               n = 2 report overflow
 //           tro_enable = n
-//           drl_fatal
 
 static config_value_list_t cfg_multics_fault_base [] =
   {
@@ -2672,13 +2660,10 @@ static config_list_t cpu_config_list [] =
 
     // Hacks
 
-    { "dis_enable", 0, 1, cfg_on_off }, 
     { "steady_clock", 0, 1, cfg_on_off },
-    { "halt_on_unimplemented", 0, 1, cfg_on_off },
     { "disable_wam", 0, 1, cfg_on_off },
     { "report_faults", 0, 2, NULL },
     { "tro_enable", 0, 1, cfg_on_off },
-    { "drl_fatal", 0, 1, cfg_on_off },
     { "useMap", 0, 1, cfg_on_off },
     { NULL, 0, 0, NULL }
   };
@@ -2766,20 +2751,14 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
           cpu.switches.init_enable [port_num] = (uint) v;
         else if (strcmp (p, "store_size") == 0)
           cpu.switches.store_size [port_num] = (uint) v;
-        else if (strcmp (p, "dis_enable") == 0)
-          cpu.switches.dis_enable = (uint) v;
         else if (strcmp (p, "steady_clock") == 0)
           scu[0].steady_clock = (uint) v;
-        else if (strcmp (p, "halt_on_unimplemented") == 0)
-          cpu.switches.halt_on_unimp = (uint) v;
         else if (strcmp (p, "disable_wam") == 0)
           cpu.switches.disable_wam = (uint) v;
         else if (strcmp (p, "report_faults") == 0)
           cpu.switches.report_faults = (uint) v;
         else if (strcmp (p, "tro_enable") == 0)
           cpu.switches.tro_enable = (uint) v;
-        else if (strcmp (p, "drl_fatal") == 0)
-          cpu.switches.drl_fatal = (uint) v;
         else if (strcmp (p, "useMap") == 0)
           cpu.switches.useMap = v;
         else

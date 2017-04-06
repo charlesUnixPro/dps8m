@@ -1403,13 +1403,7 @@ _sdw0 * getSDW (word15 segno)
 //
 
 // CANFAULT
-void fauxDoAppendCycle (_processor_cycle_type thisCycle)
-  {
-    cpu.apu.lastCycle = thisCycle;
-    //cpu.cu.XSF = 0;
-  }
 
-//word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * data, uint nWords)
 word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWords)
   {
     DCDstruct * i = & cpu.currentInstruction;
@@ -1419,9 +1413,6 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWord
     sim_debug (DBG_APPENDING, & cpu_dev,
                "doAppendCycle(Entry) lastCycle=%s\n",
                strPCT (cpu.apu.lastCycle));
-    //sim_debug (DBG_APPENDING, & cpu_dev,
-               //"doAppendCycle(Entry) Address=%06o\n",
-               //address);
     sim_debug (DBG_APPENDING, & cpu_dev,
                "doAppendCycle(Entry) CA %06o\n",
                cpu.TPR.CA);

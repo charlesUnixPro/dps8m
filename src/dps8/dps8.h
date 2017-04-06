@@ -202,7 +202,6 @@ typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 
 #define SETBIT(dst, bitno)      ((dst) | (1LLU << (bitno)))
 #define CLRBIT(dst, bitno)      ((dst) & ~(1LLU << (bitno)))
-//#define TSTBIT(dst, bitno)      ((dst) &  (1LLU << (bitno)))
 #define TSTBIT(dst, bitno)      (((dst) &  (1LLU << (bitno))) ? 1: 0)
 
 /////
@@ -225,7 +224,7 @@ enum _processor_cycle_type {
 typedef enum _processor_cycle_type _processor_cycle_type;
 
 #ifndef EIS_PTR4
-//! some breakpoint stuff ...
+// some breakpoint stuff ...
 enum eMemoryAccessType {
     UnknownMAT       = 0,
     OperandRead,

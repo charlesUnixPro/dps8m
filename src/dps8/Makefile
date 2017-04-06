@@ -104,7 +104,6 @@ C_SRCS  = ./dps8_absi.c
 endif
 C_SRCS += ./dps8_addrmods.c 
 C_SRCS += ./dps8_append.c
-C_SRCS += ./dps8_bar.c
 C_SRCS += ./dps8_cable.c
 C_SRCS += ./dps8_console.c
 C_SRCS += ./dps8_cpu.c

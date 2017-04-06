@@ -140,7 +140,6 @@ float72 IEEElongdoubleToFloat72(long double f0)
     
     if (sign && mant == 0.5)
     {
-        //result = bitfieldInsert72(result, 1, 63, 1);
         putbits72 (& result, 71-62, 1, 1);
         exp -= 1;
         mant -= 0.5;
@@ -151,7 +150,6 @@ float72 IEEElongdoubleToFloat72(long double f0)
     {
         if (mant >= bitval)
         {
-            //result = bitfieldInsert72(result, 1, n, 1);
             putbits72 (& result, 71-n, 1, 1);
             mant -= bitval;
             //sim_printf ("Inserting a bit @ %d %012"PRIo64" %012"PRIo64"\n", n , (word36)((result >> 36) & DMASK), (word36)(result & DMASK));
@@ -170,7 +168,6 @@ float72 IEEElongdoubleToFloat72(long double f0)
     }
     //! insert exponent ...
     int e = (int)exp;
-    //result = bitfieldInsert72(result, e & 0377, 64, 8);    ///< & 0777777777777LL;
     putbits72 (& result, 71-64, 8, e & 0377);
     
     // XXX TODO test for exp under/overflow ...
@@ -258,7 +255,6 @@ void IEEElongdoubleToEAQ(long double f0)
     // now let's examine the mantissa and assign bits as necessary...
     if (sign && mant == 0.5)
     {
-        //result = bitfieldInsert72(result, 1, 63, 1);
         result = putbits72 (& result, 71-63, 1, 1);
         exp -= 1;
         mant -= 0.5;
@@ -269,7 +265,6 @@ void IEEElongdoubleToEAQ(long double f0)
     {
         if (mant >= bitval)
         {
-            //result = bitfieldInsert72(result, 1, n, 1);
             putbits72 (& result 71-n, 1, 1);
             mant -= bitval;
             //sim_printf ("Inserting a bit @ %d %012"PRIo64" %012"PRIo64"\n", n , (word36)((result >> 36) & DMASK), (word36)(result & DMASK));
@@ -354,7 +349,6 @@ float36 IEEEdoubleTofloat36(double f0)
     {
         if (mant >= bitval)
         {
-            //result = bitfieldInsert36(result, 1, n, 1);
             setbits36_1 (& result, 35-n, 1);
             mant -= bitval;
             //sim_printf ("Inserting a bit @ %d result=%012"PRIo64"\n", n, result);
@@ -371,7 +365,6 @@ float36 IEEEdoubleTofloat36(double f0)
     }
     // insert exponent ...
     int e = (int)exp;
-    //result = bitfieldInsert36(result, e, 28, 8) & 0777777777777LL;
     putbits36_8 (& result, 0, e);
     
     // XXX TODO test for exp under/overflow ...
@@ -389,10 +382,18 @@ float36 IEEEdoubleTofloat36(double f0)
 #define HEX_MSB  (         BIT71 | BIT70 | BIT69)
 #define HEX_NORM (         BIT71 | BIT70 | BIT69 | BIT68)
 
+#ifdef DPS8M
 static inline bool isHex (void)
   {
     return (!!cpu.MR.hexfp) && (!!TST_I_HEX);
   }
+#endif
+#ifdef L68
+static inline bool isHex (void)
+  {
+    return false;
+  }
+#endif
 
 /*!
  * unnormalized floating single-precision add
@@ -1607,10 +1608,8 @@ void fcmg ()
 //! extract mantissa + exponent from a YPair ....
 static void YPairToExpMant(word36 Ypair[], word72 *mant, int *exp)
 {
-    //*mant = (word72)bitfieldExtract36(Ypair[0], 0, 28) << 44;   // 28-bit mantissa (incl sign)
     *mant = ((word72) getbits36_28 (Ypair[0], 8)) << 44;   // 28-bit mantissa (incl sign)
     *mant |= (((word72) Ypair[1]) & DMASK) << 8;
-    //*exp = SIGNEXT8_int (bitfieldExtract36(Ypair[0], 28, 8) & 0377U);           // 8-bit signed integer (incl sign)
     *exp = SIGNEXT8_int (getbits36_8 (Ypair[0], 0) & 0377U);           // 8-bit signed integer (incl sign)
 }
 
@@ -2732,13 +2731,8 @@ void dfcmp (void)
     int64 m1 = (int64) ((cpu . rA << 28) | ((cpu . rQ & 0777777777400LL) >> 8));  ///< only keep the 1st 64-bits :(
     int   e1 = SIGNEXT8_int (cpu . rE & MASK8);
     
-    //int64 m2  = (int64) (bitfieldExtract36(cpu.Ypair[0], 0, 28) << 36);    ///< 64-bit mantissa (incl sign)
     int64 m2  = ((int64) (getbits36_28 (cpu.Ypair[0], 8)) << 36);    // 64-bit mantissa (incl sign)
           m2 |= cpu.Ypair[1];
-    // CAC int64 m2  = (int64) (bitfieldExtract36(cpu.Ypair[0], 0, 28) << 44);    ///< 64-bit mantissa (incl sign)
-          // CAC m2 |= cpu.Ypair[1] << 8;
-    
-    //int8 e2 = (int8) (bitfieldExtract36(cpu.Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
     int   e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
 
     //which exponent is smaller???

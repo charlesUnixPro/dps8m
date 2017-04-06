@@ -18,19 +18,12 @@
 
 // JMP_ENTRY must be 0, which is the return value of the setjmp initial
 // entry
-#define JMP_ENTRY       0
-#define JMP_REENTRY     1
-#define JMP_RETRY       2   // retry instruction
-#define JMP_NEXT        3   // goto next sequential instruction
-#define JMP_TRA         4   // treat return as if it were a TRA instruction 
-                            // with PPR . IC already set to where to jump to
-#define JMP_STOP        5   // treat return as if it were an attempt to 
-                            // unravel the stack and gracefully exit out of 
-                            // sim_instr
-#define JMP_INTR        6   // Interrupt detected during processing
-#define JMP_SYNC_FAULT_RETURN 7
-#define JMP_REFETCH 8
-#define JMP_RESTART 9
+#define JMP_ENTRY             0
+#define JMP_REENTRY           1
+#define JMP_STOP              2
+#define JMP_SYNC_FAULT_RETURN 3
+#define JMP_REFETCH           4
+#define JMP_RESTART           5
 
 
 // The CPU supports 3 addressing modes
@@ -41,10 +34,6 @@ typedef enum
   {
     ABSOLUTE_mode,
     APPEND_mode,
-#if 0
-    BAR_mode,
-    APPEND_BAR_mode,
-#endif
   } addr_modes_t;
 
 
@@ -63,7 +52,6 @@ typedef enum
     INTERRUPT_EXEC2_cycle,
     FETCH_cycle,
     SYNC_FAULT_RTN_cycle,
-    // CA FETCH OPSTORE, DIVIDE_EXEC
   } cycles_t;
 
 struct _tpr
@@ -430,7 +418,6 @@ struct _cache_mode_register
 
 typedef struct _cache_mode_register _cache_mode_register;
 
-#if 1
 typedef struct mode_register
   {
     word36 r;
@@ -454,44 +441,6 @@ typedef struct mode_register
     word1 hexfp;
 #endif
   } _mode_register;
-#else
-typedef struct mode_register
-  {
-#ifdef L68
-    word15 FFV;
-#ifdef L68
-    word1 isolts_tracks;
-#endif
-    word1 OC_TRAP;
-    word1 ADR_TRAP;
-    word10 OPCODE;
-#endif
-    word1 cuolin;
-    word1 solin;
-    word1 sdpap;
-    word1 separ;
-    word2 tm;
-    word2 vm;
-#ifdef L68
-    word2 isolts_tracks2;
-#endif
-    word1 hrhlt;
-#ifdef DPS8M
-    word1 hrxfr;
-#endif
-#ifdef L68
-    word1 hropc;
-#endif
-    word1 ihr;
-    word1 ihrrs;
-// XXX This bit is used to track the position of the NORMAL/TEST switch
-//    word1 mrgctl;
-#ifdef DPS8M
-    word1 hexfp;
-#endif
-    word1 emr;
-  } _mode_register;
-#endif
 
 extern DEVICE cpu_dev;
 
@@ -503,7 +452,6 @@ typedef struct EISaddr
 #ifndef EIS_PTR
     word18  address;    // 18-bit virtual address
 #endif
-    //word18  lastAddress;  // memory acccesses are not expesive these days - >sheesh<
     
     word36  data;
     word1    bit;
@@ -546,7 +494,6 @@ typedef struct EISaddr
 
     bool cacheValid;
     bool cacheDirty;
-    //word36 cachedWord;
 #define paragraphSz 8
 #define paragraphMask 077777770
 #define paragraphOffsetMask 07
@@ -735,13 +682,9 @@ typedef struct
     uint proc_speed; // 4 bits Read by rsw instruction; format unknown
 
     // Emulator run-time options (virtual switches)
-    uint dis_enable;      // If non-zero, DIS works
-    uint halt_on_unimp;   // If non-zero, halt CPU on unimplemented instruction
-                          // instead of faulting
     uint disable_wam;     // If non-zero, disable PTWAM, STWAM
     uint report_faults;   // If set, faults are reported and ignored
     uint tro_enable;   // If set, Timer runout faults are generated.
-    uint drl_fatal;
     uint serno;
     bool useMap;
   } switches_t;

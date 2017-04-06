@@ -64,14 +64,6 @@ char *trim(char *s);
 char *ltrim(char *s);
 char *rtrim(char *s);
 
-//word36 bitfieldInsert36(word36 a, word36 b, int c, int d);
-//word72 bitfieldInsert72(word72 a, word72 b, int c, int d);
-//word36 bitfieldExtract36(word36 a, int b, int c);
-//word72 bitfieldExtract72(word72 a, int b, int c);
-
-//int bitfieldInsert(int a, int b, int c, int d);
-//int bitfieldExtract(int a, int b, int c);
-//char *bin2text(uint64 word, int n);
 void sim_printf( const char * format, ... )    // not really simh, by my impl
 #ifdef __GNUC__
   __attribute__ ((format (printf, 1, 2)))

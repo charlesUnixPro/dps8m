@@ -113,7 +113,6 @@ typedef enum apuStatusBits
 void setAPUStatus (apuStatusBits status);
 
 void doPtrReg (void);        ///< used by EIS stuff
-void fauxDoAppendCycle (_processor_cycle_type thisCycle);
 word24 doAppendCycle (_processor_cycle_type thisCycle, 
                       word36 * data, uint nWords);
 void do_ldbr (word36 * Ypair);
@@ -123,4 +122,9 @@ void do_cams (word36 Y);
 _sdw0 * getSDW (word15 segno);
 
 
+static inline void fauxDoAppendCycle (_processor_cycle_type thisCycle)
+  {
+    cpu.apu.lastCycle = thisCycle;
+    //cpu.cu.XSF = 0;
+  }
 

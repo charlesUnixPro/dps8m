@@ -2479,17 +2479,13 @@ static inline void overflow (bool ovf, bool dly, const char * msg)
 
 // Return values
 //  CONT_TRA
-//  STOP_UNIMP
 //  STOP_ILLOP
 //  emCall()
 //     STOP_HALT
 //  scu_sscr()
-//     STOP_BUG
 //     STOP_WARN
 //  scu_rmcm()
-//     STOP_BUG
 //  scu_smcm()
-//  STOP_DIS
 //  simh_hooks()
 //    hard to document what this can return....
 //  0
@@ -5821,10 +5817,6 @@ static t_stat DoBasicInstruction (void)
           // is obtained from the FAULT VECTOR switches on the processor
           // configuration panel.
 
-          if (cpu.switches.drl_fatal)
-            {
-              return STOP_HALT;
-            }
           doFault (FAULT_DRL, fst_zero, "drl");
 
         case 0716:  // xec
@@ -7331,11 +7323,6 @@ elapsedtime ();
 
         case 0616:  // dis
 
-          if (! cpu.switches.dis_enable)
-            {
-              return STOP_DIS;
-            }
-
           // XXX This is subtle; g7Pending below won't see the queued
           // g7Fault. I don't understand how the real hardware dealt 
           // with this, but this seems to work. (I would hazard a guess
@@ -7418,8 +7405,6 @@ elapsedtime ();
             }
 
         default:
-          if (cpu.switches.halt_on_unimp)
-            return STOP_ILLOP;
           doFault (FAULT_IPR,
                    fst_ill_op,
                    "Illegal instruction");
@@ -8698,8 +8683,6 @@ elapsedtime ();
             break;
 
         default:
-            if (cpu.switches.halt_on_unimp)
-                return STOP_ILLOP;
             doFault (FAULT_IPR,
                      fst_ill_op,
                      "Illegal instruction");
