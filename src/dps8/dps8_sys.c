@@ -90,7 +90,9 @@ static pid_t dps8m_sid; // Session id
 static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
 
 #ifdef PANEL
-void panelScraper (void);
+void panelScraperInit (void);
+int panelScraperStart (void);
+int panelScraperStop (void);
 #endif
 
 stats_t sys_stats;
@@ -131,6 +133,10 @@ static t_stat smfx1entry (int32 arg, const char * buf);
 #endif
 static t_stat searchMemory (UNUSED int32 arg, const char * buf);
 static t_stat bootSkip (int32 UNUSED arg, const char * UNUSED buf);
+
+#ifdef PANEL
+static t_stat scraper (int32 arg, const char * buf);
+#endif
 
 static CTAB dps8_cmds[] =
 {
@@ -200,6 +206,9 @@ static CTAB dps8_cmds[] =
     {"SKIPBOOT", bootSkip, 0, "skip forward on boot tape", NULL, NULL},
     {"DEFAULT_BASE_SYSTEM", defaultBaseSystem, 0, "Set configuration to defaults", NULL, NULL},
     {"FNPSTART", fnpStart, 0, "Force early FNP initialization", NULL, NULL},
+#ifdef PANEL
+    {"SCRAPER", scraper, 0, "Control scraper", NULL, NULL},
+#endif
     { NULL, NULL, 0, NULL, NULL, NULL}
 };
 
@@ -290,7 +299,7 @@ static void dps8_init(void)
 #endif
     defaultBaseSystem (0, NULL);
 #ifdef PANEL
-    panelScraper ();
+    panelScraperInit ();
 #endif
 }
 
@@ -3559,3 +3568,12 @@ static t_stat bootSkip (int32 UNUSED arg, const char * UNUSED buf)
     return sim_tape_sprecsf (& mt_unit [0], 1, & skipped);
   }
   
+static t_stat scraper (UNUSED int32 arg, const char * buf)
+  {
+    if (strcasecmp (buf, "start") == 0)
+      return panelScraperStart ();
+    if (strcasecmp (buf, "stop") == 0)
+      return panelScraperStop ();
+    sim_printf ("err: scraper start|stop\n");
+    return SCPE_ARG;
+  }
