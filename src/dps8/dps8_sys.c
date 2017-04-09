@@ -62,6 +62,10 @@
 #include "utlist.h"
 #include "hdbg.h"
 
+#ifdef PANEL
+#include "panelScraper.h"
+#endif
+
 // XXX Strictly speaking, memory belongs in the SCU
 // We will treat memory as viewed from the CPU and elide the
 // SCU configuration that maps memory across multiple SCUs.
@@ -88,12 +92,6 @@ static pid_t dps8m_sid; // Session id
 #endif
 
 static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
-
-#ifdef PANEL
-void panelScraperInit (void);
-int panelScraperStart (void);
-int panelScraperStop (void);
-#endif
 
 stats_t sys_stats;
 
@@ -3574,6 +3572,17 @@ static t_stat scraper (UNUSED int32 arg, const char * buf)
       return panelScraperStart ();
     if (strcasecmp (buf, "stop") == 0)
       return panelScraperStop ();
-    sim_printf ("err: scraper start|stop\n");
+    if (strcasecmp (buf, "msg") == 0)
+      {
+        return panelScraperMsg (NULL);
+      }
+    if (strncasecmp (buf, "msg ", 4) == 0)
+      {
+        const char * p = buf + 4;
+        while (* p == ' ')
+          p ++;
+        return panelScraperMsg (p);
+      }
+    sim_printf ("err: scraper start|stop|msg\n");
     return SCPE_ARG;
   }
