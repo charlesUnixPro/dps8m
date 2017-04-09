@@ -193,6 +193,10 @@ static t_stat opcon_reset (UNUSED DEVICE * dptr)
   }
 
 static bool attn_pressed = false;
+static bool simh_attn_pressed = false;
+#define simh_buffer_sz 4096
+static char simh_buffer [simh_buffer_sz];
+static int simh_buffer_cnt = 0;
 
 #if 0
 //#ifndef __MINGW64__
@@ -970,6 +974,105 @@ eol:
 
     if (c == 0) // no char
       return;
+
+    if (c == 023) // ^S simh command
+      {
+        if (! simh_attn_pressed)
+          {
+            simh_attn_pressed = true;
+            simh_buffer_cnt = 0;
+            sim_putchar ('S'); sim_putchar ('I'); sim_putchar ('M'); sim_putchar ('H'); sim_putchar ('>');
+          }
+        return;
+      }
+
+    if (simh_attn_pressed)
+      {
+        if (c == '\177' || c == '\010')  // backspace/del
+          {
+            if (simh_buffer_cnt > 0)
+              {
+                -- simh_buffer_cnt;
+                simh_buffer [simh_buffer_cnt] = 0;
+                sim_putchar ('\b');
+                sim_putchar (' ');
+                sim_putchar ('\b');
+              }
+            return;
+          }
+
+        if (c == '\022')  // ^R
+          {
+            sim_putchar ('^');
+            sim_putchar ('R');
+            sim_putchar ('\r');
+            sim_putchar ('\n');
+            sim_putchar ('S'); sim_putchar ('I'); sim_putchar ('M'); sim_putchar ('H'); sim_putchar ('>');
+            for (int i = 0; i < simh_buffer_cnt; i ++)
+              sim_putchar ((int32) (simh_buffer [i]));
+            return;
+          }
+
+        if (c == '\025')  // ^U
+          {
+            sim_putchar ('^');
+            sim_putchar ('U');
+            sim_putchar ('\r');
+            sim_putchar ('\n');
+            sim_putchar ('S'); sim_putchar ('I'); sim_putchar ('M'); sim_putchar ('H'); sim_putchar ('>');
+            simh_buffer_cnt = 0;
+            return;
+          }
+
+        if (c == '\012' || c == '\015')  // CR/LF
+          {
+            sim_putchar ('\r');
+            sim_putchar ('\n');
+            simh_buffer [simh_buffer_cnt] = 0;
+            //sim_printf ("send: <%s>\r\n", simh_buffer);
+
+            char * cptr = simh_buffer;
+            char gbuf [simh_buffer_sz];
+            cptr = (char *) get_glyph (cptr, gbuf, 0); /* get command glyph */
+            CTAB *cmdp;
+            if ((cmdp = find_cmd (gbuf))) /* lookup command */
+              {
+                t_stat stat = cmdp->action (cmdp->arg, cptr);  /* if found, exec */
+                if (stat != SCPE_OK)
+                  sim_printf ("SIMH returned %d\n", stat);
+              }
+            else
+               sim_printf ("SIMH didn't recognize the command\n");
+
+            simh_buffer_cnt = 0;
+            simh_buffer [0] = 0;
+            simh_attn_pressed = false;
+            return;
+          }
+
+        if (c == '\033' || c == '\004' || c == '\032')  // ESC/^D/^Z
+          {
+            sim_putchar ('\r');
+            sim_putchar ('\n');
+            sim_printf ("SIMH cancel\n");
+            // Empty input buffer
+            simh_buffer_cnt = 0;
+            simh_buffer [0] = 0;
+            simh_attn_pressed = false;
+            return;
+          }
+
+        if (isprint (c))
+          {
+            // silently drop buffer overrun
+            if (simh_buffer_cnt + 1 >= simh_buffer_sz)
+              return;
+            simh_buffer [simh_buffer_cnt ++] = (char) c;
+            sim_putchar (c);
+            return;
+          }
+        return;
+      }
 
     if (console_state . io_mode != read_mode)
       {
