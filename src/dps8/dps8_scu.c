@@ -937,7 +937,31 @@ static char * pcells (uint scu_unit_num)
 t_stat scu_smic (uint scu_unit_num, uint UNUSED cpu_unit_num, 
                  uint UNUSED cpu_port_num, word36 rega)
   {
-  
+// smic can set cells but not reset them...
+#if 1
+    if (getbits36_1 (rega, 35))
+      {
+        for (uint i = 0; i < 16; i ++)
+          {
+            if (getbits36_1 (rega, i))
+              scu [scu_unit_num].cells [i + 16] = 1;
+          }
+        sim_debug (DBG_TRACE, & scu_dev,
+                   "SMIC low: Unit %u Cells: %s\n", 
+                   scu_unit_num, pcells (scu_unit_num));
+      }
+    else
+      {
+        for (uint i = 0; i < 16; i ++)
+          {
+            if (getbits36_1 (rega, i))
+              scu [scu_unit_num].cells [i] = 1;
+          }
+        sim_debug (DBG_TRACE, & scu_dev,
+                   "SMIC high: Unit %d Cells: %s\n",
+                   scu_unit_num, pcells (scu_unit_num));
+      }
+#else
     if (getbits36_1 (rega, 35))
       {
         for (uint i = 0; i < 16; i ++)
@@ -959,6 +983,7 @@ t_stat scu_smic (uint scu_unit_num, uint UNUSED cpu_unit_num,
                    "SMIC high: Unit %d Cells: %s\n",
                    scu_unit_num, pcells (scu_unit_num));
       }
+#endif
     dumpIR ("smic", scu_unit_num);
     deliverInterrupts (scu_unit_num);
     return SCPE_OK;
