@@ -52,6 +52,12 @@
 #CFLAGS += -DM_SHARED
 #LDFLAGS += -lrt
 
+# Statically link libuv
+#ifeq ($(CROSS),MINGW64)
+#LIBUV =  -luv
+#else
+#LIBUV = /usr/lib64/libuv.a -lpthread
+#endif
 
 
 ifeq ($(CROSS),MINGW64)

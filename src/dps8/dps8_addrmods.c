@@ -1013,11 +1013,13 @@ startCA:;
                            "IT_MOD(IT_I): reading indirect word from %06o\n",
                            cpu.TPR.CA);
 
+#ifdef TESTING
 { static bool first = true;
 if (first) {
 first = false;
 sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n");
 }}
+#endif
                 //Read2 (cpu.TPR.CA, cpu.itxPair, INDIRECT_WORD_FETCH);
                 ReadIndirect ();
 
