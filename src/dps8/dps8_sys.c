@@ -3566,6 +3566,7 @@ static t_stat bootSkip (int32 UNUSED arg, const char * UNUSED buf)
     return sim_tape_sprecsf (& mt_unit [0], 1, & skipped);
   }
   
+#ifdef PANEL
 static t_stat scraper (UNUSED int32 arg, const char * buf)
   {
     if (strcasecmp (buf, "start") == 0)
@@ -3586,3 +3587,4 @@ static t_stat scraper (UNUSED int32 arg, const char * buf)
     sim_printf ("err: scraper start|stop|msg\n");
     return SCPE_ARG;
   }
+#endif
