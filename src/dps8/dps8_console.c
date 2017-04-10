@@ -1039,7 +1039,7 @@ eol:
               {
                 t_stat stat = cmdp->action (cmdp->arg, cptr);  /* if found, exec */
                 if (stat != SCPE_OK)
-                  sim_printf ("SIMH returned %d\n", stat);
+                  sim_printf ("SIMH returned %d '%s'\n", stat, sim_error_text (stat));
               }
             else
                sim_printf ("SIMH didn't recognize the command\n");
