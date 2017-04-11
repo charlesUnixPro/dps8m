@@ -860,15 +860,30 @@ static uint64 getSCUclock (uint scu_unit_num)
         // 645852697
         // 1434771097
         now.tv_sec -= (1434771097 - 645852697);
-#else
+#elif 0
         // 12.5 release was 22 years ago
 
         // date --date='22 years ago' +%s ; date +%s
         // 744420783
         // 1438644783
         now.tv_sec -= (1438644783 - 744420783);
-#endif
+#else
+// Hmm. Manifest constants are a bad idea. Today (2017-04-01) it was
+// discovered that the 12.3 5 year FNP window had expired. Compute a 
+// new constant....
 
+        // 12.5 release was 22^H^H 24 years ago
+
+        // date --date='22 years ago' +%s ; date +%s
+        // 744420783
+        // 1438644783
+        //now.tv_sec -= (1438644783 - 744420783);
+
+        // $ date --date='24 years ago' +%s ; date +%s
+        // 733691934
+        // 1491074334
+        now.tv_sec -= (1491074334 - 733691934);
+#endif
       }
     uint64 UnixSecs = (uint64) now.tv_sec;
     uint64 UnixuSecs = UnixSecs * 1000000LL + (uint64) now.tv_usec;

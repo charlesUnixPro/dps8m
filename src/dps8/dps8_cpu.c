@@ -1913,11 +1913,13 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp)
             Read16 (addr, cpu.Yblock16);
             break;
         case 32:
+#ifdef TESTING
 { static bool first = true;
 if (first) {
 first = false;
 sim_printf ("XXX Read32 w.r.t. lastCycle == indirect\n");
 }}
+#endif
             CPT (cpt1L, 11); // 32 words
             addr &= 0777740;   // make on 32-word boundary
             for (uint j = 0 ; j < 32 ; j += 1)

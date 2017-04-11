@@ -42,10 +42,18 @@ ifeq ($(OS),Windows_NT)
 CROSS=MINGW64
 endif
 
-LIBS += -luv
-
 CFLAGS += -pthread
 LIBS += -lpthread
+
+ifndef LIBUV
+LIBUV = -luv
+endif
+
+FNP2=1
+ifdef FNP2
+CFLAGS += -DFNP2
+LIBS += $(LIBUV)
+endif
 
 ifeq ($(CROSS),MINGW64)
 CFLAGS += -DCROSS_MINGW64 -Wno-misleading-indentation -I../../../libuv/include
@@ -77,7 +85,7 @@ endif
 # simh requires -ldl
 # Cygwin seems to need...
 ifeq ($(OS),Windows_NT)
-    LIBS += -lgcc -lm  -lwinmm -lws2_32 -lmingwex -luv -lwsock32 -lpthread -lgnurx -lpsapi -liphlpapi  -luserenv
+    LIBS += -lgcc -lm  -lwinmm -lws2_32 -lmingwex $(LIBUV) -lwsock32 -lpthread -lgnurx -lpsapi -liphlpapi  -luserenv
 else
   OSTYPE = $(shell uname -s)
   ifeq ($(OSTYPE),FreeBSD)
@@ -97,7 +105,7 @@ endif
 #LIBS +- -lefence
 
 # link in gperftools 
-# LIBS += -lprofiler
+#LIBS += -lprofiler
 
 ifneq ($(CROSS),MINGW64)
 C_SRCS  = ./dps8_absi.c
@@ -228,6 +236,10 @@ dps8$(EXE) : $(OBJS) $(LOCALOBJS) $(LOCALLIBS)
 
 .PHONY: FORCE
 
+ifeq (,$(wildcard ../../.git))
+dps8.sha1.txt : 
+	cp dps8.sha1.txt~ dps8.sha1.txt
+else
 dps8.sha1.txt : FORCE
 	@echo '#define COMMIT_ID "unknown"' > dps8.sha1.txt~
 	@-git rev-parse HEAD > /dev/null 2>&1 && git rev-parse HEAD | awk '{print "#define COMMIT_ID \""$$1"\""}' > dps8.sha1.txt~
@@ -240,6 +252,7 @@ dps8.sha1.txt : FORCE
 	else \
 	    mv dps8.sha1.txt~ dps8.sha1.txt ; echo 'Generated dps8.sha1.txt' ; \
 	fi
+endif
 
 slte.inc : system_book_12_3.ascii
 	./buildSLTE.sh
