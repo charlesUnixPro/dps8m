@@ -359,8 +359,6 @@ static UNIT bootChannelUnit [N_IOM_UNITS_MAX] =
     { UDATA (& bootSvc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL}
   };
 
-static UNIT termIntrChannelUnits [N_IOM_UNITS_MAX] [MAX_CHANNELS];
-
 #define IOM_CONNECT_CHAN 2U
 #define IOM_SPECIAL_STATUS_CHAN 6U
 
@@ -2288,15 +2286,6 @@ int send_special_interrupt (uint iomUnitIdx, uint chan, uint devCode,
  *
  */
 
-static t_stat termIntrSvc (UNIT * unitp)
-  {
-    uint iomUnitIdx = (uint) unitp -> u3;
-    uint chan = (uint) unitp -> u4;
-    status_service (iomUnitIdx, chan, false);
-    send_general_interrupt (iomUnitIdx, chan, imwTerminatePic);
-    return SCPE_OK;
-  }
-
 int send_terminate_interrupt (uint iomUnitIdx, uint chan)
   {
     status_service (iomUnitIdx, chan, false);
@@ -2369,15 +2358,6 @@ static t_stat iomReset (UNUSED DEVICE * dptr)
 void iom_init (void)
   {
     sim_debug (DBG_INFO, & iom_dev, "%s: running.\n", __func__);
-
-    for (int i = 0; i < N_IOM_UNITS_MAX; i ++)
-      for (int c = 0; c < MAX_CHANNELS; c ++)
-        {
-          memset (& termIntrChannelUnits [i] [c], 0, sizeof (UNIT));
-          termIntrChannelUnits [i] [c] . action = termIntrSvc;
-          termIntrChannelUnits [i] [c] . u3 = i;
-          termIntrChannelUnits [i] [c] . u4 = c;
-        }
   }
 
 /*
