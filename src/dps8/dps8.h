@@ -64,9 +64,6 @@
 // Enable IPC
 #define VM_DPS8
 
-// Use evlib to manage i/o polling
-#define EV_POLL
-
 // Use XSF bit to manage APU 'last cycle == INDIRECT_WORD_FETCH
 #define XSF_IND
 

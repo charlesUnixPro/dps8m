@@ -83,10 +83,8 @@ static int cpu_show_stack(FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat cpu_show_nunits(FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat cpu_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
 
-#ifdef EV_POLL
 static uv_loop_t * ev_poll_loop;
 static uv_timer_t ev_poll_handle;
-#endif
 
 static MTAB cpu_mod[] = {
     {
@@ -869,7 +867,6 @@ static void getSerialNumber (void)
   }
 
 
-#ifdef EV_POLL
 // The 100Hz timer as expired; poll I/O
 
 static void ev_poll_cb (uv_timer_t * UNUSED handle)
@@ -907,7 +904,6 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
     cpu.shadowTR = cpu.rTR;
 #endif
   }
-#endif
 
 
     
@@ -963,12 +959,10 @@ void cpu_init (void)
 
     getSerialNumber ();
 
-#ifdef EV_POLL
     ev_poll_loop = uv_default_loop ();
     uv_timer_init (ev_poll_loop, & ev_poll_handle);
     // 10 ms == 100Hz
     uv_timer_start (& ev_poll_handle, ev_poll_cb, 10, 10);
-#endif
   }
 
 // DPS8M Memory of 36 bit words is implemented as an array of 64 bit words.
@@ -1523,9 +1517,7 @@ static void panelProcessEvent (void)
 // other extant cycles:
 //  ABORT_cycle
 
-#ifdef EV_POLL
 static uint fastQueueSubsample = 0;
-#endif
 
 // This is part of the simh interface
 t_stat sim_instr (void)
@@ -1618,7 +1610,6 @@ setCPU:;
             break;
           }
 
-#ifdef EV_POLL
 // The event poll is consuming 40% of the CPU according to pprof.
 // We only want to process at 100Hz; yet we are testing at ~1MHz.
 // If we only test every 1000 cycles, we shouldn't miss by more then
@@ -1631,24 +1622,6 @@ setCPU:;
             uv_run (ev_poll_loop, UV_RUN_NOWAIT);
             PNL (panelProcessEvent ());
           }
-#else
-        static uint slowQueueSubsample = 0;
-        if (slowQueueSubsample ++ > 1024000) // ~ 1Hz
-          {
-            slowQueueSubsample = 0;
-            rdrProcessEvent (); 
-          }
-        static uint queueSubsample = 0;
-        if (queueSubsample ++ > 10240) // ~ 100Hz
-          {
-            queueSubsample = 0;
-            scpProcessEvent (); 
-            fnpProcessEvent (); 
-            consoleProcess ();
-            absiProcessEvent ();
-            PNL (panelProcessEvent ());
-          }
-#endif
 
 #if 0
         if (sim_gtime () % 1024 == 0)
@@ -1666,31 +1639,6 @@ setCPU:;
           console_attn (NULL);
 #endif
 
-#ifndef EV_POLL
-        // Manage the timer register
-             // XXX this should be sync to the EXECUTE cycle, not the
-             // simh clock cycle; move down...
-             // Acutally have FETCH jump to EXECUTE
-             // instead of breaking.
-
-        // Sync. the TR with the emulator clock.
-        cpu.rTRlsb ++;
-        // The emulator clock runs about 7x as fast at the Timer Register;
-        // see wiki page "CAC 08-Oct-2014"
-        //if (cpu.rTRlsb >= cpu.switches.trlsb)
-        if (cpu.rTRlsb >= 12)
-          {
-            cpu.rTRlsb = 0;
-            cpu.rTR = (cpu.rTR - 1) & MASK27;
-            //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o\n", rTR);
-            if (cpu.rTR == 0) // passing thorugh 0...
-              {
-                //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09"PRIo64"\n", rTR, MASK27);
-                if (cpu.switches.tro_enable)
-                  setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
-              }
-          }
-#endif
 
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
                    cycleStr (cpu.cycle));
@@ -2134,18 +2082,10 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                     // *1000 is 10000 microseconds
                     // in uSec;
                     usleep (10000);
-#ifdef EV_POLL
+
                     // Trigger I/O polling
                     uv_run (ev_poll_loop, UV_RUN_NOWAIT);
                     fastQueueSubsample = 0;
-#endif
-
-#ifndef EV_POLL
-                    // this ignores the amount of time since the last poll;
-                    // worst case is the poll delay of 1/50th of a second.
-                    slowQueueSubsample += 10240; // ~ 1Hz
-                    queueSubsample += 10240; // ~100Hz
-#endif
 
                     sim_interval = 0;
                     // Timer register runs at 512 KHz
