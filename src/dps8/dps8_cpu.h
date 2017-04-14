@@ -776,6 +776,7 @@ typedef struct
     uint drl_fatal;
     uint serno;
     bool useMap;
+    bool disable_cache;
   } switches_t;
 
 #ifdef L68

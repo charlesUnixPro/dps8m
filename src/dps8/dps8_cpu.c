@@ -3288,6 +3288,7 @@ static config_list_t cpu_config_list [] =
     /* 30 */ { "useMap", 0, 1, cfg_on_off },
 
     /* 31 */ { "address", 0, 0777777, NULL },
+    /* 32 */ { "disable_cache", 0, 1, cfg_on_off },
     { NULL, 0, 0, NULL }
   };
 
@@ -3482,6 +3483,10 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
 
             case 30: // USEMAP
               cpu.switches.useMap = v;
+              break;
+
+            case 32: // DISABLE_CACHE
+              cpu.switches.disable_cache = v;
               break;
 
             default:

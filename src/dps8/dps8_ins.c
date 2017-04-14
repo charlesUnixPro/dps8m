@@ -7213,7 +7213,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                             << (35-19));  // L68/DPS option: L68
 #endif
 #ifdef DPS8M
-                  cpu.rA |= (word36) ((0b0L)
+                  cpu.rA |= (word36) ((cpu.switches.disable_cache ? 0 : 1)
                             << (35-20));  //8K cache not installed
                   cpu.rA |= (word36) ((0b00L)
                             << (35-22));
