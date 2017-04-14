@@ -47,11 +47,8 @@ ifndef LIBUV
 LIBUV = -luv
 endif
 
-FNP2=1
-ifdef FNP2
-CFLAGS += -DFNP2
+# FNP2 support
 LIBS += $(LIBUV)
-endif
 
 ifeq ($(CROSS),MINGW64)
 CFLAGS += -DCROSS_MINGW64 -Wno-misleading-indentation -I../../../libuv/include
@@ -121,11 +118,7 @@ C_SRCS += ./dps8_decimal.c
 C_SRCS += ./dps8_disk.c
 C_SRCS += ./dps8_eis.c
 C_SRCS += ./dps8_faults.c
-ifdef FNP2
 C_SRCS += ./dps8_fnp2.c
-else
-C_SRCS += ./dps8_fnp.c
-endif
 C_SRCS += ./dps8_iefp.c
 C_SRCS += ./dps8_ins.c
 C_SRCS += ./dps8_iom.c
@@ -139,21 +132,9 @@ C_SRCS += ./dps8_scu.c
 C_SRCS += ./dps8_sys.c
 C_SRCS += ./dps8_urp.c
 C_SRCS += ./dps8_utils.c
-ifdef FNP2
 C_SRCS += ./fnpuv.c
 C_SRCS += ./fnptelnet.c
 C_SRCS += libtelnet.c
-else
-C_SRCS += ./fnp_1.c
-C_SRCS += ./fnp_2.c
-C_SRCS += ./fnp.c
-C_SRCS += ./fnp_cmds.c
-#C_SRCS += ./fnp_ipc.c
-C_SRCS += ./fnp_mux.c
-#C_SRCS += ./fnpp.c
-C_SRCS += ./fnp_udplib.c
-C_SRCS += ./fnp_utils.c
-endif
 C_SRCS += ./hdbg.c
 ifeq ($(M_SHARED),1)
 C_SRCS += ./shm.c
@@ -181,12 +162,8 @@ H_SRCS += dps8_disk.h
 H_SRCS += dps8_eis.h
 H_SRCS += dps8_em_consts.h
 H_SRCS += dps8_faults.h
-ifdef FNP2
 H_SRCS += dps8_fnp2.h
 H_SRCS += libtelnet.h
-else
-H_SRCS += dps8_fnp.h
-endif
 H_SRCS += dps8.h
 H_SRCS += dps8_hw_consts.h
 H_SRCS += dps8_iefp.h
@@ -203,21 +180,8 @@ H_SRCS += dps8_simh.h
 H_SRCS += dps8_sys.h
 H_SRCS += dps8_urp.h
 H_SRCS += dps8_utils.h
-ifdef FNP2
 H_SRCS += fnpuv.h
 H_SRCS += fnptelnet.h
-else
-H_SRCS += fnp_1.h
-H_SRCS += fnp_2.h
-H_SRCS += fnp_cmds.h
-H_SRCS += fnp_defs.h
-H_SRCS += fnp.h
-H_SRCS += fnp_mux.h
-#H_SRCS += fnpp.h
-H_SRCS += fnp_rev.h
-H_SRCS += fnp_udplib.h
-H_SRCS += fnp_utils.h
-endif
 H_SRCS += h316_imp.h
 H_SRCS += hdbg.h
 ifeq ($(M_SHARED),1)
