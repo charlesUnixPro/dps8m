@@ -2841,6 +2841,8 @@ void encode_instr(const instr_t *ip, word36 *wordp)
 void decodeInstruction (word36 inst, DCDstruct * p)
 {
     CPT (cpt1L, 17); // instruction decoder
+    memset (p, 0, sizeof (struct DCDstruct));
+
     p->opcode  = GET_OP(inst);  // get opcode
     p->opcodeX = GET_OPX(inst); // opcode extension
     p->address = GET_ADDR(inst);// address field from instruction

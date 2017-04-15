@@ -1147,15 +1147,6 @@ t_stat displayTheMatrix (UNUSED int32 arg, UNUSED const char * buf)
 void fetchInstruction (word18 addr)
 {
     CPT (cpt2U, 9); // fetchInstruction
-    DCDstruct * p = & cpu.currentInstruction;
-
-    memset (p, 0, sizeof (struct DCDstruct));
-
-#if 0
-    // since the next memory cycle will be a instruction fetch setup TPR
-    cpu.TPR.TRR = cpu.PPR.PRR;
-    cpu.TPR.TSR = cpu.PPR.PSR;
-#endif
 
     if (get_addr_mode () == ABSOLUTE_mode)
       {
@@ -1176,13 +1167,28 @@ void fetchInstruction (word18 addr)
         if (cpu.cu.repeat_first)
           {
             CPT (cpt2U, 11); // fetch rpt even
-            Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH);
+            //Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH);
+            word36 tmp[2];
+            Read2 (addr, tmp, INSTRUCTION_FETCH);
+            cpu.cu.IWB = tmp[0];
+            cpu.cu.IRODD = tmp[1];
           }
       }
     else
       {
         CPT (cpt2U, 12); // fetch 
-        Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH);
+        //Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH);
+        if ((cpu.PPR.IC & 1) == 0) // Even
+          {
+            word36 tmp[2];
+            Read2 (addr, tmp, INSTRUCTION_FETCH);
+            cpu.cu.IWB = tmp[0];
+            cpu.cu.IRODD = tmp[1];
+          }
+        else // Odd
+          {
+            Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH);
+          }
 #ifdef xISOLTS
 // ISOLTS test pa870 expects IRODD to be set up.
 // If we are fetching an even instruction, also fetch the odd.
