@@ -3426,20 +3426,12 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ;cable show
     // ;cable verify
 
-    doIniLine ("set cpu config=b29test=enable");
     doIniLine ("set cpu config=dis_enable=enable");
-    doIniLine ("set cpu config=lprp_highonly=enable");
     doIniLine ("set cpu config=steady_clock=disable");
-    doIniLine ("set cpu config=append_after=enable");
-    //doIniLine ("set cpu config=super_user=disable");
-    doIniLine ("set cpu config=epp_hack=enable");
     doIniLine ("set cpu config=halt_on_unimplemented=disable");
     doIniLine ("set cpu config=disable_wam=enable");
     doIniLine ("set cpu config=tro_enable=enable");
-    doIniLine ("set cpu config=bullet_time=disable");
     doIniLine ("set cpu config=y2k=disable");
-    // ; 6 MIP Processor
-    //doIniLine ("set cpu config=trlsb=12");
 
     doIniLine ("set sys config=activate_time=8");
     doIniLine ("set sys config=terminate_time=8");

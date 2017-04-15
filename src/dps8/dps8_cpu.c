@@ -3071,28 +3071,14 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
       }
     sim_printf("Processor mode:           %s [%o]\n", cpu.switches.proc_mode ? "Multics" : "GCOS", cpu.switches.proc_mode);
     sim_printf("Processor speed:          %02o(8)\n", cpu.switches.proc_speed);
-    sim_printf("Invert Absolute:          %01o(8)\n", cpu.switches.invert_absolute);
-    sim_printf("Bit 29 test code:         %01o(8)\n", cpu.switches.b29_test);
     sim_printf("DIS enable:               %01o(8)\n", cpu.switches.dis_enable);
-    sim_printf("AutoAppend disable:       %01o(8)\n", cpu.switches.auto_append_disable);
-    sim_printf("LPRPn set high bits only: %01o(8)\n", cpu.switches.lprp_highonly);
-    //sim_printf("Steady clock:             %01o(8)\n", cpu.switches.steady_clock);
     sim_printf("Steady clock:             %01o(8)\n", scu [0].steady_clock);
-    sim_printf("Degenerate mode:          %01o(8)\n", cpu.switches.degenerate_mode);
-    sim_printf("Append after:             %01o(8)\n", cpu.switches.append_after);
-    //sim_printf("Super user:               %01o(8)\n", cpu.switches.super_user);
-    sim_printf("EPP hack:                 %01o(8)\n", cpu.switches.epp_hack);
     sim_printf("Halt on unimplemented:    %01o(8)\n", cpu.switches.halt_on_unimp);
     sim_printf("Disable SDWAM/PTWAM:      %01o(8)\n", cpu.switches.disable_wam);
-    //sim_printf("Bullet time:              %01o(8)\n", cpu.switches.bullet_time);
-    sim_printf("Bullet time:              %01o(8)\n", scu [0].bullet_time);
-    sim_printf("Disable kbd bkpt:         %01o(8)\n", cpu.switches.disable_kbd_bkpt);
     sim_printf("Report faults:            %01o(8)\n", cpu.switches.report_faults);
     sim_printf("TRO faults enabled:       %01o(8)\n", cpu.switches.tro_enable);
-    //sim_printf("Y2K enabled:              %01o(8)\n", cpu.switches.y2k);
     sim_printf("Y2K enabled:              %01o(8)\n", scu [0].y2k);
     sim_printf("drl fatal enabled:        %01o(8)\n", cpu.switches.drl_fatal);
-    //sim_printf("trlsb:                  %3d\n",       cpu.switches.trlsb);
     sim_printf("useMap:                   %d\n",      cpu.switches.useMap);
 
 #ifdef ROUND_ROBIN
@@ -3115,19 +3101,10 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
 //           mode = n
 //           speed = n
 //    Hacks:
-//           invertabsolute = n
-//           b29test = n // deprecated
 //           dis_enable = n
-//           auto_append_disable = n // still need for 20184, not for t4d
-//           lprp_highonly = n // deprecated
 //           steadyclock = on|off
-//           degenerate_mode = n // deprecated
-//           append_after = n
-//           epp_hack = n
 //           halt_on_unimplmented = n
 //           disable_wam = n
-//           bullet_time = n
-//           disable_kbd_bkpt = n
 //           report_faults = n
 //               n = 0 don't
 //               n = 1 report
@@ -3249,46 +3226,33 @@ static config_value_list_t cfg_size_list [] =
 
 static config_list_t cpu_config_list [] =
   {
-    /*  0 */ { "faultbase", 0, 0177, cfg_multics_fault_base },
-    /*  1 */ { "num", 0, 07, NULL },
-    /*  2 */ { "data", 0, 0777777777777, NULL },
-    /*  3 */ { "mode", 0, 01, cfg_cpu_mode }, 
-    /*  4 */ { "speed", 0, 017, NULL }, // XXX use keywords
-    /*  5 */ { "port", 0, N_CPU_PORTS - 1, cfg_port_letter },
-    /*  6 */ { "assignment", 0, 7, NULL },
-    /*  7 */ { "interlace", 0, 1, cfg_interlace },
-    /*  8 */ { "enable", 0, 1, cfg_on_off },
-    /*  9 */ { "init_enable", 0, 1, cfg_on_off },
-    /* 10 */ { "store_size", 0, 7, cfg_size_list },
+    { "faultbase", 0, 0177, cfg_multics_fault_base },
+    { "num", 0, 07, NULL },
+    { "data", 0, 0777777777777, NULL },
+    { "mode", 0, 01, cfg_cpu_mode }, 
+    { "speed", 0, 017, NULL }, // XXX use keywords
+    { "port", 0, N_CPU_PORTS - 1, cfg_port_letter },
+    { "assignment", 0, 7, NULL },
+    { "interlace", 0, 1, cfg_interlace },
+    { "enable", 0, 1, cfg_on_off },
+    { "init_enable", 0, 1, cfg_on_off },
+    { "store_size", 0, 7, cfg_size_list },
 
     // Hacks
 
-    /* 11 */ { "invertabsolute", 0, 1, cfg_on_off }, 
-    /* 12 */ { "b29test", 0, 1, cfg_on_off }, 
-    /* 13 */ { "dis_enable", 0, 1, cfg_on_off }, 
-    /* 14 */ { "auto_append_disable", 0, 1, cfg_on_off }, 
-    /* 15 */ { "lprp_highonly", 0, 1, cfg_on_off }, 
+    { "dis_enable", 0, 1, cfg_on_off }, 
     // steady_clock was moved to SCU; keep here for script compatibility
-    /* 16 */ { "steady_clock", 0, 1, cfg_on_off },
-    /* 17 */ { "degenerate_mode", 0, 1, cfg_on_off },
-    /* 18 */ { "append_after", 0, 1, cfg_on_off },
-    /* 19 */ { "super_user", 0, 1, cfg_on_off },
-    /* 20 */ { "epp_hack", 0, 1, cfg_on_off },
-    /* 21 */ { "halt_on_unimplemented", 0, 1, cfg_on_off },
-    /* 22 */ { "disable_wam", 0, 1, cfg_on_off },
-    // bullet_time was moved to SCU; keep here for script compatibility
-    /* 23 */ { "bullet_time", 0, 1, cfg_on_off },
-    /* 24 */ { "disable_kbd_bkpt", 0, 1, cfg_on_off },
-    /* 25 */ { "report_faults", 0, 2, NULL },
-    /* 26 */ { "tro_enable", 0, 1, cfg_on_off },
+    { "steady_clock", 0, 1, cfg_on_off },
+    { "halt_on_unimplemented", 0, 1, cfg_on_off },
+    { "disable_wam", 0, 1, cfg_on_off },
+    { "report_faults", 0, 2, NULL },
+    { "tro_enable", 0, 1, cfg_on_off },
     // y2k was moved to SCU; keep here for script compatibility
-    /* 27 */ { "y2k", 0, 1, cfg_on_off },
-    /* 28 */ { "drl_fatal", 0, 1, cfg_on_off },
-    /* 29 */ { "trlsb", 0, 256, NULL },
-    /* 30 */ { "useMap", 0, 1, cfg_on_off },
-
-    /* 31 */ { "address", 0, 0777777, NULL },
-    /* 32 */ { "disable_cache", 0, 1, cfg_on_off },
+    { "y2k", 0, 1, cfg_on_off },
+    { "drl_fatal", 0, 1, cfg_on_off },
+    { "useMap", 0, 1, cfg_on_off },
+    { "address", 0, 0777777, NULL },
+    { "disable_cache", 0, 1, cfg_on_off },
     { NULL, 0, 0, NULL }
   };
 
@@ -3343,160 +3307,72 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
       {
         int64_t v;
         int rc = cfgparse ("cpu_set_config", cptr, cpu_config_list, & cfg_state, & v);
-        switch (rc)
+        if (rc == -1) // done
           {
-            case -2: // error
-              cfgparse_done (& cfg_state);
-              return SCPE_ARG; 
+            break;
+          }
+        if (rc == -2) // error
+          {
+            cfgparse_done (& cfg_state);
+            return SCPE_ARG; 
+          }
 
-            case -1: // done
-              break;
-
-            case  0: // FAULTBASE
-              cpu.switches.FLT_BASE = (uint) v;
-              break;
-
-            case  1: // NUM
-              cpu.switches.cpu_num = (uint) v;
-              break;
-
-            case  2: // DATA
-              cpu.switches.data_switches = (word36) v;
-              break;
-
-            case 31: // ADDRESS
-              cpu.switches.addr_switches = (word18) v;
-              break;
-
-            case  3: // MODE
-              cpu.switches.proc_mode = (uint) v;
-              break;
-
-            case  4: // SPEED
-              cpu.switches.proc_speed = (uint) v;
-              break;
-
-            case  5: // PORT
-              port_num = (int) v;
-              break;
-
-            case  6: // ASSIGNMENT
-              cpu.switches.assignment [port_num] = (uint) v;
-              break;
-
-            case  7: // INTERLACE
-              cpu.switches.interlace [port_num] = (uint) v;
-              break;
-
-            case  8: // ENABLE
-              cpu.switches.enable [port_num] = (uint) v;
-              break;
-
-            case  9: // INIT_ENABLE
-              cpu.switches.init_enable [port_num] = (uint) v;
-              break;
-
-            case 10: // STORE_SIZE
-              cpu.switches.store_size [port_num] = (uint) v;
-              break;
-
-            case 11: // INVERTABSOLUTE
-              cpu.switches.invert_absolute = (uint) v;
-              break;
-
-            case 12: // B29TEST
-              cpu.switches.b29_test = (uint) v;
-              break;
-
-            case 13: // DIS_ENABLE
-              cpu.switches.dis_enable = (uint) v;
-              break;
-
-            case 14: // AUTO_APPEND_DISABLE
-              cpu.switches.auto_append_disable = (uint) v;
-              break;
-
-            case 15: // LPRP_HIGHONLY
-              cpu.switches.lprp_highonly = (uint) v;
-              break;
-
-            case 16: // STEADY_CLOCK
-              scu [0].steady_clock = (uint) v;
-              break;
-
-            case 17: // DEGENERATE_MODE
-              cpu.switches.degenerate_mode = (uint) v;
-              break;
-
-            case 18: // APPEND_AFTER
-              cpu.switches.append_after = (uint) v;
-              break;
-
-            case 19: // SUPER_USER
-              sim_printf ("SUPER_USER deprecated\n");
-              break;
-
-            case 20: // EPP_HACK
-              cpu.switches.epp_hack = (uint) v;
-              break;
-
-            case 21: // HALT_ON_UNIMPLEMENTED
-              cpu.switches.halt_on_unimp = (uint) v;
-              break;
-
-            case 22: // DISABLE_WAM
-              cpu.switches.disable_wam = (uint) v;
-              if (v) {
-                  cpu.cu.SD_ON = 0;
-                  cpu.cu.PT_ON = 0;
+        const char * p = cpu_config_list [rc] . name;
+        if (strcmp (p, "faultbase") == 0)
+          cpu.switches.FLT_BASE = (uint) v;
+        else if (strcmp (p, "num") == 0)
+          cpu.switches.cpu_num = (uint) v;
+        else if (strcmp (p, "data") == 0)
+          cpu.switches.data_switches = (word36) v;
+        else if (strcmp (p, "address") == 0)
+          cpu.switches.addr_switches = (word18) v;
+        else if (strcmp (p, "mode") == 0)
+          cpu.switches.proc_mode = (uint) v;
+        else if (strcmp (p, "speed") == 0)
+          cpu.switches.proc_speed = (uint) v;
+        else if (strcmp (p, "port") == 0)
+          port_num = (int) v;
+        else if (strcmp (p, "assignment") == 0)
+          cpu.switches.assignment [port_num] = (uint) v;
+        else if (strcmp (p, "interlace") == 0)
+          cpu.switches.interlace [port_num] = (uint) v;
+        else if (strcmp (p, "enable") == 0)
+          cpu.switches.enable [port_num] = (uint) v;
+        else if (strcmp (p, "init_enable") == 0)
+          cpu.switches.init_enable [port_num] = (uint) v;
+        else if (strcmp (p, "store_size") == 0)
+          cpu.switches.store_size [port_num] = (uint) v;
+        else if (strcmp (p, "dis_enable") == 0)
+          cpu.switches.dis_enable = (uint) v;
+        else if (strcmp (p, "steady_clock") == 0)
+          scu [0].steady_clock = (uint) v;
+        else if (strcmp (p, "halt_on_unimplemented") == 0)
+          cpu.switches.halt_on_unimp = (uint) v;
+        else if (strcmp (p, "disable_wam") == 0)
+          {
+            cpu.switches.disable_wam = (uint) v;
+            if (v)
+              {
+                cpu.cu.SD_ON = 0;
+                cpu.cu.PT_ON = 0;
               }
-              break;
-
-            case 23: // BULLET_TIME
-              scu [0].bullet_time = (uint) v;
-              break;
-
-            case 24: // DISABLE_KBD_BKPT
-              cpu.switches.disable_kbd_bkpt = (uint) v;
-              break;
-
-            case 25: // REPORT_FAULTS
-              cpu.switches.report_faults = (uint) v;
-              break;
-
-            case 26: // TRO_ENABLE
-              cpu.switches.tro_enable = (uint) v;
-              break;
-
-            case 27: // Y2K
-              scu [0].y2k = (uint) v;
-              break;
-
-            case 28: // DRL_FATAL
-              cpu.switches.drl_fatal = (uint) v;
-              break;
-
-            case 29: // TRLSB
-              //cpu.switches.trlsb = (uint) v;
-              sim_printf ("TRLSB deprecated\n");
-              break;
-
-            case 30: // USEMAP
-              cpu.switches.useMap = v;
-              break;
-
-            case 32: // DISABLE_CACHE
-              cpu.switches.disable_cache = v;
-              break;
-
-            default:
-              //sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: Invalid cfgparse rc <%d>\n", rc);
-              sim_printf ("error: cpu_set_config: invalid cfgparse rc <%d>\n", rc);
-              cfgparse_done (& cfg_state);
-              return SCPE_ARG; 
-          } // switch
-        if (rc < 0)
-          break;
+           }
+        else if (strcmp (p, "report_faults") == 0)
+          cpu.switches.report_faults = (uint) v;
+        else if (strcmp (p, "tro_enable") == 0)
+          cpu.switches.tro_enable = (uint) v;
+        else if (strcmp (p, "y2k") == 0)
+          scu [0].y2k = (uint) v;
+        else if (strcmp (p, "drl_fatal") == 0)
+          cpu.switches.drl_fatal = (uint) v;
+        else if (strcmp (p, "useMap") == 0)
+          cpu.switches.useMap = v;
+        else
+          {
+            sim_printf ("error: cpu_set_config: invalid cfgparse rc <%d>\n", rc);
+            cfgparse_done (& cfg_state);
+            return SCPE_ARG; 
+          }
       } // process statements
     cfgparse_done (& cfg_state);
 

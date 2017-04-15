@@ -758,19 +758,10 @@ typedef struct
     uint proc_speed; // 4 bits Read by rsw instruction; format unknown
 
     // Emulator run-time options (virtual switches)
-    uint invert_absolute; // If non-zero, invert the sense of the
-                          // ABSOLUTE bit in the STI instruction
-    uint b29_test;        // If non-zero, enable untested code
     uint dis_enable;      // If non-zero, DIS works
-    uint auto_append_disable; // If non-zero, bit29 does not force APPEND_mode
-    uint lprp_highonly;   // If non-zero lprp only sets the high bits
-    uint degenerate_mode; // If non-zero use the experimental ABSOLUTE mode
-    uint append_after;
-    uint epp_hack;
     uint halt_on_unimp;   // If non-zero, halt CPU on unimplemented instruction
                           // instead of faulting
     uint disable_wam;     // If non-zero, disable PTWAM, STWAM
-    uint disable_kbd_bkpt;
     uint report_faults;   // If set, faults are reported and ignored
     uint tro_enable;   // If set, Timer runout faults are generated.
     uint drl_fatal;
