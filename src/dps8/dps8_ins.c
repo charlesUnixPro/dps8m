@@ -1145,17 +1145,16 @@ t_stat displayTheMatrix (UNUSED int32 arg, UNUSED const char * buf)
 // fetch instrcution at address
 // CANFAULT
 void fetchInstruction (word18 addr)
-{
+  {
     CPT (cpt2U, 9); // fetchInstruction
-    DCDstruct * p = & cpu.currentInstruction;
-
-    memset (p, 0, sizeof (struct DCDstruct));
-
-#if 0
-    // since the next memory cycle will be a instruction fetch setup TPR
-    cpu.TPR.TRR = cpu.PPR.PRR;
-    cpu.TPR.TSR = cpu.PPR.PSR;
-#endif
+#if 1
+    if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl || cpu.cu.rd)
+      {
+        if (! cpu.cu.repeat_first)
+          {
+            return;
+          }
+      }
 
     if (get_addr_mode () == ABSOLUTE_mode)
       {
@@ -1163,6 +1162,38 @@ void fetchInstruction (word18 addr)
         cpu.RSDWH_R1 = 0;
       }
 
+   if (addr & 1) // odd
+     {
+       Read (addr, & cpu.cu.IRODD, INSTRUCTION_FETCH);
+     }
+   else
+     {
+       word36 tmp [2];
+       Read2 (addr, tmp, INSTRUCTION_FETCH);
+       cpu.cu.IWB = tmp [0];
+       cpu.cu.IRODD = tmp [1];
+     }
+#else
+#if 1
+    if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl || cpu.cu.rd)
+      {
+        if (! cpu.cu.repeat_first)
+          {
+            return;
+          }
+      }
+
+    if (get_addr_mode () == ABSOLUTE_mode)
+      {
+        cpu.TPR.TRR = 0;
+        cpu.RSDWH_R1 = 0;
+      }
+
+   word36 tmp [2];
+   Read2 (addr, tmp, INSTRUCTION_FETCH);
+   cpu.cu.IWB = tmp [0];
+   cpu.cu.IRODD = tmp [1];
+#else
     if (cpu.cu.rd && ((cpu.PPR.IC & 1) != 0))
       {
         if (cpu.cu.repeat_first)
@@ -1194,7 +1225,9 @@ void fetchInstruction (word18 addr)
           cpu.cu.IRODD = cpu.cu.IWB;
 #endif
       }
-}
+#endif
+#endif
+  }
 
 void traceInstruction (uint flag)
   {
@@ -1472,9 +1505,8 @@ t_stat executeInstruction (void)
 ///
 
     DCDstruct * ci = & cpu.currentInstruction;
+    memset (ci, 0, sizeof (struct DCDstruct));
     decodeInstruction (IWB_IRODD, ci);
-    //cpu.isb29 = ci->b29;
-    //ISB29 = ci->b29;
     const opCode *info = ci->info;       // opCode *
 
 #ifdef MATRIX
@@ -2647,7 +2679,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
 ///
 
     return ret;
-}
+  }
 
 static t_stat DoBasicInstruction (void);
 static t_stat DoEISInstruction (void);
@@ -9302,8 +9334,6 @@ elapsedtime ();
 
 // Reworking logic
 
-#define rework
-#ifdef rework
     if (cpu.cu.FIF) // fault occured during instruction fetch
       {
 //if (cpu.cu.rfi) sim_printf ( "RCU FIF refetch return caught rfi\n");
@@ -9337,65 +9367,14 @@ elapsedtime ();
         cpu.cu.FI_ADDR == FAULT_MME3 ||
         cpu.cu.FI_ADDR == FAULT_MME4 ||
         cpu.cu.FI_ADDR == FAULT_DRL)
-    //if (cpu.cu.FI_ADDR == FAULT_MME2)
       {
-//sim_printf ("MME2 restart\n");
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU MME2 restart return\n");
+        sim_debug (DBG_TRACE, & cpu_dev, "RCU MMEx restart return\n");
         cpu.cu.rfi = 0;
         longjmp (cpu.jmpMain, JMP_RESTART);
       }
-#else
-    if (cpu.cu.rfi || // S/W asked for the instruction to be started
-        cpu.cu.FIF) // fault occured during instruction fetch
-      {
-
-        // I am misusing this bit; on restart I want a way to tell the
-        // CPU state machine to restart the instruction, which is not
-        // how Multics uses it. I need to pick a different way to
-        // communicate; for now, turn it off on refetch so the state
-        // machine doesn't become confused.
-
-        cpu.cu.rfi = 0;
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU rfi/FIF REFETCH return\n");
-        longjmp (cpu.jmpMain, JMP_REFETCH);
-      }
-
-// It seems obvious that MMEx should do a JMP_SYNC_FAULT_RETURN, but doing
-// a JMP_RESTART makes 'debug' work. (The same change to DRL does not make
-// 'gtss' work, tho.
-
-    if (cpu.cu.FI_ADDR == FAULT_MME2)
-      {
-//sim_printf ("MME2 restart\n");
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU MME2 restart return\n");
-        cpu.cu.rfi = 1;
-        longjmp (cpu.jmpMain, JMP_RESTART);
-      }
-#endif
-
-#if 0
-// I beleive this logic is correct (cf. ISOLTS pa870 test-02d TRA PR1|6 not
-// switching to append mode do to page fault clearing went_appending), but the
-// emulator's refetching of operand descriptors after page fault of EIS
-// instruction in absolute mode is breaking the logic.
-    // If restarting after a page fault, set went_appending...
-    if (cpu.cu.FI_ADDR == FAULT_DF0 ||
-        cpu.cu.FI_ADDR == FAULT_DF1 ||
-        cpu.cu.FI_ADDR == FAULT_DF2 ||
-        cpu.cu.FI_ADDR == FAULT_DF3 ||
-        cpu.cu.FI_ADDR == FAULT_ACV ||
-        cpu.cu.FI_ADDR == FAULT_F1 ||
-        cpu.cu.FI_ADDR == FAULT_F2 ||
-        cpu.cu.FI_ADDR == FAULT_F3)
-      {
-        set_went_appending ();
-      }
-#endif
-    // MME faults resume with the next instruction
 
 
 
-#ifdef rework
     if (cpu.cu.FI_ADDR == FAULT_DIV ||
         cpu.cu.FI_ADDR == FAULT_OFL ||
         cpu.cu.FI_ADDR == FAULT_IPR)
@@ -9404,21 +9383,6 @@ elapsedtime ();
         cpu.cu.rfi = 0;
         longjmp (cpu.jmpMain, JMP_SYNC_FAULT_RETURN);
       }
-#else
-    if (cpu.cu.FI_ADDR == FAULT_MME ||
-        /* cpu.cu.FI_ADDR == FAULT_MME2 || */
-        cpu.cu.FI_ADDR == FAULT_MME3 ||
-        cpu.cu.FI_ADDR == FAULT_MME4 ||
-        cpu.cu.FI_ADDR == FAULT_DRL ||
-        cpu.cu.FI_ADDR == FAULT_DIV ||
-        cpu.cu.FI_ADDR == FAULT_OFL ||
-        cpu.cu.FI_ADDR == FAULT_IPR)
-      {
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU MMEx sync fault return\n");
-        cpu.cu.rfi = 0;
-        longjmp (cpu.jmpMain, JMP_SYNC_FAULT_RETURN);
-      }
-#endif
 
 
 

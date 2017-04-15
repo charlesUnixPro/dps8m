@@ -1885,50 +1885,36 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                 if (cpu.g7_flag)
                   {
                     cpu.g7_flag = false;
+sim_debug (DBG_TRACE, & cpu_dev, "FETCH_cycle does G7 fault\n");
                     doG7Fault ();
                   }
+
                 if (cpu.interrupt_flag)
                   {
 // This is the only place cycle is set to INTERRUPT_cycle; therefore
 // return from interrupt can safely assume the it should set the cycle
 // to FETCH_cycle.
                     CPT (cpt1U, 15); // interrupt
+sim_debug (DBG_TRACE, & cpu_dev, "FETCH_cycle switches to interrupt cycle\n");
                     setCpuCycle (INTERRUPT_cycle);
                     break;
                   }
-                cpu.lufCounter ++;
 
+                cpu.lufCounter ++;
                 // Assume CPU clock ~ 1Mhz. lockup time is 32 ms
                 if (cpu.lufCounter > 32000)
                   {
                     CPT (cpt1U, 16); // LUF
                     cpu.lufCounter = 0;
+sim_debug (DBG_TRACE, & cpu_dev, "FETCH_cycle LUFs\n");
                     doFault (FAULT_LUF, (_fault_subtype) {.bits=0}, "instruction cycle lockup");
                   }
-
-#if 0
-                if (cpu.interrupt_flag && 
-                    ((cpu.PPR.IC % 2) == 0) &&
-                    (! (cpu.cu.xde | cpu.cu.xdo |
-                        cpu.cu.rpt | cpu.cu.rd | cpu.cu.rl)))
-                  {
-// This is the only place cycle is set to INTERRUPT_cycle; therefore
-// return from interrupt can safely assume the it should set the cycle
-// to FETCH_cycle.
-                    setCpuCycle (INTERRUPT_cycle);
-                    break;
-                  }
-                if (cpu.g7_flag)
-                  {
-                    cpu.g7_flag = false;
-                    //setCpuCycle (FAULT_cycle);
-                    doG7Fault ();
-                  }
-#endif
 
                 // If we have done the even of an XED, do the odd
                 if (cpu.cu.xde == 0 && cpu.cu.xdo == 1)
                   {
+sim_debug (DBG_TRACE, & cpu_dev, "FETCH_cycle do XED odd\n");
+                // If we have done the even of an XED, do the odd
                     CPT (cpt1U, 17); // do XED odd
                     // Get the odd
                     cpu.cu.IWB = cpu.cu.IRODD;
@@ -1940,6 +1926,7 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                 // If we have done neither of the XED
                 else if (cpu.cu.xde == 1 && cpu.cu.xdo == 1)
                   {
+sim_debug (DBG_TRACE, & cpu_dev, "FETCH_cycle do XED even\n");
                     CPT (cpt1U, 18); // do XED even
                     // Do the even this time and the odd the next time
                     cpu.cu.xde = 0;
@@ -1950,6 +1937,7 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                 // If we have not yet done the XEC
                 else if (cpu.cu.xde == 1)
                   {
+sim_debug (DBG_TRACE, & cpu_dev, "FETCH_cycle do XEC\n");
                     CPT (cpt1U, 19); // do XEC
                     // do it this time, and nothing next time
                     cpu.cu.xde = cpu.cu.xdo = 0;
@@ -1961,41 +1949,32 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                     CPT (cpt1U, 20); // not XEC or RPx
                     cpu.isExec = false;
                     cpu.isXED = false;
-                    //processorCycle = INSTRUCTION_FETCH;
                     // fetch next instruction into current instruction struct
                     clr_went_appending (); // XXX not sure this is the right place
                     cpu.cu.TSN_VALID [0] = 0;
+
                     PNL (cpu.prepare_state = ps_PIA);
                     PNL (L68_ (cpu.INS_FETCH = true;))
-                    fetchInstruction (cpu.PPR.IC);
+sim_debug (DBG_TRACE, & cpu_dev, "FETCH_cycle IC %06o wasXfer %u rd %u\n", cpu.PPR.IC, cpu.wasXfer, cpu.cu.rd);
+
+                    if (((cpu.PPR.IC & 1) == 0) || // Even
+                          cpu.wasXfer)
+                      {
+sim_debug (DBG_TRACE, & cpu_dev, "FETCH_cycle fetch even\n");
+                        fetchInstruction (cpu.PPR.IC);
+                      }
+
+                    if ((cpu.PPR.IC & 1) != 0) // Odd
+                      {
+                        if (! cpu.cu.rd)
+                          {
+sim_debug (DBG_TRACE, & cpu_dev, "FETCH_cycle copy odd %012llo\n", cpu.cu.IRODD);
+                            cpu.cu.IWB = cpu.cu.IRODD;
+                            fauxDoAppendCycle (INSTRUCTION_FETCH);
+                          }
+                      }
                   }
 
-
-#if 0
-                // XXX The conditions are more rigorous: see AL39, pg 327
-           // ci is not set up yet; check the inhibit bit in the IWB!
-                //if (PPR.IC % 2 == 0 && // Even address
-                    //ci -> i == 0) // Not inhibited
-                //if (GET_I (cpu.cu.IWB) == 0) // Not inhibited
-// If the instruction pair virtual address being formed is the result of a 
-// transfer of control condition or if the current instruction is 
-// Execute (xec), Execute Double (xed), Repeat (rpt), Repeat Double (rpd), 
-// or Repeat Link (rpl), the group 7 faults and interrupt present lines are 
-// not sampled.
-                if (PPR.IC % 2 == 0 && // Even address
-                    GET_I (cpu.cu.IWB) == 0 &&  // Not inhibited
-                    (! (cpu.cu.xde | cpu.cu.xdo |
-                        cpu.cu.rpt | cpu.cu.rd | cpu.cu.rl)))
-                  {
-                    cpu.interrupt_flag = sample_interrupts ();
-                    cpu.g7_flag = bG7Pending ();
-                  }
-                else
-                  {
-                    cpu.interrupt_flag = false;
-                    cpu.g7_flag = false;
-                  }
-#endif
 
                 CPT (cpt1U, 21); // go to exec cycle
                 advanceG7Faults ();
@@ -2137,10 +2116,14 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                 cpu.isXED = false;
                 cpu.PPR.IC ++;
                 if (ci->info->ndes > 0)
-                  cpu.PPR.IC += ci->info->ndes;
-
+                  {
+                    cpu.PPR.IC += ci->info->ndes;
+                    // Invalidate IRODD
+                    cpu.wasXfer = true;
+                  }
+                else
+                  cpu.wasXfer = false; 
                 CPT (cpt1U, 28); // enter fetch cycle
-                cpu.wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
               }
               break;
@@ -2154,9 +2137,16 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                 // decodeInstruction() restores ci->info->ndes
                 decodeInstruction (IWB_IRODD, & cpu.currentInstruction);
 
-                cpu.PPR.IC += ci->info->ndes;
+                //cpu.PPR.IC += ci->info->ndes;
+                if (ci->info->ndes > 0)
+                  {
+                    cpu.PPR.IC += ci->info->ndes;
+                    // Invalidate IRODD
+                    cpu.wasXfer = true;
+                  }
+                else
+                  cpu.wasXfer = false; 
                 cpu.PPR.IC ++;
-                cpu.wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
               }
               break;
@@ -2198,9 +2188,16 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                     emCallReportFault ();
 #endif
                     clearFaultCycle ();
-                    cpu.wasXfer = false; 
                     setCpuCycle (FETCH_cycle);
-                    cpu.PPR.IC += ci->info->ndes;
+                    //cpu.PPR.IC += ci->info->ndes;
+                    if (ci->info->ndes > 0)
+                      {
+                        cpu.PPR.IC += ci->info->ndes;
+                        // Invalidate IRODD
+                        cpu.wasXfer = true;
+                      }
+                    else
+                      cpu.wasXfer = false; 
                     cpu.PPR.IC ++;
                     break;
                   }
@@ -2321,7 +2318,6 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                 // Restores cpu.cycle and addressing mode
                 clear_TEMPORARY_ABSOLUTE_mode ();
                 cu_safe_restore ();
-                cpu.wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
                 clearFaultCycle ();
 
@@ -2332,7 +2328,15 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                 // decodeInstruction() restores ci->info->ndes
                 decodeInstruction (IWB_IRODD, & cpu.currentInstruction);
 
-                cpu.PPR.IC += ci->info->ndes;
+                //cpu.PPR.IC += ci->info->ndes;
+                if (ci->info->ndes > 0)
+                  {
+                    cpu.PPR.IC += ci->info->ndes;
+                    // Invalidate IRODD
+                    cpu.wasXfer = true;
+                  }
+                else
+                  cpu.wasXfer = false; 
                 cpu.PPR.IC ++;
                 break;
               }

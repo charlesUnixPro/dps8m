@@ -35,7 +35,6 @@
 
 t_stat Read (word18 address, word36 * result, _processor_cycle_type cyctyp)
   {
-    //cpu.iefpFinalAddress = address;
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
     bool isBAR = get_bar_mode ();
 
@@ -108,7 +107,6 @@ B29:;
 
 t_stat Read2 (word18 address, word36 * result, _processor_cycle_type cyctyp)
   {
-    //cpu.iefpFinalAddress = address;
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
 
     bool isBAR = get_bar_mode ();
@@ -126,7 +124,7 @@ t_stat Read2 (word18 address, word36 * result, _processor_cycle_type cyctyp)
               {
                 setAPUStatus (apuStatus_FABS); // XXX maybe...
                 cpu.iefpFinalAddress = getBARaddress (address);
-        
+                cpu.iefpFinalAddress &= (word24)~1; // make it an even address
                 fauxDoAppendCycle (cyctyp);
                 core_read2 (cpu.iefpFinalAddress, result + 0, result + 1, __func__);
                 if_sim_debug (DBG_FINAL, & cpu_dev)
@@ -140,6 +138,7 @@ t_stat Read2 (word18 address, word36 * result, _processor_cycle_type cyctyp)
               {
                 setAPUStatus (apuStatus_FABS);
                 fauxDoAppendCycle (cyctyp);
+                address &= (word24)~1; // make it an even address
                 core_read2 (address, result + 0, result + 1, __func__);
                 if_sim_debug (DBG_FINAL, & cpu_dev)
                   {
@@ -202,6 +201,7 @@ t_stat Read8 (word18 address, word36 * result, bool isAR)
               {
                 setAPUStatus (apuStatus_FABS); // XXX maybe...
                 cpu.iefpFinalAddress = getBARaddress (address);
+                cpu.iefpFinalAddress &= (word24)~7; // make it an even address
         
                 fauxDoAppendCycle (APU_DATA_READ);
                 core_readN (cpu.iefpFinalAddress, result, 8, __func__);
@@ -220,6 +220,7 @@ t_stat Read8 (word18 address, word36 * result, bool isAR)
               {
                 setAPUStatus (apuStatus_FABS);
                 fauxDoAppendCycle (APU_DATA_READ);
+                address &= (word24)~7; // make it an even address
                 core_readN (address, result, 8, __func__);
                 if_sim_debug (DBG_FINAL, & cpu_dev)
                   {
@@ -408,6 +409,7 @@ t_stat ReadPage (word18 address, word36 * result, bool isAR)
               {
                 setAPUStatus (apuStatus_FABS); // XXX maybe...
                 cpu.iefpFinalAddress = getBARaddress (address);
+                cpu.iefpFinalAddress &= (word24)~7; // make it an even address
         
                 fauxDoAppendCycle (APU_DATA_READ);
                 core_readN (cpu.iefpFinalAddress, result, PGSZ, __func__);
@@ -426,6 +428,7 @@ t_stat ReadPage (word18 address, word36 * result, bool isAR)
               {
                 setAPUStatus (apuStatus_FABS);
                 fauxDoAppendCycle (APU_DATA_READ);
+                address &= (word24)~7; // make it an even address
                 core_readN (address, result, PGSZ, __func__);
                 if_sim_debug (DBG_FINAL, & cpu_dev)
                   {
@@ -572,6 +575,7 @@ t_stat Write2 (word18 address, word36 * data, _processor_cycle_type cyctyp)
             if (isBAR)
               {
                 cpu.iefpFinalAddress = getBARaddress (address);
+                cpu.iefpFinalAddress &= (word24)~1; // make it an even address
                 setAPUStatus (apuStatus_FABS); // XXX maybe...
                 fauxDoAppendCycle (cyctyp);
                 core_write2 (cpu.iefpFinalAddress, data [0], data [1],
@@ -585,6 +589,7 @@ t_stat Write2 (word18 address, word36 * data, _processor_cycle_type cyctyp)
               {
                 setAPUStatus (apuStatus_FABS);
                 fauxDoAppendCycle (cyctyp);
+                address &= (word24)~1; // make it an even address
                 core_write2 (address, data [0], data [1], __func__);
                 sim_debug (DBG_FINAL, & cpu_dev,
                            "Write2 (Actual) Write:      abs address=%08o "
@@ -643,6 +648,7 @@ t_stat Write8 (word18 address, word36 * data, bool isAR)
             if (isBAR)
              {
                 cpu.iefpFinalAddress = getBARaddress (address);
+                cpu.iefpFinalAddress &= (word24)~7; // make it an even address
                 setAPUStatus (apuStatus_FABS); // XXX maybe...
                 fauxDoAppendCycle (APU_DATA_STORE);
                 core_writeN (cpu.iefpFinalAddress, data, 8, __func__);
@@ -661,6 +667,7 @@ t_stat Write8 (word18 address, word36 * data, bool isAR)
               {
                 setAPUStatus (apuStatus_FABS);
                 fauxDoAppendCycle (APU_DATA_STORE);
+                address &= (word24)~7; // make it an even address
                 core_writeN (address, data, 8, __func__);
                 if_sim_debug (DBG_FINAL, & cpu_dev)
                   {
@@ -940,6 +947,7 @@ t_stat WritePage (word18 address, word36 * data, bool isAR)
             if (isBAR)
              {
                 cpu.iefpFinalAddress = getBARaddress (address);
+                cpu.iefpFinalAddress &= (word24)~PGMK; // make it an even address
                 setAPUStatus (apuStatus_FABS); // XXX maybe...
                 fauxDoAppendCycle (APU_DATA_STORE);
                 core_writeN (cpu.iefpFinalAddress, data, PGSZ, __func__);
@@ -958,6 +966,7 @@ t_stat WritePage (word18 address, word36 * data, bool isAR)
               {
                 setAPUStatus (apuStatus_FABS);
                 fauxDoAppendCycle (APU_DATA_STORE);
+                address &= (word24)~PGMK; // make it an even address
                 core_writeN (address, data, PGSZ, __func__);
                 if_sim_debug (DBG_FINAL, & cpu_dev)
                   {
