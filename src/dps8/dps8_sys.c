@@ -200,6 +200,7 @@ static CTAB dps8_cmds[] =
 #ifdef PANEL
     {"SCRAPER", scraper, 0, "Control scraper", NULL, NULL},
 #endif
+    {"MOUNT", mountTape, 0, "Mount tape image and signal Mulitcs", NULL, NULL },
     { NULL, NULL, 0, NULL, NULL, NULL}
 };
 
