@@ -2492,6 +2492,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     sim_printf("Fault base:               %03o(8)\n", cpu.switches.FLT_BASE);
     sim_printf("CPU number:               %01o(8)\n", cpu.switches.cpu_num);
     sim_printf("Data switches:            %012"PRIo64"(8)\n", cpu.switches.data_switches);
+    sim_printf("Address switches:         %012"PRIo64"(8)\n", cpu.switches.addr_switches);
     for (int i = 0; i < N_CPU_PORTS; i ++)
       {
         sim_printf("Port%c enable:             %01o(8)\n", 'A' + i, cpu.switches.enable [i]);
@@ -2651,6 +2652,7 @@ static config_list_t cpu_config_list [] =
     { "faultbase", 0, 0177, cfg_multics_fault_base },
     { "num", 0, 07, NULL },
     { "data", 0, 0777777777777, NULL },
+    { "address", 0, 0777777, NULL },
     { "mode", 0, 01, cfg_cpu_mode }, 
     { "speed", 0, 017, NULL }, // XXX use keywords
     { "port", 0, N_CPU_PORTS - 1, cfg_port_letter },
@@ -2737,6 +2739,8 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
           cpu.switches.cpu_num = (uint) v;
         else if (strcmp (p, "data") == 0)
           cpu.switches.data_switches = (word36) v;
+        else if (strcmp (p, "address") == 0)
+          cpu.switches.addr_switches = (word18) v;
         else if (strcmp (p, "mode") == 0)
           cpu.switches.proc_mode = (uint) v;
         else if (strcmp (p, "speed") == 0)

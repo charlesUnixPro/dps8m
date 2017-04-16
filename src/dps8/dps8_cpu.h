@@ -673,6 +673,7 @@ typedef struct
     uint FLT_BASE; // normally 7 MSB of 12bit fault base addr
     uint cpu_num;  // zero for CPU 'A', one for 'B' etc.
     word36 data_switches;
+    word18 addr_switches;
     uint assignment [N_CPU_PORTS];
     uint interlace [N_CPU_PORTS]; // 0/2/4
     uint enable [N_CPU_PORTS];
