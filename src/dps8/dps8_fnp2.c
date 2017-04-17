@@ -2864,9 +2864,12 @@ void processUserInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
                 case '\b':  // backspace
                 case 127:   // delete
                   {
-                    fnpuv_start_writestr (client, "\b \b");    // remove char from line
-                    p->buffer[p->nPos] = 0;     // remove char from buffer
-                    p->nPos -= 1;                 // back up buffer pointer
+                    if (p->nPos)
+                      {
+                        fnpuv_start_writestr (client, "\b \b");    // remove char from line
+                        p->buffer[p->nPos] = 0;     // remove char from buffer
+                        p->nPos -= 1;                 // back up buffer pointer
+                      }
                   }
                   break;
 
@@ -2903,9 +2906,12 @@ void processUserInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
                 case '\b':  // backspace
                 case 127:   // delete
                   {
-                    fnpuv_start_writestr (client, "\b \b");    // remove char from line
-                    p->buffer[p->nPos] = 0;     // remove char from buffer
-                    p->nPos -= 1;                 // back up buffer pointer
+                    if (p->nPos)
+                      {
+                        fnpuv_start_writestr (client, "\b \b");    // remove char from line
+                        p->buffer[p->nPos] = 0;     // remove char from buffer
+                        p->nPos -= 1;                 // back up buffer pointer
+                      }
                   }
                   break;
 
