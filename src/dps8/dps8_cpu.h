@@ -422,24 +422,39 @@ typedef struct mode_register
   {
     word36 r;
 #ifdef L68
-    word15 FFV;
-    word1 OC_TRAP;
-    word1 ADR_TRAP;
-    word9 OPCODE;
-    word1 OPCODEX;
+                    //  8M      L68
+    word15 FFV;     //  0       FFV     0 - 14
+    word1 OC_TRAP;  //  0       a           16
+    word1 ADR_TRAP; //  0       b           17
+    word9 OPCODE;   //  0       OPCODE 18 - 26
+    word1 OPCODEX;  //  0       OPCODE      27
 #endif
-    word1 sdpap;
-    word1 separ;
-    word1 emr;
-    word1 hrhlt;
+ // word1 cuolin;   //  a       c           18 control unit overlap inhibit
+ // word1 solin;    //  b       d           19 store overlap inhibit
+    word1 sdpap;    //  c       e           20 store incorrect data parity
+    word1 separ;    //  d       f           21 store incorrect ZAC
+ // word2 tm;       //  e       g      22 - 23 timing margins
+ // word2 vm;       //  f       h      24 - 25 voltage margins
+                    //  0       0           26 history register overflow trap
+                    //  0       0           27 strobe HR on opcode match
+    word1 hrhlt;    //  g       i           28 history register overflow trap
+
 #ifdef DPS8M
-    word1 hrxfr;
+    word1 hrxfr;    //  h       j           29 strobe HR on transfer made
 #endif
-    word1 ihr;
-    word1 ihrrs;
+#ifdef L68
+                    //  h       j           29 strobe HR on opcode match
+#endif
+    word1 ihr;      //  i       k           30 Enable HR
+    word1 ihrrs;    //  j                   31 HR reset options
+                    //          l           31 HR lock control
+                    //  k                   32 margin control
+                    //          m           32 test mode indicator
 #ifdef DPS8M
-    word1 hexfp;
+    word1 hexfp;    //  l       0           33 hex mode
 #endif
+                    //  0       0           34
+     word1 emr;     //  m       n           35 enable MR
   } _mode_register;
 
 extern DEVICE cpu_dev;
@@ -688,6 +703,7 @@ typedef struct
     uint tro_enable;   // If set, Timer runout faults are generated.
     uint serno;
     bool useMap;
+    bool disable_cache;
   } switches_t;
 
 #ifdef L68
@@ -773,7 +789,7 @@ enum {
     apu_FSDN = 1ll << (33-23),    // 23     FSDN   Fetch SDW non-paged 
     apu_FPTW = 1ll << (33-24),    // 24   e FPTW   Fetch PTW
     apu_MPTW = 1ll << (33-25),    // 25   g MPTW   Modify PTW
-                                  // 26   f FPT2 // Fetch prepage
+    apu_FPTW2 = 1ll << (33-26),   // 26   f FPT2 // Fetch prepage
     apu_FAP  = 1ll << (33-27),    // 27   i FAP    Final address fetch from paged seg.
     apu_FANP = 1ll << (33-28),    // 28   h FANP   Final address fetch from non-paged segment
                                   // 29     FAAB   Final address absolute?
@@ -1551,12 +1567,12 @@ typedef struct
     word1 panel7_enabled_light_state;
 // The state of the panel switches
     volatile word15 APU_panel_segno_sw;
-    volatile word1  APU_panel_enable_match_ptw_sw;
-    volatile word1  APU_panel_enable_match_sdw_sw;
+    volatile word1  APU_panel_enable_match_ptw_sw;  // lock
+    volatile word1  APU_panel_enable_match_sdw_sw;  // lock
     volatile word1  APU_panel_scroll_select_ul_sw;
     volatile word4  APU_panel_scroll_select_n_sw;
     volatile word4  APU_panel_scroll_wheel_sw;
-    volatile word18 APU_panel_addr_sw;
+    //volatile word18 APU_panel_addr_sw;
     volatile word18 APU_panel_enter_sw;
     volatile word18 APU_panel_display_sw;
     volatile word4  CP_panel_wheel_sw;
@@ -1572,15 +1588,15 @@ typedef struct
     volatile word4  DATA_panel_addr_stop_sw;
     volatile word1  DATA_panel_enable_sw;
     volatile word1  DATA_panel_validate_sw;
-    volatile word1  DATA_panel_auto_fast_sw;
-    volatile word1  DATA_panel_auto_slow_sw;
-    volatile word4  DATA_panel_cycle_sw;
-    volatile word1  DATA_panel_step_sw;
+    volatile word1  DATA_panel_auto_fast_sw;  // lock
+    volatile word1  DATA_panel_auto_slow_sw;  // lock
+    volatile word4  DATA_panel_cycle_sw;  // lock
+    volatile word1  DATA_panel_step_sw;  // lock
     volatile word1  DATA_panel_s_trig_sw;
-    volatile word1  DATA_panel_execute_sw;
+    volatile word1  DATA_panel_execute_sw;  // lock
     volatile word1  DATA_panel_scope_sw;
-    volatile word1  DATA_panel_init_sw;
-    volatile word1  DATA_panel_exec_sw;
+    volatile word1  DATA_panel_init_sw;  // lock
+    volatile word1  DATA_panel_exec_sw;  // lock
     volatile word4  DATA_panel_hr_sel_sw;
     volatile word4  DATA_panel_trackers_sw;
     volatile bool panelInitialize;

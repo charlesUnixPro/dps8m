@@ -2020,6 +2020,31 @@ t_stat attachTape (char * label, bool withring, char * drive)
     return SCPE_OK;
   }
 
+// mount <image.tap> ring|noring <drive>
+
+t_stat mountTape (UNUSED int32 arg, const char * buf)
+  {
+    size_t bufl = strlen (buf) + 1;
+    char fname [bufl];
+    char ring [bufl];
+    char drive [bufl];
+    int nParams = sscanf (buf, "%s %s %s", fname, ring, drive);
+    if (nParams != 3)
+      goto usage;
+    size_t ringl = strlen (ring);
+    bool withring;
+    if (strncasecmp ("noring", ring, ringl) == 0)
+      withring = false;
+    else if (strncasecmp ("ring", ring, ringl) == 0)
+      withring = true;
+    else
+      goto usage;
+    return attachTape (fname, withring, drive);
+
+usage:
+     sim_printf ("mount <image.tap> ring|noring <drive>\n");
+     return SCPE_ARG;
+  }
 
 t_stat detachTape (char * drive)
   {

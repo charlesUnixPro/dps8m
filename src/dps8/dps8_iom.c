@@ -360,6 +360,7 @@ static UNIT bootChannelUnit [N_IOM_UNITS_MAX] =
     { UDATA (& bootSvc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL}
   };
 
+#define IOM_CONNECT_CHAN 2U
 #define IOM_SPECIAL_STATUS_CHAN 6U
 
 iomChanData_t iomChanData [N_IOM_UNITS_MAX] [MAX_CHANNELS];

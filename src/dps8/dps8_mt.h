@@ -21,3 +21,5 @@ void loadTape (uint driveNumber, char * tapeFilename, bool ro);
 t_stat attachTape (char * label, bool withring, char * drive);
 t_stat detachTape (char * drive);
 int mt_iom_cmd (uint iomUnitIdx, uint chan);
+t_stat mountTape (int32 arg, const char * buf);
+

@@ -49,11 +49,8 @@ ifndef LIBUV
 LIBUV = -luv
 endif
 
-FNP2=1
-ifdef FNP2
-CFLAGS += -DFNP2
+# FNP2 support
 LIBS += $(LIBUV)
-endif
 
 ifeq ($(CROSS),MINGW64)
 CFLAGS += -DCROSS_MINGW64 -Wno-misleading-indentation -I../../../libuv/include
@@ -237,9 +234,18 @@ dps8$(EXE) : $(OBJS) $(LOCALOBJS) $(LOCALLIBS)
 .PHONY: FORCE
 
 ifeq (,$(wildcard ../../.git))
+# not git
+ifeq (,$(wildcard dps8.sha1.txt~))
+# not git, not kit
+dps8.sha1.txt : 
+	echo '#define COMMIT_ID "unknown"' > dps8.sha1.txt
+else
+# kit
 dps8.sha1.txt : 
 	cp dps8.sha1.txt~ dps8.sha1.txt
+endif
 else
+# git
 dps8.sha1.txt : FORCE
 	@echo '#define COMMIT_ID "unknown"' > dps8.sha1.txt~
 	@-git rev-parse HEAD > /dev/null 2>&1 && git rev-parse HEAD | awk '{print "#define COMMIT_ID \""$$1"\""}' > dps8.sha1.txt~
@@ -253,6 +259,7 @@ dps8.sha1.txt : FORCE
 	    mv dps8.sha1.txt~ dps8.sha1.txt ; echo 'Generated dps8.sha1.txt' ; \
 	fi
 endif
+
 
 slte.inc : system_book_12_3.ascii
 	./buildSLTE.sh

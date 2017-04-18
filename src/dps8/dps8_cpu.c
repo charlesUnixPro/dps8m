@@ -819,7 +819,7 @@ uint getCPUnum (void)
 static void panelProcessEvent (void)
   {
     // INITIALIZE pressed; treat at as a BOOT.
-    if (cpu.panelInitialize) 
+    if (cpu.panelInitialize && cpu.DATA_panel_s_trig_sw == 0) 
       {
          // Wait for release
          while (cpu.panelInitialize) 
@@ -832,7 +832,8 @@ static void panelProcessEvent (void)
          doBoot ();
       }
     // EXECUTE pressed; EXECUTE PB set, EXECUTE FAULT set
-    if (cpu.DATA_panel_execute_sw && // EXECUTE buttton
+    if (cpu.DATA_panel_s_trig_sw == 0 &&
+        cpu.DATA_panel_execute_sw && // EXECUTE buttton
         cpu.DATA_panel_scope_sw && // 'EXECUTE PB/SCOPE REPEAT' set to PB
         cpu.DATA_panel_exec_sw == 0) // 'EXECUTE SWITCH/EXECUTE FAULT' set to FAULT
       {
@@ -901,7 +902,6 @@ static void panelProcessEvent (void)
 //  
 // other extant cycles:
 //  ABORT_cycle
-
 
 // This is part of the simh interface
 
@@ -1112,24 +1112,6 @@ t_stat threadz_sim_instr (void)
                 setG7fault (thisCPUnum, FAULT_TRO, fst_zero);
               }
          }
-#else
-        // Sync. the TR with the emulator clock.
-        cpu.rTRlsb ++;
-        // The emulator clock runs about 7x as fast at the Timer Register;
-        // see wiki page "CAC 08-Oct-2014"
-        //if (cpu.rTRlsb >= cpu.switches.trlsb)
-        if (cpu.rTRlsb >= 12)
-          {
-            cpu.rTRlsb = 0;
-            cpu.rTR = (cpu.rTR - 1) & MASK27;
-            //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o\n", rTR);
-            if (cpu.rTR == 0) // passing thorugh 0...
-              {
-                //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09"PRIo64"\n", rTR, MASK27);
-                if (cpu.switches.tro_enable)
-                  setG7fault (thisCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
-              }
-          }
 #endif
 
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
@@ -2274,6 +2256,8 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
 void decodeInstruction (word36 inst, DCDstruct * p)
 {
     CPT (cpt1L, 17); // instruction decoder
+    memset (p, 0, sizeof (struct DCDstruct));
+
     p->opcode  = GET_OP(inst);  // get opcode
     p->opcodeX = GET_OPX(inst); // opcode extension
     p->address = GET_ADDR(inst);// address field from instruction
@@ -2492,7 +2476,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     sim_printf("Fault base:               %03o(8)\n", cpu.switches.FLT_BASE);
     sim_printf("CPU number:               %01o(8)\n", cpu.switches.cpu_num);
     sim_printf("Data switches:            %012"PRIo64"(8)\n", cpu.switches.data_switches);
-    sim_printf("Address switches:         %012"PRIo64"(8)\n", cpu.switches.addr_switches);
+    sim_printf("Address switches:         %06o(8)\n", cpu.switches.addr_switches);
     for (int i = 0; i < N_CPU_PORTS; i ++)
       {
         sim_printf("Port%c enable:             %01o(8)\n", 'A' + i, cpu.switches.enable [i]);

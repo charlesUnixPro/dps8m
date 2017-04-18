@@ -52,6 +52,10 @@
 #include "dps8_absi.h"
 #include "utlist.h"
 
+#ifdef PANEL
+#include "panelScraper.h"
+#endif
+
 // XXX Strictly speaking, memory belongs in the SCU
 // We will treat memory as viewed from the CPU and elide the
 // SCU configuration that maps memory across multiple SCUs.
@@ -97,6 +101,10 @@ static t_stat searchMemory (UNUSED int32 arg, const char * buf);
 static t_stat bootSkip (int32 UNUSED arg, const char * UNUSED buf);
 static t_stat setDbgCPUMask (int32 UNUSED arg, const char * UNUSED buf);
 
+#ifdef PANEL
+static t_stat scraper (int32 arg, const char * buf);
+#endif
+
 static CTAB dps8_cmds[] =
 {
     {"CABLE",    sys_cable,       0, "cable String a cable\n" , NULL, NULL},
@@ -131,6 +139,14 @@ static CTAB dps8_cmds[] =
     {"DEFAULT_BASE_SYSTEM", defaultBaseSystem, 0, "Set configuration to defaults", NULL, NULL},
     {"FNPSTART", fnpStart, 0, "Force early FNP initialization", NULL, NULL},
     {"DBGCPUMASK", setDbgCPUMask, 0, "Set per CPU debug enable", NULL, NULL},
+#ifdef EISTESTJIG
+    // invoke EIS test jig.......∫
+    {"ET", eisTest, 0, "invoke EIS test jig\n", NULL, NULL}, 
+#endif
+#ifdef PANEL
+    {"SCRAPER", scraper, 0, "Control scraper", NULL, NULL},
+#endif
+    {"MOUNT", mountTape, 0, "Mount tape image and signal Mulitcs", NULL, NULL },
     { NULL, NULL, 0, NULL, NULL, NULL}
 };
 
@@ -221,7 +237,7 @@ static void dps8_init(void)
 #endif
     defaultBaseSystem (0, NULL);
 #ifdef PANEL
-    panelScraper ();
+    panelScraperInit ();
 #endif
 }
 
@@ -1417,9 +1433,6 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ;cable verify
 
 
-
-
-
     doIniLine ("fnpload Devices.txt");
     doIniLine ("fnpserverport 6180");
 
@@ -1453,4 +1466,26 @@ t_stat sim_load (UNUSED FILE *fileref, UNUSED const char *cptr, UNUSED const cha
   {
     return SCPE_IERR;
   }
-
+  
+#ifdef PANEL
+static t_stat scraper (UNUSED int32 arg, const char * buf)
+  {
+    if (strcasecmp (buf, "start") == 0)
+      return panelScraperStart ();
+    if (strcasecmp (buf, "stop") == 0)
+      return panelScraperStop ();
+    if (strcasecmp (buf, "msg") == 0)
+      {
+        return panelScraperMsg (NULL);
+      }
+    if (strncasecmp (buf, "msg ", 4) == 0)
+      {
+        const char * p = buf + 4;
+        while (* p == ' ')
+          p ++;
+        return panelScraperMsg (p);
+      }
+    sim_printf ("err: scraper start|stop|msg\n");
+    return SCPE_ARG;
+  }
+#endif
