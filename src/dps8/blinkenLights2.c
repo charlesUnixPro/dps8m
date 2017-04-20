@@ -27,7 +27,6 @@
 #include "dps8_sys.h"
 #include "dps8_cpu.h"
 
-#include "dps8_mp.h"
 #include "shm.h"
 
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
@@ -252,7 +251,7 @@ static gboolean time_handler (GtkWidget * widget)
         for (int i = 0; i < 1; i ++)
           P_state [0 - i] = ((1llu << i) & cpun -> PPR . P) ? 1 : 0;
         for (int i = 0; i < 18; i ++)
-          IC_state  [17 - i] = ((1llu << (i +  9)) & cpun -> PPR . IC) ? 1 : 0;
+          IC_state  [17 - i] = ((1llu << i) & cpun -> PPR . IC) ? 1 : 0;
         //gtk_widget_queue_draw (PPR_display);
       }
 
