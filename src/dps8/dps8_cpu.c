@@ -38,6 +38,9 @@
 #include "dps8_cable.h"
 #include "dps8_crdrdr.h"
 #include "dps8_absi.h"
+#ifdef M_SHARED
+#include "shm.h"
+#endif
 #include "dps8_opcodetable.h"
 #include "sim_defs.h"
 #include "threadz.h"
@@ -506,15 +509,34 @@ void cpu_init (void)
 // !!!! Do not use 'cpu' in this routine; usage of 'cpus' violates 'restrict'
 // !!!! attribute
 
+#ifdef M_SHARED
+    if (! M)
+      {
+        M = (word36 *) create_shm ("M", getsid (0), MEMSIZE * sizeof (word36));
+      }
+#else
     if (! M)
       {
         M = (word36 *) calloc (MEMSIZE, sizeof (word36));
       }
+#endif
     if (! M)
       {
         sim_printf ("create M failed\n");
         sim_err ("create M failed\n");
       }
+
+#ifdef M_SHARED
+    if (! cpus)
+      {
+        cpus = (cpu_state_t *) create_shm ("cpus", getsid (0), N_CPU_UNITS_MAX * sizeof (cpu_state_t));
+      }
+    if (! cpus)
+      {
+        sim_printf ("create cpus failed\n");
+        sim_err ("create cpus failed\n");
+      }
+#endif
 
     memset (& watchBits, 0, sizeof (watchBits));
 
@@ -664,8 +686,18 @@ static t_stat cpu_dep (t_value val, t_addr addr, UNUSED UNIT * uptr,
  * register stuff ...
  */
 
+#ifdef M_SHARED
+// simh has to have a statically allocated IC to refer to.
+static word18 dummyIC;
+#endif
+
 static REG cpu_reg[] = {
+#ifdef M_SHARED
+    { ORDATA (IC, dummyIC, VASIZE), 0, 0, 0 },// Must be the first; see sim_PC.
+    // { ORDATA (IC, cpus[0].PPR.IC, VASIZE), 0, 0, 0 },// Must be the first; see sim_PC.
+#else
     { ORDATA (IC, cpus[0].PPR.IC, VASIZE), 0, 0, 0 },// Must be the first; see sim_PC.
+#endif
     { NULL, NULL, 0, 0, 0, 0, NULL, NULL, 0, 0, 0 }
 };
 
@@ -706,8 +738,11 @@ DEVICE cpu_dev = {
     NULL
 };
 
+#ifdef M_SHARED
+cpu_state_t * cpus = NULL;
+#else
 cpu_state_t cpus [N_CPU_UNITS_MAX];
-
+#endif
 __thread cpu_state_t * restrict cpup;
 
 // Scan the SCUs; it one has an interrupt present, return the fault pair
