@@ -902,6 +902,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
     cpu.rTR &= MASK27;
 #if ISOLTS
     cpu.shadowTR = cpu.rTR;
+    cpu.rTRlsb = 0;
 #endif
   }
 
@@ -985,6 +986,7 @@ static void cpun_reset2 (UNUSED uint cpun)
     cpu.rTR = 0;
 #if ISOLTS
     cpu.shadowTR = 0;
+    cpu.rTRlsb = 0;
 #endif
  
     set_addr_mode(ABSOLUTE_mode);
@@ -1639,6 +1641,25 @@ setCPU:;
           console_attn (NULL);
 #endif
 
+#ifdef ISOLTS
+        if (cpu.cycle != FETCH_cycle)
+          {
+            // Sync. the TR with the emulator clock.
+            cpu.rTRlsb ++;
+            if (cpu.rTRlsb >= 4)
+              {
+                cpu.rTRlsb = 0;
+                cpu.shadowTR = (cpu.shadowTR - 1) & MASK27;
+                //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o\n", shadowTR);
+                if (cpu.shadowTR == 0) // passing thorugh 0...
+                  {
+                    //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09"PRIo64"\n", shadowTR, MASK27);
+                    if (cpu.switches.tro_enable)
+                      setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
+                  }
+              }
+          }
+#endif
 
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
                    cycleStr (cpu.cycle));
@@ -1672,6 +1693,7 @@ elapsedtime ();
 #endif
                 cpu.cu.FI_ADDR = (word5) (intr_pair_addr / 2);
                 cu_safe_store ();
+                // XXX the whole interrupt cycle should be rewritten as an xed instruction pushed to IWB and executed 
 
                 CPT (cpt1U, 1); // safe store complete
                 // Temporary absolute mode
@@ -2206,7 +2228,25 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                   }
 #endif
 
+                // F(A)NP should never be stored when faulting.
+                // ISOLTS-865 01a,870 02d
+                // Unconditional reset of APU status to FABS breaks boot.
+                // Checking for F(A)NP here is equivalent to checking that the last
+                // append cycle has made it as far as H/I without a fault.
+                // Also reset it on TRB fault. ISOLTS-870 05a
+                if (cpu.cu.APUCycleBits & 060 || cpu.secret_addressing_mode)
+                    setAPUStatus (apuStatus_FABS);
+
                 cu_safe_store ();
+                if (cpu . bTroubleFaultCycle)
+                  {
+                    // XXX the whole fault cycle should be rewritten as an xed instruction pushed to IWB and executed
+                    // ISOLTS-870 05a
+                    if (cpu . bTroubleFaultCycleEven)
+                        putbits36_1 (& cpu.scu_data[5], 24, 1);	// xde
+                    putbits36_1 (& cpu.scu_data[5], 25, 1); // xdo
+                  }
+
                 CPT (cpt1U, 31); // safe store complete
 
                 // Temporary absolute mode
@@ -3082,6 +3122,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     sim_printf("Y2K enabled:              %01o(8)\n", scu [0].y2k);
     sim_printf("drl fatal enabled:        %01o(8)\n", cpu.switches.drl_fatal);
     sim_printf("useMap:                   %d\n",      cpu.switches.useMap);
+    sim_printf("Disable cache:            %01o(8)\n", cpu.switches.disable_cache);
 
 #ifdef ROUND_ROBIN
     setCPUnum (save);
@@ -3369,6 +3410,8 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
           cpu.switches.drl_fatal = (uint) v;
         else if (strcmp (p, "useMap") == 0)
           cpu.switches.useMap = v;
+        else if (strcmp (p, "disable_cache") == 0)
+          cpu.switches.disable_cache = v;
         else
           {
             sim_printf ("error: cpu_set_config: invalid cfgparse rc <%d>\n", rc);

@@ -826,7 +826,8 @@ void ReadTraOp (void)
             SET_PR_BITNO (n, 0);
           }
         cpu.PPR.IC = cpu.TPR.CA;
-        cpu.PPR.PSR = 0;
+        // ISOLTS 870-02f
+        //cpu.PPR.PSR = 0;
       }
     sim_debug (DBG_TRACE, & cpu_dev, "ReadTraOp %05o:%06o\n",
                cpu.PPR.PSR, cpu.PPR.IC);
