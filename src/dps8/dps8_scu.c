@@ -774,10 +774,12 @@ t_stat scu_reset (UNUSED DEVICE * dptr)
 
 // ============================================================================
 
+static pthread_mutex_t clock_lock = PTHREAD_MUTEX_INITIALIZER;
+
 // The SCU clock is 52 bits long; fits in t_uint64
 static uint64 getSCUclock (uint scu_unit_num)
   {
-
+    pthread_mutex_lock (& clock_lock);
 // The emulator supports two clock models: steady and real
 // In steady mode the time of day is coupled to the instruction clock,
 // allowing reproducible behavior. In real, the clock is
@@ -822,7 +824,7 @@ static uint64 getSCUclock (uint scu_unit_num)
             MulticsuSecs = scu [scu_unit_num].lastTime + 1;
           }
         scu [scu_unit_num].lastTime = MulticsuSecs;
-        return scu [scu_unit_num].lastTime;
+        goto done;
       }
 
     // The calendar clock consists of a 52-bit register which counts
@@ -909,6 +911,8 @@ static uint64 getSCUclock (uint scu_unit_num)
         MulticsuSecs = scu [scu_unit_num].lastTime + 1;
     scu [scu_unit_num].lastTime = MulticsuSecs;
 
+done:
+    pthread_mutex_unlock (& clock_lock);
     return scu [scu_unit_num].lastTime;
 
   }
