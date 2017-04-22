@@ -1826,7 +1826,15 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
       }
 #endif
 #endif
+
+    if (! cpu.havelock)
+      lock_mem ();
+
     *data = M[addr] & DMASK;
+
+    if (! cpu.havelock)
+      unlock_mem ();
+
     PNL (trackport (addr, * data);)
     return 0;
   }
@@ -1858,7 +1866,15 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
         cpu.MR.separ = 0;
       }
 #endif
+
+    if (! cpu.havelock)
+      lock_mem ();
+
     M[addr] = data & DMASK;
+
+    if (! cpu.havelock)
+      unlock_mem ();
+
     PNL (trackport (addr, data);)
     return 0;
   }
@@ -1891,10 +1907,18 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED con
       }
 #endif
 #endif
+
+    if (! cpu.havelock)
+      lock_mem ();
+
     *even = M[addr++] & DMASK;
     PNL (trackport (addr - 1, * even);)
     *odd = M[addr] & DMASK;
     PNL (trackport (addr, * odd);)
+
+    if (! cpu.havelock)
+      unlock_mem ();
+
     return 0;
   }
 static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
@@ -1924,10 +1948,18 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED cons
         cpu.MR.separ = 0;
       }
 #endif
+
+    if (! cpu.havelock)
+      lock_mem ();
+
     M[addr++] = even;
     PNL (trackport (addr - 1, even);)
     M[addr] = odd;
     PNL (trackport (addr, odd);)
+
+    if (! cpu.havelock)
+      unlock_mem ();
+
     return 0;
   }
 #else

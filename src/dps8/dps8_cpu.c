@@ -2046,6 +2046,9 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
 #endif
       nem_check (addr,  "core_read nem");
 
+      if (! cpu.havelock)
+        lock_mem ();
+
 #if 0 // XXX Controlled by TEST/NORMAL switch
 #ifdef ISOLTS
     if (cpu.MR.sdpap)
@@ -2075,6 +2078,10 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read  %08o %012"PRIo64" (%s)\n",
                 addr, * data, ctx);
+
+      if (! cpu.havelock)
+        unlock_mem ();
+
     PNL (trackport (addr, * data));
     return 0;
 }
@@ -2109,6 +2116,10 @@ int core_write(word24 addr, word36 data, const char * ctx) {
         cpu.MR.separ = 0;
       }
 #endif
+
+    if (! cpu.havelock)
+      lock_mem ();
+
     M[addr] = data & DMASK;
     if (watchBits [addr])
     //if (watchBits [addr] && M[addr]==0)
@@ -2120,6 +2131,10 @@ int core_write(word24 addr, word36 data, const char * ctx) {
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write %08o %012"PRIo64" (%s)\n",
                 addr, data, ctx);
+
+    if (! cpu.havelock)
+      unlock_mem ();
+
     PNL (trackport (addr, data));
     return 0;
 }
@@ -2162,6 +2177,10 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
       }
 #endif
 #endif
+
+    if (! cpu.havelock)
+      lock_mem ();
+
     if (M[addr] & MEM_UNINITIALIZED)
     {
         sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s)\n", addr, cpu.PPR.PSR, cpu.PPR.IC, ctx);
@@ -2197,6 +2216,10 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012"PRIo64" (%s)\n",
                 addr, * odd, ctx);
+
+    if (! cpu.havelock)
+      unlock_mem ();
+
     PNL (trackport (addr, * odd));
     return 0;
 }
@@ -2253,6 +2276,10 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
         sim_printf ("WATCH [%"PRId64"] write2 %08o %012"PRIo64" (%s)\n", sim_timell (), addr, even, ctx);
         traceInstruction (0);
       }
+
+    if (! cpu.havelock)
+      lock_mem ();
+
     M[addr++] = even;
     PNL (trackport (addr - 1, even));
     sim_debug (DBG_CORE, & cpu_dev,
@@ -2270,10 +2297,14 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
         traceInstruction (0);
       }
     M[addr] = odd;
-    PNL (trackport (addr, odd));
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write2 %08o %012"PRIo64" (%s)\n",
                 addr, odd, ctx);
+
+    if (! cpu.havelock)
+      unlock_mem ();
+
+    PNL (trackport (addr, odd));
     return 0;
 }
 #endif
