@@ -1901,7 +1901,8 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp)
         if ((i -> opcode == 0034 && ! i -> opcodeX) ||  // ldac
             (i -> opcode == 0032 && ! i -> opcodeX) ||  // ldqc
             (i -> opcode == 0354 && ! i -> opcodeX) ||  // stac
-            (i -> opcode == 0654 && ! i -> opcodeX))    // stacq
+            (i -> opcode == 0654 && ! i -> opcodeX) ||  // stacq
+            (i -> opcode == 0214 && ! i -> opcodeX))    // sznc
           {
             lock_mem ();
             cpu.havelock = true;

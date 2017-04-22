@@ -1796,6 +1796,10 @@ static inline void trackport (word24 a, word36 d)
   }
 #endif
 
+// Ugh. Circular dependencies XXX
+void lock_mem (void);
+void unlock_mem (void);
+
 #ifdef SPEED
 static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
