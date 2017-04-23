@@ -2047,8 +2047,10 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
 #endif
       nem_check (addr,  "core_read nem");
 
+#ifdef lockread
       if (! cpu.havelock)
         lock_mem ();
+#endif
 
 #if 0 // XXX Controlled by TEST/NORMAL switch
 #ifdef ISOLTS
@@ -2080,8 +2082,10 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
                "core_read  %08o %012"PRIo64" (%s)\n",
                 addr, * data, ctx);
 
+#ifdef lockread
       if (! cpu.havelock)
         unlock_mem ();
+#endif
 
     PNL (trackport (addr, * data));
     return 0;
@@ -2179,8 +2183,10 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
 #endif
 #endif
 
+#ifdef lockread
     if (! cpu.havelock)
       lock_mem ();
+#endif
 
     if (M[addr] & MEM_UNINITIALIZED)
     {
@@ -2218,8 +2224,10 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
                "core_read2 %08o %012"PRIo64" (%s)\n",
                 addr, * odd, ctx);
 
+#ifdef lockread
     if (! cpu.havelock)
       unlock_mem ();
+#endif
 
     PNL (trackport (addr, * odd));
     return 0;

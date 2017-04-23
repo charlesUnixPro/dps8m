@@ -1831,13 +1831,17 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
 #endif
 #endif
 
+#ifdef lockread
     if (! cpu.havelock)
       lock_mem ();
+#endif
 
     *data = M[addr] & DMASK;
 
+#ifdef lockread
     if (! cpu.havelock)
       unlock_mem ();
+#endif
 
     PNL (trackport (addr, * data);)
     return 0;
@@ -1912,16 +1916,20 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED con
 #endif
 #endif
 
+#ifdef lockread
     if (! cpu.havelock)
       lock_mem ();
+#endif
 
     *even = M[addr++] & DMASK;
     PNL (trackport (addr - 1, * even);)
     *odd = M[addr] & DMASK;
     PNL (trackport (addr, * odd);)
 
+#ifdef lockread
     if (! cpu.havelock)
       unlock_mem ();
+#endif
 
     return 0;
   }
