@@ -1727,8 +1727,12 @@ A:;
       {
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(B):STR-OP\n");
         
-        // C(TPR.TRR) > C(SDW .R2)?
-        if (cpu.TPR.TRR > cpu.SDW->R2)
+        // Typo in AL39; R2 should be R1
+        //  // C(TPR.TRR) > C(SDW .R2)?
+        //  if (cpu.TPR.TRR > cpu.SDW->R2)
+
+        // C(TPR.TRR) > C(SDW .R1)?
+        if (cpu.TPR.TRR > cpu.SDW->R1)
           //Set fault ACV5 = OWB
           acvFault (ACV5, "doAppendCycle(B) C(TPR.TRR) > C(SDW .R2)");
         
