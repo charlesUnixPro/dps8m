@@ -1270,6 +1270,7 @@ static char *strACV(_fault_subtype acv)
 }
 #endif
 
+#if 0
 static void acvFault(fault_acv_subtype_ acvfault, char * msg)
 {
     PNL (L68_ (cpu.apu.state |= apu_HOLD | apu_FLT;))
@@ -1278,6 +1279,7 @@ static void acvFault(fault_acv_subtype_ acvfault, char * msg)
               "doAppendCycle(acvFault): acvFault=%"PRIo64" acvFaults=%"PRIo64": %s\n",
               (word36) acvfault, (word36) cpu.acvFaults, msg);
 }
+#endif
 
 static char *strPCT(_processor_cycle_type t)
 {
@@ -1430,11 +1432,11 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWord
                "doAppendCycle(Entry) TPR.TRR=%o TPR.TSR=%05o\n",
                cpu.TPR.TRR, cpu.TPR.TSR);
     //if (cpu.isb29)
-    if (ISB29)
+    if (i->b29)
       {
         sim_debug (DBG_APPENDING, & cpu_dev,
                    "doAppendCycle(Entry) isb29 PRNO %o\n",
-                   cpu.cu.TSN_PRNO [0]);
+                   GET_PRN(IWB_IRODD));
       }
 
     bool instructionFetch = (thisCycle == INSTRUCTION_FETCH);
@@ -1487,6 +1489,7 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWord
 ////////////////////////////////////////
 
 // START APPEND
+    word3 n = 0; // PRn to be saved to TSN_PRNO
 
     if (thisCycle == APU_DATA_READ ||
         thisCycle == APU_DATA_STORE)
@@ -1538,10 +1541,10 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWord
           }
 #else
         //if (cpu.isb29)
-        if (ISB29)
+        if (i->b29)
           {
             PNL (L68_ (cpu.apu.state |= apu_ESN_SNR;))
-            word3 n = cpu.cu.TSN_PRNO[0];
+            n = GET_PRN(IWB_IRODD);
             CPTUR (cptUsePRn + n);
             if (cpu.PAR[n].RNR > cpu.PPR.PRR)
               {
@@ -1689,8 +1692,12 @@ A:;
     
     //C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)?
     if (! (cpu.SDW->R1 <= cpu.SDW->R2 && cpu.SDW->R2 <= cpu.SDW->R3))
-      // Set fault ACV0 = IRO
-      acvFault (ACV0, "doAppendCycle(B) C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)");
+      {
+        // Set fault ACV0 = IRO
+        cpu.acvFaults |= ACV0;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(B) C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)";)
+      }
 
     // Was last cycle an rtcd operand fetch?
     if (lastCycle == RTCD_OPERAND_FETCH)
@@ -1725,14 +1732,22 @@ A:;
       {
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(B):STR-OP\n");
         
-        // C(TPR.TRR) > C(SDW .R2)?
-        if (cpu.TPR.TRR > cpu.SDW->R2)
-          //Set fault ACV5 = OWB
-          acvFault (ACV5, "doAppendCycle(B) C(TPR.TRR) > C(SDW .R2)");
+        // C(TPR.TRR) > C(SDW .R1)?	Note typo in AL39, R2 should be R1
+        if (cpu.TPR.TRR > cpu.SDW->R1)
+          {
+            //Set fault ACV5 = OWB
+            cpu.acvFaults |= ACV5;
+            PNL (L68_ (cpu.apu.state |= apu_FLT;))
+            FMSG (acvFaultsMsg = "acvFaults(B) C(TPR.TRR) > C(SDW .R1)";)
+          }
         
         if (! cpu.SDW->W)
-          // Set fault ACV6 = W-OFF
-          acvFault (ACV6, "doAppendCycle(B) ACV6 = W-OFF");
+          {
+            // Set fault ACV6 = W-OFF
+            cpu.acvFaults |= ACV6;
+            PNL (L68_ (cpu.apu.state |= apu_FLT;))
+            FMSG (acvFaultsMsg = "acvFaults(B) ACV6 = W-OFF";)
+          }
         
       }
     else
@@ -1782,22 +1797,28 @@ C:;
         cpu.TPR.TRR > cpu.SDW->R2)
       {
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(C) ACV1\n");
-        //Set fault ACV5 = OEB
-        acvFault (ACV1, "doAppendCycle(C) C(SDW.R1 > C(TPR.TRR) > C(SDW.R2)");
+        //Set fault ACV1 = OEB
+        cpu.acvFaults |= ACV1;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(C) C(SDW.R1 > C(TPR.TRR) > C(SDW.R2)";)
       }
     // SDW.E set ON?
     if (! cpu.SDW->E)
       {
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(C) ACV2\n");
         //Set fault ACV2 = E-OFF
-        acvFault (ACV2, "doAppendCycle(C) SDW.E");
+        cpu.acvFaults |= ACV2;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(C) SDW.E";)
       }
     // C(TPR.TRR) ≥ C(PPR.PRR)
     if (cpu.TPR.TRR < cpu.PPR.PRR)
       {
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(C) ACV11\n");
         //Set fault ACV11 = INRET
-        acvFault (ACV11, "doAppendCycle(C) TRR>=PRR");
+        cpu.acvFaults |= ACV11;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(C) TRR>=PRR";)
       }
 
 D:;
@@ -2084,17 +2105,8 @@ H:;
     sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(H): FANP\n");
 
     PNL (L68_ (cpu.apu.state |= apu_FANP;))
-    // ISOLTS pa865 test-01a 101232
-    if (get_bar_mode ())
-      {
-        //appendingUnitCycleType = apuCycle_FANP;
-        setAPUStatus (apuStatus_FABS);
-      }
-    else
-      {
-        //appendingUnitCycleType = apuCycle_FANP;
-        setAPUStatus (apuStatus_FANP);
-      }
+    //appendingUnitCycleType = apuCycle_FANP;
+    setAPUStatus (apuStatus_FANP);
 
     //sim_debug (DBG_APPENDING, & cpu_dev,
                //"doAppendCycle(H): SDW->ADDR=%08o address=%06o \n",
@@ -2217,7 +2229,8 @@ J:;
     //   TM_R never indirects
     //   TM_RI always indirects
     //   TM_IR always indirects
-    //   TM_IT
+    //   TM_IT always indirects
+#if 0
     //     IT_CI, IT_SC, IT_SCR -- address is used for tally word
     //     IT_I indirects
     //     IT_AD -- address is used for tally word
@@ -2244,11 +2257,18 @@ J:;
         true, true, true, true, true, true, true, true
       };
     if (isInd [(* data) & MASK6])
+#else
+    if ((* data) & 060)
+#endif
       {
         // C(Y)0,17 -> C(IWB)0,17
         // C(Y)30,35 -> C(IWB)30,35
         // 0 -> C(IWB)29
         updateIWB (GET_OFFSET (* data), (* data) & MASK6);
+
+        cpu.cu.TSN_PRNO [0] = n;
+        cpu.cu.TSN_VALID [0] = 1;
+
       }
 
      goto Exit;
@@ -2309,7 +2329,7 @@ L:; // Transfer or instruction fetch
     // Is OPCODE tspn?
     if ((! instructionFetch) && i->info->flags & TSPN_INS)
       {
-        word3 n;
+        //word3 n;
         if (i->opcode <= 0273)
           n = (i->opcode & 3);
         else
@@ -2443,7 +2463,7 @@ P:; // ITP
     //cpu.cu.XSF = 1;
 #endif
 
-    word3 n = GET_PRN (* data);
+    n = GET_PRN (* data);
     // C(TPR.TRR) >= RSDWH.R1?
     if (cpu.TPR.TRR >= cpu.RSDWH_R1)
       {

@@ -931,7 +931,6 @@ typedef struct
                    //                  29       PRNO is valid
     word3 TSN_PRNO [3];
     word1 TSN_VALID [3];
-#define ISB29 (cpu.cu.TSN_VALID [0])
 
                    // 30-35 TEMP BIT Current bit offset (TPR . TBR)
 
@@ -1685,6 +1684,7 @@ typedef struct
     // G7 faults
 
     bool bTroubleFaultCycle;
+    bool bTroubleFaultCycleEven;
     uint g7FaultsPreset;
     uint g7Faults;
     //_fault_subtype  g7SubFaultsPreset [N_FAULTS];
@@ -1706,7 +1706,7 @@ typedef struct
     word36 Yblock16[16];    // 16-words
     word36 Yblock32[32];    // 32-words
     word36 scu_data[8];    // For SCU instruction
-#ifndef EVPOLL
+#ifdef ISOLTS
     uint rTRlsb;
 #endif
     // XXX this is used to store the fault/interrupt pair, and really should be IBW/IRODD

@@ -454,11 +454,11 @@ startCA:;
         // verified that Tm is R or RI, and Td is X1..X7.
         if (cpu.cu.rpt || cpu.cu.rd | cpu.cu.rl)
           {
-#if 0 // executeInstruction has already cleared PRNO
+#if 1
             //if (cpu.isb29)
-            if (ISB29)
+            if (cpu.currentInstruction.b29)
               {
-                word3 PRn = (i -> address >> 15) & MASK3;
+                word3 PRn = GET_PRN(IWB_IRODD);
                 CPTUR (cptUsePRn + PRn);
                 cpu.TPR.CA = (Cr & MASK15) + cpu.PR [PRn].WORDNO;
                 cpu.TPR.CA &= AMASK;
@@ -490,11 +490,13 @@ startCA:;
         sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD: TPR.CA=%06o\n",
                    cpu.TPR.CA);
 
+#ifdef OLDCYCLE
         // If repeat, the indirection chain is limited, so it is not necessary
         // to clear the tag; the delta code later on needs the tag to know
         // which X register to update
         if (! (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl))
           updateIWB (cpu.TPR.CA, 0); // Known to be 0 or ,n
+#endif
         return SCPE_OK;
       } // R_MOD
 
@@ -508,7 +510,7 @@ startCA:;
         if (Td == TD_DU || Td == TD_DL)
           doFault (FAULT_IPR, fst_ill_mod, "RI_MOD: Td == TD_DU || Td == TD_DL");
 
-#ifdef OLD_CYCLE
+#ifdef OLDCYCLE
         word18 tmpCA = cpu.TPR.CA;
 #endif
 
@@ -560,7 +562,7 @@ startCA:;
         // register modification value, so we want to prevent it from 
         // happening again on restart
 
-#ifdef XSF_IND // OLDCYCLE
+#ifdef OLDCYCLE
         updateIWB (cpu.TPR.CA, TM_RI | TD_N);
 #endif
 
@@ -967,7 +969,7 @@ startCA:;
                            "IT_MOD(IT_I): reading indirect word from %06o\n",
                            cpu.TPR.CA);
 
-#ifdef TESTING
+#if 0
 { static bool first = true;
 if (first) {
 first = false;
@@ -982,9 +984,9 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            cpu.itxPair[0]);
 
                 cpu.TPR.CA = GET_ADDR (cpu.itxPair[0]);
-
+#ifdef OLDCYCLE
                 updateIWB (cpu.TPR.CA, 0);
-
+#endif
                 return SCPE_OK;
               } // IT_I
 
@@ -1043,9 +1045,9 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            indword, saveCA);
 
                 cpu.TPR.CA = computedAddress;
-
+#ifdef OLDCYCLE
                 updateIWB (cpu.TPR.CA, 0); // XXX guessing here...
-
+#endif
                 return SCPE_OK;
               } // IT_AD
 
@@ -1103,8 +1105,9 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
 
 
                 cpu.TPR.CA = Yi;
+#ifdef OLDCYCLE
                 updateIWB (cpu.TPR.CA, 0); // XXX guessing here...
-
+#endif
                 return SCPE_OK;
               } // IT_SD
 
@@ -1162,8 +1165,9 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 Write (saveCA, indword, OPERAND_STORE);
 
                 cpu.TPR.CA = Yi;
+#ifdef OLDCYCLE
                 updateIWB (cpu.TPR.CA, 0); // XXX guessing here...
-
+#endif
                 return SCPE_OK;
               } // IT_DI
 
@@ -1223,8 +1227,9 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 Write (saveCA, indword, OPERAND_STORE);
 
                 cpu.TPR.CA = computedAddress;
+#ifdef OLDCYCLE
                 updateIWB (cpu.TPR.CA, 0); // XXX guessing here...
-
+#endif
                 return SCPE_OK;
               } // IT_ID
 

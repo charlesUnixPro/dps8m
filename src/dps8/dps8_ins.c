@@ -263,7 +263,7 @@ static void readOperands (void)
                "readOperands (%s):mne=%s flags=%x\n",
                disAssemble (buf, cpu.cu.IWB), i->info->mne, i->info->flags);
     sim_debug (DBG_ADDRMOD, &cpu_dev,
-              "readOperands a %d address %08o\n", ISB29, cpu.TPR.CA);
+              "readOperands a %d address %08o\n", i->b29, cpu.TPR.CA);
 
     PNL (cpu.prepare_state |= ps_POA);
 
@@ -1067,6 +1067,7 @@ void fetchInstruction (word18 addr)
       {
         cpu.TPR.TRR = 0;
         cpu.RSDWH_R1 = 0;
+        cpu.PPR.P = 1; // ISOLTS-870 02m
       }
 
     if (cpu.cu.rd && ((cpu.PPR.IC & 1) != 0))
@@ -1082,16 +1083,22 @@ void fetchInstruction (word18 addr)
         if (cpu.cu.repeat_first)
           {
             CPT (cpt2U, 11); // fetch rpt even
-            //Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH);
+            Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH);
+#if 0
             word36 tmp[2];
             Read2 (addr, tmp, INSTRUCTION_FETCH);
             cpu.cu.IWB = tmp[0];
             cpu.cu.IRODD = tmp[1];
+#endif
           }
       }
     else
       {
         CPT (cpt2U, 12); // fetch 
+// ISOLTS test pa870 expects IRODD to be set up.
+// If we are fetching an even instruction, also fetch the odd.
+// If we are fetching an odd instruction, copy it to IRODD as
+// if that was where we got it from.
         //Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH);
         if ((cpu.PPR.IC & 1) == 0) // Even
           {
@@ -1103,17 +1110,8 @@ void fetchInstruction (word18 addr)
         else // Odd
           {
             Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH);
+            cpu.cu.IRODD = cpu.cu.IWB; 
           }
-#ifdef xISOLTS
-// ISOLTS test pa870 expects IRODD to be set up.
-// If we are fetching an even instruction, also fetch the odd.
-// If we are fetching an odd instruction, copy it to IRODD as
-// if that was where we got it from.
-        if ((cpu.PPR.IC & 1) == 0) // Even
-          Read (addr+1, & cpu.cu.IRODD, INSTRUCTION_FETCH);
-        else
-          cpu.cu.IRODD = cpu.cu.IWB;
-#endif
       }
 }
 
@@ -1140,7 +1138,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  ISB29,
+                  cpu.currentInstruction.b29,
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
@@ -1157,7 +1155,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  ISB29,
+                  cpu.currentInstruction.b29,
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
@@ -1180,7 +1178,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  ISB29, cpu.currentInstruction.i,
+                  cpu.currentInstruction.b29, cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
               }
@@ -1198,7 +1196,7 @@ force:;
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
-                  ISB29,
+                  cpu.currentInstruction.b29,
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
@@ -1332,6 +1330,9 @@ t_stat executeInstruction (void)
         cpu.cu.TSN_VALID[0] = 0;
         cpu.cu.TSN_VALID[1] = 0;
         cpu.cu.TSN_VALID[2] = 0;
+        cpu.cu.TSN_PRNO[0] = 0;
+        cpu.cu.TSN_PRNO[1] = 0;
+        cpu.cu.TSN_PRNO[2] = 0;
     }
 
     if (ci->restart)
@@ -1841,8 +1842,8 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
       {
         CPT (cpt2U, 32); // non-EIS operand processing
         // This must not happen on instruction restart
-        if (! ci->restart)
-          {
+        //if (! ci->restart)
+          //{
             CPT (cpt2U, 33); // not restart non-EIS operand processing
             //if (cpu.isb29)   // if A bit set set-up TPR stuff ...
             if (ci->b29)   // if A bit set set-up TPR stuff ...
@@ -1859,15 +1860,15 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            n, cpu.PAR[n].SNR, cpu.PAR[n].RNR,
                            cpu.PAR[n].WORDNO, GET_PR_BITNO (n));
 
-                cpu.cu.TSN_PRNO [0] = n;
-                cpu.cu.TSN_VALID [0] = 1;
+                //cpu.cu.TSN_PRNO [0] = n;
+                //cpu.cu.TSN_VALID [0] = 1;
 
                 cpu.TPR.CA = (cpu.PAR[n].WORDNO + SIGNEXT15_18 (offset))
                              & MASK18;
                 cpu.TPR.TBR = GET_PR_BITNO (n);
 
-                if (! (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl))
-                  updateIWB (cpu.TPR.CA, GET_TAG (IWB_IRODD));
+                //if (! (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl))
+                //  updateIWB (cpu.TPR.CA, GET_TAG (IWB_IRODD));
 
                 cpu.TPR.TSR = cpu.PAR[n].SNR;
                 cpu.TPR.TRR = max3 (cpu.PAR[n].RNR, cpu.TPR.TRR, cpu.PPR.PRR);
@@ -1901,7 +1902,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                   }
                 clr_went_appending ();
               }
-          }
+          //}
 
         // This must not happen on instruction restart
         if (! ci->restart)
@@ -6237,6 +6238,7 @@ static t_stat DoBasicInstruction (void)
           cpu.rTR = (cpu.CY >> 9) & MASK27;
 #if ISOLTS
           cpu.shadowTR = cpu.rTR;
+          cpu.rTRlsb = 0;
 #endif
 //sim_printf ("CPU A ldt %d. (%o)\n", cpu.rTR, cpu.rTR);
           clock_gettime (CLOCK_BOOTTIME, & cpu.rTRTime);
@@ -6765,7 +6767,7 @@ elapsedtime ();
                        << (35-18));  //BCD option off
                 tmp |= (word36) ((0b1L)                                       
                        << (35-19));  //DPS option
-                tmp |= (word36) ((0b0L)                                       
+                tmp |= (word36) ((cpu.switches.disable_cache ? 0 : 1)                                       
                        << (35-20));  //8K cache not installed
                 tmp |= (word36) ((0b00L)                                      
                        << (35-22));
@@ -8713,7 +8715,7 @@ static int doABSA (word36 * result)
     sim_debug (DBG_APPENDING, & cpu_dev, "absa CA:%08o\n", cpu.TPR.CA);
 
     //if (get_addr_mode () == ABSOLUTE_mode && ! cpu.isb29)
-    if (get_addr_mode () == ABSOLUTE_mode && ! ISB29)
+    if (get_addr_mode () == ABSOLUTE_mode && ! cpu.currentInstruction.b29)
       {
         * result = ((word36) (cpu.TPR.CA & MASK18)) << 12; // 24:12 format
         return SCPE_OK;
@@ -8749,10 +8751,12 @@ elapsedtime ();
 
 // Restore addressing mode
 
+    word1 saveP = cpu.PPR.P; // ISOLTS-870 02m
     if (TST_I_ABS == 0)
       set_addr_mode (APPEND_mode);
     else
       set_addr_mode (ABSOLUTE_mode);
+    cpu.PPR.P = saveP;
 
     if (cpu.cu.FLT_INT == 0) // is interrupt, not fault
       {
