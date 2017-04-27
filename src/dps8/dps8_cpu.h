@@ -1765,7 +1765,13 @@ typedef struct
     word36 Yblock8[8];      // 8-words
     word36 Yblock16[16];    // 16-words
     word36 Yblock32[32];    // 32-words
-    word36 scu_data[8];    // For SCU instruction
+    word36 scu_data[8];     // For SCU instruction
+    struct
+      {
+        word15 PSR;
+        word3  PRR;
+        word18 IC;
+      } cu_data;            // For STCD instruction
 #ifdef ISOLTS
     uint rTRlsb;
 #endif

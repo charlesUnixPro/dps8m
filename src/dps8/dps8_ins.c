@@ -601,6 +601,10 @@ void cu_safe_store (void)
     //  instruction is executed.
     scu2words (cpu.scu_data);
 
+    cpu.cu_data.PSR = cpu.PPR.PSR;
+    cpu.cu_data.PRR = cpu.PPR.PRR;
+    cpu.cu_data.IC =  cpu.PPR.IC;
+
     tidy_cu ();
 
 }
@@ -3193,13 +3197,30 @@ static t_stat DoBasicInstruction (void)
           //  C(PPR.IC)+2 -> C(Y-pair)36,53
           //  00...0 -> C(Y-pair)54,71
 
-          cpu.Ypair[0] = 0;
-          putbits36_15 (& cpu.Ypair[0],  3, cpu.PPR.PSR);
-          putbits36_3  (& cpu.Ypair[0], 18, cpu.PPR.PRR);
-          putbits36_6  (& cpu.Ypair[0], 30, 043);
+          if (cpu.cycle == EXEC_cycle)
+            {
+              sim_debug (DBG_CAC, & cpu_dev, "stcd exec PRR %o\n", cpu.PPR.PRR);
+              cpu.Ypair[0] = 0;
+              putbits36_15 (& cpu.Ypair[0],  3, cpu.PPR.PSR);
+              putbits36_3  (& cpu.Ypair[0], 18, cpu.PPR.PRR);
+              putbits36_6  (& cpu.Ypair[0], 30, 043);
+              sim_debug (DBG_CAC, & cpu_dev, "stcd Y0 %012llo\n", cpu.Ypair[0]);
 
-          cpu.Ypair[1] = 0;
-          putbits36_18 (& cpu.Ypair[1],  0, cpu.PPR.IC + 2);
+              cpu.Ypair[1] = 0;
+              putbits36_18 (& cpu.Ypair[1],  0, cpu.PPR.IC + 2);
+            }
+          else
+            {
+              sim_debug (DBG_CAC, & cpu_dev, "stcd fault PRR %o\n", cpu.PPR.PRR);
+              cpu.Ypair[0] = 0;
+              putbits36_15 (& cpu.Ypair[0],  3, cpu.cu_data.PSR);
+              putbits36_3  (& cpu.Ypair[0], 18, cpu.cu_data.PRR);
+              //putbits36_6  (& cpu.Ypair[0], 30, 043);
+              sim_debug (DBG_CAC, & cpu_dev, "stcd Y0 %012llo\n", cpu.Ypair[0]);
+
+              cpu.Ypair[1] = 0;
+              putbits36_18 (& cpu.Ypair[1],  0, cpu.cu_data.IC + 2);
+            }
           break;
 
 
