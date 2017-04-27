@@ -57,10 +57,10 @@ typedef enum
     FAULT_cycle,
     EXEC_cycle,
     FAULT_EXEC_cycle,
-    FAULT_EXEC2_cycle,
+    //FAULT_EXEC2_cycle,
     INTERRUPT_cycle,
     INTERRUPT_EXEC_cycle,
-    INTERRUPT_EXEC2_cycle,
+    //INTERRUPT_EXEC2_cycle,
     FETCH_cycle,
     SYNC_FAULT_RTN_cycle,
     // CA FETCH OPSTORE, DIVIDE_EXEC

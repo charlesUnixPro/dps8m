@@ -116,6 +116,20 @@ static MTAB cpu_mod[] = {
       NULL // help
     },
     {
+#ifdef ROUND_ROBIN
+      MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
+#else
+      MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
+#endif
+      0,            /* match */
+      "IAC",     /* print string */
+      "IAC",         /* match string */
+      cpu_set_initialize_and_clear,         /* validation routine */
+      NULL, /* display routine */
+      NULL,          /* value descriptor */
+      NULL // help
+    },
+    {
       MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
       0,            /* match */
       "NUNITS",     /* print string */
@@ -1391,14 +1405,18 @@ static char * cycleStr (cycles_t cycle)
           return "EXEC_cycle";
         case FAULT_EXEC_cycle:
           return "FAULT_EXEC_cycle";
+#if 0
         case FAULT_EXEC2_cycle:
           return "FAULT_EXEC2_cycle";
+#endif
         case INTERRUPT_cycle:
           return "INTERRUPT_cycle";
         case INTERRUPT_EXEC_cycle:
           return "INTERRUPT_EXEC_cycle";
+#if 0
         case INTERRUPT_EXEC2_cycle:
           return "INTERRUPT_EXEC2_cycle";
+#endif
         case FETCH_cycle:
           return "FETCH_cycle";
         case SYNC_FAULT_RTN_cycle:
@@ -1726,7 +1744,10 @@ elapsedtime ();
 #endif
 
                         // get interrupt pair
-                        core_read2 (intr_pair_addr, cpu.instr_buf, cpu.instr_buf + 1, __func__);
+                        core_read2 (intr_pair_addr, & cpu.cu.IWB, & cpu.cu.IRODD, __func__);
+                        cpu.cu.xde = 1;
+                        cpu.cu.xdo = 1;
+
 
                         CPT (cpt1U, 4); // interrupt pair fetched
                         cpu.interrupt_flag = false;
@@ -1751,6 +1772,7 @@ elapsedtime ();
               }
               break;
 
+#if 0
             case INTERRUPT_EXEC_cycle:
             case INTERRUPT_EXEC2_cycle:
               {
@@ -1836,6 +1858,7 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                 setCpuCycle (FETCH_cycle);
               }
               break;
+#endif
 
             case FETCH_cycle:
               {
@@ -1951,6 +1974,7 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                 // If we have done the even of an XED, do the odd
                 if (cpu.cu.xde == 0 && cpu.cu.xdo == 1)
                   {
+                    sim_debug (DBG_TRACE, & cpu_dev, "XDO %012llo\n", cpu.cu.IRODD);
                     CPT (cpt1U, 17); // do XED odd
                     // Get the odd
                     cpu.cu.IWB = cpu.cu.IRODD;
@@ -1962,6 +1986,7 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                 // If we have done neither of the XED
                 else if (cpu.cu.xde == 1 && cpu.cu.xdo == 1)
                   {
+                    sim_debug (DBG_TRACE, & cpu_dev, "XDE %012llo\n", cpu.cu.IWB);
                     CPT (cpt1U, 18); // do XED even
                     // Do the even this time and the odd the next time
                     cpu.cu.xde = 0;
@@ -2026,6 +2051,8 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
               break;
 
             case EXEC_cycle:
+            case FAULT_EXEC_cycle:
+            case INTERRUPT_EXEC_cycle:
               {
                 CPT (cpt1U, 22); // exec cycle
 
@@ -2272,7 +2299,10 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                 // absolute address of fault YPair
                 word24 addr = fltAddress + 2 * cpu.faultNumber;
   
-                core_read2 (addr, cpu.instr_buf, cpu.instr_buf + 1, __func__);
+                core_read2 (addr, & cpu.cu.IWB, & cpu.cu.IRODD, __func__);
+                sim_debug (DBG_TRACE, & cpu_dev, "fault pair %012llo  %012llo\n", cpu.cu.IWB, cpu.cu.IRODD);
+                cpu.cu.xde = 1;
+                cpu.cu.xdo = 1;
 
                 CPT (cpt1U, 33); // set fault exec cycle
                 setCpuCycle (FAULT_EXEC_cycle);
@@ -2280,6 +2310,7 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                 break;
               }
 
+#if 0
             case FAULT_EXEC_cycle:
             case FAULT_EXEC2_cycle:
               {
@@ -2376,6 +2407,7 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                 cpu.PPR.IC ++;
                 break;
               }
+#endif
 
 #if 0
             default:

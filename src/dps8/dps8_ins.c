@@ -2344,6 +2344,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
 /// executeInstruction: XEC/XED processing
 ///
 
+#if 0
 // Delay updating IWB/IRODD until after operand processing.
 
     if (cpu.cu.xde && cpu.cu.xdo)
@@ -2355,6 +2356,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
       {
         cpu.cu.IWB = cpu.CY;
       }
+#endif
 
 ///
 /// executeInstruction: RPT/RPD/RPL processing
@@ -6032,6 +6034,7 @@ static t_stat DoBasicInstruction (void)
         case 0716:  // xec
           cpu.cu.xde = 1;
           cpu.cu.xdo = 0;
+          cpu.cu.IWB = cpu.CY;
           break;
 
         case 0717:  // xed
@@ -6072,6 +6075,8 @@ static t_stat DoBasicInstruction (void)
 
           cpu.cu.xde = 1;
           cpu.cu.xdo = 1;
+          cpu.cu.IWB = cpu.Ypair[0];
+          cpu.cu.IRODD = cpu.Ypair[1];
           break;
 
         case 0001:   // mme
@@ -6705,6 +6710,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 
           if (cpu.cycle == EXEC_cycle)
             {
+sim_debug (DBG_TRACE, & cpu_dev, "scu t&d\n");
               // T&D behavior
 
               // An 'Add Delta' addressing mode will alter the TALLY bit;
@@ -6715,6 +6721,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
             }
           else
             {
+sim_debug (DBG_TRACE, & cpu_dev, "scu al39\n");
               // AL-39 behavior
               for (int j = 0; j < 8; j ++)
                 cpu.Yblock8[j] = cpu.scu_data[j];
