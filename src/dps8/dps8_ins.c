@@ -6710,7 +6710,6 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 
           if (cpu.cycle == EXEC_cycle)
             {
-sim_debug (DBG_TRACE, & cpu_dev, "scu t&d\n");
               // T&D behavior
 
               // An 'Add Delta' addressing mode will alter the TALLY bit;
@@ -6721,7 +6720,6 @@ sim_debug (DBG_TRACE, & cpu_dev, "scu t&d\n");
             }
           else
             {
-sim_debug (DBG_TRACE, & cpu_dev, "scu al39\n");
               // AL-39 behavior
               for (int j = 0; j < 8; j ++)
                 cpu.Yblock8[j] = cpu.scu_data[j];

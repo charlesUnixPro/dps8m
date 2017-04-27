@@ -1776,64 +1776,55 @@ elapsedtime ();
             case INTERRUPT_EXEC_cycle:
             case INTERRUPT_EXEC2_cycle:
               {
-                //     execute instruction in instruction buffer
-                //     if (! transfer) set INTERUPT_EXEC2_cycle 
+X               if (cpu.cycle == INTERRUPT_EXEC_cycle)
+X                   cpu.cu.IWB = cpu.instr_buf [0];
+X               else
+X                 cpu.cu.IWB = cpu.instr_buf [1];
 
-                if (cpu.cycle == INTERRUPT_EXEC_cycle)
-                  {
-                    CPT (cpt1U, 6); // exec cycle
-                    cpu.cu.IWB = cpu.instr_buf [0];
-                  }
-                else
-                  {
-                    CPT (cpt1U, 7); // exec2 cycle
-                  cpu.cu.IWB = cpu.instr_buf [1];
-                  }
-
-                if (GET_I (cpu.cu.IWB))
-                  cpu.wasInhibited = true;
-
-                t_stat ret = executeInstruction ();
-
-                if (ret > 0)
-                  {
-                     reason = ret;
-                     break;
-                  }
-
-                if (ret == CONT_TRA)
-                  {
-                    CPT (cpt1U, 8); // was xfer
-                    cpu.wasXfer = true;
-                  }
-
-                addCUhist ();
-
-                if (ret == CONT_TRA)
-                  {
-
-// BAR mode:  [NBAR] is set ON (taking the processor
-// out of BAR mode) by the execution of any transfer instruction
-// other than tss during a fault or interrupt trap.
-
-                    if (! (cpu.currentInstruction.opcode == 0715 &&
-                           cpu.currentInstruction.opcodeX == 0))
-                      {
-                        CPT (cpt1U, 9); // nbar set
-                        SET_I_NBAR;
-                      }
-
-                    setCpuCycle (FETCH_cycle);
-                    if (!clear_TEMPORARY_ABSOLUTE_mode ())
-                      {
-sim_debug (DBG_TRACE, & cpu_dev, "setting ABS mode\n");
-                        CPT (cpt1U, 10); // temporary absolute mode
-                        set_addr_mode (ABSOLUTE_mode);
-                      }
-else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
-                    break;
-                  }
-
+C               if (GET_I (cpu.cu.IWB))
+C                 cpu.wasInhibited = true;
+C
+C               t_stat ret = executeInstruction ();
+C
+C               if (ret > 0)
+C                 {
+C                    reason = ret;
+C                    break;
+C                 }
+C
+C               if (ret == CONT_TRA)
+C                 {
+C                   CPT (cpt1U, 8); // was xfer
+C                   cpu.wasXfer = true;
+C                 }
+C
+C               addCUhist ();
+C
+C               if (ret == CONT_TRA)
+C                 {
+C
+C/ BAR mode:  [NBAR] is set ON (taking the processor
+C/ out of BAR mode) by the execution of any transfer instruction
+C/ other than tss during a fault or interrupt trap.
+C
+C                   if (! (cpu.currentInstruction.opcode == 0715 &&
+C                          cpu.currentInstruction.opcodeX == 0))
+C                     {
+C                       CPT (cpt1U, 9); // nbar set
+C                       SET_I_NBAR;
+C                     }
+C
+C                    setCpuCycle (FETCH_cycle);
+C                   if (!clear_TEMPORARY_ABSOLUTE_mode ())
+C                     {
+Cim_debug (DBG_TRACE, & cpu_dev, "setting ABS mode\n");
+C                       CPT (cpt1U, 10); // temporary absolute mode
+C                       set_addr_mode (ABSOLUTE_mode);
+C                     }
+Clse sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
+C                   break;
+C                 }
+C
                 if (ret == CONT_DIS)
                   {
                     // ISOLTS does this....
@@ -1842,22 +1833,22 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                     break;
                   }
 
-                if (cpu.cycle == INTERRUPT_EXEC_cycle)
-                  {
-                    setCpuCycle (INTERRUPT_EXEC2_cycle);
-                    break;
-                  }
-                clear_TEMPORARY_ABSOLUTE_mode ();
-                cu_safe_restore ();
-// The only place cycle is set to INTERRUPT_cycle in FETCH_cycle; therefore
-// we can safely assume that is the state that should be restored.
-                // We can only get here if wasXfer was
-                // false, so we can assume it still is.
-                cpu.wasXfer = false;
-                CPT (cpt1U, 12); // cu restored
-                setCpuCycle (FETCH_cycle);
-              }
-              break;
+X               if (cpu.cycle == INTERRUPT_EXEC_cycle)
+X                 {
+X                   setCpuCycle (INTERRUPT_EXEC2_cycle);
+X                   break;
+X                 }
+C               clear_TEMPORARY_ABSOLUTE_mode ();
+C               cu_safe_restore ();
+C/ The only place cycle is set to INTERRUPT_cycle in FETCH_cycle; therefore
+C/ we can safely assume that is the state that should be restored.
+C               // We can only get here if wasXfer was
+C               // false, so we can assume it still is.
+C               cpu.wasXfer = false;
+C               CPT (cpt1U, 12); // cu restored
+C               setCpuCycle (FETCH_cycle);
+C             }
+C             break;
 #endif
 
             case FETCH_cycle:
@@ -2065,6 +2056,9 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                 t_stat ret = executeInstruction ();
 
                 CPT (cpt1U, 23); // execution complete
+
+                addCUhist ();
+
                 if (ret > 0)
                   {
                      reason = ret;
@@ -2078,6 +2072,41 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                     cpu.isExec = false;
                     cpu.isXED = false;
                     cpu.wasXfer = true;
+
+                    if (cpu.cycle != EXEC_cycle) // fault or interrupt
+                      {
+
+                        clearFaultCycle ();
+
+// BAR mode:  [NBAR] is set ON (taking the processor
+// out of BAR mode) by the execution of any transfer instruction
+// other than tss during a fault or interrupt trap.
+
+                        if (! (cpu.currentInstruction.opcode == 0715 &&
+                           cpu.currentInstruction.opcodeX == 0))
+                          {
+                            CPT (cpt1U, 9); // nbar set
+                            SET_I_NBAR;
+                          }
+
+                        if (!clear_TEMPORARY_ABSOLUTE_mode ())
+                          {
+                            // didn't go appending
+                            sim_debug (DBG_TRACE, & cpu_dev,
+                                       "setting ABS mode\n");
+                            CPT (cpt1U, 10); // temporary absolute mode
+                            set_addr_mode (ABSOLUTE_mode);
+                          }
+                        else
+                          {
+                            // went appending
+                            sim_debug (DBG_TRACE, & cpu_dev,
+                                       "not setting ABS mode\n");
+                          }
+
+                      } // fault or interrupt
+
+
                     if (TST_I_ABS && get_went_appending ())
                       {
                         set_addr_mode (APPEND_mode);
@@ -2171,6 +2200,53 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                     cpu.wasXfer = false; 
                     setCpuCycle (FETCH_cycle);
                     break;
+                  }
+
+// If we just did the odd word of a fault pair
+
+                if (cpu.cycle == FAULT_EXEC_cycle &&
+                    (! cpu.cu.xde) &&
+                    cpu.cu.xdo)
+                  {
+                    clear_TEMPORARY_ABSOLUTE_mode ();
+                    cu_safe_restore ();
+                    cpu.wasXfer = false;
+                    CPT (cpt1U, 12); // cu restored
+                    setCpuCycle (FETCH_cycle);
+                    clearFaultCycle ();
+                    // cu_safe_restore should have restored CU.IWB, so
+                    // we can determine the instruction length.
+                    // decodeInstruction() restores ci->info->ndes
+                    decodeInstruction (IWB_IRODD, & cpu.currentInstruction);
+
+                    cpu.PPR.IC += ci->info->ndes;
+                    cpu.PPR.IC ++;
+                    break;
+                  }
+
+// If we just did the odd word of a interrupt pair
+
+                if (cpu.cycle == INTERRUPT_EXEC_cycle &&
+                    (! cpu.cu.xde) &&
+                    cpu.cu.xdo)
+                  {
+                    clear_TEMPORARY_ABSOLUTE_mode ();
+                    cu_safe_restore ();
+// The only place cycle is set to INTERRUPT_cycle in FETCH_cycle; therefore
+// we can safely assume that is the state that should be restored.
+                    CPT (cpt1U, 12); // cu restored
+                  }
+
+// Even word of fault or exec pair
+
+                if (cpu.cycle != EXEC_cycle && cpu.cu.xde)
+                  {
+                    // Get the odd
+                    cpu.cu.IWB = cpu.cu.IRODD;
+                    // Do nothing next time
+                    cpu.cu.xde = cpu.cu.xdo = 0;
+                    cpu.isExec = true;
+                    break; // go do the odd word
                   }
 
                 if (cpu.cu.xde || cpu.cu.xdo) // we are starting or are in an XEC/XED
@@ -2300,7 +2376,7 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                 word24 addr = fltAddress + 2 * cpu.faultNumber;
   
                 core_read2 (addr, & cpu.cu.IWB, & cpu.cu.IRODD, __func__);
-                sim_debug (DBG_TRACE, & cpu_dev, "fault pair %012llo  %012llo\n", cpu.cu.IWB, cpu.cu.IRODD);
+                //sim_debug (DBG_TRACE, & cpu_dev, "fault pair %012llo  %012llo\n", cpu.cu.IWB, cpu.cu.IRODD);
                 cpu.cu.xde = 1;
                 cpu.cu.xdo = 1;
 
@@ -2314,89 +2390,80 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
             case FAULT_EXEC_cycle:
             case FAULT_EXEC2_cycle:
               {
-                //     execute instruction in instruction buffer
-                //     if (! transfer) set INTERUPT_EXEC2_cycle 
-
-                if (cpu.cycle == FAULT_EXEC_cycle)
-                  {
-                    CPT (cpt1U, 34); // fault exec even cycle
-                    cpu.cu.IWB = cpu.instr_buf [0];
-                  }
-                else
-                  {
-                    CPT (cpt1U, 35); // fault exec odd cycle
-                    cpu.cu.IWB = cpu.instr_buf [1];
-                  }
-
-                if (GET_I (cpu.cu.IWB))
-                  cpu.wasInhibited = true;
-
-                t_stat ret = executeInstruction ();
-
-                CPT (cpt1L, 0); // fault instruction complete
-                if (ret > 0)
-                  {
-                     reason = ret;
-                     break;
-                  }
-
-                if (ret == CONT_TRA)
-                  {
-                    CPT (cpt1L, 1); // fault instruction was transfer
-                    //sim_debug (DBG_TRACE, & cpu_dev, "tra in fault\n");
-                    //sim_debug (DBG_TRACE,& cpu_dev,
-                                //"fault CONT_TRA; was_appending %d\n",
-                                //get_went_appending () ? 1 : 0);
-
-// BAR mode:  [NBAR] is set ON (taking the processor
-// out of BAR node) by the execution of any transfer instruction
-// other than tss during a fault or interrupt trap.
-
-                    if (! (cpu.currentInstruction.opcode == 0715 &&
-                           cpu.currentInstruction.opcodeX == 0))
-                      {
-                        SET_I_NBAR;
-                      }
-
-                    cpu.wasXfer = true; 
-                    setCpuCycle (FETCH_cycle);
-                    clearFaultCycle ();
-                    if (!clear_TEMPORARY_ABSOLUTE_mode ())
-                      {
-                        //sim_debug (DBG_TRACE, & cpu_dev, "tra in fault sets ABSOLUTE_mode\n");
-                        //brkbrk(0, NULL);
-                        //sim_debug (DBG_TRACE, & cpu_dev,
-                                   //"CONR_TRA: went_appending was false, so setting absolute mode\n");
-                        CPT (cpt1L, 2); // set abs mode
-                        set_addr_mode (ABSOLUTE_mode);
-                      }
-                    break;
-                  }
-
-                if (ret == CONT_DIS)
-                  {
-                    CPT (cpt1L, 3); // DIS in fault pait
-                    // ISOLTS does this....
-                    sim_warn ("DIS in fault cycle\n");
-                    break;
-                  }
-
-                if (cpu.cycle == FAULT_EXEC_cycle)
-                  {
-                    CPT (cpt1L, 4); // go to fault exec odd cycle
-                    setCpuCycle (FAULT_EXEC2_cycle);
-                    break;
-                  }
-                CPT (cpt1L, 5); // go to exec cycle
-                // Done with FAULT_EXEC2_cycle
-                // Restores cpu.cycle and addressing mode
-                clear_TEMPORARY_ABSOLUTE_mode ();
-                cu_safe_restore ();
-                cpu.wasXfer = false; 
-                setCpuCycle (FETCH_cycle);
-                clearFaultCycle ();
-
-// XXX Is this needed? Are EIS instructions allowed in fault pairs?
+X               if (cpu.cycle == FAULT_EXEC_cycle)
+X                 {
+X                   CPT (cpt1U, 34); // fault exec even cycle
+X                   cpu.cu.IWB = cpu.instr_buf [0];
+X                 }
+X               else
+X                 {
+X                   CPT (cpt1U, 35); // fault exec odd cycle
+X                   cpu.cu.IWB = cpu.instr_buf [1];
+X                 }
+X
+X               if (GET_I (cpu.cu.IWB))
+X                 cpu.wasInhibited = true;
+X
+X               t_stat ret = executeInstruction ();
+X
+X               CPT (cpt1L, 0); // fault instruction complete
+X               if (ret > 0)
+X                 {
+X                    reason = ret;
+X                    break;
+X                 }
+X
+X               if (ret == CONT_TRA)
+X                 {
+X                   CPT (cpt1L, 1); // fault instruction was transfer
+X                   //sim_debug (DBG_TRACE, & cpu_dev, "tra in fault\n");
+X                   //sim_debug (DBG_TRACE,& cpu_dev,
+X                               //"fault CONT_TRA; was_appending %d\n",
+X                               //get_went_appending () ? 1 : 0);
+X
+X/ BAR mode:  [NBAR] is set ON (taking the processor
+X/ out of BAR node) by the execution of any transfer instruction
+X/ other than tss during a fault or interrupt trap.
+X
+X                   if (! (cpu.currentInstruction.opcode == 0715 &&
+X                          cpu.currentInstruction.opcodeX == 0))
+X                     {
+X                       SET_I_NBAR;
+X                     }
+X
+X                   cpu.wasXfer = true; 
+X                   setCpuCycle (FETCH_cycle);
+X                   clearFaultCycle ();
+X                   if (!clear_TEMPORARY_ABSOLUTE_mode ())
+X                     {
+X                       CPT (cpt1L, 2); // set abs mode
+X                       set_addr_mode (ABSOLUTE_mode);
+X                     }
+X                   break;
+X                 }
+X
+X               if (ret == CONT_DIS)
+X                 {
+X                   CPT (cpt1L, 3); // DIS in fault pait
+X                   // ISOLTS does this....
+X                   sim_warn ("DIS in fault cycle\n");
+X                   break;
+X                 }
+X
+X               if (cpu.cycle == FAULT_EXEC_cycle)
+X                 {
+X                   CPT (cpt1L, 4); // go to fault exec odd cycle
+X                   setCpuCycle (FAULT_EXEC2_cycle);
+X                   break;
+X                 }
+X               CPT (cpt1L, 5); // go to exec cycle
+X               // Done with FAULT_EXEC2_cycle
+X               // Restores cpu.cycle and addressing mode
+X               clear_TEMPORARY_ABSOLUTE_mode ();
+X               cu_safe_restore ();
+X               cpu.wasXfer = false; 
+X               setCpuCycle (FETCH_cycle);
+X               clearFaultCycle ();
 
                 // cu_safe_restore should have restored CU.IWB, so
                 // we can determine the instruction length.
