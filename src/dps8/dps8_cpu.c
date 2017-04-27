@@ -2122,7 +2122,6 @@ elapsedtime ();
                     break; // go do the odd word
                   }
 
-#if 1
                 if (cpu.cu.xde || cpu.cu.xdo) // we are in an XEC/XED
                   {
                     CPT (cpt1U, 27); // XEx instruction
@@ -2130,7 +2129,6 @@ elapsedtime ();
                     setCpuCycle (FETCH_cycle);
                     break;
                   }
-#endif
 
                 cpu.cu.xde = cpu.cu.xdo = 0;
                 cpu.isExec = false;

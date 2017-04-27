@@ -57,13 +57,10 @@ typedef enum
     FAULT_cycle,
     EXEC_cycle,
     FAULT_EXEC_cycle,
-    //FAULT_EXEC2_cycle,
     INTERRUPT_cycle,
     INTERRUPT_EXEC_cycle,
-    //INTERRUPT_EXEC2_cycle,
     FETCH_cycle,
     SYNC_FAULT_RTN_cycle,
-    // CA FETCH OPSTORE, DIVIDE_EXEC
   } cycles_t;
 
 struct _tpr
@@ -1776,7 +1773,6 @@ typedef struct
     uint rTRlsb;
 #endif
     // XXX this is used to store the fault/interrupt pair, and really should be IBW/IRODD
-//    word36 instr_buf [2];
     uint64 lufCounter;
     bool secret_addressing_mode;
     bool went_appending; // we will go....

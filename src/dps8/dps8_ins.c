@@ -2345,24 +2345,6 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
       } // SC/SCR
 
 ///
-/// executeInstruction: XEC/XED processing
-///
-
-#if 0
-// Delay updating IWB/IRODD until after operand processing.
-
-    if (cpu.cu.xde && cpu.cu.xdo)
-      {
-        cpu.cu.IWB = cpu.Ypair[0];
-        cpu.cu.IRODD = cpu.Ypair[1];
-      }
-    else if (cpu.cu.xde)
-      {
-        cpu.cu.IWB = cpu.CY;
-      }
-#endif
-
-///
 /// executeInstruction: RPT/RPD/RPL processing
 ///
 
@@ -3196,6 +3178,11 @@ static t_stat DoBasicInstruction (void)
 
           //  C(PPR.IC)+2 -> C(Y-pair)36,53
           //  00...0 -> C(Y-pair)54,71
+
+          // ISOLTS 880 5a has an STCD in an XED in a fault pair;
+          // it reports the wrong ring number. This was fixed by
+          // emulating the SCU instruction (different behavior in fault
+          // pair).
 
           if (cpu.cycle == EXEC_cycle)
             {

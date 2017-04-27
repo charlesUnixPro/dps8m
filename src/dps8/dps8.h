@@ -134,6 +134,7 @@
 #define DPS8M_(x)
 #endif
 
+// debugging tool
 #ifdef ISOLTS
 #define IF1 if (currentRunningCPUnum && sim_deb)
 #else
