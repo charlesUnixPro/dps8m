@@ -6035,7 +6035,7 @@ static t_stat DoBasicInstruction (void)
           cpu.cu.xde = 1;
           cpu.cu.xdo = 0;
           cpu.cu.IWB = cpu.CY;
-          break;
+          return CONT_XEC;
 
         case 0717:  // xed
           // The xed instruction itself does not affect any indicator.
@@ -6077,7 +6077,7 @@ static t_stat DoBasicInstruction (void)
           cpu.cu.xdo = 1;
           cpu.cu.IWB = cpu.Ypair[0];
           cpu.cu.IRODD = cpu.Ypair[1];
-          break;
+          return CONT_XEC;
 
         case 0001:   // mme
           if (sim_deb_mme_cntdwn > 0)

@@ -1405,18 +1405,10 @@ static char * cycleStr (cycles_t cycle)
           return "EXEC_cycle";
         case FAULT_EXEC_cycle:
           return "FAULT_EXEC_cycle";
-#if 0
-        case FAULT_EXEC2_cycle:
-          return "FAULT_EXEC2_cycle";
-#endif
         case INTERRUPT_cycle:
           return "INTERRUPT_cycle";
         case INTERRUPT_EXEC_cycle:
           return "INTERRUPT_EXEC_cycle";
-#if 0
-        case INTERRUPT_EXEC2_cycle:
-          return "INTERRUPT_EXEC2_cycle";
-#endif
         case FETCH_cycle:
           return "FETCH_cycle";
         case SYNC_FAULT_RTN_cycle:
@@ -1643,21 +1635,8 @@ setCPU:;
             PNL (panelProcessEvent ());
           }
 
-#if 0
-        if (sim_gtime () % 1024 == 0)
-          {
-            t_stat ch = sim_poll_kbd ();
-            if (ch != SCPE_OK)
-              {
-                //sim_printf ("%o\n", ch);
-                if (ch == 010033) // Escape
-                  console_attn (NULL);
-              }
-          }
-#else
         if (check_attn_key ())
           console_attn (NULL);
-#endif
 
 #ifdef ISOLTS
         if (cpu.cycle != FETCH_cycle)
@@ -1772,85 +1751,6 @@ elapsedtime ();
               }
               break;
 
-#if 0
-            case INTERRUPT_EXEC_cycle:
-            case INTERRUPT_EXEC2_cycle:
-              {
-X               if (cpu.cycle == INTERRUPT_EXEC_cycle)
-X                   cpu.cu.IWB = cpu.instr_buf [0];
-X               else
-X                 cpu.cu.IWB = cpu.instr_buf [1];
-
-C               if (GET_I (cpu.cu.IWB))
-C                 cpu.wasInhibited = true;
-C
-C               t_stat ret = executeInstruction ();
-C
-C               if (ret > 0)
-C                 {
-C                    reason = ret;
-C                    break;
-C                 }
-C
-C               if (ret == CONT_TRA)
-C                 {
-C                   CPT (cpt1U, 8); // was xfer
-C                   cpu.wasXfer = true;
-C                 }
-C
-C               addCUhist ();
-C
-C               if (ret == CONT_TRA)
-C                 {
-C
-C/ BAR mode:  [NBAR] is set ON (taking the processor
-C/ out of BAR mode) by the execution of any transfer instruction
-C/ other than tss during a fault or interrupt trap.
-C
-C                   if (! (cpu.currentInstruction.opcode == 0715 &&
-C                          cpu.currentInstruction.opcodeX == 0))
-C                     {
-C                       CPT (cpt1U, 9); // nbar set
-C                       SET_I_NBAR;
-C                     }
-C
-C                    setCpuCycle (FETCH_cycle);
-C                   if (!clear_TEMPORARY_ABSOLUTE_mode ())
-C                     {
-Cim_debug (DBG_TRACE, & cpu_dev, "setting ABS mode\n");
-C                       CPT (cpt1U, 10); // temporary absolute mode
-C                       set_addr_mode (ABSOLUTE_mode);
-C                     }
-Clse sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
-C                   break;
-C                 }
-C
-                if (ret == CONT_DIS)
-                  {
-                    // ISOLTS does this....
-                    CPT (cpt1U, 11); // dis in interrupt pair
-                    sim_warn ("DIS in interrupt cycle\n");
-                    break;
-                  }
-
-X               if (cpu.cycle == INTERRUPT_EXEC_cycle)
-X                 {
-X                   setCpuCycle (INTERRUPT_EXEC2_cycle);
-X                   break;
-X                 }
-C               clear_TEMPORARY_ABSOLUTE_mode ();
-C               cu_safe_restore ();
-C/ The only place cycle is set to INTERRUPT_cycle in FETCH_cycle; therefore
-C/ we can safely assume that is the state that should be restored.
-C               // We can only get here if wasXfer was
-C               // false, so we can assume it still is.
-C               cpu.wasXfer = false;
-C               CPT (cpt1U, 12); // cu restored
-C               setCpuCycle (FETCH_cycle);
-C             }
-C             break;
-#endif
-
             case FETCH_cycle:
               {
 #ifdef PANEL
@@ -1942,26 +1842,6 @@ C             break;
                     doFault (FAULT_LUF, (_fault_subtype) {.bits=0}, "instruction cycle lockup");
                   }
 
-#if 0
-                if (cpu.interrupt_flag && 
-                    ((cpu.PPR.IC % 2) == 0) &&
-                    (! (cpu.cu.xde | cpu.cu.xdo |
-                        cpu.cu.rpt | cpu.cu.rd | cpu.cu.rl)))
-                  {
-// This is the only place cycle is set to INTERRUPT_cycle; therefore
-// return from interrupt can safely assume the it should set the cycle
-// to FETCH_cycle.
-                    setCpuCycle (INTERRUPT_cycle);
-                    break;
-                  }
-                if (cpu.g7_flag)
-                  {
-                    cpu.g7_flag = false;
-                    //setCpuCycle (FAULT_cycle);
-                    doG7Fault ();
-                  }
-#endif
-
                 // If we have done the even of an XED, do the odd
                 if (cpu.cu.xde == 0 && cpu.cu.xdo == 1)
                   {
@@ -2008,33 +1888,6 @@ C             break;
                     fetchInstruction (cpu.PPR.IC);
                   }
 
-
-#if 0
-                // XXX The conditions are more rigorous: see AL39, pg 327
-           // ci is not set up yet; check the inhibit bit in the IWB!
-                //if (PPR.IC % 2 == 0 && // Even address
-                    //ci -> i == 0) // Not inhibited
-                //if (GET_I (cpu.cu.IWB) == 0) // Not inhibited
-// If the instruction pair virtual address being formed is the result of a 
-// transfer of control condition or if the current instruction is 
-// Execute (xec), Execute Double (xed), Repeat (rpt), Repeat Double (rpd), 
-// or Repeat Link (rpl), the group 7 faults and interrupt present lines are 
-// not sampled.
-                if (PPR.IC % 2 == 0 && // Even address
-                    GET_I (cpu.cu.IWB) == 0 &&  // Not inhibited
-                    (! (cpu.cu.xde | cpu.cu.xdo |
-                        cpu.cu.rpt | cpu.cu.rd | cpu.cu.rl)))
-                  {
-                    cpu.interrupt_flag = sample_interrupts ();
-                    cpu.g7_flag = bG7Pending ();
-                  }
-                else
-                  {
-                    cpu.interrupt_flag = false;
-                    cpu.g7_flag = false;
-                  }
-#endif
-
                 CPT (cpt1U, 21); // go to exec cycle
                 advanceG7Faults ();
                 setCpuCycle (EXEC_cycle);
@@ -2067,6 +1920,15 @@ C             break;
                   {
                      reason = ret;
                      break;
+                  }
+
+                if (ret == CONT_XEC)
+                  {
+                    CPT (cpt1U, 27); // XEx instruction
+                    cpu.wasXfer = false; 
+                    if (cpu.cycle == EXEC_cycle)
+                      setCpuCycle (FETCH_cycle);
+                    break;
                   }
 
                 if (ret == CONT_TRA)
@@ -2260,13 +2122,15 @@ C             break;
                     break; // go do the odd word
                   }
 
-                if (cpu.cu.xde || cpu.cu.xdo) // we are starting or are in an XEC/XED
+#if 1
+                if (cpu.cu.xde || cpu.cu.xdo) // we are in an XEC/XED
                   {
                     CPT (cpt1U, 27); // XEx instruction
                     cpu.wasXfer = false; 
                     setCpuCycle (FETCH_cycle);
                     break;
                   }
+#endif
 
                 cpu.cu.xde = cpu.cu.xdo = 0;
                 cpu.isExec = false;
@@ -2328,16 +2192,6 @@ C             break;
                     setAPUStatus (apuStatus_FABS);
 
                 cu_safe_store ();
-#if 0
-                if (cpu . bTroubleFaultCycle)
-                  {
-                    // XXX the whole fault cycle should be rewritten as an xed instruction pushed to IWB and executed
-                    // ISOLTS-870 05a
-                    if (cpu . bTroubleFaultCycleEven)
-                        putbits36_1 (& cpu.scu_data[5], 24, 1);	// xde
-                    putbits36_1 (& cpu.scu_data[5], 25, 1); // xdo
-                  }
-#endif
                 CPT (cpt1U, 31); // safe store complete
 
                 // Temporary absolute mode
@@ -2374,103 +2228,7 @@ C             break;
                 break;
               }
 
-#if 0
-            case FAULT_EXEC_cycle:
-            case FAULT_EXEC2_cycle:
-              {
-X               if (cpu.cycle == FAULT_EXEC_cycle)
-X                 {
-X                   CPT (cpt1U, 34); // fault exec even cycle
-X                   cpu.cu.IWB = cpu.instr_buf [0];
-X                 }
-X               else
-X                 {
-X                   CPT (cpt1U, 35); // fault exec odd cycle
-X                   cpu.cu.IWB = cpu.instr_buf [1];
-X                 }
-X
-X               if (GET_I (cpu.cu.IWB))
-X                 cpu.wasInhibited = true;
-X
-X               t_stat ret = executeInstruction ();
-X
-X               CPT (cpt1L, 0); // fault instruction complete
-X               if (ret > 0)
-X                 {
-X                    reason = ret;
-X                    break;
-X                 }
-X
-X               if (ret == CONT_TRA)
-X                 {
-X                   CPT (cpt1L, 1); // fault instruction was transfer
-X                   //sim_debug (DBG_TRACE, & cpu_dev, "tra in fault\n");
-X                   //sim_debug (DBG_TRACE,& cpu_dev,
-X                               //"fault CONT_TRA; was_appending %d\n",
-X                               //get_went_appending () ? 1 : 0);
-X
-X/ BAR mode:  [NBAR] is set ON (taking the processor
-X/ out of BAR node) by the execution of any transfer instruction
-X/ other than tss during a fault or interrupt trap.
-X
-X                   if (! (cpu.currentInstruction.opcode == 0715 &&
-X                          cpu.currentInstruction.opcodeX == 0))
-X                     {
-X                       SET_I_NBAR;
-X                     }
-X
-X                   cpu.wasXfer = true; 
-X                   setCpuCycle (FETCH_cycle);
-X                   clearFaultCycle ();
-X                   if (!clear_TEMPORARY_ABSOLUTE_mode ())
-X                     {
-X                       CPT (cpt1L, 2); // set abs mode
-X                       set_addr_mode (ABSOLUTE_mode);
-X                     }
-X                   break;
-X                 }
-X
-X               if (ret == CONT_DIS)
-X                 {
-X                   CPT (cpt1L, 3); // DIS in fault pait
-X                   // ISOLTS does this....
-X                   sim_warn ("DIS in fault cycle\n");
-X                   break;
-X                 }
-X
-X               if (cpu.cycle == FAULT_EXEC_cycle)
-X                 {
-X                   CPT (cpt1L, 4); // go to fault exec odd cycle
-X                   setCpuCycle (FAULT_EXEC2_cycle);
-X                   break;
-X                 }
-X               CPT (cpt1L, 5); // go to exec cycle
-X               // Done with FAULT_EXEC2_cycle
-X               // Restores cpu.cycle and addressing mode
-X               clear_TEMPORARY_ABSOLUTE_mode ();
-X               cu_safe_restore ();
-X               cpu.wasXfer = false; 
-X               setCpuCycle (FETCH_cycle);
-X               clearFaultCycle ();
 
-                // cu_safe_restore should have restored CU.IWB, so
-                // we can determine the instruction length.
-                // decodeInstruction() restores ci->info->ndes
-                decodeInstruction (IWB_IRODD, & cpu.currentInstruction);
-
-                cpu.PPR.IC += ci->info->ndes;
-                cpu.PPR.IC ++;
-                break;
-              }
-#endif
-
-#if 0
-            default:
-              {
-                sim_printf ("cpu.cycle %d?\n", cpu.cycle);
-                return SCPE_UNK;
-              }
-#endif
           }  // switch (cpu.cycle)
       } 
 #ifdef ROUND_ROBIN
