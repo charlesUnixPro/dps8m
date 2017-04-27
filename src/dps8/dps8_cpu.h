@@ -57,13 +57,10 @@ typedef enum
     FAULT_cycle,
     EXEC_cycle,
     FAULT_EXEC_cycle,
-    FAULT_EXEC2_cycle,
     INTERRUPT_cycle,
     INTERRUPT_EXEC_cycle,
-    INTERRUPT_EXEC2_cycle,
     FETCH_cycle,
     SYNC_FAULT_RTN_cycle,
-    // CA FETCH OPSTORE, DIVIDE_EXEC
   } cycles_t;
 
 struct _tpr
@@ -1765,12 +1762,17 @@ typedef struct
     word36 Yblock8[8];      // 8-words
     word36 Yblock16[16];    // 16-words
     word36 Yblock32[32];    // 32-words
-    word36 scu_data[8];    // For SCU instruction
+    word36 scu_data[8];     // For SCU instruction
+    struct
+      {
+        word15 PSR;
+        word3  PRR;
+        word18 IC;
+      } cu_data;            // For STCD instruction
 #ifdef ISOLTS
     uint rTRlsb;
 #endif
     // XXX this is used to store the fault/interrupt pair, and really should be IBW/IRODD
-    word36 instr_buf [2];
     uint64 lufCounter;
     bool secret_addressing_mode;
     bool went_appending; // we will go....

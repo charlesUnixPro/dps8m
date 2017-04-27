@@ -623,8 +623,7 @@ sim_debug (DBG_FAULT, & cpu_dev, "cycle %u ndes %u fn %u v %u\n", cpu.cycle, cpu
 
     // If already in a FAULT CYCLE then signal trouble fault
 
-    if (cpu.cycle == FAULT_EXEC_cycle ||
-        cpu.cycle == FAULT_EXEC2_cycle)
+    if (cpu.cycle == FAULT_EXEC_cycle)
       {
         sim_debug (DBG_CYCLE, & cpu_dev, "Changing fault number to Trouble fault\n");
 
@@ -773,8 +772,7 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
         cpu.MR.ihr = 0;
       }
 
-    if (cpu.cycle == FAULT_EXEC_cycle ||
-        cpu.cycle == FAULT_EXEC2_cycle)
+    if (cpu.cycle == FAULT_EXEC_cycle)
       {
         cpu.faultNumber = FAULT_TRB;
         cpu.cu.FI_ADDR = FAULT_TRB;

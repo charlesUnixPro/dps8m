@@ -1448,7 +1448,7 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWord
     bool instructionFetch = (thisCycle == INSTRUCTION_FETCH);
     bool StrOp = (thisCycle == OPERAND_STORE ||
                   thisCycle == APU_DATA_STORE);
-    bool rtcdOperandFetch = thisCycle == RTCD_OPERAND_FETCH;
+    //bool rtcdOperandFetch = thisCycle == RTCD_OPERAND_FETCH;
 
 #ifdef WAM
     // AL39: The associative memory is ignored (forced to "no match") during
@@ -1741,6 +1741,7 @@ A:;
         // C(TPR.TRR) > C(SDW .R1)?	Note typo in AL39, R2 should be R1
         if (cpu.TPR.TRR > cpu.SDW->R1)
           {
+            sim_debug (DBG_CAC, & cpu_dev, "ACV5 TRR %o R1 %o\n", cpu.TPR.TRR, cpu.SDW->R1);
             //Set fault ACV5 = OWB
             cpu.acvFaults |= ACV5;
             PNL (L68_ (cpu.apu.state |= apu_FLT;))
@@ -1749,6 +1750,7 @@ A:;
         
         if (! cpu.SDW->W)
           {
+            sim_debug (DBG_CAC, & cpu_dev, "ACV6\n");
             // Set fault ACV6 = W-OFF
             cpu.acvFaults |= ACV6;
             PNL (L68_ (cpu.apu.state |= apu_FLT;))
@@ -1765,6 +1767,7 @@ A:;
         // C(TPR.TRR) > C(SDW .R2)?
         if (cpu.TPR.TRR > cpu.SDW->R2)
           {
+            sim_debug (DBG_CAC, & cpu_dev, "ACV3\n");
             sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(B) ACV3\n");
             //Set fault ACV3 = ORB
             cpu.acvFaults |= ACV3;
@@ -1777,6 +1780,7 @@ A:;
             //C(PPR.PSR) = C(TPR.TSR)?
             if (cpu.PPR.PSR != cpu.TPR.TSR)
               {
+                sim_debug (DBG_CAC, & cpu_dev, "ACV4\n");
                 sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(B) ACV4\n");
                 //Set fault ACV4 = R-OFF
                 cpu.acvFaults |= ACV4;
@@ -1802,6 +1806,7 @@ C:;
     if (cpu.TPR.TRR < cpu.SDW->R1 ||
         cpu.TPR.TRR > cpu.SDW->R2)
       {
+        sim_debug (DBG_CAC, & cpu_dev, "ACV1 c\n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(C) ACV1\n");
         //Set fault ACV1 = OEB
         cpu.acvFaults |= ACV1;
@@ -1811,6 +1816,7 @@ C:;
     // SDW.E set ON?
     if (! cpu.SDW->E)
       {
+        sim_debug (DBG_CAC, & cpu_dev, "ACV2 a\n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(C) ACV2\n");
         //Set fault ACV2 = E-OFF
         cpu.acvFaults |= ACV2;
@@ -1820,6 +1826,7 @@ C:;
     // C(TPR.TRR) ≥ C(PPR.PRR)
     if (cpu.TPR.TRR < cpu.PPR.PRR)
       {
+        sim_debug (DBG_CAC, & cpu_dev, "ACV11\n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(C) ACV11\n");
         //Set fault ACV11 = INRET
         cpu.acvFaults |= ACV11;
@@ -1838,6 +1845,7 @@ D:;
     // C(PPR.PRR) < RALR?
     if (! (cpu.PPR.PRR < cpu.rRALR))
       {
+        sim_debug (DBG_CAC, & cpu_dev, "ACV13\n");
         sim_debug (DBG_APPENDING, & cpu_dev,
                    "acvFaults(D) C(PPR.PRR) %o < RALR %o\n", 
                    cpu.PPR.PRR, cpu.rRALR);
@@ -1866,6 +1874,7 @@ E:;
     //SDW.E set ON?
     if (!cpu . SDW->E)
       {
+        sim_debug (DBG_CAC, & cpu_dev, "ACV2 b\n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(E) ACV2\n");
         // Set fault ACV2 = E-OFF
         cpu.acvFaults |= ACV2;
@@ -1887,6 +1896,7 @@ E:;
     //if (address >= (word18) cpu.SDW->EB)
     if (cpu.TPR.CA >= (word18) cpu.SDW->EB)
       {
+        sim_debug (DBG_CAC, & cpu_dev, "ACV7\n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(E) ACV7\n");
         // Set fault ACV7 = NO GA
         cpu.acvFaults |= ACV7;
@@ -1901,6 +1911,7 @@ E1:
     // C(TPR.TRR) > SDW.R3?
     if (cpu.TPR.TRR > cpu.SDW->R3)
       {
+        sim_debug (DBG_CAC, & cpu_dev, "ACV8\n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(E) ACV8\n");
         //Set fault ACV8 = OCB
         cpu.acvFaults |= ACV8;
@@ -1911,6 +1922,7 @@ E1:
     // C(TPR.TRR) < SDW.R1?
     if (cpu.TPR.TRR < cpu.SDW->R1)
       {
+        sim_debug (DBG_CAC, & cpu_dev, "ACV9\n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(E) ACV9\n");
         // Set fault ACV9 = OCALL
         cpu.acvFaults |= ACV9;
@@ -1925,6 +1937,7 @@ E1:
         // C(PPR.PRR) < SDW.R2?
         if (cpu . PPR.PRR < cpu . SDW->R2)
           {
+            sim_debug (DBG_CAC, & cpu_dev, "ACV10\n");
             sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(E) ACV10\n");
             // Set fault ACV10 = BOC
             cpu.acvFaults |= ACV10;
@@ -1964,6 +1977,7 @@ F:;
     // C(TPR.TRR) < C(SDW .R1)?
     if (cpu.TPR.TRR < cpu.SDW->R1)
       {
+        sim_debug (DBG_CAC, & cpu_dev, "ACV1 a\n");
         sim_debug (DBG_APPENDING, & cpu_dev,
                    "acvFaults(F) C(TPR.TRR) %o < C(SDW .R1) %o\n",
                    cpu.TPR.TRR, cpu.SDW->R1);
@@ -1975,6 +1989,7 @@ F:;
     // C(TPR.TRR) > C(SDW .R2)?
     if (cpu.TPR.TRR > cpu.SDW->R2)
       {
+        sim_debug (DBG_CAC, & cpu_dev, "ACV1 b\n");
         sim_debug (DBG_TRACE, & cpu_dev,
                    "acvFaults(F) C(TPR.TRR) %o > C(SDW .R2) %o\n",
                    cpu . TPR . TRR, cpu . SDW -> R2);
@@ -1986,6 +2001,7 @@ F:;
     // SDW .E set ON?
     if (! cpu.SDW->E)
       {
+        sim_debug (DBG_CAC, & cpu_dev, "ACV2 c \n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(F) ACV2\n");
         cpu.acvFaults |= ACV2;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
@@ -1995,6 +2011,7 @@ F:;
     // C(PPR.PRR) = C(TPR.TRR)?
     if (cpu.PPR.PRR != cpu.TPR.TRR)
       {
+        sim_debug (DBG_CAC, & cpu_dev, "ACV12\n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(F) ACV12\n");
         //Set fault ACV12 = CRT
         cpu.acvFaults |= ACV12;
@@ -2018,6 +2035,7 @@ G:;
     //if (((address >> 4) & 037777) > cpu.SDW->BOUND)
     if (((cpu.TPR.CA >> 4) & 037777) > cpu.SDW->BOUND)
       {
+        sim_debug (DBG_CAC, & cpu_dev, "ACV15\n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(G) ACV15\n");
         cpu.acvFaults |= ACV15;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
@@ -2296,45 +2314,26 @@ J:;
 ////////////////////////////////////////
 
 K:; // RTCD operand fetch
-
     sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(K)\n");
 
-    // C(Y)3,17 ->  C(TPR.TSR)
+    word3 y = getbits36_3 (* data, 18);
+
+    // C(Y-pair)3,17 -> C(PPR.PSR)
+    // We set TSR here; TSR will be copied to PSR at KL
     cpu.TPR.TSR = GETHI (* data) & MASK15;
 
-    // C(Y+1)0,17 -> C(TPR.CA) 
+    // Maximum of
+    // C(Y-pair)18,20; C(TPR.TRR); C(SDW.R1) -> C(PPR.PRR)
+    // We set TRR here as well
+    cpu.PPR.PRR = cpu.TPR.TRR = max3 (y, cpu.TPR.TRR, cpu.RSDWH_R1);
+
+    // C(Y-pair)36,53 -> C(PPR.IC)
+    // We set CA here; copied to IC  at KL
     cpu.TPR.CA = GETHI (* (data + 1));
 
-// Believed, not documented...
-
-    // C(Y)18,20 -> C(TPR.TRR)
-    cpu.TPR.TRR = getbits36_3 (* data, 18);
-
-    // C(TPR.TRR) >= C(PPR.PRR)?
-    if (cpu.TPR.TRR >= cpu.PPR.PRR)
-      {
-        // C(TPR.TRR) => C(PRi.RNR)
-        //    for i = 0, 7
-        CPTUR (cptUsePRn + 0);
-        CPTUR (cptUsePRn + 1);
-        CPTUR (cptUsePRn + 2);
-        CPTUR (cptUsePRn + 3);
-        CPTUR (cptUsePRn + 4);
-        CPTUR (cptUsePRn + 5);
-        CPTUR (cptUsePRn + 6);
-        CPTUR (cptUsePRn + 7);
-        cpu.PR[0].RNR =
-        cpu.PR[1].RNR =
-        cpu.PR[2].RNR =
-        cpu.PR[3].RNR =
-        cpu.PR[4].RNR =
-        cpu.PR[5].RNR =
-        cpu.PR[6].RNR =
-        cpu.PR[7].RNR = cpu.TPR.TRR;
-      }
-
-    // C(TPR.TRR) -> C(PPR.PRR)
-    cpu.PPR.PRR = cpu.TPR.TRR;
+    // If C(PPR.PRR) = 0 then C(SDW.P) -> C(PPR.P);
+    //     otherwise 0 -> C(PPR.P)
+    // Done at M
 
     goto KL;
 
@@ -2363,6 +2362,29 @@ L:; // Transfer or instruction fetch
         cpu.PR[n].WORDNO = (cpu.PPR.IC + 1) & MASK18;
         SET_PR_BITNO (n, 0);
       }
+
+    if (thisCycle == INSTRUCTION_FETCH &&
+        lastCycle == RTCD_OPERAND_FETCH)
+      {
+        // C(PPR.PRR) -> C(PRn.RNR) for n = (0, 1, ..., 7)
+        // Use TRR here; PRR not set until KL
+        CPTUR (cptUsePRn + 0);
+        CPTUR (cptUsePRn + 1);
+        CPTUR (cptUsePRn + 2);
+        CPTUR (cptUsePRn + 3);
+        CPTUR (cptUsePRn + 4);
+        CPTUR (cptUsePRn + 5);
+        CPTUR (cptUsePRn + 6);
+        CPTUR (cptUsePRn + 7);
+        cpu.PR[0].RNR =
+        cpu.PR[1].RNR =
+        cpu.PR[2].RNR =
+        cpu.PR[3].RNR =
+        cpu.PR[4].RNR =
+        cpu.PR[5].RNR =
+        cpu.PR[6].RNR =
+        cpu.PR[7].RNR = cpu.TPR.TRR;
+      }
     goto KL;
 
 KL:
@@ -2375,7 +2397,7 @@ KL:
 
     goto M;
 
-M: // Post CALL6 PR set
+M: // Set P
     sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(M)\n");
 
     // C(TPR.TRR) = 0?
@@ -2389,10 +2411,6 @@ M: // Post CALL6 PR set
         // 0 C(PPR.P)
         cpu.PPR.P = 0;
       }
-
-    // Is this an rtcd operand fetch?
-    if (rtcdOperandFetch)
-      goto O;
 
     goto Exit; 
 
@@ -2435,8 +2453,7 @@ N: // CALL6
 //
 ////////////////////////////////////////
 
-O:; // ITS
-
+O:; // ITS, RTCD
     sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(O)\n");
     sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(O) TRR %o RSDWH.R1 %o ITS.RNR %o\n", cpu.TPR.TRR, cpu.RSDWH_R1, (word3) (((* data) >> (18 - 3)) & MASK3));
 
@@ -2444,6 +2461,8 @@ O:; // ITS
     //if (! rtcdOperandFetch)
       //cpu.cu.XSF = 1;
 #endif
+
+    //word3 y = getbits36_3 (* data, 18);
 
     // C(TPR.TRR) >= RSDWH.R1?
     if (cpu.TPR.TRR >= cpu.RSDWH_R1)
