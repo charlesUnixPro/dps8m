@@ -1965,7 +1965,7 @@ C             break;
                 // If we have done the even of an XED, do the odd
                 if (cpu.cu.xde == 0 && cpu.cu.xdo == 1)
                   {
-                    sim_debug (DBG_TRACE, & cpu_dev, "XDO %012llo\n", cpu.cu.IRODD);
+                    sim_debug (DBG_CAC, & cpu_dev, "XDO %012llo\n", cpu.cu.IRODD);
                     CPT (cpt1U, 17); // do XED odd
                     // Get the odd
                     cpu.cu.IWB = cpu.cu.IRODD;
@@ -1977,7 +1977,7 @@ C             break;
                 // If we have done neither of the XED
                 else if (cpu.cu.xde == 1 && cpu.cu.xdo == 1)
                   {
-                    sim_debug (DBG_TRACE, & cpu_dev, "XDE %012llo\n", cpu.cu.IWB);
+                    sim_debug (DBG_CAC, & cpu_dev, "XDE %012llo\n", cpu.cu.IWB);
                     CPT (cpt1U, 18); // do XED even
                     // Do the even this time and the odd the next time
                     cpu.cu.xde = 0;
@@ -2053,6 +2053,10 @@ C             break;
                 if (GET_I (cpu.cu.IWB))
                   cpu.wasInhibited = true;
 
+                if (cpu.cycle == FAULT_EXEC_cycle)
+                 {
+                    sim_debug (DBG_CAC, & cpu_dev, "fault exec %012llo\n", cpu.cu.IWB);
+                 }
                 t_stat ret = executeInstruction ();
 
                 CPT (cpt1U, 23); // execution complete
@@ -2202,12 +2206,17 @@ C             break;
                     break;
                   }
 
+                if (cpu.cycle == FAULT_EXEC_cycle)
+                  {
+                    sim_debug (DBG_CAC, & cpu_dev, "xde %o xdo %o\n", cpu.cu.xde, cpu.cu.xdo);
+                  }
 // If we just did the odd word of a fault pair
 
                 if (cpu.cycle == FAULT_EXEC_cycle &&
                     (! cpu.cu.xde) &&
                     cpu.cu.xdo)
                   {
+                    sim_debug (DBG_CAC, & cpu_dev, "did odd word of fault pair\n");
                     clear_TEMPORARY_ABSOLUTE_mode ();
                     cu_safe_restore ();
                     cpu.wasXfer = false;
@@ -2230,6 +2239,7 @@ C             break;
                     (! cpu.cu.xde) &&
                     cpu.cu.xdo)
                   {
+                    sim_debug (DBG_CAC, & cpu_dev, "did odd word of interrupt pair\n");
                     clear_TEMPORARY_ABSOLUTE_mode ();
                     cu_safe_restore ();
 // The only place cycle is set to INTERRUPT_cycle in FETCH_cycle; therefore
@@ -2241,6 +2251,7 @@ C             break;
 
                 if (cpu.cycle != EXEC_cycle && cpu.cu.xde)
                   {
+                    sim_debug (DBG_CAC, & cpu_dev, "did even word of interrupt or fault pair\n");
                     // Get the odd
                     cpu.cu.IWB = cpu.cu.IRODD;
                     // Do nothing next time
@@ -2289,13 +2300,6 @@ C             break;
             case FAULT_cycle:
               {
                 CPT (cpt1U, 30); // fault cycle
-#if 0
-                // Interrupts need to be processed at the beginning of the
-                // FAULT CYCLE as part of the H/W 'fetch instruction pair.'
-
-                cpu.interrupt_flag = sample_interrupts ();
-                cpu.g7_flag = bG7Pending ();
-#endif
                 // In the FAULT CYCLE, the processor safe-stores the Control
                 // Unit Data (see Section 3) into program-invisible holding
                 // registers in preparation for a Store Control Unit ( scu)
@@ -2314,23 +2318,6 @@ C             break;
                 //sim_debug (DBG_FAULT, & cpu_dev, "fault cycle [%"PRId64"]\n", sim_timell ());
     
 
-#if EMULATOR_ONLY
-                if (cpu.switches.report_faults == 1 ||
-                    (cpu.switches.report_faults == 2 &&
-                     cpu.faultNumber == FAULT_OFL))
-                  {
-#ifdef TESTING
-                    emCallReportFault ();
-#endif
-                    clearFaultCycle ();
-                    cpu.wasXfer = false; 
-                    setCpuCycle (FETCH_cycle);
-                    cpu.PPR.IC += ci->info->ndes;
-                    cpu.PPR.IC ++;
-                    break;
-                  }
-#endif
-
                 // F(A)NP should never be stored when faulting.
                 // ISOLTS-865 01a,870 02d
                 // Unconditional reset of APU status to FABS breaks boot.
@@ -2341,6 +2328,7 @@ C             break;
                     setAPUStatus (apuStatus_FABS);
 
                 cu_safe_store ();
+#if 0
                 if (cpu . bTroubleFaultCycle)
                   {
                     // XXX the whole fault cycle should be rewritten as an xed instruction pushed to IWB and executed
@@ -2349,7 +2337,7 @@ C             break;
                         putbits36_1 (& cpu.scu_data[5], 24, 1);	// xde
                     putbits36_1 (& cpu.scu_data[5], 25, 1); // xdo
                   }
-
+#endif
                 CPT (cpt1U, 31); // safe store complete
 
                 // Temporary absolute mode
@@ -2376,7 +2364,7 @@ C             break;
                 word24 addr = fltAddress + 2 * cpu.faultNumber;
   
                 core_read2 (addr, & cpu.cu.IWB, & cpu.cu.IRODD, __func__);
-                //sim_debug (DBG_TRACE, & cpu_dev, "fault pair %012llo  %012llo\n", cpu.cu.IWB, cpu.cu.IRODD);
+                sim_debug (DBG_CAC, & cpu_dev, "fault pair %012llo  %012llo\n", cpu.cu.IWB, cpu.cu.IRODD);
                 cpu.cu.xde = 1;
                 cpu.cu.xdo = 1;
 
