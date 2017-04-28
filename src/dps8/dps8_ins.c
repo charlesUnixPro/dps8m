@@ -596,6 +596,10 @@ void cu_safe_store (void)
     //  instruction is executed.
     scu2words (cpu.scu_data);
 
+    cpu.cu_data.PSR = cpu.PPR.PSR;
+    cpu.cu_data.PRR = cpu.PPR.PRR;
+    cpu.cu_data.IC =  cpu.PPR.IC;
+
     tidy_cu ();
 
 }
@@ -2023,7 +2027,8 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
     if (ci->info->flags & NO_TAG) // for instructions line STCA/STCQ
       rTAG = 0;
     else
-      rTAG = GET_TAG (cpu.cu.IWB);
+      //rTAG = GET_TAG (cpu.cu.IWB);
+      rTAG = ci->tag;
 
     word6 Tm = GET_TM (rTAG);
     word6 Td = GET_TD (rTAG);
@@ -2140,22 +2145,6 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                    "update IT wrote tally word %012"PRIo64" to %06o\n",
                    cpu.itxPair[0], cpu.TPR.CA);
       } // SC/SCR
-
-///
-/// executeInstruction: XEC/XED processing
-///
-
-// Delay updating IWB/IRODD until after operand processing.
-
-    if (cpu.cu.xde && cpu.cu.xdo)
-      {
-        cpu.cu.IWB = cpu.Ypair[0];
-        cpu.cu.IRODD = cpu.Ypair[1];
-      }
-    else if (cpu.cu.xde)
-      {
-        cpu.cu.IWB = cpu.CY;
-      }
 
 ///
 /// executeInstruction: RPT/RPD/RPL processing
@@ -3000,13 +2989,35 @@ static t_stat DoBasicInstruction (void)
           //  C(PPR.IC)+2 -> C(Y-pair)36,53
           //  00...0 -> C(Y-pair)54,71
 
-          cpu.Ypair[0] = 0;
-          putbits36_15 (& cpu.Ypair[0],  3, cpu.PPR.PSR);
-          putbits36_3  (& cpu.Ypair[0], 18, cpu.PPR.PRR);
-          putbits36_6  (& cpu.Ypair[0], 30, 043);
+          // ISOLTS 880 5a has an STCD in an XED in a fault pair;
+          // it reports the wrong ring number. This was fixed by
+          // emulating the SCU instruction (different behavior in fault
+          // pair).
 
-          cpu.Ypair[1] = 0;
-          putbits36_18 (& cpu.Ypair[1],  0, cpu.PPR.IC + 2);
+          if (cpu.cycle == EXEC_cycle)
+            {
+              sim_debug (DBG_CAC, & cpu_dev, "stcd exec PRR %o\n", cpu.PPR.PRR);
+              cpu.Ypair[0] = 0;
+              putbits36_15 (& cpu.Ypair[0],  3, cpu.PPR.PSR);
+              putbits36_3  (& cpu.Ypair[0], 18, cpu.PPR.PRR);
+              putbits36_6  (& cpu.Ypair[0], 30, 043);
+              sim_debug (DBG_CAC, & cpu_dev, "stcd Y0 %012llo\n", cpu.Ypair[0]);
+
+              cpu.Ypair[1] = 0;
+              putbits36_18 (& cpu.Ypair[1],  0, cpu.PPR.IC + 2);
+            }
+          else
+            {
+              sim_debug (DBG_CAC, & cpu_dev, "stcd fault PRR %o\n", cpu.PPR.PRR);
+              cpu.Ypair[0] = 0;
+              putbits36_15 (& cpu.Ypair[0],  3, cpu.cu_data.PSR);
+              putbits36_3  (& cpu.Ypair[0], 18, cpu.cu_data.PRR);
+              //putbits36_6  (& cpu.Ypair[0], 30, 043);
+              sim_debug (DBG_CAC, & cpu_dev, "stcd Y0 %012llo\n", cpu.Ypair[0]);
+
+              cpu.Ypair[1] = 0;
+              putbits36_18 (& cpu.Ypair[1],  0, cpu.cu_data.IC + 2);
+            }
           break;
 
 
@@ -5829,7 +5840,11 @@ static t_stat DoBasicInstruction (void)
         case 0716:  // xec
           cpu.cu.xde = 1;
           cpu.cu.xdo = 0;
-          break;
+// XXX NB. This used to be done in executeInstruction post-execution
+// processing; moving it here means that post-execution code cannot inspect IWB
+// to determine what the instruction or it flags were.
+          cpu.cu.IWB = cpu.CY;
+          return CONT_XEC;
 
         case 0717:  // xed
           // The xed instruction itself does not affect any indicator.
@@ -5869,7 +5884,13 @@ static t_stat DoBasicInstruction (void)
 
           cpu.cu.xde = 1;
           cpu.cu.xdo = 1;
-          break;
+// XXX NB. This used to be done in executeInstruction post-execution
+// processing; moving it here means that post-execution code cannot inspect IWB
+// to determine what the instruction or it flags were.
+          cpu.cu.IWB = cpu.CY;
+          cpu.cu.IWB = cpu.Ypair[0];
+          cpu.cu.IRODD = cpu.Ypair[1];
+          return CONT_XEC;
 
         case 0001:   // mme
           if (sim_deb_mme_cntdwn > 0)

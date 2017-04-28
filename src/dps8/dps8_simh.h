@@ -102,6 +102,7 @@ void xsim_debug (uint32 dbits, DEVICE* vdptr, const char* fmt, ...);
 // not really STOP codes, but get returned from instruction loops
 #define CONT_TRA    -1  // encountered a transfer instruction; don't bump PPR.IC
 #define CONT_DIS    -2  // instruction was a DIS 
+#define CONT_XEC    -3  // instruction was a XEC or XED 
 
 extern uint32 sim_brk_summ, sim_brk_types, sim_brk_dflt;
 extern FILE *sim_deb;
