@@ -2226,7 +2226,8 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
     if (ci->info->flags & NO_TAG) // for instructions line STCA/STCQ
       rTAG = 0;
     else
-      rTAG = GET_TAG (cpu.cu.IWB);
+      //rTAG = GET_TAG (cpu.cu.IWB);
+      rTAG = ci->tag;
 
     word6 Tm = GET_TM (rTAG);
     word6 Td = GET_TD (rTAG);
@@ -6042,6 +6043,9 @@ static t_stat DoBasicInstruction (void)
         case 0716:  // xec
           cpu.cu.xde = 1;
           cpu.cu.xdo = 0;
+// XXX NB. This used to be done in executeInstruction post-execution
+// processing; moving it here means that post-execution code cannot inspect IWB
+// to determine what the instruction or it flags were.
           cpu.cu.IWB = cpu.CY;
           return CONT_XEC;
 
@@ -6083,6 +6087,10 @@ static t_stat DoBasicInstruction (void)
 
           cpu.cu.xde = 1;
           cpu.cu.xdo = 1;
+// XXX NB. This used to be done in executeInstruction post-execution
+// processing; moving it here means that post-execution code cannot inspect IWB
+// to determine what the instruction or it flags were.
+          cpu.cu.IWB = cpu.CY;
           cpu.cu.IWB = cpu.Ypair[0];
           cpu.cu.IRODD = cpu.Ypair[1];
           return CONT_XEC;
