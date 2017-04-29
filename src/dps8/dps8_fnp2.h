@@ -179,4 +179,6 @@ t_stat fnpStart (UNUSED int32 arg, UNUSED const char * buf);
 void fnpConnectPrompt (uv_tcp_t * client);
 void processUserInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
 void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
+#if 0
 t_stat fnpLoad (UNUSED int32 arg, const char * buf);
+#endif

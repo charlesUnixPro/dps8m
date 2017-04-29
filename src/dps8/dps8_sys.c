@@ -188,7 +188,9 @@ static CTAB dps8_cmds[] =
     
     {"SEARCHMEMORY", searchMemory, 0, "searchMemory: search memory for value\n", NULL, NULL},
 
+#if 0
     {"FNPLOAD", fnpLoad, 0, "fnpload: load Devices.txt into FNP", NULL, NULL},
+#endif
     {"FNPSERVERPORT", fnpServerPort, 0, "fnpServerPort: set the FNP dialin telnter port number", NULL, NULL},
 #ifdef EISTESTJIG
     // invoke EIS test jig.......∫
@@ -3438,7 +3440,9 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set sys config=terminate_time=8");
 
 
+#if 0
     doIniLine ("fnpload Devices.txt");
+#endif
     doIniLine ("fnpserverport 6180");
 
     return SCPE_OK;
