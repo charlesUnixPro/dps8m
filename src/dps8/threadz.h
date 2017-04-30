@@ -2,6 +2,8 @@
 
 #define tdbg
 
+#define use_spinlock
+
 // Wrapper around pthreads
 
 #include <pthread.h>
@@ -68,6 +70,9 @@ static inline int cthread_cond_timedwait (pthread_cond_t * restrict cond,
 
 
 
+#ifdef use_spinlock
+extern pthread_spinlock_t mem_lock;
+#endif
 
 
 // libuv resource lock

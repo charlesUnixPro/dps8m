@@ -1,5 +1,6 @@
 // Threads wrappers
 
+
 #include <unistd.h>
 #include <unistd.h>
 #include <signal.h>
@@ -44,13 +45,21 @@ void unlock_libuv (void)
     pthread_mutex_unlock (& libuv_lock);
   }
 
+#ifdef use_spinlock
+pthread_spinlock_t mem_lock;
+#else
 static pthread_mutex_t mem_lock = PTHREAD_MUTEX_INITIALIZER;
+#endif
 
 void lock_mem (void)
   {
     sim_debug (DBG_TRACE, & cpu_dev, "lock_mem\n");
     int rc;
+#ifdef use_spinlock
+    rc = pthread_spin_lock (& mem_lock);
+#else
     rc = pthread_mutex_lock (& mem_lock);
+#endif
     if (rc)
       sim_printf ("lock_mem pthread_mutex_lock mem_lock %d\n", rc);
   }
@@ -59,7 +68,11 @@ void unlock_mem (void)
   {
     sim_debug (DBG_TRACE, & cpu_dev, "unlock_mem\n");
     int rc;
+#ifdef use_spinlock
+    rc = pthread_spin_unlock (& mem_lock);
+#else
     rc = pthread_mutex_unlock (& mem_lock);
+#endif
     if (rc)
       sim_printf ("unlock_mem pthread_mutex_lock mem_lock %d\n", rc);
   }
@@ -70,14 +83,22 @@ bool test_mem_lock (void)
   {
     sim_debug (DBG_TRACE, & cpu_dev, "test_mem_lock\n");
     int rc;
+#ifdef use_spinlock
+    rc = pthread_spin_trylock (& mem_lock);
+#else
     rc = pthread_mutex_trylock (& mem_lock);
+#endif
     if (rc)
       {
          // couldn't lock; presumably already  
          return true;
       }
     // lock acquired, it wasn't locked
+#ifdef use_spinlock
+    rc = pthread_spin_unlock (& mem_lock);
+#else
     rc = pthread_mutex_unlock (& mem_lock);
+#endif
     if (rc)
       sim_printf ("test_mem_lock pthread_mutex_lock mem_lock %d\n", rc);
     return false;   

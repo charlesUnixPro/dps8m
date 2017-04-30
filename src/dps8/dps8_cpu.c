@@ -539,6 +539,9 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
 
 void cpu_init (void)
   {
+#ifdef use_spinlock
+    pthread_spin_init (& mem_lock, PTHREAD_PROCESS_PRIVATE);
+#endif
 
 // !!!! Do not use 'cpu' in this routine; usage of 'cpus' violates 'restrict'
 // !!!! attribute
