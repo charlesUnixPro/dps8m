@@ -90,6 +90,11 @@ void lock_mem (void);
 void unlock_mem (void);
 bool test_mem_lock (void);
 
+// testing lock
+void lock_tst (void);
+void unlock_tst (void);
+bool test_tst_lock (void);
+
 // CPU threads
 
 struct cpuThreadz_t

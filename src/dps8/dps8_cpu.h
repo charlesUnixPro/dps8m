@@ -1746,6 +1746,7 @@ typedef struct
 #endif
     // Set if this thread has set memlock
     bool havelock; // Vetinari 
+bool have_tst_lock;
   } cpu_state_t;
 
 #ifdef M_SHARED

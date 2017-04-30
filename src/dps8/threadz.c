@@ -105,6 +105,46 @@ bool test_mem_lock (void)
   }
 
 
+static pthread_mutex_t tst_lock = PTHREAD_MUTEX_INITIALIZER;
+
+void lock_tst (void)
+  {
+    sim_debug (DBG_TRACE, & cpu_dev, "lock_tst\n");
+    int rc;
+    rc = pthread_mutex_lock (& tst_lock);
+    if (rc)
+      sim_printf ("lock_tst pthread_mutex_lock tst_lock %d\n", rc);
+  }
+
+void unlock_tst (void)
+  {
+    sim_debug (DBG_TRACE, & cpu_dev, "unlock_tst\n");
+    int rc;
+    rc = pthread_mutex_unlock (& tst_lock);
+    if (rc)
+      sim_printf ("unlock_tst pthread_mutex_lock tst_lock %d\n", rc);
+  }
+
+// assertion
+
+bool test_tst_lock (void)
+  {
+    sim_debug (DBG_TRACE, & cpu_dev, "test_tst_lock\n");
+    int rc;
+    rc = pthread_mutex_trylock (& tst_lock);
+    if (rc)
+      {
+         // couldn't lock; presumably already  
+         return true;
+      }
+    // lock acquired, it wasn't locked
+    rc = pthread_mutex_unlock (& tst_lock);
+    if (rc)
+      sim_printf ("test_tst_lock pthread_mutex_lock tst_lock %d\n", rc);
+    return false;   
+  }
+
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // CPU threads

@@ -101,6 +101,16 @@ static MTAB cpu_mod[] = {
       NULL // help
     },
     {
+      MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
+      0,            /* match */
+      "IAC",     /* print string */
+      "IAC",         /* match string */
+      cpu_set_initialize_and_clear,         /* validation routine */
+      NULL, /* display routine */
+      NULL,          /* value descriptor */
+      NULL // help
+    },
+    {
 #ifdef ROUND_ROBIN
       MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
 #else
@@ -1084,6 +1094,8 @@ void * cpuThreadMain (void * arg)
 
 t_stat threadz_sim_instr (void)
   {
+cpu.have_tst_lock = false;
+
     t_stat reason = 0;
 
     setSignals ();
@@ -1131,6 +1143,7 @@ t_stat threadz_sim_instr (void)
       {
         reason = 0;
 
+if (cpu.have_tst_lock) { unlock_tst (); cpu.have_tst_lock = false; }
 #ifdef STEADY
         static uint slowQueueSubsample = 0;
         static uint queueSubsample = 0;
@@ -1455,7 +1468,9 @@ elapsedtime ();
                  {
                     sim_debug (DBG_CAC, & cpu_dev, "fault exec %012llo\n", cpu.cu.IWB);
                  }
+lock_tst (); cpu.have_tst_lock = true;
                 t_stat ret = executeInstruction ();
+unlock_tst (); cpu.have_tst_lock = false;
 
                 CPT (cpt1U, 23); // execution complete
 
