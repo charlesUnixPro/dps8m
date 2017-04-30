@@ -182,6 +182,7 @@ static DEBTAB cpu_dt[] = {
     { "CYCLE",      DBG_CYCLE, NULL       },
     { "CAC",        DBG_CAC, NULL         },
     { "FINAL",      DBG_FINAL, NULL       },
+    { "AVC",        DBG_AVC, NULL       },
     { NULL,         0, NULL               }
 };
 
@@ -1845,7 +1846,7 @@ elapsedtime ();
                 // If we have done the even of an XED, do the odd
                 if (cpu.cu.xde == 0 && cpu.cu.xdo == 1)
                   {
-                    sim_debug (DBG_CAC, & cpu_dev, "XDO %012llo\n", cpu.cu.IRODD);
+                    //sim_debug (DBG_CAC, & cpu_dev, "XDO %012llo\n", cpu.cu.IRODD);
                     CPT (cpt1U, 17); // do XED odd
                     // Get the odd
                     cpu.cu.IWB = cpu.cu.IRODD;
@@ -1857,7 +1858,7 @@ elapsedtime ();
                 // If we have done neither of the XED
                 else if (cpu.cu.xde == 1 && cpu.cu.xdo == 1)
                   {
-                    sim_debug (DBG_CAC, & cpu_dev, "XDE %012llo\n", cpu.cu.IWB);
+                    //sim_debug (DBG_CAC, & cpu_dev, "XDE %012llo\n", cpu.cu.IWB);
                     CPT (cpt1U, 18); // do XED even
                     // Do the even this time and the odd the next time
                     cpu.cu.xde = 0;
@@ -1908,7 +1909,7 @@ elapsedtime ();
 
                 if (cpu.cycle == FAULT_EXEC_cycle)
                  {
-                    sim_debug (DBG_CAC, & cpu_dev, "fault exec %012llo\n", cpu.cu.IWB);
+                    //sim_debug (DBG_CAC, & cpu_dev, "fault exec %012llo\n", cpu.cu.IWB);
                  }
                 t_stat ret = executeInstruction ();
 
@@ -2070,7 +2071,7 @@ elapsedtime ();
 
                 if (cpu.cycle == FAULT_EXEC_cycle)
                   {
-                    sim_debug (DBG_CAC, & cpu_dev, "xde %o xdo %o\n", cpu.cu.xde, cpu.cu.xdo);
+                    //sim_debug (DBG_CAC, & cpu_dev, "xde %o xdo %o\n", cpu.cu.xde, cpu.cu.xdo);
                   }
 // If we just did the odd word of a fault pair
 
@@ -2078,7 +2079,7 @@ elapsedtime ();
                     (! cpu.cu.xde) &&
                     cpu.cu.xdo)
                   {
-                    sim_debug (DBG_CAC, & cpu_dev, "did odd word of fault pair\n");
+                    //sim_debug (DBG_CAC, & cpu_dev, "did odd word of fault pair\n");
                     clear_TEMPORARY_ABSOLUTE_mode ();
                     cu_safe_restore ();
                     cpu.wasXfer = false;
@@ -2101,7 +2102,7 @@ elapsedtime ();
                     (! cpu.cu.xde) &&
                     cpu.cu.xdo)
                   {
-                    sim_debug (DBG_CAC, & cpu_dev, "did odd word of interrupt pair\n");
+                    //sim_debug (DBG_CAC, & cpu_dev, "did odd word of interrupt pair\n");
                     clear_TEMPORARY_ABSOLUTE_mode ();
                     cu_safe_restore ();
 // The only place cycle is set to INTERRUPT_cycle in FETCH_cycle; therefore
@@ -2113,7 +2114,7 @@ elapsedtime ();
 
                 if (cpu.cycle != EXEC_cycle && cpu.cu.xde)
                   {
-                    sim_debug (DBG_CAC, & cpu_dev, "did even word of interrupt or fault pair\n");
+                    //sim_debug (DBG_CAC, & cpu_dev, "did even word of interrupt or fault pair\n");
                     // Get the odd
                     cpu.cu.IWB = cpu.cu.IRODD;
                     // Do nothing next time
@@ -2216,7 +2217,7 @@ elapsedtime ();
                 word24 addr = fltAddress + 2 * cpu.faultNumber;
   
                 core_read2 (addr, & cpu.cu.IWB, & cpu.cu.IRODD, __func__);
-                sim_debug (DBG_CAC, & cpu_dev, "fault pair %012llo  %012llo\n", cpu.cu.IWB, cpu.cu.IRODD);
+                //sim_debug (DBG_CAC, & cpu_dev, "fault pair %012llo  %012llo\n", cpu.cu.IWB, cpu.cu.IRODD);
                 cpu.cu.xde = 1;
                 cpu.cu.xdo = 1;
 

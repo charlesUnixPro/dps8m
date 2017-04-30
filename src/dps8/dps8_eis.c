@@ -7749,8 +7749,8 @@ static void EISwrite49(EISaddr *p, int *pos, int tn, word9 c49)
 
 void mvn (void)
 {
-//static int testno = 0;
-//IF1 sim_printf ("mvn test no %d\n", ++testno);
+static int testno = 0;
+sim_debug (DBG_CAC, & cpu_dev, "mvn test no %d\n", ++testno);
     /*
      * EXPLANATION:
      * Starting at location YC1, the decimal number of data type TN1 and sign
@@ -7792,7 +7792,9 @@ void mvn (void)
     
     // Bits 2-8 MBZ
     if (IWB_IRODD & 0377000000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "mvn 2-8 MBZ");
+     doFault (FAULT_IPR,
+              (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault},
+              "mvn 2-8 MBZ");
 
 #ifdef DPS8M
     // DPS8M raises it delayed
@@ -7804,7 +7806,8 @@ void mvn (void)
       }
 #endif
 
-    e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character control
+    e->P = getbits36_1 (cpu.cu.IWB, 0) != 0;  // 4-bit data sign character
+                                              //  control
     word1 T = getbits36_1 (cpu.cu.IWB, 9);
     bool R = getbits36_1 (cpu.cu.IWB, 10) != 0;  // rounding bit
     PNL (L68_ (if (R)
@@ -7815,9 +7818,15 @@ void mvn (void)
     uint dstTN = e->TN2;    // type of chars in dst
     uint dstCN = e->CN2;    // starting at char pos CN
     
-    sim_debug (DBG_CAC, & cpu_dev, "mvn(1): TN1 %d CN1 %d N1 %d TN2 %d CN2 %d N2 %d\n", e->TN1, e->CN1, e->N1, e->TN2, e->CN2, e->N2);
-    sim_debug (DBG_CAC, & cpu_dev, "mvn(2): SF1 %d              SF2 %d\n", e->SF1, e->SF2);
-    sim_debug (DBG_CAC, & cpu_dev, "mvn(3): OP1 %012"PRIo64" OP2 %012"PRIo64"\n", e->OP1, e->OP2);
+    sim_debug (DBG_CAC, & cpu_dev,
+               "mvn(1): TN1 %d CN1 %d N1 %d TN2 %d CN2 %d N2 %d\n",
+               e->TN1, e->CN1, e->N1, e->TN2, e->CN2, e->N2);
+    sim_debug (DBG_CAC, & cpu_dev,
+               "mvn(2): SF1 %d              SF2 %d\n",
+               e->SF1, e->SF2);
+    sim_debug (DBG_CAC, & cpu_dev,
+               "mvn(3): OP1 %012"PRIo64" OP2 %012"PRIo64"\n",
+               e->OP1, e->OP2);
 
     int n1 = 0, n2 = 0, sc1 = 0;
     
@@ -7857,12 +7866,15 @@ void mvn (void)
     sim_debug (DBG_CAC, & cpu_dev, "n1 %d sc1 %d\n", n1, sc1);
 
     // RJ78: An Illegal Procedure fault occurs if:
-    // The values for the number of characters (N1 or N2) of the data descriptors are
-    // not large enough to hold the number of characters required for the specified
-    // sign and/or exponent, plus at least one digit. 
+    // The values for the number of characters (N1 or N2) of the data
+    // descriptors are not large enough to hold the number of characters
+    // required for the specified sign and/or exponent, plus at least one
+    // digit. 
 
     if (n1 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvn adjusted n1<1");
+        doFault (FAULT_IPR,
+                 (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                 "mvn adjusted n1<1");
 
     switch(e->S2)
     {
@@ -7884,13 +7896,12 @@ void mvn (void)
             break;          // no sign wysiwyg
     }
     
-    sim_debug (DBG_CAC, & cpu_dev,
-      "n2 %d\n",
-      n2);
+    sim_debug (DBG_CAC, & cpu_dev, "n2 %d\n", n2);
 
     if (n2 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "mvn adjusted n2<1");
-
+        doFault (FAULT_IPR,
+                (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
+                "mvn adjusted n2<1");
 
     decContext set;
     decContextDefaultDPS8(&set);
@@ -7900,29 +7911,28 @@ void mvn (void)
 
     EISloadInputBufferNumeric (1);   // according to MF1
     
-    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
+    decNumber *op1 = decBCD9ToNumber (e->inBuffer, n1, sc1, &_1);
     
     if (e->sign == -1)
         op1->bits |= DECNEG;
     if (e->S1 == CSFL)
         op1->exponent = e->exponent;
-    if (decNumberIsZero(op1))
+    if (decNumberIsZero (op1))
         op1->exponent = 127;
    
     if_sim_debug (DBG_CAC, & cpu_dev)
     {
-        PRINTDEC("mvn input (op1)", op1);
+        PRINTDEC ("mvn input (op1)", op1);
     }
    
     bool Ovr = false, EOvr = false, Trunc = false;
     
-//IF1 sim_printf("mvn: type %d N1 %d N2 %d nout %d S2 %d expin %d sf %d R %d\n",dstTN,e->N1,e->N2,n2,e->S2,op1->exponent,e->SF2,R);
-    char *res = formatDecimal(&set, op1, n2, (int) e->S2, e->SF2, R, &Ovr, &Trunc);
+sim_debug (DBG_CAC, & cpu_dev, "mvn: type %d N1 %d N2 %d nout %d S2 %d expin %d sf %d R %d\n",dstTN,e->N1,e->N2,n2,e->S2,op1->exponent,e->SF2,R);
+
+    char *res = formatDecimal (& set, op1, n2, (int) e->S2, e->SF2, R, & Ovr,
+                               & Trunc);
     
-#ifndef SPEED
-    if_sim_debug (DBG_CAC, & cpu_dev)
-        sim_printf("mvn res: '%s'\n", res);
-#endif
+    sim_debug (DBG_CAC, & cpu_dev, "mvn res: '%s'\n", res);
     
     // now write to memory in proper format.....
 
@@ -7937,13 +7947,24 @@ void mvn (void)
             switch(dstTN)
             {
                 case CTN4:
-                    if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
-                        EISwrite49(&e->ADDR2, &pos, (int) dstTN, (decNumberIsNegative(op1) && !decNumberIsZero(op1)) ? 015 : 013);  // special +
+ // If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus
+ // sign character is placed appropriately if the result of the operation is
+ // positive.
+                    if (e->P)
+                        // special +
+                        EISwrite49 (& e->ADDR2, & pos, (int) dstTN,
+                                   (decNumberIsNegative (op1) &&
+                                    ! decNumberIsZero(op1)) ? 015 : 013);
                     else
-                        EISwrite49(&e->ADDR2, &pos, (int) dstTN, (decNumberIsNegative(op1) && !decNumberIsZero(op1)) ? 015 : 014);  // default +
+                        // default +
+                        EISwrite49 (& e->ADDR2, & pos, (int) dstTN, 
+                                    (decNumberIsNegative (op1) &&
+                                     ! decNumberIsZero (op1)) ? 015 : 014);
                     break;
                 case CTN9:
-                    EISwrite49(&e->ADDR2, &pos, (int) dstTN, (decNumberIsNegative(op1) && !decNumberIsZero(op1)) ? '-' : '+');
+                    EISwrite49 (& e->ADDR2, & pos, (int) dstTN,
+                                (decNumberIsNegative (op1) &&
+                                 ! decNumberIsZero (op1)) ? '-' : '+');
                     break;
             }
             break;
@@ -7954,14 +7975,15 @@ void mvn (void)
     }
     
     // 2nd, write the digits .....
-    for(int i = 0 ; i < n2 ; i++)
-        switch(dstTN)
+    for (int i = 0 ; i < n2 ; i ++)
+        switch (dstTN)
         {
             case CTN4:
-                EISwrite49(&e->ADDR2, &pos, (int) dstTN, (word9) (res[i] - '0'));
+                EISwrite49 (& e->ADDR2, & pos, (int) dstTN,
+                            (word9) (res[i] - '0'));
                 break;
             case CTN9:
-                EISwrite49(&e->ADDR2, &pos, (int) dstTN, (word9) res[i]);
+                EISwrite49 (& e->ADDR2, & pos, (int) dstTN, (word9) res[i]);
                 break;
         }
     
@@ -7972,14 +7994,25 @@ void mvn (void)
             switch(dstTN)
             {
                 case CTN4:
-                    if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
-                        EISwrite49(&e->ADDR2, &pos, (int) dstTN, (decNumberIsNegative(op1) && !decNumberIsZero(op1)) ? 015 :  013);  // special +
+// If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus
+// sign character is placed appropriately if the result of the operation is
+// positive.
+                    if (e->P)
+                        // special +
+                        EISwrite49 (& e->ADDR2, & pos, (int) dstTN,
+                                    (decNumberIsNegative (op1) &&
+                                     ! decNumberIsZero(op1)) ? 015 :  013);
                     else
-                        EISwrite49(&e->ADDR2, &pos, (int) dstTN, (decNumberIsNegative(op1) && !decNumberIsZero(op1)) ? 015 :  014);  // default +
+                        // default +
+                        EISwrite49 (& e->ADDR2, & pos, (int) dstTN,
+                                    (decNumberIsNegative (op1) &&
+                                     ! decNumberIsZero (op1)) ? 015 :  014);
                     break;
             
                 case CTN9:
-                    EISwrite49(&e->ADDR2, &pos, (int) dstTN, (decNumberIsNegative(op1) && !decNumberIsZero(op1)) ? '-' : '+');
+                    EISwrite49 (& e->ADDR2, & pos, (int) dstTN,
+                                (decNumberIsNegative (op1) &&
+                                 ! decNumberIsZero(op1)) ? '-' : '+');
                     break;
             }
             break;
@@ -7989,11 +8022,14 @@ void mvn (void)
             switch(dstTN)
             {
                 case CTN4:
-                    EISwrite49(&e->ADDR2, &pos, (int) dstTN, (op1->exponent >> 4) & 0xf); // upper 4-bits
-                    EISwrite49(&e->ADDR2, &pos, (int) dstTN,  op1->exponent       & 0xf); // lower 4-bits
+                    EISwrite49 (& e->ADDR2, & pos, (int) dstTN,
+                                (op1->exponent >> 4) & 0xf); // upper 4-bits
+                    EISwrite49 (& e->ADDR2, & pos, (int) dstTN,
+                                op1->exponent       & 0xf); // lower 4-bits
                     break;
                 case CTN9:
-                    EISwrite49(&e->ADDR2, &pos, (int) dstTN, op1->exponent & 0xff);    // write 8-bit exponent
+                    EISwrite49 (& e->ADDR2, & pos, (int) dstTN,
+                                 op1->exponent & 0xff); // write 8-bit exponent
                 break;
             }
             break;
@@ -8018,23 +8054,40 @@ void mvn (void)
         }
     }
     
-    SC_I_NEG (decNumberIsNegative(op1) && !decNumberIsZero(op1));  // set negative indicator if op3 < 0
-    SC_I_ZERO (decNumberIsZero(op1));     // set zero indicator if op3 == 0
+sim_debug (DBG_CAC, & cpu_dev, "is neg %o\n", decNumberIsNegative(op1));
+sim_debug (DBG_CAC, & cpu_dev, "is zero %o\n", decNumberIsZero(op1));
+sim_debug (DBG_CAC, & cpu_dev, "R %o\n", R);
+sim_debug (DBG_CAC, & cpu_dev, "Trunc %o\n", Trunc);
+sim_debug (DBG_CAC, & cpu_dev, "TRUNC %o\n", TST_I_TRUNC);
+sim_debug (DBG_CAC, & cpu_dev, "OMASK %o\n", TST_I_OMASK);
+sim_debug (DBG_CAC, & cpu_dev, "tstOVFfault %o\n", tstOVFfault ());
+sim_debug (DBG_CAC, & cpu_dev, "T %o\n", T);
+sim_debug (DBG_CAC, & cpu_dev, "EOvr %o\n", EOvr);
+sim_debug (DBG_CAC, & cpu_dev, "Ovr %o\n", Ovr);
+    // set negative indicator if op3 < 0
+    SC_I_NEG (decNumberIsNegative(op1) && !decNumberIsZero(op1));
+
+    // set zero indicator if op3 == 0
+    SC_I_ZERO (decNumberIsZero(op1));
     
-    SC_I_TRUNC (!R && Trunc); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    // If the truncation condition exists without rounding, then ON; 
+    // otherwise OFF
+    SC_I_TRUNC (!R && Trunc);
 
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);
     
     if (TST_I_TRUNC && T && tstOVFfault ())
-        doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "mvn truncation(overflow) fault");
+        doFault (FAULT_OFL, (_fault_subtype) {.bits=0},
+                 "mvn truncation(overflow) fault");
     if (EOvr && tstOVFfault ())
-        doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "mvn over/underflow fault");
+        doFault (FAULT_OFL, (_fault_subtype) {.bits=0},
+                 "mvn over/underflow fault");
     if (Ovr)
     {
         SET_I_OFLOW;
         if (tstOVFfault ())
-          doFault(FAULT_OFL, (_fault_subtype) {.bits=0}, "mvn overflow fault");
+          doFault (FAULT_OFL, (_fault_subtype) {.bits=0}, "mvn overflow fault");
     }
 }
 

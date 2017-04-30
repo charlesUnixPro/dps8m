@@ -3187,24 +3187,20 @@ static t_stat DoBasicInstruction (void)
 
           if (cpu.cycle == EXEC_cycle)
             {
-              sim_debug (DBG_CAC, & cpu_dev, "stcd exec PRR %o\n", cpu.PPR.PRR);
               cpu.Ypair[0] = 0;
               putbits36_15 (& cpu.Ypair[0],  3, cpu.PPR.PSR);
               putbits36_3  (& cpu.Ypair[0], 18, cpu.PPR.PRR);
               putbits36_6  (& cpu.Ypair[0], 30, 043);
-              sim_debug (DBG_CAC, & cpu_dev, "stcd Y0 %012llo\n", cpu.Ypair[0]);
 
               cpu.Ypair[1] = 0;
               putbits36_18 (& cpu.Ypair[1],  0, cpu.PPR.IC + 2);
             }
           else
             {
-              sim_debug (DBG_CAC, & cpu_dev, "stcd fault PRR %o\n", cpu.PPR.PRR);
               cpu.Ypair[0] = 0;
               putbits36_15 (& cpu.Ypair[0],  3, cpu.cu_data.PSR);
               putbits36_3  (& cpu.Ypair[0], 18, cpu.cu_data.PRR);
               //putbits36_6  (& cpu.Ypair[0], 30, 043);
-              sim_debug (DBG_CAC, & cpu_dev, "stcd Y0 %012llo\n", cpu.Ypair[0]);
 
               cpu.Ypair[1] = 0;
               putbits36_18 (& cpu.Ypair[1],  0, cpu.cu_data.IC + 2);
