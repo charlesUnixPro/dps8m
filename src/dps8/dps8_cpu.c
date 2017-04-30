@@ -1194,7 +1194,7 @@ t_stat threadz_sim_instr (void)
                   {
                     //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09"PRIo64"\n", shadowTR, MASK27);
                     if (cpu.switches.tro_enable)
-                      setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
+                      setG7fault (thisCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
                   }
               }
           }
