@@ -46,6 +46,8 @@ static t_stat fnpShowNUnits (FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat fnpSetNUnits (UNIT * uptr, int32 value, const char * cptr, void * desc);
 static t_stat fnpShowIPCname (FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat fnpSetIPCname (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat fnpShowService (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat fnpSetService (UNIT * uptr, int32 value, const char * cptr, void * desc);
 static t_stat fnpAttach (UNIT * uptr, const char * cptr);
 static t_stat fnpDetach (UNIT *uptr);
 
@@ -114,6 +116,16 @@ static MTAB fnpMod [] =
       "IPC_NAME",         /* match string */
       fnpSetIPCname, /* validation routine */
       fnpShowIPCname, /* display routine */
+      "Set the device IPC name", /* value descriptor */
+      NULL          // help
+    },
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */ 
+      0,            /* match */ 
+      "SERVICE",     /* print string */
+      "SERVICE",         /* match string */
+      fnpSetService, /* validation routine */
+      fnpShowService, /* display routine */
       "Set the device IPC name", /* value descriptor */
       NULL          // help
     },
@@ -579,6 +591,9 @@ static int wcd (void)
                     uint bufsz = getbits36_18 (decoded.smbxp->command_data[0], 18);
                     linep->listen = !! flag;
                     linep->inputBufferSize = bufsz;
+
+                    if (linep->service == service_undefined)
+                      linep->service = service_login;
 
                     if (linep->service == service_login && linep -> client)
                       {
@@ -2551,7 +2566,7 @@ static t_stat fnpShowIPCname (UNUSED FILE * st, UNIT * uptr,
     return SCPE_OK;
   }   
 
-static t_stat fnpSetIPCname (UNUSED UNIT * uptr, UNUSED int32 value,
+static t_stat fnpSetIPCname (UNIT * uptr, UNUSED int32 value,
                              UNUSED const char * cptr, UNUSED void * desc)
   {
     long n = FNP_UNIT_IDX (uptr);
@@ -2564,6 +2579,74 @@ static t_stat fnpSetIPCname (UNUSED UNIT * uptr, UNUSED int32 value,
       }
     else
       fnpUnitData [n] . ipcName [0] = 0;
+    return SCPE_OK;
+  }
+
+static t_stat fnpShowService (UNUSED FILE * st, UNIT * uptr,
+                              UNUSED int val, UNUSED const void * desc)
+  {   
+    long devnum = FNP_UNIT_IDX (uptr);
+    if (devnum < 0 || devnum >= N_FNP_UNITS_MAX)
+      return SCPE_ARG;
+    for (uint linenum = 0; linenum < MAX_LINES; linenum ++)
+      {
+        enum service_types st = fnpUnitData[devnum].MState.line[linenum].service;
+        switch (st)
+          {
+            case service_undefined:
+              sim_printf("%c.%03d undefined\r\n", 'a' + (int) devnum, linenum);
+              break;
+            case service_login:
+              sim_printf("%c.%03d login\r\n", 'a' + (int) devnum, linenum);
+              break;
+            case service_autocall:
+              sim_printf("%c.%03d autocall\r\n", 'a' + (int) devnum, linenum);
+              break;
+            case service_slave:
+              sim_printf("%c.%03d slave\r\n", 'a' + (int) devnum, linenum);
+              break;
+            default:
+              sim_printf("%d.%03d ERR (%u)\r\n", 'a' + (int) devnum, linenum, st);
+              break;
+          }
+      }
+    return SCPE_OK;
+  }
+
+static t_stat fnpSetService (UNIT * uptr, UNUSED int32 value,
+                             const char * cptr, UNUSED void * desc)
+  {
+    long devnum = FNP_UNIT_IDX (uptr);
+    if (devnum < 0 || devnum >= N_FNP_UNITS_MAX)
+      return SCPE_ARG;
+    // set fnp3 service=30=autocall
+    // set fnp3 service=31=slave
+    uint linenum;
+    char sn [strlen (cptr)];
+    int nr = sscanf (cptr, "%u=%s", & linenum, sn);
+    if (nr != 2)
+      return SCPE_ARG;
+    if (linenum >= MAX_LINES)
+      return SCPE_ARG;
+    if (strcasecmp (sn, "undefined") == 0)
+      fnpUnitData[devnum].MState.line[linenum].service = service_undefined;
+    else if (strcasecmp (sn, "login") == 0)
+      fnpUnitData[devnum].MState.line[linenum].service = service_login;
+    else if (strcasecmp (sn, "autocall") == 0)
+      fnpUnitData[devnum].MState.line[linenum].service = service_autocall;
+    else if (strncasecmp (sn, "slave=", 6) == 0)
+      {
+        uint pn;
+        int nr2 = sscanf (sn, "slave=%u", & pn);
+        if (nr2 != 1)
+          return SCPE_ARG;
+        if (pn >= 65535)
+          return SCPE_ARG;
+        fnpUnitData[devnum].MState.line[linenum].service = service_slave;
+        fnpUnitData[devnum].MState.line[linenum].port = (int) pn;
+      }
+    else
+      return SCPE_ARG;
     return SCPE_OK;
   }
 
@@ -2640,6 +2723,7 @@ static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, const char * cptr, UN
     return SCPE_OK;
   }
 
+#if 0
 t_stat fnpLoad (UNUSED int32 arg, const char * buf)
   {
     FILE * fileref = fopen (buf, "r");
@@ -2738,6 +2822,7 @@ t_stat fnpLoad (UNUSED int32 arg, const char * buf)
     fclose (fileref);
     return SCPE_OK;
   }
+#endif
 
 t_stat fnpServerPort (UNUSED int32 arg, const char * buf)
   {

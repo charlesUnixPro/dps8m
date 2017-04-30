@@ -133,7 +133,9 @@ static CTAB dps8_cmds[] =
     
     {"SEARCHMEMORY", searchMemory, 0, "searchMemory: search memory for value\n", NULL, NULL},
 
+#if 0
     {"FNPLOAD", fnpLoad, 0, "fnpload: load Devices.txt into FNP", NULL, NULL},
+#endif
     {"FNPSERVERPORT", fnpServerPort, 0, "fnpServerPort: set the FNP dialin telnter port number", NULL, NULL},
     {"SKIPBOOT", bootSkip, 0, "skip forward on boot tape", NULL, NULL},
     {"DEFAULT_BASE_SYSTEM", defaultBaseSystem, 0, "Set configuration to defaults", NULL, NULL},
@@ -1433,7 +1435,9 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ;cable verify
 
 
+#if 0
     doIniLine ("fnpload Devices.txt");
+#endif
     doIniLine ("fnpserverport 6180");
 
     return SCPE_OK;
