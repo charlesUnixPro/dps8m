@@ -1311,6 +1311,7 @@ elapsedtime ();
 
             case FETCH_cycle:
               {
+lock_tst (); cpu.have_tst_lock = true;
 #ifdef PANEL
                 memset (cpu.cpt, 0, sizeof (cpu.cpt));
 #endif
@@ -1449,6 +1450,7 @@ elapsedtime ();
                 CPT (cpt1U, 21); // go to exec cycle
                 advanceG7Faults ();
                 setCpuCycle (EXEC_cycle);
+unlock_tst (); cpu.have_tst_lock = false;
               }
               break;
 
@@ -1456,6 +1458,7 @@ elapsedtime ();
             case FAULT_EXEC_cycle:
             case INTERRUPT_EXEC_cycle:
               {
+lock_tst (); cpu.have_tst_lock = true;
                 CPT (cpt1U, 22); // exec cycle
 
                 // The only time we are going to execute out of IRODD is
@@ -1468,9 +1471,7 @@ elapsedtime ();
                  {
                     sim_debug (DBG_CAC, & cpu_dev, "fault exec %012llo\n", cpu.cu.IWB);
                  }
-lock_tst (); cpu.have_tst_lock = true;
                 t_stat ret = executeInstruction ();
-unlock_tst (); cpu.have_tst_lock = false;
 
                 CPT (cpt1U, 23); // execution complete
 
@@ -1544,6 +1545,7 @@ unlock_tst (); cpu.have_tst_lock = false;
 
                 if (ret == CONT_DIS)
                   {
+unlock_tst (); cpu.have_tst_lock = false;
                     CPT (cpt1U, 25); // DIS instruction
 
 
@@ -1705,6 +1707,7 @@ unlock_tst (); cpu.have_tst_lock = false;
                 cpu.wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
               }
+unlock_tst (); cpu.have_tst_lock = false;
               break;
 
             case SYNC_FAULT_RTN_cycle:

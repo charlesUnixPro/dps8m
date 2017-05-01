@@ -232,24 +232,32 @@
 
 static inline void iom_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
+    lock_mem ();
     * data = M [addr] & DMASK;
+    unlock_mem ();
   }
 
 static inline void iom_core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
   {
+    lock_mem ();
     * even = M [addr ++] & DMASK;
     * odd =  M [addr]    & DMASK;
+    unlock_mem ();
   }
 
 static inline void iom_core_write (word24 addr, word36 data, UNUSED const char * ctx)
   {
+    lock_mem ();
     M [addr] = data & DMASK;
+    unlock_mem ();
   }
 
 static inline void iom_core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
   {
+    lock_mem ();
     M [addr ++] = even;
     M [addr] =    odd;
+    unlock_mem ();
   }
 
 static t_stat iom_action (UNIT *up);
