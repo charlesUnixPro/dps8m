@@ -13,9 +13,6 @@
 
 #include "threadz.h"
 
-__thread uint thisCPUnum;
-__thread uint thisIOMnum;
-__thread uint thisChnNum;
 
 //
 // Resource locks

@@ -230,34 +230,55 @@
 
 #define IOM_UNIT_NUM(uptr) ((uptr) - iomUnit)
 
+
+__thread uint thisIOMnum;
+__thread uint thisChnNum;
+__thread bool thisIOMHaveLock;
+
 static inline void iom_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
-    lock_mem ();
+#ifdef lockread
+    if (! thisIOMHaveLock)
+      lock_mem ();
+#endif
     * data = M [addr] & DMASK;
-    unlock_mem ();
+#ifdef lockread
+    if (! thisIOMHaveLock)
+      unlock_mem ();
+#endif
   }
 
 static inline void iom_core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
   {
-    lock_mem ();
+#ifdef lockread
+    if (! thisIOMHaveLock)
+      lock_mem ();
+#endif
     * even = M [addr ++] & DMASK;
     * odd =  M [addr]    & DMASK;
-    unlock_mem ();
+#ifdef lockread
+    if (! thisIOMHaveLock)
+      unlock_mem ();
+#endif
   }
 
 static inline void iom_core_write (word24 addr, word36 data, UNUSED const char * ctx)
   {
-    lock_mem ();
+    if (! thisIOMHaveLock)
+      lock_mem ();
     M [addr] = data & DMASK;
-    unlock_mem ();
+    if (! thisIOMHaveLock)
+      unlock_mem ();
   }
 
 static inline void iom_core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
   {
-    lock_mem ();
+    if (! thisIOMHaveLock)
+      lock_mem ();
     M [addr ++] = even;
     M [addr] =    odd;
-    unlock_mem ();
+    M [addr ++] = even;
+      unlock_mem ();
   }
 
 static t_stat iom_action (UNIT *up);
@@ -721,6 +742,9 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     // See page 33 and AN87 for format of y-pair of status info
     
+    lock_mem ();
+    thisIOMHaveLock = true;
+
     // BUG: much of the following is not tracked
     
     word36 word1, word2;
@@ -840,6 +864,9 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
                    __func__, scwAddr);
         iom_core_write (scwAddr, scw, __func__);
       }
+
+    unlock_mem ();
+    thisIOMHaveLock = false;
 
     // BUG: update SCW in core
     return 0;
@@ -1439,6 +1466,10 @@ static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
                       iomFaultServiceRequest req,
                       iomSysFaults_t signal)
   {
+
+    lock_mem ();
+    thisIOMHaveLock = true;
+
 //sim_printf ("iomFault %s\n", who);
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     // TODO:
@@ -1492,6 +1523,9 @@ static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
     // decr tally
     putbits36_12 (& ddcw, 24, (getbits36_12 (ddcw, 24) - 1u) & MASK12);
     iom_core_write (mbx, ddcw, __func__);
+
+    unlock_mem ();
+    thisIOMHaveLock = false;
   }
 
 // 0 ok
@@ -2166,6 +2200,9 @@ if (! ptro) sim_printf ("------------------> NO PTRO\n");
 static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics pic)
   {
 
+    lock_mem ();
+    thisIOMHaveLock = true;
+
     uint imw_addr;
     uint chan_group = chan < 32 ? 1 : 0;
     uint chan_in_group = chan & 037;
@@ -2200,6 +2237,9 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
                "%s: IMW at %#o now %012"PRIo64"\n", __func__, imw_addr, imw);
     (void) iom_core_write (imw_addr, imw, __func__);
     
+    unlock_mem ();
+    thisIOMHaveLock = false;
+
 // XXX this should call scu_svc
 
 // XXX shouldn't it interrupt the SCU that invoked the connect?
@@ -2254,6 +2294,9 @@ int send_special_interrupt (uint iomUnitIdx, uint chan, uint devCode,
   {
     uint chanloc = mbxLoc (iomUnitIdx, IOM_SPECIAL_STATUS_CHAN);
 
+    lock_mem ();
+    thisIOMHaveLock = true;
+
 // Multics uses an 12(8) word circular queue, managed by clever manipulation
 // of the LPW and DCW.
 // Rather then goes through the mechanics of parsing the LPW and DCW,
@@ -2281,6 +2324,9 @@ int send_special_interrupt (uint iomUnitIdx, uint chan, uint devCode,
     else
       dcw = 001320010012llu; // reset to beginning of queue
     iom_core_write (chanloc + 3, dcw, __func__);
+
+    unlock_mem ();
+    thisIOMHaveLock = false;
 
     send_general_interrupt (iomUnitIdx, IOM_SPECIAL_STATUS_CHAN, imwSpecialPic);
     return 0;

@@ -45,6 +45,8 @@
 #include "sim_defs.h"
 #include "threadz.h"
 
+__thread uint thisCPUnum;
+
 // XXX Use this when we assume there is only a single cpu unit
 #define ASSUME0 0
 
@@ -251,23 +253,6 @@ void init_opcodes (void)
     IS_EIS (opcode1_dv3d);
   }
 
-
-#ifdef WAM
-static t_stat dpsCmd_InitSDWAM ()
-  {
-    uint save = thisCPUnum;
-    for (uint i = 0; i < N_CPU_UNITS_MAX; i ++)
-      {
-        setCPUnum (i);
-        memset (cpu.SDWAM, 0, sizeof (cpu.SDWAM));
-      }
-    setCPUnum (save);
-    
-    if (! sim_quiet)
-      sim_printf ("zero-initialized SDWAM\n");
-    return SCPE_OK;
-  }
-#endif
 
 // Assumes unpaged DSBR
 
@@ -629,19 +614,6 @@ static void cpun_reset2 (UNUSED uint cpun)
     SET_I_NBAR;
     
     cpu.CMR.luf = 3;    // default of 16 mS
-#if 0
-#ifdef WAM
-    cpu.cu.SD_ON = 1;
-    cpu.cu.PT_ON = 1;
-#else
-// If WAM emulation is not enabled in the build, mark it disabled
-    cpu.cu.SD_ON = 0;
-    cpu.cu.PT_ON = 0;
-#endif
-#else
-    cpu.cu.SD_ON = cpu.switches.disable_wam ? 0 : 1;
-    cpu.cu.PT_ON = cpu.switches.disable_wam ? 0 : 1;
-#endif
  
     setCpuCycle (FETCH_cycle);
 
@@ -1094,7 +1066,7 @@ void * cpuThreadMain (void * arg)
 
 t_stat threadz_sim_instr (void)
   {
-cpu.have_tst_lock = false;
+//cpu.have_tst_lock = false;
 
     t_stat reason = 0;
 
@@ -1143,7 +1115,7 @@ cpu.have_tst_lock = false;
       {
         reason = 0;
 
-if (cpu.have_tst_lock) { unlock_tst (); cpu.have_tst_lock = false; }
+//if (cpu.have_tst_lock) { unlock_tst (); cpu.have_tst_lock = false; }
 #ifdef STEADY
         static uint slowQueueSubsample = 0;
         static uint queueSubsample = 0;
@@ -1167,6 +1139,7 @@ if (cpu.have_tst_lock) { unlock_tst (); cpu.have_tst_lock = false; }
 #endif
         cpu.cycleCnt ++;
 
+        // If we faulted somewhere with the memory lock set, clear it.
         if (cpu.havelock)
           {
             unlock_mem ();
@@ -1311,7 +1284,7 @@ elapsedtime ();
 
             case FETCH_cycle:
               {
-lock_tst (); cpu.have_tst_lock = true;
+//lock_tst (); cpu.have_tst_lock = true;
 #ifdef PANEL
                 memset (cpu.cpt, 0, sizeof (cpu.cpt));
 #endif
@@ -1450,7 +1423,7 @@ lock_tst (); cpu.have_tst_lock = true;
                 CPT (cpt1U, 21); // go to exec cycle
                 advanceG7Faults ();
                 setCpuCycle (EXEC_cycle);
-unlock_tst (); cpu.have_tst_lock = false;
+//unlock_tst (); cpu.have_tst_lock = false;
               }
               break;
 
@@ -1458,7 +1431,7 @@ unlock_tst (); cpu.have_tst_lock = false;
             case FAULT_EXEC_cycle:
             case INTERRUPT_EXEC_cycle:
               {
-lock_tst (); cpu.have_tst_lock = true;
+//lock_tst (); cpu.have_tst_lock = true;
                 CPT (cpt1U, 22); // exec cycle
 
                 // The only time we are going to execute out of IRODD is
@@ -1545,7 +1518,7 @@ lock_tst (); cpu.have_tst_lock = true;
 
                 if (ret == CONT_DIS)
                   {
-unlock_tst (); cpu.have_tst_lock = false;
+//unlock_tst (); cpu.have_tst_lock = false;
                     CPT (cpt1U, 25); // DIS instruction
 
 
@@ -1707,7 +1680,7 @@ unlock_tst (); cpu.have_tst_lock = false;
                 cpu.wasXfer = false; 
                 setCpuCycle (FETCH_cycle);
               }
-unlock_tst (); cpu.have_tst_lock = false;
+//unlock_tst (); cpu.have_tst_lock = false;
               break;
 
             case SYNC_FAULT_RTN_cycle:
@@ -1850,11 +1823,15 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp)
     if (cyctyp == OPERAND_READ)
       {
         DCDstruct * i = & cpu.currentInstruction;
+#if 1
+        if (RMWOP (i))
+#else
         if ((i -> opcode == 0034 && ! i -> opcodeX) ||  // ldac
             (i -> opcode == 0032 && ! i -> opcodeX) ||  // ldqc
             (i -> opcode == 0354 && ! i -> opcodeX) ||  // stac
             (i -> opcode == 0654 && ! i -> opcodeX) ||  // stacq
             (i -> opcode == 0214 && ! i -> opcodeX))    // sznc
+#endif
           {
             lock_mem ();
             cpu.havelock = true;
@@ -1935,6 +1912,11 @@ t_stat WriteOP(word18 addr, UNUSED _processor_cycle_type cyctyp)
             break;
     }
     
+    if (cpu.havelock)
+      {
+        unlock_mem ();
+        cpu.havelock = false;
+      }
     return SCPE_OK;
     
 }
@@ -2515,7 +2497,8 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     sim_printf("Processor mode:           %s [%o]\n", cpu.switches.proc_mode ? "Multics" : "GCOS", cpu.switches.proc_mode);
     sim_printf("Processor speed:          %02o(8)\n", cpu.switches.proc_speed);
     sim_printf("Steady clock:             %01o(8)\n", scu [0].steady_clock);
-    sim_printf("Disable SDWAM/PTWAM:      %01o(8)\n", cpu.switches.disable_wam);
+    sim_printf("SDWAM:                    %01o(8)\n", cpu.cu.SD_ON ? 0 : 1);
+    sim_printf("PTWAM:                    %01o(8)\n", cpu.cu.PT_ON ? 0 : 1);
     //sim_printf("Bullet time:              %01o(8)\n", cpu.switches.bullet_time);
     sim_printf("Report faults:            %01o(8)\n", cpu.switches.report_faults);
     sim_printf("TRO faults enabled:       %01o(8)\n", cpu.switches.tro_enable);
@@ -2539,9 +2522,10 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
 //           portinterlace = n
 //           mode = n
 //           speed = n
+//           sdwam = n
+//           ptwam = n
 //    Hacks:
 //           steadyclock = on|off
-//           disable_wam = n
 //           report_faults = n
 //               n = 0 don't
 //               n = 1 report
@@ -2673,11 +2657,12 @@ static config_list_t cpu_config_list [] =
     { "enable", 0, 1, cfg_on_off },
     { "init_enable", 0, 1, cfg_on_off },
     { "store_size", 0, 7, cfg_size_list },
+    { "sdwam", 0, 1, cfg_on_off },
+    { "ptwam", 0, 1, cfg_on_off },
 
     // Hacks
 
     { "steady_clock", 0, 1, cfg_on_off },
-    { "disable_wam", 0, 1, cfg_on_off },
     { "report_faults", 0, 2, NULL },
     { "tro_enable", 0, 1, cfg_on_off },
     { "useMap", 0, 1, cfg_on_off },
@@ -2771,8 +2756,10 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
           cpu.switches.store_size [port_num] = (uint) v;
         else if (strcmp (p, "steady_clock") == 0)
           scu[0].steady_clock = (uint) v;
-        else if (strcmp (p, "disable_wam") == 0)
-          cpu.switches.disable_wam = (uint) v;
+        else if (strcmp (p, "sdwam") == 0)
+          cpu.cu.SD_ON = (word1) v;
+        else if (strcmp (p, "ptwam") == 0)
+          cpu.cu.PT_ON = (word1) v;
         else if (strcmp (p, "report_faults") == 0)
           cpu.switches.report_faults = (uint) v;
         else if (strcmp (p, "tro_enable") == 0)
@@ -3170,15 +3157,11 @@ void addAPUhist (enum APUH_e op)
     // 25 SDWAMM
     putbits36_1 (& w0, 25, cpu.cu.SDWAMM);
     // 26-29 SDWAMR
-#ifdef WAM
     putbits36_4 (& w0, 26, cpu.SDWAMR);
-#endif
     // 30 PTWAMM
     putbits36_1 (& w0, 30, cpu.cu.PTWAMM);
     // 31-34 PTWAMR
-#ifdef WAM
     putbits36_4 (& w0, 31, cpu.PTWAMR);
-#endif
     // 35 FLT
     PNL (putbits36_1 (& w0, 35, (cpu.apu.state & apu_FLT) ? 1 : 0);)
 

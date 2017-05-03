@@ -2682,8 +2682,8 @@ static t_stat DoBasicInstruction (void)
           break;
 
         case 0034: // ldac
-          if (! test_mem_lock ())
-            sim_printf ("ldac not mem locked!\n");
+          //if (! test_mem_lock ())
+            //sim_printf ("ldac not mem locked!\n");
           cpu.rA = cpu.CY;
           SC_I_ZERO (cpu.rA == 0);
           SC_I_NEG (cpu.rA & SIGN36);
@@ -2780,8 +2780,8 @@ static t_stat DoBasicInstruction (void)
           break;
 
         case 0032: // ldqc
-          if (! test_mem_lock ())
-            sim_printf ("ldqc not mem locked!\n");
+          //if (! test_mem_lock ())
+            //sim_printf ("ldqc not mem locked!\n");
           cpu.rQ = cpu.CY;
           SC_I_ZERO (cpu.rQ == 0);
           SC_I_NEG (cpu.rQ & SIGN36);
@@ -2898,8 +2898,8 @@ static t_stat DoBasicInstruction (void)
           break;
 
         case 0354:  // stac
-          if (! test_mem_lock ())
-            sim_printf ("stac not mem locked!\n");
+          //if (! test_mem_lock ())
+            //sim_printf ("stac not mem locked!\n");
           if (cpu.CY == 0)
             {
               SET_I_ZERO;
@@ -2910,8 +2910,8 @@ static t_stat DoBasicInstruction (void)
           break;
 
         case 0654:  // stacq
-          if (! test_mem_lock ())
-            sim_printf ("stacq not mem locked!\n");
+          //if (! test_mem_lock ())
+            //sim_printf ("stacq not mem locked!\n");
           if (cpu.CY == cpu.rQ)
             {
               cpu.CY = cpu.rA;
@@ -6286,14 +6286,12 @@ elapsedtime ();
             //   m = C(SDWAM(i).USE)
             //   C(Y-block16+m)0,14 -> C(SDWAM(m).POINTER)
             //   C(Y-block16+m)27 -> C(SDWAM(m).F) Note: typo in AL39, P(17) should be F(27)
-#ifdef WAM
             for (uint i = 0; i < 16; i ++)
               {
                 word4 m = cpu.SDWAM[i].USE;
                 cpu.SDWAM[m].POINTER = getbits36_15 (cpu.Yblock16[i],  0);
                 cpu.SDWAM[m].FE =      getbits36_1  (cpu.Yblock16[i], 27);
               }
-#endif
           }
           break;
 #endif
@@ -6539,13 +6537,10 @@ elapsedtime ();
 #ifdef L68
             uint level = 0;
 #endif
-#ifdef WAM
             uint toffset = level * 16;
-#endif
             for (uint j = 0; j < 16; j ++)
               {
                 cpu.Yblock16[j] = 0;
-#ifdef WAM
                 putbits36_15 (& cpu.Yblock16[j], 0,
                            cpu.SDWAM[toffset + j].POINTER);
                 putbits36_1 (& cpu.Yblock16[j], 27,
@@ -6562,7 +6557,7 @@ elapsedtime ();
                     parity = parity ^ (parity >> 4);
                     parity = ~ (0x6996u >> (parity & 0xf)); 
                 }
-                putbits36_1 (& cpu.Yblock16[j], 15, parity);
+                putbits36_1 (& cpu.Yblock16[j], 15, (word1) parity);
 
                 putbits36_6 (& cpu.Yblock16[j], 30,
                            cpu.SDWAM[toffset + j].USE);
@@ -6571,25 +6566,7 @@ elapsedtime ();
                 putbits36_4 (& cpu.Yblock16[j], 32,
                            cpu.SDWAM[toffset + j].USE);
 #endif
-#endif
               }
-#ifndef WAM
-            if (level == 0)
-              {
-                putbits36 (& cpu.Yblock16[0], 0, 15,
-                           cpu.SDW0.POINTER);
-                putbits36 (& cpu.Yblock16[0], 27, 1,
-                           cpu.SDW0.FE);
-#ifdef DPS8M
-                putbits36 (& cpu.Yblock16[0], 30, 6,
-                           cpu.SDW0.USE);
-#endif
-#ifdef L68
-                putbits36 (& cpu.Yblock16[0], 32, 4,
-                           cpu.SDW0.USE);
-#endif
-              }
-#endif
           }
           break;
 
@@ -7855,7 +7832,6 @@ static t_stat DoEISInstruction (void)
             //   C(Y-block16+m)15,26 -> C(PTWAM(m).PAGE)
             //   C(Y-block16+m)27 -> C(PTWAM(m).F)
 
-#ifdef WAM
             for (uint i = 0; i < 16; i ++)
               {
                 word4 m = cpu.PTWAM[i].USE;
@@ -7863,7 +7839,6 @@ static t_stat DoEISInstruction (void)
                 cpu.PTWAM[m].PAGENO =  getbits36_12 (cpu.Yblock16[i], 15);
                 cpu.PTWAM[m].FE =      getbits36_1  (cpu.Yblock16[i], 27);
               }
-#endif
           }
           break;
 #endif
@@ -7877,14 +7852,12 @@ static t_stat DoEISInstruction (void)
             //   m = C(PTWAM(i).USE)
             //   C(Y-block16+m)0,17 -> C(PTWAM(m).ADDR)
             //   C(Y-block16+m)29 -> C(PTWAM(m).M)
-#ifdef WAM
             for (uint i = 0; i < 16; i ++)
               {
                 word4 m = cpu.PTWAM[i].USE;
                 cpu.PTWAM[m].ADDR = getbits36_18 (cpu.Yblock16[i],  0);
                 cpu.PTWAM[m].M =    getbits36_1  (cpu.Yblock16[i], 29);
               }
-#endif
           }
           break;
 #endif
@@ -7915,7 +7888,6 @@ elapsedtime ();
             //   C(Y-block32+2m)37,50 -> C(SDWAM(m).BOUND)
             //   C(Y-block32+2m)51,57 -> C(SDWAM(m).R, E, W, P, U, G, C) Note: typo in AL39, 52 should be 51
             //   C(Y-block32+2m)58,71 -> C(SDWAM(m).CL)
-#ifdef WAM
             for (uint i = 0; i < 16; i ++)
               {
                 word4 m = cpu.SDWAM[i].USE;
@@ -7935,7 +7907,6 @@ elapsedtime ();
                 cpu.SDWAM[m].C =       getbits36_1  (cpu.Yblock32[j + 1], 57 - 36);
                 cpu.SDWAM[m].EB =      getbits36_14 (cpu.Yblock32[j + 1], 58 - 36);
               }
-#endif
           }
           break;
 #endif
@@ -7951,13 +7922,10 @@ elapsedtime ();
 #ifdef L68
             uint level = 0;
 #endif
-#ifdef WAM
             uint toffset = level * 16;
-#endif
             for (uint j = 0; j < 16; j ++)
               {
                 cpu.Yblock16[j] = 0;
-#ifdef WAM
                 putbits36_15 (& cpu.Yblock16[j],  0,
                            cpu.PTWAM[toffset + j].POINTER);
 #ifdef DPS8M
@@ -7975,7 +7943,7 @@ elapsedtime ();
                     parity = parity ^ (parity >> 4);
                     parity = ~ (0x6996u >> (parity & 0xf)); 
                 }
-                putbits36_1 (& cpu.Yblock16[j], 23, parity);
+                putbits36_1 (& cpu.Yblock16[j], 23, (word1) parity);
 #endif
 #ifdef L68
                 putbits36_12 (& cpu.Yblock16[j], 15,
@@ -7992,33 +7960,7 @@ elapsedtime ();
                            cpu.PTWAM[toffset + j].USE);
 #endif
 
-#endif
               }
-#ifndef WAM
-            if (level == 0)
-              {
-                putbits36 (& cpu.Yblock16[0],  0, 15,
-                           cpu.PTW0.POINTER);
-#ifdef DPS8M
-                putbits36 (& cpu.Yblock16[0], 15, 12,
-                           cpu.PTW0.PAGENO & 07760);
-#endif
-#ifdef L68
-                putbits36 (& cpu.Yblock16[0], 15, 12,
-                           cpu.PTW0.PAGENO);
-#endif
-                putbits36 (& cpu.Yblock16[0], 27,  1,
-                           cpu.PTW0.FE);
-#ifdef DPS8M
-                putbits36 (& cpu.Yblock16[0], 30,  6,
-                           cpu.PTW0.USE);
-#endif
-#ifdef L68
-                putbits36 (& cpu.Yblock16[0], 32,  4,
-                           cpu.PTW0.USE);
-#endif
-              }
-#endif
           }
           break;
 
@@ -8034,13 +7976,10 @@ elapsedtime ();
 #ifdef L68
             uint level = 0;
 #endif
-#ifdef WAM
             uint toffset = level * 16;
-#endif
             for (uint j = 0; j < 16; j ++)
               {
                 cpu.Yblock16[j] = 0;
-#ifdef WAM
 #ifdef DPS8M
                 putbits36_18 (& cpu.Yblock16[j], 0,
                               cpu.PTWAM[toffset + j].ADDR & 0777760);
@@ -8051,20 +7990,7 @@ elapsedtime ();
 #endif
                 putbits36_1 (& cpu.Yblock16[j], 29,
                              cpu.PTWAM[toffset + j].M);
-#endif
               }
-#ifndef WAM
-            if (level == 0)
-              {
-#ifdef DPS8M
-                putbits36 (& cpu.Yblock16[0], 0, 13, cpu.PTW0.ADDR & 0777760);
-#endif
-#ifdef L68
-                putbits36 (& cpu.Yblock16[0], 0, 13, cpu.PTW0.ADDR);
-#endif
-                putbits36_1 (& cpu.Yblock16[0], 29, cpu.PTW0.M);
-              }
-#endif
           }
           break;
 
@@ -8081,13 +8007,10 @@ elapsedtime ();
 #ifdef L68
             uint level = 0;
 #endif
-#ifdef WAM
             uint toffset = level * 16;
-#endif
             for (uint j = 0; j < 16; j ++)
               {
                 cpu.Yblock32[j * 2] = 0;
-#ifdef WAM
                 putbits36_24 (& cpu.Yblock32[j * 2],  0,
                            cpu.SDWAM[toffset + j].ADDR);
                 putbits36_3 (& cpu.Yblock32[j * 2], 24,
@@ -8096,9 +8019,7 @@ elapsedtime ();
                            cpu.SDWAM[toffset + j].R2);
                 putbits36_3 (& cpu.Yblock32[j * 2], 30,
                            cpu.SDWAM[toffset + j].R3);
-#endif
                 cpu.Yblock32[j * 2 + 1] = 0;
-#ifdef WAM
                 putbits36_14 (& cpu.Yblock32[j * 2 + 1], 37 - 36,
                            cpu.SDWAM[toffset + j].BOUND);
                 putbits36_1 (& cpu.Yblock32[j * 2 + 1], 51 - 36,
@@ -8117,40 +8038,7 @@ elapsedtime ();
                            cpu.SDWAM[toffset + j].C);
                 putbits36_14 (& cpu.Yblock32[j * 2 + 1], 58 - 36,
                            cpu.SDWAM[toffset + j].EB);
-#endif
               }
-#ifndef WAM
-            if (level == 0)
-              {
-                putbits36 (& cpu.Yblock32[0],  0, 24,
-                           cpu.SDW0.ADDR);
-                putbits36 (& cpu.Yblock32[0], 24,  3,
-                           cpu.SDW0.R1);
-                putbits36 (& cpu.Yblock32[0], 27,  3,
-                           cpu.SDW0.R2);
-                putbits36 (& cpu.Yblock32[0], 30,  3,
-                           cpu.SDW0.R3);
-                putbits36 (& cpu.Yblock32[0], 37 - 36, 14,
-                           cpu.SDW0.BOUND);
-                putbits36 (& cpu.Yblock32[1], 51 - 36,  1,
-                           cpu.SDW0.R);
-                putbits36 (& cpu.Yblock32[1], 52 - 36,  1,
-                           cpu.SDW0.E);
-                putbits36 (& cpu.Yblock32[1], 53 - 36,  1,
-                           cpu.SDW0.W);
-                putbits36 (& cpu.Yblock32[1], 54 - 36,  1,
-                           cpu.SDW0.P);
-                putbits36 (& cpu.Yblock32[1], 55 - 36,  1,
-                           cpu.SDW0.U);
-                putbits36 (& cpu.Yblock32[1], 56 - 36,  1,
-                           cpu.SDW0.G);
-                putbits36 (& cpu.Yblock32[1], 57 - 36,  1,
-                           cpu.SDW0.C);
-                putbits36 (& cpu.Yblock32[1], 58 - 36, 14,
-                           cpu.SDW0.EB);
-
-              }
-#endif
           }
           break;
 

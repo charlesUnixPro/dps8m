@@ -11,6 +11,10 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
+extern __thread uint thisIOMnum;
+extern __thread uint thisChnNum;
+extern __thread bool thisIOMHaveLock;
+
 //typedef enum 
   //{
     //cm_LPW_init_state, // No TDCWs encountered; state is:

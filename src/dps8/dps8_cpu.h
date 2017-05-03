@@ -12,6 +12,7 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
+
 // simh only explicitly supports a single cpu
 
 #define N_CPU_UNITS 1 // Default
@@ -696,7 +697,6 @@ typedef struct
     uint proc_speed; // 4 bits Read by rsw instruction; format unknown
 
     // Emulator run-time options (virtual switches)
-    uint disable_wam;     // If non-zero, disable PTWAM, STWAM
     uint report_faults;   // If set, faults are reported and ignored
     uint tro_enable;   // If set, Timer runout faults are generated.
     uint serno;
@@ -1536,16 +1536,12 @@ typedef struct
     struct _par PAR [8]; // pointer/address resisters
     struct _bar BAR;   // Base Address Register
     struct _dsbr DSBR; // Descriptor Segment Base Register
-#ifndef WAM
-    //_sdw SDWAM0; // Segment Descriptor Word Associative Memory
-#else
     _sdw SDWAM [N_WAM_ENTRIES]; // Segment Descriptor Word Associative Memory
 #ifdef L68
     word4 SDWAMR;
 #endif
 #ifdef DPS8M
     word6 SDWAMR;
-#endif
 #endif
     _sdw * SDW; // working SDW
     _sdw SDW0; // a SDW not in SDWAM
@@ -1663,16 +1659,12 @@ typedef struct
     // Address Modification tally
     word12 AM_tally;
 
-#ifndef WAM
-    //_ptw PTWAM0;
-#else
     _ptw PTWAM [N_WAM_ENTRIES];
 #ifdef L68
     word4 PTWAMR;
 #endif
 #ifdef DPS8M
     word6 PTWAMR;
-#endif
 #endif
     _ptw * PTW;
     _ptw0 PTW0; // a PTW not in PTWAM (PTWx1)
@@ -1757,8 +1749,6 @@ extern cpu_state_t cpus [N_CPU_UNITS_MAX];
 
 extern __thread cpu_state_t * restrict cpup;
 extern __thread uint thisCPUnum;
-extern __thread uint thisIOMnum;
-extern __thread uint thisChnNum;
 #define cpu (* cpup)
 
 uint setCPUnum (uint cpuNum);

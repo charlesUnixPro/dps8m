@@ -67,9 +67,6 @@
 #define SPEED
 #endif
 
-// Enable WAM
-//#define WAM
-
 // Enable panel support
 //#define PANEL
 
