@@ -1096,7 +1096,7 @@ void fetchInstruction (word18 addr)
 #endif
           }
       }
-    else
+    else // not repeat
       {
         CPT (cpt2U, 12); // fetch 
 // ISOLTS test pa870 expects IRODD to be set up.
@@ -5938,7 +5938,7 @@ static t_stat DoBasicInstruction (void)
             if ((cpu.PPR.IC & 1) == 0)
               doFault (FAULT_IPR,
                        fst_ill_proc,
-                       "lcpr tag invalid");
+                       "rpd odd");
             cpu.cu.delta = i->tag;
             // a:AL39/rpd1
             word1 c = (i->address >> 7) & 1;

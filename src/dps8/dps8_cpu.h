@@ -172,7 +172,7 @@ struct _bar
 
 struct _dsbr
   {
-    word24  ADDR;   // If DSBR . U = 1, the 24-bit absolute main memory address
+    word24  ADDR;   // If DSBR.U = 1, the 24-bit absolute main memory address
                     //  of the origin of the current descriptor segment;
                     //  otherwise, the 24-bit absolute main memory address of
                     //  the page table for the current descriptor segment.
@@ -2000,7 +2000,7 @@ t_stat dpsCmd_Init (int32 arg, const char *buf);
 t_stat dpsCmd_Segment (int32 arg, const char *buf);
 t_stat dpsCmd_Segments (int32 arg, const char *buf);
 t_stat memWatch (int32 arg, const char * buf);
-_sdw *fetchSDW (word15 segno);
+//_sdw *fetchSDW (word15 segno);
 char *strSDW0 (char * buff, _sdw *SDW);
 int query_scbank_map (word24 addr);
 void cpu_init (void);

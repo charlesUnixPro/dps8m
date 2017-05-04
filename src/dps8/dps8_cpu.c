@@ -254,6 +254,7 @@ void init_opcodes (void)
   }
 
 
+#if 0
 // Assumes unpaged DSBR
 
 _sdw0 *fetchSDW (word15 segno)
@@ -287,6 +288,7 @@ _sdw0 *fetchSDW (word15 segno)
     
     return SDW;
   }
+#endif
 
 char * strSDW0 (char * buff, _sdw0 * SDW)
   {
