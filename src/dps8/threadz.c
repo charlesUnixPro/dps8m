@@ -50,7 +50,7 @@ static pthread_mutex_t mem_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void lock_mem (void)
   {
-    sim_debug (DBG_TRACE, & cpu_dev, "lock_mem\n");
+    //sim_debug (DBG_TRACE, & cpu_dev, "lock_mem\n");
     int rc;
 #ifdef use_spinlock
     rc = pthread_spin_lock (& mem_lock);
@@ -63,7 +63,7 @@ void lock_mem (void)
 
 void unlock_mem (void)
   {
-    sim_debug (DBG_TRACE, & cpu_dev, "unlock_mem\n");
+    //sim_debug (DBG_TRACE, & cpu_dev, "unlock_mem\n");
     int rc;
 #ifdef use_spinlock
     rc = pthread_spin_unlock (& mem_lock);
@@ -78,7 +78,7 @@ void unlock_mem (void)
 
 bool test_mem_lock (void)
   {
-    sim_debug (DBG_TRACE, & cpu_dev, "test_mem_lock\n");
+    //sim_debug (DBG_TRACE, & cpu_dev, "test_mem_lock\n");
     int rc;
 #ifdef use_spinlock
     rc = pthread_spin_trylock (& mem_lock);
@@ -106,7 +106,7 @@ static pthread_mutex_t tst_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void lock_tst (void)
   {
-    sim_debug (DBG_TRACE, & cpu_dev, "lock_tst\n");
+    //sim_debug (DBG_TRACE, & cpu_dev, "lock_tst\n");
     int rc;
     rc = pthread_mutex_lock (& tst_lock);
     if (rc)
@@ -115,7 +115,7 @@ void lock_tst (void)
 
 void unlock_tst (void)
   {
-    sim_debug (DBG_TRACE, & cpu_dev, "unlock_tst\n");
+    //sim_debug (DBG_TRACE, & cpu_dev, "unlock_tst\n");
     int rc;
     rc = pthread_mutex_unlock (& tst_lock);
     if (rc)
@@ -126,7 +126,7 @@ void unlock_tst (void)
 
 bool test_tst_lock (void)
   {
-    sim_debug (DBG_TRACE, & cpu_dev, "test_tst_lock\n");
+    //sim_debug (DBG_TRACE, & cpu_dev, "test_tst_lock\n");
     int rc;
     rc = pthread_mutex_trylock (& tst_lock);
     if (rc)

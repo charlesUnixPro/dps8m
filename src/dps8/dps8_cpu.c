@@ -1494,16 +1494,16 @@ elapsedtime ();
                         if (!clear_TEMPORARY_ABSOLUTE_mode ())
                           {
                             // didn't go appending
-                            sim_debug (DBG_TRACE, & cpu_dev,
-                                       "setting ABS mode\n");
+                            //sim_debug (DBG_TRACE, & cpu_dev,
+                                       //"setting ABS mode\n");
                             CPT (cpt1U, 10); // temporary absolute mode
                             set_addr_mode (ABSOLUTE_mode);
                           }
                         else
                           {
                             // went appending
-                            sim_debug (DBG_TRACE, & cpu_dev,
-                                       "not setting ABS mode\n");
+                            //sim_debug (DBG_TRACE, & cpu_dev,
+                                       //"not setting ABS mode\n");
                           }
 
                       } // fault or interrupt
@@ -2299,10 +2299,11 @@ void decodeInstruction (word36 inst, DCDstruct * p)
     // Save the RFI
     p -> restart = cpu.cu.rfi != 0;
     cpu.cu.rfi = 0;
-    if (p -> restart)
-      {
-        sim_debug (DBG_TRACE, & cpu_dev, "restart\n");
-      }
+
+    //if (p -> restart)
+      //{
+        //sim_debug (DBG_TRACE, & cpu_dev, "restart\n");
+      //}
 }
 
 // MM stuff ...
@@ -2326,7 +2327,7 @@ void decodeInstruction (word36 inst, DCDstruct * p)
  
 int is_priv_mode(void)
   {
-sim_debug (DBG_TRACE, & cpu_dev, "is_priv_mode P %u get_addr_mode %d get_bar_mode %d IR %06o\n", cpu.PPR.P, get_addr_mode (), get_bar_mode (), cpu.cu.IR);
+//sim_debug (DBG_TRACE, & cpu_dev, "is_priv_mode P %u get_addr_mode %d get_bar_mode %d IR %06o\n", cpu.PPR.P, get_addr_mode (), get_bar_mode (), cpu.cu.IR);
     if (TST_I_NBAR && cpu.PPR.P)
       return 1;
     

@@ -4336,7 +4336,7 @@ void mlr (void)
         (e -> ADDR2.address & PGMK) == 0)
 #endif
       {
-        sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #3\n");
+        //sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #3\n");
         while (cpu.du.CHTALLY < e -> N1)
           {
             word36 pg [PGSZ];
@@ -4376,7 +4376,7 @@ void mlr (void)
         (e -> ADDR2.address & PGMK) == 0)
 #endif
       {
-        sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #4\n");
+        //sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #4\n");
         word36 pg [PGSZ];
         if (fill)
           {
@@ -4416,7 +4416,7 @@ void mlr (void)
         e -> CN1 == 0 &&  // and it starts at a word boundary // BITNO?
         e -> CN2 == 0)
       {
-        sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #1\n");
+        //sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #1\n");
         for ( ; cpu.du.CHTALLY < e -> N2; cpu.du.CHTALLY += 4)
           {
             uint n = cpu.du.CHTALLY / 4;
@@ -4446,7 +4446,7 @@ void mlr (void)
         e -> CN1 == 0 &&  // and it starts at a word boundary // BITNO?
         e -> CN2 == 0)
       {
-        sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #2\n");
+        //sim_debug (DBG_TRACE, & cpu_dev, "MLR special case #2\n");
         word36 w = (word36) fill | ((word36) fill << 9) | ((word36) fill << 18) | ((word36) fill << 27);
         for ( ; cpu.du.CHTALLY < e -> N2; cpu.du.CHTALLY += 4)
           {
@@ -4712,7 +4712,7 @@ void mrl (void)
         e -> CN1 == 0 &&  // and it starts at a word boundary // BITNO?
         e -> CN2 == 0)
       {
-        sim_debug (DBG_TRACE, & cpu_dev, "MRL special case #1\n");
+        //sim_debug (DBG_TRACE, & cpu_dev, "MRL special case #1\n");
         uint limit = e -> N2;
         for ( ; cpu.du.CHTALLY < limit; cpu.du.CHTALLY += 4)
           {
@@ -4743,7 +4743,7 @@ void mrl (void)
         e -> CN1 == 0 &&  // and it starts at a word boundary // BITNO?
         e -> CN2 == 0)
       {
-        sim_debug (DBG_TRACE, & cpu_dev, "MRL special case #2\n");
+        //sim_debug (DBG_TRACE, & cpu_dev, "MRL special case #2\n");
         word36 w = (word36) fill |
                   ((word36) fill << 9) |
                   ((word36) fill << 18) |
