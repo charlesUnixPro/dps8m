@@ -2366,6 +2366,10 @@ void * chnThreadMain (void * arg)
     thisIOMnum = (uint) myid / MAX_CHANNELS;
     thisChnNum = (uint) myid % MAX_CHANNELS;
           
+// Set CPU context to allow sim_debug to work
+
+    setCPUnum (0);
+
     sim_printf("IOM %c Channel %u thread created\n", thisIOMnum + 'a', thisChnNum);
 
     setSignals ();
@@ -2384,6 +2388,10 @@ void * iomThreadMain (void * arg)
     int myid = * (int *) arg;
     thisIOMnum = (uint) myid;
           
+// Set CPU context to allow sim_debug to work
+
+    setCPUnum (0);
+
     sim_printf("IOM %c thread created\n", 'a' + myid);
 
     setSignals ();
