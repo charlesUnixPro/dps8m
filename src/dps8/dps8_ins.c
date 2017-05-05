@@ -6141,7 +6141,7 @@ static t_stat DoBasicInstruction (void)
             if ((cpu.PPR.IC & 1) == 0)
               doFault (FAULT_IPR,
                        (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
-                       "lcpr tag invalid");
+                       "rpd odd");
             cpu.cu.delta = i->tag;
             // a:AL39/rpd1
             word1 c = (i->address >> 7) & 1;
