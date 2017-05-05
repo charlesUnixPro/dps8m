@@ -1124,7 +1124,7 @@ static void modifyPTW(_sdw *sdw, word18 offset)
     core_read((sdw->ADDR + x2) & PAMASK, &PTWx2, __func__);
     PTWx2 = SETBIT(PTWx2, 6);
     core_write((sdw->ADDR + x2) & PAMASK, PTWx2, __func__);
-//if_sim_debug (DBG_TRACE, & cpu_dev)
+//if_sim_debug (DBG_APPENDING, & cpu_dev)
 //sim_printf ("modifyPTW 0%o %012"PRIo64" ADDR %o U %"PRIo64" M %"PRIo64" F %"PRIo64" FC %"PRIo64"\n",
             //sdw -> ADDR + x2, PTWx2, GETHI (PTWx2), TSTBIT(PTWx2, 9), 
             //TSTBIT(PTWx2, 6), TSTBIT(PTWx2, 2), PTWx2 & 3);
@@ -1905,7 +1905,7 @@ F:;
     if (cpu.TPR.TRR > cpu.SDW->R2)
       {
         sim_debug (DBG_CAC, & cpu_dev, "ACV1 b\n");
-        sim_debug (DBG_TRACE, & cpu_dev,
+        sim_debug (DBG_APPENDING, & cpu_dev,
                    "acvFaults(F) C(TPR.TRR) %o > C(SDW.R2) %o\n",
                    cpu.TPR.TRR, cpu.SDW -> R2);
         cpu.acvFaults |= ACV1;
