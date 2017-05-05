@@ -282,6 +282,7 @@ void IEEElongdoubleToEAQ(long double f0)
 }
 #endif
 
+#if 0
 //#ifndef QUIET_UNUSED
 #ifdef ISOLTS
 /*!
@@ -319,6 +320,7 @@ static double float36ToIEEEdouble(word36 f36)
     return (S ? -1 : 1) * ldexp(m, e);
 }
 //#endif
+#endif
 #endif
 
 #ifndef QUIET_UNUSED

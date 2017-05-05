@@ -16,7 +16,6 @@ double EAQToIEEEdouble(void);
 #ifndef QUIET_UNUSED
 float72 IEEElongdoubleToFloat72(long double f);
 void IEEElongdoubleToEAQ(long double f0);
-double float36ToIEEEdouble(float36 f36);
 float36 IEEEdoubleTofloat36(double f);
 #endif
 void ufa (bool sub);
