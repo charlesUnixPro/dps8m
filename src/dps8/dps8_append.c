@@ -202,7 +202,9 @@ void do_ldbr (word36 * Ypair)
               {
                 cpu . SDWAM [i] . FE = 0;
 #ifdef L68
-                cpu . SDWAM [i] . USE = (word4) i;
+// ISOLTS 863 02 implies that USE is initialized to 0.
+                //cpu . SDWAM [i] . USE = (word4) i;
+                cpu . SDWAM [i] . USE = 0;
 #endif
 #ifdef DPS8M
                 cpu . SDWAM [i] . USE = 0;
@@ -219,7 +221,9 @@ void do_ldbr (word36 * Ypair)
               {
                 cpu . PTWAM [i] . FE = 0;
 #ifdef L68
-                cpu . PTWAM [i] . USE = (word4) i;
+// ISOLTS 863 02 implies that USE is initialized to 0.
+                //cpu . PTWAM [i] . USE = (word4) i;
+                cpu . PTWAM [i] . USE = 0;
 #endif
 #ifdef DPS8M
                 cpu . PTWAM [i] . USE = 0;
@@ -298,7 +302,9 @@ void do_camp (UNUSED word36 Y)
               {
                 cpu.PTWAM[i].FE = 0;
 #ifdef L68
-                cpu.PTWAM[i].USE = (word4) i;
+// ISOLTS 863 02 implies that USE is initialized to 0.
+                //cpu.PTWAM[i].USE = (word4) i;
+                cpu.PTWAM[i].USE = 0;
 #endif
 #ifdef DPS8M
                 cpu.PTWAM[i].USE = 0;
@@ -354,7 +360,9 @@ void do_cams (UNUSED word36 Y)
               {
                 cpu.SDWAM[i].FE = 0;
 #ifdef L68
-                cpu.SDWAM[i].USE = (word4) i;
+// ISOLTS 863 02 implies that USE is initialized to 0.
+                //cpu.SDWAM[i].USE = (word4) i;
+                cpu.SDWAM[i].USE = 0;
 #endif
 #ifdef DPS8M
                 cpu.SDWAM[i].USE = 0;
@@ -847,15 +855,26 @@ static void loadSDWAM(word15 segno, UNUSED bool nomatch)
             p->FE = true;     // in use by SDWAM
             
             for(int _h = 0 ; _h < N_WAM_ENTRIES ; _h++)
-            {
+              {
                 _sdw *q = &cpu . SDWAM[_h];
                 //if (!q->_initialized)
                 //if (!q->FE)
                 //    continue;
                 
+#if 0
                 q->USE -= 1;
                 q->USE &= N_WAM_MASK;
-            }
+#else
+// ISOLTS 863 02 implies that multiple entries can have USE == 0; ie.
+// where AL39 says USE is 16,17,0,1,2,3,...,15, ISOLTS says
+// 16,17,0,0,...,0.
+// Instead of 'rolling over' 0 to 017, decrement if != 0, and 
+// explictly set the chosen (first) 0 to 017.
+                if (q->USE)
+                  q->USE --;
+#endif
+              }
+            p->USE = N_WAM_ENTRIES - 1;
             
             cpu . SDW = p;
             
@@ -1084,15 +1103,26 @@ static void loadPTWAM(word15 segno, word18 offset, UNUSED bool nomatch)
             p->FE = true;
             
             for(int _h = 0 ; _h < N_WAM_ENTRIES ; _h++)
-            {
+              {
                 _ptw *q = &cpu . PTWAM[_h];
                 //if (!q->_initialized)
                 //if (!q->F)
                     //continue;
                 
+#if 0
                 q->USE -= 1;
                 q->USE &= N_WAM_MASK;
-            }
+#else
+// ISOLTS 863 02 implies that multiple entries can have USE == 0; ie.
+// where AL39 says USE is 16,17,0,1,2,3,...,15, ISOLTS says
+// 16,17,0,0,...,0.
+// Instead of 'rolling over' 0 to 017, decrement if != 0, and 
+// explictly set the chosen (first) 0 to 017.
+#endif
+                if (q->USE)
+                  q->USE --;
+              }
+            p->USE = N_WAM_ENTRIES - 1;
             
             cpu . PTW = p;
             sim_debug (DBG_APPENDING, & cpu_dev, "loadPTWAM(2): ADDR 0%o U %o M %o F %o FC %o POINTER=%o PAGENO=%o USE=%d\n", cpu . PTW->ADDR, cpu . PTW->U, cpu . PTW->M, cpu . PTW->DF, cpu . PTW->FC, cpu.PTW->POINTER,cpu.PTW->PAGENO,cpu.PTW->USE);
