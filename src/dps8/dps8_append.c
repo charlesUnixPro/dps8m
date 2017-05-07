@@ -198,7 +198,9 @@ void do_ldbr (word36 * Ypair)
           {
             cpu.SDWAM [i].FE = 0;
 #ifdef L68
-            cpu.SDWAM [i].USE = (word4) i;
+// ISOLTS 863 02 implies that USE is initialized to 0.
+            //cpu.SDWAM[i].USE = (word4) i;
+            cpu.SDWAM[i].USE = 0;
 #endif
 #ifdef DPS8M
             cpu.SDWAM [i].USE = 0;
@@ -215,7 +217,9 @@ void do_ldbr (word36 * Ypair)
           {
             cpu.PTWAM [i].FE = 0;
 #ifdef L68
-            cpu.PTWAM [i].USE = (word4) i;
+// ISOLTS 863 02 implies that USE is initialized to 0.
+            //cpu.PTWAM[i].USE = (word4) i;
+            cpu.PTWAM[i].USE = 0;
 #endif
 #ifdef DPS8M
             cpu.PTWAM [i].USE = 0;
@@ -290,7 +294,9 @@ void do_camp (UNUSED word36 Y)
           {
             cpu.PTWAM[i].FE = 0;
 #ifdef L68
-            cpu.PTWAM[i].USE = (word4) i;
+// ISOLTS 863 02 implies that USE is initialized to 0.
+            //cpu.PTWAM[i].USE = (word4) i;
+            cpu.PTWAM[i].USE = 0;
 #endif
 #ifdef DPS8M
             cpu.PTWAM[i].USE = 0;
@@ -338,7 +344,9 @@ void do_cams (UNUSED word36 Y)
           {
             cpu.SDWAM[i].FE = 0;
 #ifdef L68
-            cpu.SDWAM[i].USE = (word4) i;
+// ISOLTS 863 02 implies that USE is initialized to 0.
+            //cpu.SDWAM[i].USE = (word4) i;
+            cpu.SDWAM[i].USE = 0;
 #endif
 #ifdef DPS8M
             cpu.SDWAM[i].USE = 0;
@@ -809,15 +817,26 @@ static void loadSDWAM(word15 segno, UNUSED bool nomatch)
             p->FE = true;     // in use by SDWAM
             
             for(int _h = 0 ; _h < N_WAM_ENTRIES ; _h++)
-            {
+              {
                 _sdw *q = &cpu.SDWAM[_h];
                 //if (!q->_initialized)
                 //if (!q->FE)
                 //    continue;
                 
+#if 0
                 q->USE -= 1;
                 q->USE &= N_WAM_MASK;
-            }
+#else
+// ISOLTS 863 02 implies that multiple entries can have USE == 0; ie.
+// where AL39 says USE is 16,17,0,1,2,3,...,15, ISOLTS says
+// 16,17,0,0,...,0.
+// Instead of 'rolling over' 0 to 017, decrement if != 0, and 
+// explictly set the chosen (first) 0 to 017.
+                if (q->USE)
+                  q->USE --;
+#endif
+              }
+            p->USE = N_WAM_ENTRIES - 1;
             
             cpu.SDW = p;
             
@@ -1044,15 +1063,26 @@ static void loadPTWAM(word15 segno, word18 offset, UNUSED bool nomatch)
             p->FE = true;
             
             for(int _h = 0 ; _h < N_WAM_ENTRIES ; _h++)
-            {
+              {
                 _ptw *q = &cpu.PTWAM[_h];
                 //if (!q->_initialized)
                 //if (!q->F)
                     //continue;
                 
+#if 0
                 q->USE -= 1;
                 q->USE &= N_WAM_MASK;
-            }
+#else
+// ISOLTS 863 02 implies that multiple entries can have USE == 0; ie.
+// where AL39 says USE is 16,17,0,1,2,3,...,15, ISOLTS says
+// 16,17,0,0,...,0.
+// Instead of 'rolling over' 0 to 017, decrement if != 0, and 
+// explictly set the chosen (first) 0 to 017.
+#endif
+                if (q->USE)
+                  q->USE --;
+              }
+            p->USE = N_WAM_ENTRIES - 1;
             
             cpu.PTW = p;
             sim_debug (DBG_APPENDING, & cpu_dev,
@@ -1656,7 +1686,7 @@ A:;
         // C(TPR.TRR) > C(SDW.R1)?	Note typo in AL39, R2 should be R1
         if (cpu.TPR.TRR > cpu.SDW->R1)
           {
-            sim_debug (DBG_CAC, & cpu_dev, "ACV5 TRR %o R1 %o\n", cpu.TPR.TRR, cpu.SDW->R1);
+            sim_debug (DBG_AVC, & cpu_dev, "ACV5 TRR %o R1 %o\n", cpu.TPR.TRR, cpu.SDW->R1);
             //Set fault ACV5 = OWB
             cpu.acvFaults |= ACV5;
             PNL (L68_ (cpu.apu.state |= apu_FLT;))
@@ -1665,7 +1695,7 @@ A:;
         
         if (! cpu.SDW->W)
           {
-            sim_debug (DBG_CAC, & cpu_dev, "ACV6\n");
+            sim_debug (DBG_AVC, & cpu_dev, "ACV6\n");
             // Set fault ACV6 = W-OFF
             cpu.acvFaults |= ACV6;
             PNL (L68_ (cpu.apu.state |= apu_FLT;))
@@ -1682,7 +1712,7 @@ A:;
         // C(TPR.TRR) > C(SDW.R2)?
         if (cpu.TPR.TRR > cpu.SDW->R2)
           {
-            sim_debug (DBG_CAC, & cpu_dev, "ACV3\n");
+            sim_debug (DBG_AVC, & cpu_dev, "ACV3\n");
             sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(B) ACV3\n");
             //Set fault ACV3 = ORB
             cpu.acvFaults |= ACV3;
@@ -1695,7 +1725,7 @@ A:;
             //C(PPR.PSR) = C(TPR.TSR)?
             if (cpu.PPR.PSR != cpu.TPR.TSR)
               {
-                sim_debug (DBG_CAC, & cpu_dev, "ACV4\n");
+                sim_debug (DBG_AVC, & cpu_dev, "ACV4\n");
                 sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(B) ACV4\n");
                 //Set fault ACV4 = R-OFF
                 cpu.acvFaults |= ACV4;
@@ -1721,7 +1751,7 @@ C:;
     if (cpu.TPR.TRR < cpu.SDW->R1 ||
         cpu.TPR.TRR > cpu.SDW->R2)
       {
-        sim_debug (DBG_CAC, & cpu_dev, "ACV1 c\n");
+        sim_debug (DBG_AVC, & cpu_dev, "ACV1 c\n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(C) ACV1\n");
         //Set fault ACV1 = OEB
         cpu.acvFaults |= ACV1;
@@ -1731,7 +1761,7 @@ C:;
     // SDW.E set ON?
     if (! cpu.SDW->E)
       {
-        sim_debug (DBG_CAC, & cpu_dev, "ACV2 a\n");
+        sim_debug (DBG_AVC, & cpu_dev, "ACV2 a\n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(C) ACV2\n");
         //Set fault ACV2 = E-OFF
         cpu.acvFaults |= ACV2;
@@ -1741,7 +1771,7 @@ C:;
     // C(TPR.TRR) ≥ C(PPR.PRR)
     if (cpu.TPR.TRR < cpu.PPR.PRR)
       {
-        sim_debug (DBG_CAC, & cpu_dev, "ACV11\n");
+        sim_debug (DBG_AVC, & cpu_dev, "ACV11\n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(C) ACV11\n");
         //Set fault ACV11 = INRET
         cpu.acvFaults |= ACV11;
@@ -1760,7 +1790,7 @@ D:;
     // C(PPR.PRR) < RALR?
     if (! (cpu.PPR.PRR < cpu.rRALR))
       {
-        sim_debug (DBG_CAC, & cpu_dev, "ACV13\n");
+        sim_debug (DBG_AVC, & cpu_dev, "ACV13\n");
         sim_debug (DBG_APPENDING, & cpu_dev,
                    "acvFaults(D) C(PPR.PRR) %o < RALR %o\n", 
                    cpu.PPR.PRR, cpu.rRALR);
@@ -1789,7 +1819,7 @@ E:;
     //SDW.E set ON?
     if (!cpu.SDW->E)
       {
-        sim_debug (DBG_CAC, & cpu_dev, "ACV2 b\n");
+        sim_debug (DBG_AVC, & cpu_dev, "ACV2 b\n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(E) ACV2\n");
         // Set fault ACV2 = E-OFF
         cpu.acvFaults |= ACV2;
@@ -1811,7 +1841,7 @@ E:;
     //if (address >= (word18) cpu.SDW->EB)
     if (cpu.TPR.CA >= (word18) cpu.SDW->EB)
       {
-        sim_debug (DBG_CAC, & cpu_dev, "ACV7\n");
+        sim_debug (DBG_AVC, & cpu_dev, "ACV7\n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(E) ACV7\n");
         // Set fault ACV7 = NO GA
         cpu.acvFaults |= ACV7;
@@ -1826,7 +1856,7 @@ E1:
     // C(TPR.TRR) > SDW.R3?
     if (cpu.TPR.TRR > cpu.SDW->R3)
       {
-        sim_debug (DBG_CAC, & cpu_dev, "ACV8\n");
+        sim_debug (DBG_AVC, & cpu_dev, "ACV8\n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(E) ACV8\n");
         //Set fault ACV8 = OCB
         cpu.acvFaults |= ACV8;
@@ -1837,7 +1867,7 @@ E1:
     // C(TPR.TRR) < SDW.R1?
     if (cpu.TPR.TRR < cpu.SDW->R1)
       {
-        sim_debug (DBG_CAC, & cpu_dev, "ACV9\n");
+        sim_debug (DBG_AVC, & cpu_dev, "ACV9\n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(E) ACV9\n");
         // Set fault ACV9 = OCALL
         cpu.acvFaults |= ACV9;
@@ -1852,7 +1882,7 @@ E1:
         // C(PPR.PRR) < SDW.R2?
         if (cpu.PPR.PRR < cpu.SDW->R2)
           {
-            sim_debug (DBG_CAC, & cpu_dev, "ACV10\n");
+            sim_debug (DBG_AVC, & cpu_dev, "ACV10\n");
             sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(E) ACV10\n");
             // Set fault ACV10 = BOC
             cpu.acvFaults |= ACV10;
@@ -1892,7 +1922,7 @@ F:;
     // C(TPR.TRR) < C(SDW.R1)?
     if (cpu.TPR.TRR < cpu.SDW->R1)
       {
-        sim_debug (DBG_CAC, & cpu_dev, "ACV1 a\n");
+        sim_debug (DBG_AVC, & cpu_dev, "ACV1 a\n");
         sim_debug (DBG_APPENDING, & cpu_dev,
                    "acvFaults(F) C(TPR.TRR) %o < C(SDW.R1) %o\n",
                    cpu.TPR.TRR, cpu.SDW->R1);
@@ -1904,7 +1934,7 @@ F:;
     // C(TPR.TRR) > C(SDW.R2)?
     if (cpu.TPR.TRR > cpu.SDW->R2)
       {
-        sim_debug (DBG_CAC, & cpu_dev, "ACV1 b\n");
+        sim_debug (DBG_AVC, & cpu_dev, "ACV1 b\n");
         sim_debug (DBG_APPENDING, & cpu_dev,
                    "acvFaults(F) C(TPR.TRR) %o > C(SDW.R2) %o\n",
                    cpu.TPR.TRR, cpu.SDW -> R2);
@@ -1916,7 +1946,7 @@ F:;
     // SDW.E set ON?
     if (! cpu.SDW->E)
       {
-        sim_debug (DBG_CAC, & cpu_dev, "ACV2 c \n");
+        sim_debug (DBG_AVC, & cpu_dev, "ACV2 c \n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(F) ACV2\n");
         cpu.acvFaults |= ACV2;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
@@ -1926,7 +1956,7 @@ F:;
     // C(PPR.PRR) = C(TPR.TRR)?
     if (cpu.PPR.PRR != cpu.TPR.TRR)
       {
-        sim_debug (DBG_CAC, & cpu_dev, "ACV12\n");
+        sim_debug (DBG_AVC, & cpu_dev, "ACV12\n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(F) ACV12\n");
         //Set fault ACV12 = CRT
         cpu.acvFaults |= ACV12;
@@ -1950,7 +1980,7 @@ G:;
     //if (((address >> 4) & 037777) > cpu.SDW->BOUND)
     if (((cpu.TPR.CA >> 4) & 037777) > cpu.SDW->BOUND)
       {
-        sim_debug (DBG_CAC, & cpu_dev, "ACV15\n");
+        sim_debug (DBG_AVC, & cpu_dev, "ACV15\n");
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(G) ACV15\n");
         cpu.acvFaults |= ACV15;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))

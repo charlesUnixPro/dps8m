@@ -85,6 +85,7 @@ void xsim_debug (uint32 dbits, DEVICE* vdptr, const char* fmt, ...);
 #define DBG_CYCLE       (1U << 23)
 #define DBG_CAC         (1U << 24)
 #define DBG_FINAL       (1U << 25)
+#define DBG_AVC         (1U << 26)
 
 // Abort codes, used to sort out longjmp's back to the main loop.
 // Codes > 0 are simulator stop codes
