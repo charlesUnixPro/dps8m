@@ -18,3 +18,6 @@ int opconAutoinput (int32 flag, const char *  cptr);
 int con_iom_cmd (uint iomUnitIdx, uint chan);
 bool check_attn_key (void);
 void consoleProcess (void);
+t_stat consolePort (UNUSED int32 arg, const char * buf);
+t_stat consolePW (UNUSED int32 arg, const char * buf);
+void startRemoteConsole (void);
