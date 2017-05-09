@@ -1200,6 +1200,14 @@ void fetchInstruction (word18 addr)
           {
             Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH);
             cpu.cu.IRODD = cpu.cu.IWB; 
+#ifdef prefetchx
+// Hack to make 863 work
+            word18 saveca = cpu.TPR.CA;
+            word36 tmp[2];
+            Read2 (addr + 1, tmp, APU_DATA_READ);
+            cpu.TPR.CA = saveca;
+            fauxDoAppendCycle (INSTRUCTION_FETCH);
+#endif
           }
       }
 }
@@ -2183,6 +2191,21 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
         PNL (cpu.IWRAddr = 0);
       }
 
+#ifdef prefetch
+    {
+// Hack to make 863 work
+sim_debug (DBG_TRACE, & cpu_dev, "prefetch CY %012llo\n", cpu.Ypair[0]);
+       word18 savefa = cpu.iefpFinalAddress;
+      _processor_cycle_type savecycle = cpu.apu.lastCycle;
+      word18 saveca = cpu.TPR.CA;
+      word36 tmp[2];
+      Read2 (cpu.PPR.IC + 1, tmp, ABSA_CYCLE);
+      cpu.TPR.CA = saveca;
+      cpu.iefpFinalAddress = savefa;
+      fauxDoAppendCycle (savecycle);
+sim_debug (DBG_TRACE, & cpu_dev, "prefetch CY %012llo\n", cpu.Ypair[0]);
+    }
+#endif
 ///
 /// executeInstruction: Execute the instruction
 ///

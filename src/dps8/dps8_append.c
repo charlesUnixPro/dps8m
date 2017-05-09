@@ -1761,7 +1761,11 @@ A:;
     // Transfer or instruction fetch?
     //if (instructionFetch || (i->info->flags & TRANSFER_INS))
     //if (instructionFetch || ((i->info->flags & TRANSFER_INS) && thisCycle != INDIRECT_WORD_FETCH))
+#ifdef prefetch
+    if (instructionFetch || ((i->info->flags & TRANSFER_INS) && thisCycle != INDIRECT_WORD_FETCH && thisCycle != RTCD_OPERAND_FETCH && thisCycle != APU_DATA_READ && thisCycle != APU_DATA_STORE))
+#else
     if (instructionFetch || ((i->info->flags & TRANSFER_INS) && thisCycle != INDIRECT_WORD_FETCH && thisCycle != RTCD_OPERAND_FETCH))
+#endif
       goto F;
     
     if (StrOp)
@@ -2220,8 +2224,8 @@ I:;
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
       addAPUhist (APUH_FAP);
 #endif
-    //sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FAP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, address, finalAddress);
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FAP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, cpu.TPR.CA, finalAddress);
+    //sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(I:FAP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, address, finalAddress);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(I:FAP): (%05o:%06o) finalAddress=%08o\n",cpu . TPR.TSR, cpu.TPR.CA, finalAddress);
 
     //if (thisCycle == ABSA_CYCLE)
     //    goto J;
@@ -2238,6 +2242,11 @@ HI:
       {
         core_readN (finalAddress, data, nWords, strPCT (thisCycle));
       }
+
+#ifdef prefetch
+    if (thisCycle == APU_DATA_READ || thisCycle == APU_DATA_STORE)
+      goto Exit;
+#endif
 
     // Was this an indirect word fetch?
     if (thisCycle == INDIRECT_WORD_FETCH)
