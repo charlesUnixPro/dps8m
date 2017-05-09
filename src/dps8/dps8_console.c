@@ -1698,7 +1698,7 @@ static void alloc_buffer (UNUSED uv_handle_t * handle, size_t suggested_size,
 static void console_close_cb (uv_handle_t * stream)
   {
     free (stream);
-    console_client = NULL;
+    //console_client = NULL;
   }
 
 static void console_close_connection (uv_stream_t* stream)
@@ -1712,6 +1712,7 @@ static void console_close_connection (uv_stream_t* stream)
       }
     if (! uv_is_closing ((uv_handle_t *) stream))
       uv_close ((uv_handle_t *) stream, console_close_cb);
+    console_client = NULL;
   }
 
 //
@@ -1761,11 +1762,9 @@ static void console_start_write_actual (uv_tcp_t * client, char * data, ssize_t 
     // This makes sure that bufs*.base and bufsml*.base are NULL
     memset (req, 0, sizeof (uv_write_t));
     uv_buf_t buf = uv_buf_init ((char *) malloc ((unsigned long) datalen), (uint) datalen);
-//sim_printf ("allocated req %p data %p\n", req, buf.base);
 #ifdef USE_REQ_DATA
     req->data = buf.base;
 #endif
-//sim_printf ("fnpuv_start_write_actual req %p buf.base %p\n", req, buf.base);
     memcpy (buf.base, data, (unsigned long) datalen);
     int ret = uv_write (req, (uv_stream_t *) client, & buf, 1, console_write_cb);
 // There seems to be a race condition when Mulitcs signals a disconnect_line;
@@ -1815,9 +1814,17 @@ static void on_new_console (uv_stream_t * server, int status)
         // Only a single connection at a time
         if (console_client)
           {
+#if 0
             uv_close ((uv_handle_t *) client, console_close_cb);
 //sim_printf ("dropping 2nd console\n");
             return;
+#else
+            sim_printf ("console cutting in\r\n");
+        //    uv_close ((uv_handle_t *) console_client, console_close_cb);
+            loggedon = false;
+            console_close_connection ((uv_stream_t *) console_client);
+
+#endif
           }
         console_client = client;
         struct sockaddr name;
