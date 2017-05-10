@@ -13,11 +13,11 @@
 
 extern DEVICE scu_dev;
 
-#ifdef ISOLTS
-#define isISOLTS 1
-#else
+//#ifdef ISOLTS
+//#define isISOLTS 1
+//#else
 #define isISOLTS 0
-#endif
+//#endif
 
 #ifdef SPEED
 #define if_sim_debug(dbits, dptr) if ((0))

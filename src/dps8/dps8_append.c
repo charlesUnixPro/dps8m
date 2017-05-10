@@ -405,8 +405,8 @@ IF1 sim_printf ("CAMS cleared it\n");
  * fetch descriptor segment PTW ...
  */
 // CANFAULT
-static void fetchDSPTW(word15 segno)
-{
+static bool fetchDSPTW (word15 segno, bool isABSA_CYCLE)
+  {
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW segno 0%o\n", segno);
     PNL (L68_ (cpu.apu.state |= apu_FDPT;))
 
@@ -416,7 +416,10 @@ static void fetchDSPTW(word15 segno)
         // generate access violation, out of segment bounds fault
         PNL (cpu.acvFaults |= ACV15;)
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
-        doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15}, "acvFault: fetchDSPTW out of segment bounds fault");
+        if (isABSA_CYCLE)
+          return true;
+        doFault (FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15},
+                 "acvFault: fetchDSPTW out of segment bounds fault");
       }
     setAPUStatus (apuStatus_DSPTW);
 
@@ -441,7 +444,8 @@ static void fetchDSPTW(word15 segno)
 #endif
 
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW x1 0%o y1 0%o DSBR.ADDR 0%o PTWx1 0%012"PRIo64" PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x1, y1, cpu . DSBR.ADDR, PTWx1, cpu . PTW0.ADDR, cpu . PTW0.U, cpu . PTW0.M, cpu . PTW0.DF, cpu . PTW0.FC);
-}
+    return false;
+  }
 
 
 /**
@@ -633,21 +637,26 @@ static void fetchPSDW(word15 segno)
 /// \brief Nonpaged SDW Fetch
 /// Fetches an SDW from an unpaged descriptor segment.
 // CANFAULT
-static void fetchNSDW(word15 segno)
-{
-    sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(0):segno=%05o\n", segno);
+static bool fetchNSDW(word15 segno, bool isABSA_CYCLE)
+  {
+    sim_debug (DBG_APPENDING, & cpu_dev, "fetchNSDW(0):segno=%05o\n", segno);
 
     PNL (L68_ (cpu.apu.state |= apu_FSDN;))
 
     setAPUStatus (apuStatus_SDWNP);
 
     if (2 * segno >= 16 * (cpu . DSBR.BND + 1))
-    {
-        sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(1):Access Violation, out of segment bounds for segno=%05o DSBR.BND=%d\n", segno, cpu . DSBR.BND);
+      {
+        sim_debug (DBG_APPENDING, & cpu_dev,
+                   "fetchNSDW(1):Access Violation, out of segment bounds for "
+                   "segno=%05o DSBR.BND=%d\n", segno, cpu.DSBR.BND);
         // generate access violation, out of segment bounds fault
         PNL (cpu.acvFaults |= ACV15;)
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
-        doFault(FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15}, "acvFault fetchNSDW: out of segment bounds fault");
+        if (isABSA_CYCLE)
+          return true;
+        doFault (FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=ACV15},
+                 "acvFault fetchNSDW: out of segment bounds fault");
     }
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):fetching SDW from %05o\n", cpu . DSBR.ADDR + 2u * segno);
     word36 SDWeven, SDWodd;
@@ -680,6 +689,7 @@ static void fetchNSDW(word15 segno)
       addAPUhist (0 /* No fetch no paged bit */);
 #endif
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):SDW0=%s\n", strSDW0(&cpu . SDW0));
+    return false;
 }
 
 #ifdef WAM
@@ -1478,6 +1488,7 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWord
     bool instructionFetch = (thisCycle == INSTRUCTION_FETCH);
     bool StrOp = (thisCycle == OPERAND_STORE ||
                   thisCycle == APU_DATA_STORE);
+    bool isABSA_CYCLE = (thisCycle == ABSA_CYCLE);
     //bool rtcdOperandFetch = thisCycle == RTCD_OPERAND_FETCH;
 
 #ifdef WAM
@@ -1530,6 +1541,8 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWord
     if (thisCycle == APU_DATA_READ ||
         thisCycle == APU_DATA_STORE)
       goto A;
+    //if (isABSA_CYCLE)
+      //goto START1;
 
     // R/M/W?
     if (thisCycle == OPERAND_STORE &&
@@ -1548,6 +1561,8 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWord
 
     if (lastCycle == RTCD_OPERAND_FETCH)
       goto A;
+
+//START1:;
 
     //if (lastCycle != INSTRUCTION_FETCH && i -> a)
     //if (lastCycle != INSTRUCTION_FETCH && cpu.cu.TSN_VALID [0])
@@ -1597,6 +1612,7 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWord
 #endif
       }
 
+
     cpu.TPR.TRR = cpu.PPR.PRR;
     cpu.TPR.TSR = cpu.PPR.PSR;
     sim_debug (DBG_APPENDING, & cpu_dev,
@@ -1625,10 +1641,13 @@ A:;
 #ifndef WAM
     if (cpu.DSBR.U == 0)
       {
-        fetchDSPTW (cpu.TPR.TSR);
-        
+        bool fault = fetchDSPTW (cpu.TPR.TSR, isABSA_CYCLE);
+        if (fault && isABSA_CYCLE)
+          goto ABSA_EXIT;
         if (! cpu.PTW0.DF)
          {
+          if (isABSA_CYCLE)
+            goto ABSA_EXIT;
           doFault (FAULT_DF0 + cpu.PTW0.FC, (_fault_subtype) {.bits=0}, "doAppendCycle(A): PTW0.F == 0");
          }
         
@@ -1641,12 +1660,14 @@ A:;
       }
     else
       {
-        fetchNSDW (cpu.TPR.TSR); // load SDW0 from descriptor segment table.
+        bool fault = fetchNSDW (cpu.TPR.TSR, isABSA_CYCLE); // load SDW0 from descriptor segment table.
+        if (fault && isABSA_CYCLE)
+          goto ABSA_EXIT;
       }
 
     if (cpu.SDW0.DF == 0)
       {
-        if (thisCycle != ABSA_CYCLE)
+        if (! isABSA_CYCLE)
           {
             sim_debug (DBG_APPENDING, & cpu_dev,
                        "doAppendCycle(A): SDW0.F == 0! "
@@ -1674,11 +1695,17 @@ A:;
         
         if (cpu.DSBR.U == 0)
           {
-            fetchDSPTW (cpu.TPR.TSR);
+            bool fault = fetchDSPTW (cpu.TPR.TSR, isABSA_CYCLE);
+            if (fault && isABSA_CYCLE)
+              goto ABSA_EXIT;
             
             if (! cpu.PTW0.DF)
-              doFault (FAULT_DF0 + cpu.PTW0.FC, (_fault_subtype) {.bits=0},
-                       "doAppendCycle(A): PTW0.F == 0");
+              {
+                if (isABSA_CYCLE)
+                  goto ABSA_EXIT;
+                doFault (FAULT_DF0 + cpu.PTW0.FC, (_fault_subtype) {.bits=0},
+                         "doAppendCycle(A): PTW0.F == 0");
+              }
             
             if (! cpu.PTW0.U)
               modifyDSPTW (cpu.TPR.TSR);
@@ -1686,11 +1713,15 @@ A:;
             fetchPSDW (cpu.TPR.TSR);
           }
         else
-          fetchNSDW (cpu.TPR.TSR); // load SDW0 from descriptor segment table.
-        
+          {
+            bool fault = fetchNSDW (cpu.TPR.TSR, isABSA_CYCLE); // load SDW0 from descriptor segment table.
+            if (fault && isABSA_CYCLE)
+              goto ABSA_EXIT;
+          }
+
         if (cpu.SDW0.DF == 0)
           {
-            if (thisCycle != ABSA_CYCLE)
+            if (! isABSA_CYCLE)
               {
                 sim_debug (DBG_APPENDING, & cpu_dev,
                            "doAppendCycle(A): SDW0.F == 0! "
@@ -2089,6 +2120,8 @@ G:;
         sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(G) acvFaults\n");
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
         // Initiate an access violation fault
+        if (isABSA_CYCLE)
+          goto ABSA_EXIT;
         doFault (FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=cpu.acvFaults},
                  "ACV fault");
       }
@@ -2108,12 +2141,11 @@ G:;
     if (! cpu.PTW0.DF)
       {
         // cpu.TPR.CA = address;
-        if (thisCycle != ABSA_CYCLE)
-          {
-            // initiate a directed fault
-            doFault (FAULT_DF0 + cpu.PTW0.FC, (_fault_subtype) {.bits=0},
-                     "PTW0.F == 0");
-          }
+        if (isABSA_CYCLE)
+          goto ABSA_EXIT;
+        // initiate a directed fault
+        doFault (FAULT_DF0 + cpu.PTW0.FC, (_fault_subtype) {.bits=0},
+                 "PTW0.F == 0");
       } 
     // load PTW0 POINTER, always bypass PTWAM
     //loadPTWAM (cpu.SDW->POINTER, address, true);
@@ -2129,12 +2161,11 @@ G:;
         if (! cpu.PTW0.DF)
           {
             // cpu.TPR.CA = address;
-            if (thisCycle != ABSA_CYCLE)
-              {
-                // initiate a directed fault
-                doFault (FAULT_DF0 + cpu.PTW0.FC, (_fault_subtype) {.bits=0},
-                         "PTW0.F == 0");
-              }
+            if (isABSA_CYCLE)
+              goto ABSA_EXIT;
+            // initiate a directed fault
+            doFault (FAULT_DF0 + cpu.PTW0.FC, (_fault_subtype) {.bits=0},
+                     "PTW0.F == 0");
           }
         //loadPTWAM (cpu.SDW->POINTER, address, nomatch); // load PTW0 to PTWAM
         loadPTWAM (cpu.SDW->POINTER, cpu.TPR.CA, nomatch); // load PTW0 to PTWAM
@@ -2242,6 +2273,9 @@ HI:
       {
         core_readN (finalAddress, data, nWords, strPCT (thisCycle));
       }
+
+    if (isABSA_CYCLE)
+      goto Exit;
 
 #ifdef prefetch
     if (thisCycle == APU_DATA_READ || thisCycle == APU_DATA_STORE)
@@ -2561,6 +2595,10 @@ P:; // ITP
       }
     goto Exit;
     
+
+ABSA_EXIT:
+    sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle (ABSA_EXIT)\n");
+    goto Exit;
 
 Exit:;
 

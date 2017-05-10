@@ -46,6 +46,7 @@
 // Forward declarations
 
 static int doABSA (word36 * result);
+static void doPrefetch (void);
 static t_stat doInstruction (void);
 #ifdef TESTING
 #if EMULATOR_ONLY
@@ -1200,6 +1201,7 @@ void fetchInstruction (word18 addr)
           {
             Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH);
             cpu.cu.IRODD = cpu.cu.IWB; 
+doPrefetch();
 #ifdef prefetchx
 // Hack to make 863 work
             word18 saveca = cpu.TPR.CA;
@@ -2191,7 +2193,8 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
         PNL (cpu.IWRAddr = 0);
       }
 
-#ifdef prefetch
+    //doPrefetch ();
+#ifdef prefetchx
     {
 // Hack to make 863 work
 sim_debug (DBG_TRACE, & cpu_dev, "prefetch CY %012llo\n", cpu.Ypair[0]);
@@ -9229,6 +9232,37 @@ static int emCall (void)
 }
 #endif
 #endif // TESTING
+
+// CANFAULT
+static void doPrefetch (void)
+  {
+    word36 res;
+
+    if (TST_I_ABS)
+      return;
+
+    // ABSA handles directed faults differently, so a special append cycle is needed.
+    // doAppendCycle also provides WAM support, which is required by ISOLTS-860 02
+    //res = (word36) doAppendCycle (cpu.TPR.CA & MASK18, ABSA_CYCLE, NULL, 0) << 12;
+    word18 savefa = cpu.iefpFinalAddress;
+    _processor_cycle_type savecycle = cpu.apu.lastCycle;
+    fauxDoAppendCycle (UNKNOWN_CYCLE);
+    //word18 saveca = cpu.TPR.CA;
+    word1 saveb29 = cpu.currentInstruction.b29;
+    cpu.currentInstruction.b29 = 0;
+    struct _tpr savetpr = cpu.TPR;
+    cpu.TPR.CA = cpu.PPR.IC + 1;
+
+    sim_debug (DBG_APPENDING, & cpu_dev, "prefetch CA:%08o\n", cpu.TPR.CA);
+    res = doAppendCycle (ABSA_CYCLE, NULL, 0) << 12;
+
+    cpu.currentInstruction.b29 = saveb29;
+    //cpu.TPR.CA = saveca;
+    cpu.TPR = savetpr;
+    cpu.iefpFinalAddress = savefa;
+    fauxDoAppendCycle (savecycle);
+    return;
+  }
 
 // CANFAULT
 static int doABSA (word36 * result)
