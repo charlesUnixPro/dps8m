@@ -2720,4 +2720,17 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
   }
 
 
+void doPrefetch (void)
+  {
+#ifdef WAM
+    if (TST_I_ABS)
+      return;
 
+    if (currentRunningCPUnum)
+      {
+        sim_printf ("prefetch %05o\r\n", cpu.PPR.PSR);
+        fetchSDWfromSDWAM (cpu.PPR.PSR);
+      }
+#endif
+    return;
+  }

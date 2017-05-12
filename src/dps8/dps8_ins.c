@@ -2183,6 +2183,13 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
         PNL (cpu.IWRAddr = 0);
       }
 
+#ifdef ISOLTS
+// prefetch
+
+    if (cpu.PPR.IC & 1)
+      doPrefetch ();
+#endif
+    
 ///
 /// executeInstruction: Execute the instruction
 ///

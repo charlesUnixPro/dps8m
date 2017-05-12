@@ -1888,6 +1888,12 @@ elapsedtime ();
                     PNL (L68_ (cpu.INS_FETCH = true;))
                     fetchInstruction (cpu.PPR.IC);
                   }
+#ifdef ISOLTSx
+// prefetch
+
+    if (cpu.PPR.IC & 1)
+      doPrefetch ();
+#endif
 
                 CPT (cpt1U, 21); // go to exec cycle
                 advanceG7Faults ();
