@@ -2139,7 +2139,7 @@ elapsedtime ();
                   cpu.PPR.IC += ci->info->ndes;
 
                 CPT (cpt1U, 28); // enter fetch cycle
-                cpu.wasXfer = false; 
+                cpu.wasXfer = !! ci->info->ndes; 
                 setCpuCycle (FETCH_cycle);
               }
               break;

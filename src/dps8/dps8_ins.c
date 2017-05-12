@@ -1198,8 +1198,26 @@ void fetchInstruction (word18 addr)
           }
         else // Odd
           {
+#if 1
+            if (cpu.wasXfer)
+              {
+                Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH);
+                cpu.cu.IRODD = cpu.cu.IWB; 
+              }
+           else
+              {
+                cpu.cu.IWB = cpu.cu.IRODD;
+                cpu.TPR.TRR = cpu.PPR.PRR;
+                cpu.TPR.TSR = cpu.PPR.PSR;
+                fauxDoAppendCycle (INSTRUCTION_FETCH);
+              }
+#elif 0
+            cpu.cu.IWB = cpu.cu.IRODD;
+            fauxDoAppendCycle (INSTRUCTION_FETCH);
+#else
             Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH);
             cpu.cu.IRODD = cpu.cu.IWB; 
+#endif
           }
       }
 }
