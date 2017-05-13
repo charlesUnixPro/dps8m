@@ -1559,6 +1559,8 @@ typedef struct
 
     bool isExec;  // The instruction being executed is the target of
                   // an XEC or XED instruction
+    bool wasRep;  // The instruction being executed is the target of
+                  // an PRx XED instruction
     bool isXED; // The instruction being executed is the target of an
                 // XEC instruction
     //bool isb29; // The instruction has a valid bit 29 set when fetched

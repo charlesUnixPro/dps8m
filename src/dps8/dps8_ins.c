@@ -616,13 +616,13 @@ void tidy_cu (void)
 // that code here so that there is only a single copy to maintain.
 
     cpu.cu.delta = 0;
-    cpu.cu.repeat_first = false;
-    cpu.cu.rpt = false;
-    cpu.cu.rd = false;
-    cpu.cu.rl = false;
-    cpu.cu.pot = false;
-    cpu.cu.xde = false;
-    cpu.cu.xdo = false;
+    cpu.cu.repeat_first = 0;
+    cpu.cu.rpt = 0;
+    cpu.cu.rd = 0;
+    cpu.cu.rl = 0;
+    cpu.cu.pot = 0;
+    cpu.cu.xde = 0;
+    cpu.cu.xdo = 0;
   }
 
 static void words2scu (word36 * words)
@@ -2382,7 +2382,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
 
     bool rf = cpu.cu.repeat_first;
     if (rf && cpu.cu.rd && icEven)
-      rf = false;
+      rf = 0;
 
     if ((! rf) && (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl))
       {
@@ -2569,9 +2569,10 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
             if (exit)
               {
                 CPT (cpt2L, 13); // RPx terminated
-                cpu.cu.rpt = false;
-                cpu.cu.rd = false;
-                cpu.cu.rl = false;
+                cpu.cu.rpt = 0;
+                cpu.cu.rd = 0;
+                cpu.cu.rl = 0;
+                cpu.wasRep = 1;
               }
             else
               {
@@ -2585,9 +2586,10 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
             if (cpu.lnk == 0)
               {
                 CPT (cpt2L, 13); // RPx terminated
-                cpu.cu.rpt = false;
-                cpu.cu.rd = false;
-                cpu.cu.rl = false;
+                cpu.cu.rpt = 0;
+                cpu.cu.rd = 0;
+                cpu.cu.rl = 0;
+                cpu.wasRep = 1;
                 SET_I_TALLY;
               }
             else
