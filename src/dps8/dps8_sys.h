@@ -18,7 +18,7 @@ typedef struct {
 } stats_t;
 
 
-extern word36 *M;
+extern word36 volatile *M;
 extern uint64 sim_deb_start;
 extern uint64 sim_deb_stop;
 extern uint64 sim_deb_break;

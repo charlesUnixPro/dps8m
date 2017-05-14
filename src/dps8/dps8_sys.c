@@ -63,7 +63,7 @@
 // contention across multiple CPUs, but that is a level of
 // emulation that will be ignored.
 
-word36 *M = NULL;                                          /*!< memory */
+word36 volatile *M = NULL;   // Memory
 
 
 // These are part of the simh interface
