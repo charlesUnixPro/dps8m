@@ -117,10 +117,10 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
                     fnpuv_associated_brk (client);
                   }
                 else
-                  sim_warn ("liblnet dropping unassociated BRK\n");
+                  sim_warn ("libtelnet dropping unassociated BRK\n");
               }
             else
-              sim_warn ("liblnet unhandle IAC event %d\n", event->iac.cmd);
+              sim_warn ("libtelnet unhandled IAC event %d\n", event->iac.cmd);
           }
           break;
 

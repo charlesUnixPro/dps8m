@@ -222,6 +222,8 @@
 #include "dps8_cable.h"
 #include "dps8_scu.h"
 #include "threadz.h"
+#include "dps8_console.h"
+#include "dps8_fnp2.h"
 
 #define ASSUME_CPU_0 0
 
@@ -2688,6 +2690,12 @@ static t_stat bootSvc (UNIT * unitp)
     // This is needed to reset the interrupt mask registers; Multics tampers
     // with runtime values, and mucks up rebooting on multi-CPU systems.
     scu_reset (NULL);
+
+    // Start the remote console listener
+    startRemoteConsole ();
+
+    // Start the FNP dialup listener
+    startFNPListener ();
 
     // simulate $CON
     iom_interrupt (0 /*ASSUME0*/, iomUnitIdx);

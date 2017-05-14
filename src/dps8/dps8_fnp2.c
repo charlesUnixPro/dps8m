@@ -2177,7 +2177,7 @@ static void fnpcmdBootload (uint devUnitIdx)
               "The FNP has been restarted\r\n");
           }
       }
-    fnpuvInit (telnet_port);
+    //fnpuvInit (telnet_port);
   }
 
 static void processMBX (uint iomUnitIdx, uint chan)
@@ -3116,3 +3116,9 @@ associate:;
     fnpUnitData[fnpno].MState.line[lineno].was_CR = false;
     ltnRaw (p->telnetp);
   }
+
+void startFNPListener (void)
+  {
+    fnpuvInit (telnet_port);
+  }
+

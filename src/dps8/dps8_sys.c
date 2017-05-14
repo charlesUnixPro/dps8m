@@ -56,6 +56,8 @@
 #include "panelScraper.h"
 #endif
 
+#define ASSUME0 0
+
 // XXX Strictly speaking, memory belongs in the SCU
 // We will treat memory as viewed from the CPU and elide the
 // SCU configuration that maps memory across multiple SCUs.
@@ -136,7 +138,7 @@ static CTAB dps8_cmds[] =
 #if 0
     {"FNPLOAD", fnpLoad, 0, "fnpload: load Devices.txt into FNP", NULL, NULL},
 #endif
-    {"FNPSERVERPORT", fnpServerPort, 0, "fnpServerPort: set the FNP dialin telnter port number", NULL, NULL},
+    {"FNPSERVERPORT", fnpServerPort, 0, "fnpServerPort: set the FNP dialin telnet port number", NULL, NULL},
     {"SKIPBOOT", bootSkip, 0, "skip forward on boot tape", NULL, NULL},
     {"DEFAULT_BASE_SYSTEM", defaultBaseSystem, 0, "Set configuration to defaults", NULL, NULL},
     {"FNPSTART", fnpStart, 0, "Force early FNP initialization", NULL, NULL},
@@ -149,6 +151,8 @@ static CTAB dps8_cmds[] =
     {"SCRAPER", scraper, 0, "Control scraper", NULL, NULL},
 #endif
     {"MOUNT", mountTape, 0, "Mount tape image and signal Mulitcs", NULL, NULL },
+    {"CONSOLEPORT", consolePort, 0, "consolePort: set the Operator Console port number", NULL, NULL},
+    {"CONSOLEPW", consolePW, 0, "consolePW: set the Operator Console port password", NULL, NULL},
     { NULL, NULL, 0, NULL, NULL, NULL}
 };
 
@@ -169,7 +173,7 @@ static void usr1SignalHandler (UNUSED int sig)
   {
     sim_printf ("USR1 signal caught; pressing the EXF button\n");
     // Assume the bootload CPU
-    setG7fault (0, FAULT_EXF, fst_zero);
+    setG7fault (ASSUME0, FAULT_EXF, fst_zero);
     return;
   }
 #endif
@@ -223,10 +227,10 @@ static void dps8_init(void)
     init_opcodes();
     sysCableInit ();
     iom_init ();
-    console_init ();
     disk_init ();
     mt_init ();
     fnpInit ();
+    console_init (); // must come after fnpInit due to libuv initiailization
     //mpc_init ();
     scu_init ();
     cpu_init ();

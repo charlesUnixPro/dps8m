@@ -238,9 +238,10 @@ static int tun_alloc (char * dev)
 
 static uv_loop_t * loop = NULL;
 static uv_tcp_t du_server;
+static bool du_server_inited = false;
 
 //
-// alloc_buffer: libuv callback handler to allocate buffers for incomingd data.
+// alloc_buffer: libuv callback handler to allocate buffers for incoming data.
 //
 
 static void alloc_buffer (UNUSED uv_handle_t * handle, size_t suggested_size, 
@@ -659,10 +660,13 @@ void fnpuvInit (int telnet_port)
     // Ignore multiple calls; this means that once the listen port is
     // opened, it can't be changed. Fixing this requires non-trivial
     // changes.
-    if (loop)
+    if (du_server_inited)
       return;
+
     // Initialize the server socket
-    loop = uv_default_loop ();
+    if (! loop)
+      loop = uv_default_loop ();
+
     uv_tcp_init (loop, & du_server);
 
 // XXX to do clean shutdown
@@ -682,6 +686,7 @@ sim_printf ("listening to %d\n", telnet_port);
      {
         fprintf (stderr, "Listen error %s\n", uv_strerror (r));
       }
+    du_server_inited = true;
   }
 
 // Make a single pass through the libev event queue.
@@ -978,6 +983,7 @@ sim_printf ("listening on port %d\n", linep->port);
       }
 #endif
   }
+
 
 #ifdef TUN
 static void processPacketInput (int fnpno, int lineno, unsigned char * buf, ssize_t nread)

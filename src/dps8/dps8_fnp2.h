@@ -182,3 +182,4 @@ void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
 #if 0
 t_stat fnpLoad (UNUSED int32 arg, const char * buf);
 #endif
+void startFNPListener (void);
