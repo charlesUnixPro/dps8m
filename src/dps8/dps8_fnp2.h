@@ -173,7 +173,6 @@ int lookupFnpLink (int fnpUnitNum);
 void fnpProcessEvent (void); 
 t_stat diaCommand (int fnpUnitNum, char *arg3);
 void fnpToCpuQueueMsg (int fnpUnitNum, char * msg);
-int fnpIOMCmd (uint iomUnitIdx, uint chan);
 t_stat fnpServerPort (int32 arg, const char * buf);
 t_stat fnpStart (UNUSED int32 arg, UNUSED const char * buf);
 void fnpConnectPrompt (uv_tcp_t * client);

@@ -20,6 +20,7 @@
 #include "dps8_console.h"
 #include "dps8_disk.h"
 #include "dps8_fnp2.h"
+#include "dps8_fnp2_iomcmd.h"
 #include "dps8_urp.h"
 #include "dps8_crdrdr.h"
 #include "dps8_crdpun.h"
