@@ -627,6 +627,12 @@ sim_debug (DBG_FAULT, & cpu_dev, "cycle %u ndes %u fn %u v %u\n", cpu.cycle, cpu
       {
         sim_debug (DBG_CYCLE, & cpu_dev, "Changing fault number to Trouble fault\n");
 
+        // AL39: TRB fault doesn't safestore CUD - the original fault CUD should be stored
+        // ISOLTS-870 05a: CUD[5] and IWB are safe stored, possibly due to CU overlap
+        // so prepare for a safe store, but restore IRODD from the originating location
+        if (cpu.cu.xde) // XXX if the TRB occured in an even location
+            core_read (cpu.PPR.IC | 1, & cpu.cu.IRODD, __func__);
+
         cpu.faultNumber = FAULT_TRB;
         cpu.cu.FI_ADDR = FAULT_TRB;
         cpu.subFault.bits = 0; // XXX ???
@@ -652,14 +658,6 @@ sim_debug (DBG_FAULT, & cpu_dev, "cycle %u ndes %u fn %u v %u\n", cpu.cycle, cpu
           {
 //--            f = &_faults[FAULT_TRB];
             cpu . bTroubleFaultCycle = true;
-            if (cpu.cycle == FAULT_EXEC_cycle)
-              {
-                cpu.bTroubleFaultCycleEven = true;
-              }
-            else
-              {
-                cpu.bTroubleFaultCycleEven = false;
-              }
           }
       }
     else
@@ -798,14 +796,6 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
         else
           {
             cpu.bTroubleFaultCycle = true;
-            if (cpu.cycle == FAULT_EXEC_cycle)
-              {
-                cpu.bTroubleFaultCycleEven = true;
-              }
-            else
-              {
-                cpu.bTroubleFaultCycleEven = false;
-              }
           }
         cpu.cycle = FAULT_cycle;
         sim_debug (DBG_CYCLE, & cpu_dev, "Setting cycle to FAULT_cycle\n");

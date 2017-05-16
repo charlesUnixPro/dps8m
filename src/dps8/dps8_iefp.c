@@ -122,7 +122,9 @@ t_stat Read2 (word18 address, word36 * result, _processor_cycle_type cyctyp)
     bool isBAR = get_bar_mode ();
 
     if (get_went_appending () ||
-        (cyctyp == APU_DATA_READ && cpu.cu.TSN_VALID [0]))
+        (cyctyp == APU_DATA_READ && cpu.cu.TSN_VALID [0]) ||
+        cyctyp == RTCD_OPERAND_FETCH) // ISOLTS-886 
+           // Another option would be to set_went_appending in ReadRTCDOp
       {
         goto B29;
       }
