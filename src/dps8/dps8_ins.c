@@ -1071,7 +1071,7 @@ void fetchInstruction (word18 addr)
       {
         cpu.TPR.TRR = 0;
         cpu.RSDWH_R1 = 0;
-        cpu.PPR.P = 1; // ISOLTS-870 02m
+        //cpu.PPR.P = 1; // XXX this should be already set by set_addr_mode, so no worry here
       }
 
     if (cpu.cu.rd && ((cpu.PPR.IC & 1) != 0))
@@ -1549,8 +1549,7 @@ t_stat executeInstruction (void)
                 "Attempted execution of multics privileged instruction.");
         }
 #endif
-        if (! ((get_addr_mode () == ABSOLUTE_mode) ||
-                            is_priv_mode ()) || get_bar_mode())
+        if (!is_priv_mode ())
           {
             // "multics" privileged instructions: absa,ldbr,lra,rcu,scu,sdbr,ssdp,ssdr,sptp,sptr
             // ISOLTS 890 05abc,06abc
@@ -1565,8 +1564,8 @@ t_stat executeInstruction (void)
                || (ci->opcode == 0557 || ci->opcode == 0154 || ci->opcode == 0257))
 #endif
             {
-                if ((!is_priv_mode () && !get_bar_mode())) {
-                    // SLV makes no sense here, but ISOLTS 890 sez so.
+                if (!get_bar_mode ()) {
+                    // ISOLTS-890 05ab
                     doFault (FAULT_IPR,
                         (_fault_subtype) {.fault_ipr_subtype=FR_ILL_SLV|mod_fault},
                         "Attempted execution of multics privileged instruction.");
@@ -2729,8 +2728,7 @@ static t_stat DoBasicInstruction (void)
             word18 tmp18 = GETLO (cpu.CY) & 0777760;
 #endif
 
-            bool bAbsPriv = (get_addr_mode () == ABSOLUTE_mode) ||
-                            is_priv_mode ();
+            bool bAbsPriv = is_priv_mode ();
 
             SC_I_ZERO  (tmp18 & I_ZERO);
             SC_I_NEG   (tmp18 & I_NEG);
@@ -5035,20 +5033,7 @@ static t_stat DoBasicInstruction (void)
 
         case 0610:  // rtcd
           // If an access violation fault occurs when fetching the SDW for
-          // the Y-pair, the C(PPR.PSR) and C(PPR.PRR) are not altered.  If
-          // the rtcd instruction is executed with the processor in absolute
-          // mode with bit 29 of the instruction word set OFF and without
-          // indirection through an ITP or ITS pair, then:
-          //
-          //   appending mode is entered for address preparation for the
-          //   rtcd operand and is retained if the instruction executes
-          //   successfully, and the effective segment number generated for
-          //   the SDW fetch and subsequent loading into C(TPR.TSR) is equal
-          //   to C(PPR.PSR) and may be undefined in absolute mode, and the
-          //   effective ring number loaded into C(TPR.TRR) prior to the SDW
-          //   fetch is equal to C(PPR.PRR) (which is 0 in absolute mode)
-          //   implying that control is always transferred into ring 0.
-          //
+          // the Y-pair, the C(PPR.PSR) and C(PPR.PRR) are not altered.
 
           ReadRTCDOp ();
           // RTCD always ends up in append mode.
@@ -5883,7 +5868,6 @@ static t_stat DoBasicInstruction (void)
 // XXX NB. This used to be done in executeInstruction post-execution
 // processing; moving it here means that post-execution code cannot inspect IWB
 // to determine what the instruction or it flags were.
-          cpu.cu.IWB = cpu.CY;
           cpu.cu.IWB = cpu.Ypair[0];
           cpu.cu.IRODD = cpu.Ypair[1];
           return CONT_XEC;
@@ -7390,8 +7374,7 @@ elapsedtime ();
           //if (GET_I (cpu.cu.IWB) ? bG7PendingNoTRO () : bG7Pending ())
           // Don't check timer runout if in absolute mode, privledged, or
           // interrupts inhibited.
-          bool noCheckTR = (get_addr_mode () == ABSOLUTE_mode) || 
-                            is_priv_mode ()  ||
+          bool noCheckTR = is_priv_mode ()  ||
                             GET_I (cpu.cu.IWB);
           if (noCheckTR ? bG7PendingNoTRO () : bG7Pending ())
 #endif
@@ -8620,7 +8603,7 @@ static int doABSA (word36 * result)
     sim_debug (DBG_APPENDING, & cpu_dev, "absa CA:%08o\n", cpu.TPR.CA);
 
     //if (get_addr_mode () == ABSOLUTE_mode && ! cpu.isb29)
-    if (get_addr_mode () == ABSOLUTE_mode && ! cpu.currentInstruction.b29)
+    if (get_addr_mode () == ABSOLUTE_mode && ! cpu.went_appending) // ISOLTS-860
       {
         * result = ((word36) (cpu.TPR.CA & MASK18)) << 12; // 24:12 format
         return SCPE_OK;

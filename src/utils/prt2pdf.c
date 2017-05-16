@@ -419,7 +419,7 @@ void do_text ()
     //char ASA;
     char c;
     int black;
-    int i;
+    int i, ic;
 
     start_page ();
 
@@ -428,8 +428,9 @@ void do_text ()
         buffer [i] = ' ';
       }
 
-    while ((c = getchar ()) != EOF)
+    while ((ic = getchar ()) != EOF)
       {
+        c = ic;
         if (c == '\r') // print the buffer, do not advance
           {
             fprintf (stdout, "0 %f Td\n", GLOBAL_LEAD_SIZE);

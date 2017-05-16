@@ -198,9 +198,7 @@ void do_ldbr (word36 * Ypair)
           {
             cpu.SDWAM [i].FE = 0;
 #ifdef L68
-// ISOLTS 863 02 implies that USE is initialized to 0.
-            //cpu.SDWAM[i].USE = (word4) i;
-            cpu.SDWAM[i].USE = 0;
+            cpu.SDWAM [i].USE = (word4) i;
 #endif
 #ifdef DPS8M
             cpu.SDWAM [i].USE = 0;
@@ -217,9 +215,7 @@ void do_ldbr (word36 * Ypair)
           {
             cpu.PTWAM [i].FE = 0;
 #ifdef L68
-// ISOLTS 863 02 implies that USE is initialized to 0.
-            //cpu.PTWAM[i].USE = (word4) i;
-            cpu.PTWAM[i].USE = 0;
+            cpu.PTWAM [i].USE = (word4) i;
 #endif
 #ifdef DPS8M
             cpu.PTWAM [i].USE = 0;
@@ -294,9 +290,7 @@ void do_camp (UNUSED word36 Y)
           {
             cpu.PTWAM[i].FE = 0;
 #ifdef L68
-// ISOLTS 863 02 implies that USE is initialized to 0.
-            //cpu.PTWAM[i].USE = (word4) i;
-            cpu.PTWAM[i].USE = 0;
+            cpu.PTWAM[i].USE = (word4) i;
 #endif
 #ifdef DPS8M
             cpu.PTWAM[i].USE = 0;
@@ -344,9 +338,7 @@ void do_cams (UNUSED word36 Y)
           {
             cpu.SDWAM[i].FE = 0;
 #ifdef L68
-// ISOLTS 863 02 implies that USE is initialized to 0.
-            //cpu.SDWAM[i].USE = (word4) i;
-            cpu.SDWAM[i].USE = 0;
+            cpu.SDWAM[i].USE = (word4) i;
 #endif
 #ifdef DPS8M
             cpu.SDWAM[i].USE = 0;
@@ -823,20 +815,9 @@ static void loadSDWAM(word15 segno, UNUSED bool nomatch)
                 //if (!q->FE)
                 //    continue;
                 
-#if 0
                 q->USE -= 1;
                 q->USE &= N_WAM_MASK;
-#else
-// ISOLTS 863 02 implies that multiple entries can have USE == 0; ie.
-// where AL39 says USE is 16,17,0,1,2,3,...,15, ISOLTS says
-// 16,17,0,0,...,0.
-// Instead of 'rolling over' 0 to 017, decrement if != 0, and 
-// explictly set the chosen (first) 0 to 017.
-                if (q->USE)
-                  q->USE --;
-#endif
-              }
-            p->USE = N_WAM_ENTRIES - 1;
+            }
             
             cpu.SDW = p;
             
@@ -1069,20 +1050,9 @@ static void loadPTWAM(word15 segno, word18 offset, UNUSED bool nomatch)
                 //if (!q->F)
                     //continue;
                 
-#if 0
                 q->USE -= 1;
                 q->USE &= N_WAM_MASK;
-#else
-// ISOLTS 863 02 implies that multiple entries can have USE == 0; ie.
-// where AL39 says USE is 16,17,0,1,2,3,...,15, ISOLTS says
-// 16,17,0,0,...,0.
-// Instead of 'rolling over' 0 to 017, decrement if != 0, and 
-// explictly set the chosen (first) 0 to 017.
-#endif
-                if (q->USE)
-                  q->USE --;
-              }
-            p->USE = N_WAM_ENTRIES - 1;
+            }
             
             cpu.PTW = p;
             sim_debug (DBG_APPENDING, & cpu_dev,
@@ -1552,6 +1522,24 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWord
 
     cpu.TPR.TRR = cpu.PPR.PRR;
     cpu.TPR.TSR = cpu.PPR.PSR;
+
+    // If the rtcd instruction is executed with the processor in absolute
+    // mode with bit 29 of the instruction word set OFF and without
+    // indirection through an ITP or ITS pair, then:
+    //
+    //   appending mode is entered for address preparation for the
+    //   rtcd operand and is retained if the instruction executes
+    //   successfully, and the effective segment number generated for
+    //   the SDW fetch and subsequent loading into C(TPR.TSR) is equal
+    //   to C(PPR.PSR) and may be undefined in absolute mode, and the
+    //   effective ring number loaded into C(TPR.TRR) prior to the SDW
+    //   fetch is equal to C(PPR.PRR) (which is 0 in absolute mode)
+    //   implying that control is always transferred into ring 0.
+    //
+    if (thisCycle == RTCD_OPERAND_FETCH && get_addr_mode() == ABSOLUTE_mode && !get_went_appending()) { 
+        cpu.TPR.TSR = 0;
+    }
+
     sim_debug (DBG_APPENDING, & cpu_dev,
                "set TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
     goto A;
@@ -2064,9 +2052,15 @@ H:;
                "doAppendCycle(H): SDW->ADDR=%08o CA=%06o \n",
                cpu.SDW->ADDR, cpu.TPR.CA);
 
-    //finalAddress = (cpu.SDW->ADDR & 077777760) + address;
-    finalAddress = (cpu.SDW->ADDR & 077777760) + cpu.TPR.CA;
-    finalAddress &= 0xffffff;
+    if (thisCycle == RTCD_OPERAND_FETCH && get_addr_mode() == ABSOLUTE_mode && !get_went_appending()) { 
+        finalAddress = cpu.TPR.CA;
+    }
+    else
+    {
+        //finalAddress = (cpu.SDW->ADDR & 077777760) + address;
+        finalAddress = (cpu.SDW->ADDR & 077777760) + cpu.TPR.CA;
+        finalAddress &= 0xffffff;
+    }
     PNL (cpu.APUMemAddr = finalAddress;)
     
     //sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FANP): (%05o:%06o) finalAddress=%08o\n",cpu.TPR.TSR, address, finalAddress);

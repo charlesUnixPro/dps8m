@@ -38,6 +38,7 @@
 #include "dps8_cable.h"
 #include "dps8_crdrdr.h"
 #include "dps8_absi.h"
+#include "dps8_bar.h"
 #ifdef M_SHARED
 #include "shm.h"
 #endif
@@ -1329,6 +1330,11 @@ elapsedtime ();
 // This event is to be distinguished from a Connect Input/Output Channel (cioc)
 // instruction encountered in the program sequence.
 
+                // check BAR bound and raise store fault if above
+                // pft 04d 10070, ISOLTS-776 06ad
+                if (get_bar_mode())
+                    getBARaddress(cpu.PPR.IC);
+
                 if ((! cpu.wasInhibited) &&
                     (cpu.PPR.IC % 2) == 0 &&
                     (! cpu.wasXfer) &&
@@ -1338,10 +1344,10 @@ elapsedtime ();
                     CPT (cpt1U, 14); // sampling interrupts
                     cpu.interrupt_flag = sample_interrupts ();
                     //cpu.g7_flag = bG7Pending ();
-                    // Don't check timer runout if in absolute mode, privledged, or
+                    // Don't check timer runout if privileged, or
                     // interrupts inhibited.
-                    bool noCheckTR = (get_addr_mode () == ABSOLUTE_mode) || 
-                                      is_priv_mode ()  ||
+                    // ISOLTS-776 04bcf
+                    bool noCheckTR = is_priv_mode ()  ||
                                       GET_I (cpu.cu.IWB);
                     cpu.g7_flag = noCheckTR ? bG7PendingNoTRO () : bG7Pending ();
                   }
@@ -1380,7 +1386,7 @@ elapsedtime ();
                 // If we have done the even of an XED, do the odd
                 if (cpu.cu.xde == 0 && cpu.cu.xdo == 1)
                   {
-                    //sim_debug (DBG_CAC, & cpu_dev, "XDO %012llo\n", cpu.cu.IRODD);
+                    //sim_debug (DBG_CAC, & cpu_dev, "XDO %012"PRIo64"\n", cpu.cu.IRODD);
                     CPT (cpt1U, 17); // do XED odd
                     // Get the odd
                     cpu.cu.IWB = cpu.cu.IRODD;
@@ -1392,7 +1398,7 @@ elapsedtime ();
                 // If we have done neither of the XED
                 else if (cpu.cu.xde == 1 && cpu.cu.xdo == 1)
                   {
-                    //sim_debug (DBG_CAC, & cpu_dev, "XDE %012llo\n", cpu.cu.IWB);
+                    //sim_debug (DBG_CAC, & cpu_dev, "XDE %012"PRIo64"\n", cpu.cu.IWB);
                     CPT (cpt1U, 18); // do XED even
                     // Do the even this time and the odd the next time
                     cpu.cu.xde = 0;
@@ -1445,7 +1451,7 @@ elapsedtime ();
 
                 if (cpu.cycle == FAULT_EXEC_cycle)
                  {
-                    //sim_debug (DBG_CAC, & cpu_dev, "fault exec %012llo\n", cpu.cu.IWB);
+                    //sim_debug (DBG_CAC, & cpu_dev, "fault exec %012"PRIo64"\n", cpu.cu.IWB);
                  }
                 t_stat ret = executeInstruction ();
 
@@ -1651,15 +1657,14 @@ elapsedtime ();
                     CPT (cpt1U, 12); // cu restored
                   }
 
-// Even word of fault or exec pair
+// Even word of fault or interrupt pair
 
                 if (cpu.cycle != EXEC_cycle && cpu.cu.xde)
                   {
                     //sim_debug (DBG_CAC, & cpu_dev, "did even word of interrupt or fault pair\n");
                     // Get the odd
                     cpu.cu.IWB = cpu.cu.IRODD;
-                    // Do nothing next time
-                    cpu.cu.xde = cpu.cu.xdo = 0;
+                    cpu.cu.xde = 0;
                     cpu.isExec = true;
                     break; // go do the odd word
                   }
@@ -1675,9 +1680,13 @@ elapsedtime ();
                 cpu.cu.xde = cpu.cu.xdo = 0;
                 cpu.isExec = false;
                 cpu.isXED = false;
-                cpu.PPR.IC ++;
-                if (ci->info->ndes > 0)
-                  cpu.PPR.IC += ci->info->ndes;
+				
+                if (cpu.cycle != INTERRUPT_EXEC_cycle)
+                  {
+                    cpu.PPR.IC ++;
+                    if (ci->info->ndes > 0)
+                      cpu.PPR.IC += ci->info->ndes;
+                  }
 
                 CPT (cpt1U, 28); // enter fetch cycle
                 cpu.wasXfer = false; 
@@ -1732,6 +1741,7 @@ elapsedtime ();
                 if (cpu.cu.APUCycleBits & 060 || cpu.secret_addressing_mode)
                     setAPUStatus (apuStatus_FABS);
 
+                // XXX the whole fault cycle should be rewritten as an xed instruction pushed to IWB and executed 
                 cu_safe_store ();
                 CPT (cpt1U, 31); // safe store complete
 
@@ -1758,7 +1768,7 @@ elapsedtime ();
                 word24 addr = fltAddress + 2 * cpu.faultNumber;
   
                 core_read2 (addr, & cpu.cu.IWB, & cpu.cu.IRODD, __func__);
-                //sim_debug (DBG_CAC, & cpu_dev, "fault pair %012llo  %012llo\n", cpu.cu.IWB, cpu.cu.IRODD);
+                //sim_debug (DBG_CAC, & cpu_dev, "fault pair %012"PRIo64"  %012"PRIo64"\n", cpu.cu.IWB, cpu.cu.IRODD);
                 cpu.cu.xde = 1;
                 cpu.cu.xdo = 1;
 
@@ -2328,14 +2338,18 @@ void decodeInstruction (word36 inst, DCDstruct * p)
  
 int is_priv_mode(void)
   {
-//sim_debug (DBG_TRACE, & cpu_dev, "is_priv_mode P %u get_addr_mode %d get_bar_mode %d IR %06o\n", cpu.PPR.P, get_addr_mode (), get_bar_mode (), cpu.cu.IR);
-    if (TST_I_NBAR && cpu.PPR.P)
-      return 1;
+sim_debug (DBG_TRACE, & cpu_dev, "is_priv_mode P %u get_addr_mode %d get_bar_mode %d IR %06o\n", cpu.PPR.P, get_addr_mode (), get_bar_mode (), cpu.cu.IR);
     
 // Back when it was ABS/APP/BAR, this test was right; now that
 // it is ABS/APP,BAR/NBAR, check bar mode.
 // Fixes ISOLTS 890 05a.
-    if (get_addr_mode () == ABSOLUTE_mode && ! get_bar_mode ())
+    if (get_bar_mode())
+      return 0;
+
+// PPR.P is only relevant if we're in APPEND mode. ABSOLUTE mode ignores it.
+    if (get_addr_mode () == ABSOLUTE_mode)
+      return 1;
+    else if (cpu.PPR.P)
       return 1;
 
     return 0;
@@ -2397,8 +2411,11 @@ addr_modes_t get_addr_mode(void)
     if (cpu.secret_addressing_mode)
         return ABSOLUTE_mode; // This is not the mode you are looking for
 
-    if (cpu.went_appending)
-        return APPEND_mode;
+    // went_appending does not alter privileged state (only enables appending)
+    // the went_appending check is only required by ABSA, AFAICT
+    // pft 02b 013255, ISOLTS-860
+    //if (cpu.went_appending)
+    //    return APPEND_mode;
 
     if (TST_I_ABS)
       {
