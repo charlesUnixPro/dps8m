@@ -2236,7 +2236,20 @@ elapsedtime ();
                     setAPUStatus (apuStatus_FABS);
 
                 // XXX the whole fault cycle should be rewritten as an xed instruction pushed to IWB and executed 
-                cu_safe_store ();
+
+                // AL39: TRB fault doesn't safestore CUD - the original fault CUD should be stored
+                // ISOLTS-870 05a: CUD[5] and IWB are safe stored, possibly due to CU overlap
+                // keep IRODD untouched if TRB occurred in an even location
+                if (cpu.faultNumber != FAULT_TRB || cpu.cu.xde == 0)
+                  {
+                    cu_safe_store ();
+                  }
+                else
+                  {
+                    word36 tmpIRODD = cpu.scu_data[7];
+                    cu_safe_store ();
+                    cpu.scu_data[7] = tmpIRODD;
+                  }
                 CPT (cpt1U, 31); // safe store complete
 
                 // Temporary absolute mode
