@@ -168,17 +168,10 @@ struct fnpUnitData
 extern struct fnpUnitData fnpUnitData [N_FNP_UNITS_MAX];
 
 void fnpInit(void);
-int lookupFnpsIomUnitNumber (int fnpUnitNum);
-int lookupFnpLink (int fnpUnitNum);
 void fnpProcessEvent (void); 
-t_stat diaCommand (int fnpUnitNum, char *arg3);
-void fnpToCpuQueueMsg (int fnpUnitNum, char * msg);
 t_stat fnpServerPort (int32 arg, const char * buf);
 t_stat fnpStart (UNUSED int32 arg, UNUSED const char * buf);
 void fnpConnectPrompt (uv_tcp_t * client);
 void processUserInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
 void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
-#if 0
-t_stat fnpLoad (UNUSED int32 arg, const char * buf);
-#endif
 void startFNPListener (void);

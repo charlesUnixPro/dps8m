@@ -179,7 +179,7 @@ struct chnThreadz_t
   };
 extern struct chnThreadz_t chnThreadz [N_IOM_UNITS_MAX] [MAX_CHANNELS];
 
-void createChnThread (uint iomNum, uint chnNum);
+void createChnThread (uint iomNum, uint chnNum, const char * devTypeStr);
 void chnConnectWait (void);
 void chnConnectDone (void);
 void setChnConnect (uint iomNum, uint chnNum);

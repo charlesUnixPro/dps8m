@@ -424,7 +424,7 @@ struct chnThreadz_t chnThreadz [N_IOM_UNITS_MAX] [MAX_CHANNELS];
 
 // Create channel thread
 
-void createChnThread (uint iomNum, uint chnNum)
+void createChnThread (uint iomNum, uint chnNum, const char * devTypeStr)
   {
     int rc;
     struct chnThreadz_t * p = & chnThreadz[iomNum][chnNum];
@@ -450,7 +450,7 @@ void createChnThread (uint iomNum, uint chnNum)
       sim_printf ("createChnThread pthread_create %d\n", rc);
 
     char nm [17];
-    sprintf (nm, "chn %u/%u", iomNum, chnNum);
+    sprintf (nm, "chn %c/%u %s", 'a' + iomNum, chnNum, devTypeStr);
     pthread_setname_np (p->chnThread, nm);
   }
 

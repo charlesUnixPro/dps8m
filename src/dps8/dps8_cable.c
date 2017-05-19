@@ -38,6 +38,8 @@ struct cables_t * cables = NULL;
 //
 
 
+char * devTypeStrs [] = {"none", "tape", "console", "disk", "mpc", 
+                               "dn355", "card reader","card punch", "printer", "urp" };
 
 // cable_to_iom
 //

@@ -984,13 +984,17 @@ t_stat sim_instr (void)
                 else
                   {
 #endif
+                    devType dt = DEVT_NONE;
                     for (uint devNum = 0; devNum < N_DEV_CODES; devNum ++)
                       {
                         struct device * d = & cables -> cablesFromIomToDev [iomNum] . devices [chnNum] [devNum];   
                         //if (d->type)
                           // sim_printf ("iom %u chn %u dev %u type %u\n", iomNum, chnNum, devNum, d->type);
                         if (d->type)
-                          devCnt ++;
+                          {
+                            devCnt ++;
+                            dt = d->type;
+                          }
                       }
 #if 0
                   }
@@ -998,7 +1002,7 @@ t_stat sim_instr (void)
                 if (devCnt)
                   {
                     //sim_printf ("iom %u chn %u devCnt %u\n", iomNum, chnNum, devCnt);
-                    createChnThread (iomNum, chnNum);
+                    createChnThread (iomNum, chnNum, devTypeStrs [dt]);
                     chnRdyWait (iomNum, chnNum);
                   }
               }

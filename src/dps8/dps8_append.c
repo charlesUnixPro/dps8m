@@ -709,6 +709,8 @@ static char *strSDW(char * buff, _sdw *SDW)
     return buff;
 }
 
+#ifdef L68
+
 /**
  * dump SDWAM...
  */
@@ -725,6 +727,8 @@ static t_stat dumpSDWAM (void)
     }
     return SCPE_OK;
 }
+#endif
+
 
 #ifdef DPS8M
 static uint toBeDiscardedAM(word6 LRU)

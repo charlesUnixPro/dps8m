@@ -1795,6 +1795,11 @@ void lock_mem (void);
 void unlock_mem (void);
 
 #ifdef SPEED
+// Ugh. Circular dependencies XXX
+void doFault (_fault faultNumber, _fault_subtype faultSubtype, 
+              const char * faultMsg) NO_RETURN;
+extern const _fault_subtype fst_str_nea;
+
 static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
     PNL (cpu.portBusy = true;)
