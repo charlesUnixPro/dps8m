@@ -1569,13 +1569,13 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWord
             sim_debug (DBG_APPENDING, & cpu_dev, "TSN TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
             goto A;
           }
-#if 0
+#if 1
         cpu.TPR.TRR = cpu.PPR.PRR;
         cpu.TPR.TSR = cpu.PPR.PSR;
 #endif
       }
 
-#if 1
+#if 0
     cpu.TPR.TRR = cpu.PPR.PRR;
     cpu.TPR.TSR = cpu.PPR.PSR;
 #endif
