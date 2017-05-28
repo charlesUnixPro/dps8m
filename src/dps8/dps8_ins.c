@@ -1159,6 +1159,11 @@ void fetchInstruction (word18 addr)
         //cpu.PPR.P = 1; // XXX this should be already set by set_addr_mode, so no worry here
       }
 
+    else
+      {
+        cpu.TPR.TRR = cpu.PPR.PRR;
+        cpu.TPR.TSR = cpu.PPR.PSR;
+      }
     if (cpu.cu.rd && ((cpu.PPR.IC & 1) != 0))
       {
         if (cpu.cu.repeat_first)

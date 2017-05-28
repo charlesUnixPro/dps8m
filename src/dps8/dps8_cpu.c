@@ -1889,6 +1889,7 @@ elapsedtime ();
                     cpu.cu.xde = cpu.cu.xdo = 0;
                     cpu.isExec = true;
                     cpu.isXED = true;
+                    fauxDoAppendCycle (INSTRUCTION_FETCH);
                   }
                 // If we have done neither of the XED
                 else if (cpu.cu.xde == 1 && cpu.cu.xdo == 1)
@@ -1900,6 +1901,7 @@ elapsedtime ();
                     cpu.cu.xdo = 1;
                     cpu.isExec = true;
                     cpu.isXED = true;
+                    fauxDoAppendCycle (INSTRUCTION_FETCH);
                   }
                 // If we have not yet done the XEC
                 else if (cpu.cu.xde == 1)
@@ -1909,6 +1911,7 @@ elapsedtime ();
                     cpu.cu.xde = cpu.cu.xdo = 0;
                     cpu.isExec = true;
                     cpu.isXED = false;
+                    fauxDoAppendCycle (INSTRUCTION_FETCH);
                   }
                 else
                   {

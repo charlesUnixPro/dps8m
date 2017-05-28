@@ -1521,31 +1521,36 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWord
 
     //if (lastCycle != INSTRUCTION_FETCH && i -> a)
     //if (lastCycle != INSTRUCTION_FETCH && cpu.cu.TSN_VALID [0])
-    //if (lastCycle != INSTRUCTION_FETCH)
-    if (thisCycle != INSTRUCTION_FETCH)
+
+
+//   if (thisCycle != INSTRUCTION_FETCH)
+//
+// 'lastCycle == INSTRUCITON_FETCH' fails for the case of
+//     41:25200 cmpq,dl
+//     41:25201 tze pr6|46,*0
+//  lastCycle and thisCycle are both INSTRUCTION_FETCH; but the rationale
+//  would seem to be that the first operand cycle after instruction fetch
+//  should be checked for bit 29, but the case of an instruction with no 
+//  operand cycle followed by an instruction with bit 29 set fails the
+//  'operand cycle' logic.
+
+//  if (lastCycle == INSTRUCTION_FETCH && thisCycle != INSTRUCTION_FETCH)
+//     fails at
+//   (7852737) 43:52 XEC PR4|34,N*
+//   (7852737) 43:53 SMCM PR1|0,N*
+//
+//   Because the SMCM is a XEC operand, the INSTRUCTION_FETCH cycle not
+//   executed; it is being read as an OPERAND_READ.
+//
+//   Fixed by adding fauxDoAppendCycle calls to the CPU FETCH_cycle for the
+//   xde/xdo cases.
+
+//     
+//   (7853327) 00042:000136 STX7 PR6|75,ID
+//
+
+    if (lastCycle == INSTRUCTION_FETCH && thisCycle != INSTRUCTION_FETCH)
       {
-#if 0
-        for (uint tsn = 0; tsn < 3; tsn ++)
-          {
-            if (cpu.cu.TSN_VALID [tsn])
-              {
-                PNL (L68_ (cpu.apu.state |= apu_ESN_SNR;))
-                word3 n = cpu.cu.TSN_PRNO[tsn];
-                CPTUR (cptUsePRn + n);
-                if (cpu.PAR[n].RNR > cpu.PPR.PRR)
-                  {
-                    cpu.TPR.TRR = cpu.PAR[n].RNR;
-                  }
-                else
-                 {
-                    cpu.TPR.TRR = cpu.PPR.PRR;
-                 }
-                cpu.TPR.TSR = cpu.PAR[n].SNR;
-                sim_debug (DBG_APPENDING, & cpu_dev, "TSN TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
-                goto A;
-              }
-          }
-#else
         //if (cpu.isb29)
         if (i->b29)
           {
@@ -1564,11 +1569,16 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWord
             sim_debug (DBG_APPENDING, & cpu_dev, "TSN TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
             goto A;
           }
+#if 0
+        cpu.TPR.TRR = cpu.PPR.PRR;
+        cpu.TPR.TSR = cpu.PPR.PSR;
 #endif
       }
 
+#if 1
     cpu.TPR.TRR = cpu.PPR.PRR;
     cpu.TPR.TSR = cpu.PPR.PSR;
+#endif
 
     // If the rtcd instruction is executed with the processor in absolute
     // mode with bit 29 of the instruction word set OFF and without

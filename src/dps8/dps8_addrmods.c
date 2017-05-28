@@ -1235,7 +1235,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            cpu.TPR.CA);
 
                 word36 indword;
-                Read (cpu.TPR.CA, & indword, OPERAND_READ);
+                Read (cpu.TPR.CA, & indword, INDIRECT_WORD_FETCH);
 
                 Yi = GETHI (indword);
                 cpu.AM_tally = GET_TALLY (indword); // 12-bits
