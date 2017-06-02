@@ -189,6 +189,12 @@ static DEBTAB cpu_dt[] = {
     { NULL,         0, NULL               }
 };
 
+// Assume CPU clock ~ 1MIPS. lockup time is 32 ms
+#define LOCKUP_KIPS 1000
+static uint64 luf_limits[] = {
+    2000*LOCKUP_KIPS/1000,4000*LOCKUP_KIPS/1000,8000*LOCKUP_KIPS/1000,16000*LOCKUP_KIPS/1000,32000*LOCKUP_KIPS/1000
+};
+
 // This is part of the simh interface
 const char *sim_stop_messages[] = {
     "Unknown error",           // SCPE_OK
@@ -913,7 +919,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
 
     if (cpu.rTR <= 5120)
       {
-        //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09"PRIo64"\n", rTR, MASK27);
+        //sim_debug (DBG_TRACE, & cpu_dev, "rTR zero %09o\n", cpu.rTR);
         if (cpu.switches.tro_enable)
         setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
       }
@@ -1667,7 +1673,7 @@ setCPU:;
         if (check_attn_key ())
           console_attn (NULL);
 
-#ifdef NO_EV_POLL
+#ifndef NO_EV_POLL
 #ifdef ISOLTS
         if (cpu.cycle != FETCH_cycle)
           {
@@ -1680,7 +1686,7 @@ setCPU:;
                 //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o\n", shadowTR);
                 if (cpu.shadowTR == 0) // passing thorugh 0...
                   {
-                    //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09"PRIo64"\n", shadowTR, MASK27);
+                    //sim_debug (DBG_TRACE, & cpu_dev, "rTR zero %09o\n", cpu.shadowTR);
                     if (cpu.switches.tro_enable)
                       setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
                   }
@@ -1795,7 +1801,7 @@ elapsedtime ();
 // word at the point of the next sequential instruction pair virtual
 // address formation, the processor samples the [group 7 and interrupts]."
 
-// Since we do not do concurrent instruction fetches, we must remember 
+// Since XEx/RPx may overwrite IWB, we must remember 
 // the inhibit bits (cpu.wasInhibited).
 
 
@@ -1830,34 +1836,47 @@ elapsedtime ();
                 if (get_bar_mode())
                     getBARaddress(cpu.PPR.IC);
 
-                if ((! cpu.wasInhibited) &&
-                    (cpu.PPR.IC % 2) == 0 &&
-                    (! cpu.wasXfer) &&
-                    (! (cpu.cu.xde | cpu.cu.xdo |
-                        cpu.cu.rpt | cpu.cu.rd | cpu.cu.rl)))
+                // Don't check timer runout if privileged
+                // ISOLTS-776 04bcf, 785 02c
+                // (but do if in a DIS instruction with bit28 clear)
+                bool tmp_priv_mode = is_priv_mode ();
+                bool noCheckTR = tmp_priv_mode && 
+                  !(cpu.currentInstruction.opcode == 0616 && !cpu.currentInstruction.opcodeX && !GET_I(cpu.cu.IWB));
+                if (! (cpu.cu.xde | cpu.cu.xdo |
+                       cpu.cu.rpt | cpu.cu.rd | cpu.cu.rl))
                   {
-                    CPT (cpt1U, 14); // sampling interrupts
-                    cpu.interrupt_flag = sample_interrupts ();
-                    //cpu.g7_flag = bG7Pending ();
-                    // Don't check timer runout if privileged, or
-                    // interrupts inhibited.
-                    // ISOLTS-776 04bcf
-                    bool noCheckTR = is_priv_mode ()  ||
-                                      GET_I (cpu.cu.IWB);
-                    cpu.g7_flag = noCheckTR ? bG7PendingNoTRO () : bG7Pending ();
+                    if ((!cpu.wasInhibited) &&
+                        (cpu.PPR.IC & 1) == 0 &&
+                        (! cpu.wasXfer))
+                      {
+                        CPT (cpt1U, 14); // sampling interrupts
+                        //sim_debug (DBG_CAC, & cpu_dev, "sample interrupts noCheckTR=%d\n",noCheckTR);
+                        cpu.interrupt_flag = sample_interrupts ();
+                        //cpu.g7_flag = bG7Pending ();
+                        cpu.g7_flag = noCheckTR ? bG7PendingNoTRO () : bG7Pending ();
+                      }
+
+                    //sim_debug (DBG_CAC, & cpu_dev, "reset wasInhibited\n");
+                    cpu.wasInhibited = false;
+
                   }
-
-                // The cpu.wasInhibited accumulates across the even and 
-                // odd intruction. If the IC is even, reset it for
-                // the next pair.
-
-                if ((cpu.PPR.IC % 2) == 0)
-                  cpu.wasInhibited = false;
+                else 
+                  {
+                    // XEx at an odd location disables interrupt sampling 
+                    // also for the next instruction pair. ISOLTS-785 02g, 776 04g
+                    // Set the inhibit flag
+                    // (I assume RPx behaves in the same way)
+                    if ((cpu.PPR.IC & 1) == 1)
+                      {
+                        //sim_debug (DBG_CAC, & cpu_dev, "set wasInhibited\n");
+                        cpu.wasInhibited = true;
+                      }
+                  }
 
                 if (cpu.g7_flag)
                   {
-                    cpu.g7_flag = false;
-                    doG7Fault ();
+                      cpu.g7_flag = false;
+                      doG7Fault (!noCheckTR);
                   }
                 if (cpu.interrupt_flag)
                   {
@@ -1868,10 +1887,11 @@ elapsedtime ();
                     setCpuCycle (INTERRUPT_cycle);
                     break;
                   }
-                cpu.lufCounter ++;
 
-                // Assume CPU clock ~ 1Mhz. lockup time is 32 ms
-                if (cpu.lufCounter > 32000)
+                cpu.lufCounter ++;
+                //if (cpu.lufCounter > 3000) { sim_debug (DBG_CAC, & cpu_dev, "luf: %"PRId64"\n", cpu.lufCounter); }
+                if ((tmp_priv_mode && cpu.lufCounter > luf_limits[4]) || 
+                    (!tmp_priv_mode && cpu.lufCounter > luf_limits[cpu.CMR.luf]))
                   {
                     CPT (cpt1U, 16); // LUF
                     cpu.lufCounter = 0;
@@ -2082,6 +2102,7 @@ elapsedtime ();
                     // Would we have underflowed while sleeping?
                     if (cpu.rTR <= 5120)
                       {
+                        //sim_debug (DBG_TRACE, & cpu_dev, "rTR zero %09o\n", cpu.rTR);
                         if (cpu.switches.tro_enable)
                           setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
                       }

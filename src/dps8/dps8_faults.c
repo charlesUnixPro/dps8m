@@ -2,6 +2,7 @@
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2017 by Michal Tomek
 
  All rights reserved.
 
@@ -876,17 +877,18 @@ void clearTROFault (void)
     cpu . g7Faults &= ~(1u << FAULT_TRO);
   }
 
-void doG7Fault (void)
+void doG7Fault (bool allowTR)
   {
     // sim_printf ("doG7fault %08o [%"PRId64"]\n", cpu . g7Faults, sim_timell ());
     // if (cpu . g7Faults)
       // {
         // sim_debug (DBG_FAULT, & cpu_dev, "doG7Fault %08o\n", cpu . g7Faults);
       // }
-     if (cpu . g7Faults & (1u << FAULT_TRO))
+     if (allowTR && cpu . g7Faults & (1u << FAULT_TRO))
        {
          cpu . g7Faults &= ~(1u << FAULT_TRO);
 
+         //sim_printf("timer runout %12o\n",cpu.PPR.IC);
          doFault (FAULT_TRO, (_fault_subtype) {.bits=0}, "Timer runout"); 
        }
 

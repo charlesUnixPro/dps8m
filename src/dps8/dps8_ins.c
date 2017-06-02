@@ -6258,9 +6258,6 @@ static t_stat DoBasicInstruction (void)
               // Extract bits from 'from' under 'mask' shifted to where (where
               // is dps8 '0 is the msbit.
 
-#define GETBITS(from,mask,where) \
- (((from) >> (35 - (where))) & (word36) (mask))
-
               case 02: // cache mode register
                 {
                   //cpu.CMR = cpu.CY;
@@ -6272,8 +6269,8 @@ static t_stat DoBasicInstruction (void)
                   // a:AL39/cmr2  If either cache enable bit c or d changes
                   // from disable state to enable state, the entire cache is
                   // cleared.
-                  uint csh1_on = GETBITS (cpu.CY, 1, 72 - 54);
-                  uint csh2_on = GETBITS (cpu.CY, 1, 72 - 55);
+                  uint csh1_on = getbits36_1 (cpu.CY, 54 - 36);
+                  uint csh2_on = getbits36_1 (cpu.CY, 55 - 36);
                   //bool clear = (cpu.CMR.csh1_on == 0 && csh1_on != 0) ||
                                //(cpu.CMR.csh1_on == 0 && csh1_on != 0);
                   cpu.CMR.csh1_on = (word1) csh1_on;
@@ -6282,19 +6279,19 @@ static t_stat DoBasicInstruction (void)
                     //{
                     //}
 #ifdef L68
-                  cpu.CMR.opnd_on = GETBITS (cpu.CY, 1, 72 - 56);
+                  cpu.CMR.opnd_on = getbits36_1 (cpu.CY, 56 - 36);
 #endif
-                  cpu.CMR.inst_on = GETBITS (cpu.CY, 1, 72 - 57);
-                  cpu.CMR.csh_reg = GETBITS (cpu.CY, 1, 72 - 59);
+                  cpu.CMR.inst_on = getbits36_1 (cpu.CY, 57 - 36);
+                  cpu.CMR.csh_reg = getbits36_1 (cpu.CY, 59 - 36);
                   if (cpu.CMR.csh_reg)
                     sim_warn ("LCPR set csh_reg\n");
                   // cpu.CMR.str_asd = <ignored for lcpr>
                   // cpu.CMR.col_ful = <ignored for lcpr>
-                  // cpu.CMR.rro_AB = GETBITS (cpu.CY, 1, 18);
+                  // cpu.CMR.rro_AB = getbits36_1 (cpu.CY, 18);
 #ifdef DPS8M
-                  cpu.CMR.bypass_cache = GETBITS (cpu.CY, 1, 72 - 68);
+                  cpu.CMR.bypass_cache = getbits36_1 (cpu.CY, 68 - 36);
 #endif
-                  cpu.CMR.luf = GETBITS (cpu.CY, 2, 72 - 72);
+                  cpu.CMR.luf = getbits36_2 (cpu.CY, 70 - 36);
                 }
                 break;
 
