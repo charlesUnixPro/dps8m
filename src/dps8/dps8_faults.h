@@ -81,7 +81,7 @@ extern char * faultNames [N_FAULTS];
 
 void cu_safe_restore (void);
 
-void doG7Fault(void) NO_RETURN;
+void doG7Fault(bool allowTR) NO_RETURN;
 
 extern const _fault_subtype fst_zero;
 extern const _fault_subtype fst_acv9;
@@ -104,7 +104,7 @@ void dlyDoFault (_fault faultNumber, _fault_subtype subFault,
 bool bG7PendingNoTRO (void);
 bool bG7Pending (void);
 void setG7fault (uint cpuNo, _fault faultNo, _fault_subtype subFault);
-void doG7Fault (void);
+//void doG7Fault (void);
 void clearTROFault (void);
 void advanceG7Faults (void);
 #ifdef L68

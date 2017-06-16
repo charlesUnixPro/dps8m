@@ -598,16 +598,14 @@ startCA:;
 #ifdef OLDCYCLE
                 cpu.TPR.CA = tmpCA;
 #endif
-                doFault (FAULT_F2, (_fault_subtype) {.bits=0},
-                         "RI_MOD: IT_F2 (0)");
+                doFault (FAULT_F2, fst_zero, "RI_MOD: IT_F2 (0)");
               }
             if (GET_TD (GET_TAG (cpu.itxPair[0])) == IT_F3)
               {
 #ifdef OLDCYCLE
                 cpu.TPR.CA = tmpCA;
 #endif
-                doFault (FAULT_F3, (_fault_subtype) {.bits=0},
-                         "RI_MOD: IT_F3");
+                doFault (FAULT_F3, fst_zero, "RI_MOD: IT_F3");
               }
           }
 
@@ -708,13 +706,11 @@ startCA:;
                       {
                         case IT_F2:
                           cpu.TPR.CA = saveCA;
-                          doFault (FAULT_F2, (_fault_subtype) {.bits=0},
-                                   "TM_IT: IT_F2 (1)");
+                          doFault (FAULT_F2, fst_zero, "TM_IT: IT_F2 (1)"); 
 
                         case IT_F3:
                           cpu.TPR.CA = saveCA;
-                          doFault (FAULT_F3, (_fault_subtype) {.bits=0},
-                                   "TM_IT: IT_F3");
+                          doFault (FAULT_F3, fst_zero, "TM_IT: IT_F3");
                       }
                   }
                 // fall through to TM_R

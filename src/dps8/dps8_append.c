@@ -1174,7 +1174,7 @@ static void doPTW2(_sdw *sdw, word18 offset)
        //Is PTW2.F set ON?
        if (!PTW2.DF)
            // initiate a directed fault
-           doFault(FAULT_DF0 + PTW2.FC, (_fault_subtype) {.bits=0}, "PTW2.F == 0");
+           doFault(FAULT_DF0 + PTW2.FC, fst_zero, "PTW2.F == 0");
 
 }
 
@@ -1567,6 +1567,43 @@ A:;
 
     sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(A)\n");
     
+#ifndef WAM
+    if (cpu.DSBR.U == 0)
+      {
+        fetchDSPTW (cpu.TPR.TSR);
+        
+        if (! cpu.PTW0.DF)
+         {
+          doFault (FAULT_DF0 + cpu.PTW0.FC, fst_zero, "doAppendCycle(A): PTW0.F == 0");
+         }
+        
+        if (! cpu.PTW0.U)
+         {
+          modifyDSPTW (cpu.TPR.TSR);
+        }
+        
+        fetchPSDW (cpu.TPR.TSR);
+      }
+    else
+      {
+        fetchNSDW (cpu.TPR.TSR); // load SDW0 from descriptor segment table.
+      }
+
+    if (cpu.SDW0.DF == 0)
+      {
+        if (thisCycle != ABSA_CYCLE)
+          {
+            sim_debug (DBG_APPENDING, & cpu_dev,
+                       "doAppendCycle(A): SDW0.F == 0! "
+                       "Initiating directed fault\n");
+            // initiate a directed fault ...
+            doFault (FAULT_DF0 + cpu.SDW0.FC, fst_zero, "SDW0.F == 0");
+          }
+      }
+
+    loadSDWAM (cpu.TPR.TSR, true); // load SDW0 POINTER, always bypass SDWAM
+#else
+
     // is SDW for C(TPR.TSR) in SDWAM?
     if (nomatch || ! fetchSDWfromSDWAM (cpu.TPR.TSR))
     {
@@ -1584,8 +1621,7 @@ A:;
             fetchDSPTW (cpu.TPR.TSR);
             
             if (! cpu.PTW0.DF)
-              doFault (FAULT_DF0 + cpu.PTW0.FC, (_fault_subtype) {.bits=0},
-                       "doAppendCycle(A): PTW0.F == 0");
+              doFault (FAULT_DF0 + cpu.PTW0.FC, fst_zero, "doAppendCycle(A): PTW0.F == 0");
             
             if (! cpu.PTW0.U)
               modifyDSPTW (cpu.TPR.TSR);
@@ -1603,14 +1639,13 @@ A:;
                            "doAppendCycle(A): SDW0.F == 0! "
                            "Initiating directed fault\n");
                 // initiate a directed fault ...
-                doFault (FAULT_DF0 + cpu.SDW0.FC, (_fault_subtype) {.bits=0},
-                         "SDW0.F == 0");
+                doFault (FAULT_DF0 + cpu.SDW0.FC, fst_zero, "SDW0.F == 0");
               }
           }
         // load SDWAM .....
         loadSDWAM (cpu.TPR.TSR, nomatch);
       }
-
+#endif
     sim_debug (DBG_APPENDING, & cpu_dev,
                "doAppendCycle(A) R1 %o R2 %o R3 %o E %o\n",
                cpu.SDW->R1, cpu.SDW->R2, cpu.SDW->R3, cpu.SDW->E);
@@ -2005,6 +2040,23 @@ G:;
     
     //sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(G) CA %06o address %06o\n", cpu.TPR.CA, address);
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(G) CA %06o\n", cpu.TPR.CA);
+#ifndef WAM
+    //fetchPTW (cpu.SDW, address);
+    fetchPTW (cpu.SDW, cpu.TPR.CA);
+    if (! cpu.PTW0.DF)
+      {
+        // cpu.TPR.CA = address;
+        if (thisCycle != ABSA_CYCLE)
+          {
+            // initiate a directed fault
+            doFault (FAULT_DF0 + cpu.PTW0.FC, fst_zero, "PTW0.F == 0");
+          }
+      }
+    // load PTW0 POINTER, always bypass PTWAM
+    //loadPTWAM (cpu.SDW->POINTER, address, true);
+    loadPTWAM (cpu.SDW->POINTER, cpu.TPR.CA, true);
+
+#else
     if (nomatch || !fetchPTWfromPTWAM(cpu.SDW->POINTER, cpu.TPR.CA))  //TPR.CA))
       {
         //appendingUnitCycleType = apuCycle_PTWfetch;
@@ -2023,6 +2075,7 @@ G:;
         //loadPTWAM (cpu.SDW->POINTER, address, nomatch); // load PTW0 to PTWAM
         loadPTWAM (cpu.SDW->POINTER, cpu.TPR.CA, nomatch); // load PTW0 to PTWAM
     }
+#endif
     
     // Prepage mode?
     // check for "uninterruptible" EIS instruction

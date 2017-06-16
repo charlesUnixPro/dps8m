@@ -2,6 +2,7 @@
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2017 by Michal Tomek
 
  All rights reserved.
 
@@ -613,12 +614,6 @@ sim_debug (DBG_FAULT, & cpu_dev, "cycle %u ndes %u fn %u v %u\n", cpu.cycle, cpu
       {
         sim_debug (DBG_CYCLE, & cpu_dev, "Changing fault number to Trouble fault\n");
 
-        // AL39: TRB fault doesn't safestore CUD - the original fault CUD should be stored
-        // ISOLTS-870 05a: CUD[5] and IWB are safe stored, possibly due to CU overlap
-        // so prepare for a safe store, but restore IRODD from the originating location
-        if (cpu.cu.xde) // XXX if the TRB occured in an even location
-            core_read (cpu.PPR.IC | 1, & cpu.cu.IRODD, __func__);
-
         cpu.faultNumber = FAULT_TRB;
         cpu.cu.FI_ADDR = FAULT_TRB;
         cpu.subFault.bits = 0; // XXX ???
@@ -832,17 +827,18 @@ void clearTROFault (void)
     cpu.g7Faults &= ~(1u << FAULT_TRO);
   }
 
-void doG7Fault (void)
+void doG7Fault (bool allowTR)
   {
     // sim_printf ("doG7fault %08o [%"PRId64"]\n", cpu.g7Faults, cpu.cycleCnt);
     // if (cpu.g7Faults)
       // {
         // sim_debug (DBG_FAULT, & cpu_dev, "doG7Fault %08o\n", cpu.g7Faults);
       // }
-     if (cpu.g7Faults & (1u << FAULT_TRO))
+     if (allowTR && cpu.g7Faults & (1u << FAULT_TRO))
        {
          cpu.g7Faults &= ~(1u << FAULT_TRO);
 
+         //sim_printf("timer runout %12o\n",cpu.PPR.IC);
          doFault (FAULT_TRO, fst_zero, "Timer runout"); 
        }
 

@@ -358,7 +358,7 @@ static word18 getMFReg18 (uint n, bool allowDU, bool allowNIC, fault_ipr_subtype
             {
               //sim_printf ("getMFReg18 n\n");
               *mod_fault |= FR_ILL_MOD;
-              //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 n");
+              //doFault (FAULT_IPR, fst_ill_mod, "getMFReg18 n");
             }
           return 0;
 
@@ -388,7 +388,7 @@ sim_printf ("getMFReg18 %012"PRIo64"\n", IWB_IRODD);
 #endif
               //sim_printf ("getMFReg18 du\n");
               *mod_fault |= FR_ILL_MOD;
-              //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 du");
+              //doFault (FAULT_IPR, fst_ill_mod, "getMFReg18 du");
             }
           return 0;
 
@@ -401,7 +401,7 @@ sim_printf ("getMFReg18 %012"PRIo64"\n", IWB_IRODD);
             {
               //sim_printf ("getMFReg18 n\n");
               *mod_fault |= FR_ILL_MOD;
-              //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 ic");
+              //doFault (FAULT_IPR, fst_ill_mod, "getMFReg18 ic");
             }
           return cpu.PPR.IC;
 
@@ -413,7 +413,7 @@ sim_printf ("getMFReg18 %012"PRIo64"\n", IWB_IRODD);
 
         case 7: // dl
           *mod_fault |= FR_ILL_MOD;
-          //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg18 dl");
+          //doFault (FAULT_IPR, fst_ill_mod, "getMFReg18 dl");
           return 0;
 
         case 8:
@@ -439,7 +439,7 @@ static word36 getMFReg36 (uint n, bool allowDU, bool allowNIC, fault_ipr_subtype
            {
              //sim_printf ("getMFReg36 n\n");
              *mod_fault |= FR_ILL_MOD;
-             //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg36 n");
+             //doFault (FAULT_IPR, fst_ill_mod, "getMFReg36 n");
            }
           return 0;
         case 1: // au
@@ -452,7 +452,7 @@ static word36 getMFReg36 (uint n, bool allowDU, bool allowNIC, fault_ipr_subtype
           // du is a special case for SCD, SCDR, SCM, and SCMR
           if (! allowDU)
            *mod_fault |= FR_ILL_MOD;
-           //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg36 du");
+           //doFault (FAULT_IPR, fst_ill_mod, "getMFReg36 du");
           return 0;
 
         case 4: // ic - The ic modifier is permitted in MFk.REG and 
@@ -464,7 +464,7 @@ static word36 getMFReg36 (uint n, bool allowDU, bool allowNIC, fault_ipr_subtype
             {
               //sim_printf ("getMFReg36 n\n");
               *mod_fault |= FR_ILL_MOD;
-              //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg36 ic");
+              //doFault (FAULT_IPR, fst_ill_mod, "getMFReg36 ic");
             }
           return cpu.PPR.IC;
 
@@ -476,7 +476,7 @@ static word36 getMFReg36 (uint n, bool allowDU, bool allowNIC, fault_ipr_subtype
 
         case 7: // dl
              *mod_fault |= FR_ILL_MOD;
-             //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "getMFReg36 dl");
+             //doFault (FAULT_IPR, fst_ill_mod, "getMFReg36 dl");
              return 0;
 
         case 8:
@@ -1130,7 +1130,7 @@ sim_printf ("setupOperandDescriptor %012"PRIo64"\n", IWB_IRODD);
         if (opDesc & 060)
           {
             *mod_fault |= FR_ILL_MOD;
-            //doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "setupOperandDescriptor 30,31 MBZ");
+            //doFault (FAULT_IPR, fst_ill_mod, "setupOperandDescriptor 30,31 MBZ");
           }
 
         // fill operand according to MFk....
@@ -1366,7 +1366,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "AR n %u k %u\n", n, k - 1);
 
             default:
 #ifdef L68
-              doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseAlphanumericOperandDescriptor TA 3");
+              doFault (FAULT_IPR, fst_ill_proc, "parseAlphanumericOperandDescriptor TA 3");
 #else
               *mod_fault |= FR_ILL_PROC;
 #endif
@@ -1432,7 +1432,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "AR n %u k %u\n", n, k - 1);
         case CTA6:
           if (CN >= 6)
 #ifdef L68
-            doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseAlphanumericOperandDescriptor TAn CTA6 CN >= 6");
+            doFault (FAULT_IPR, fst_ill_proc, "parseAlphanumericOperandDescriptor TAn CTA6 CN >= 6");
 #else
             *mod_fault |= FR_ILL_PROC;
 #endif
@@ -1456,7 +1456,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "AR n %u k %u\n", n, k - 1);
         case CTA9:
           if (CN & 01)
 #ifdef L68
-            doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseAlphanumericOperandDescriptor CTA9 & CN odd");
+            doFault(FAULT_IPR, fst_ill_proc, "parseAlphanumericOperandDescriptor CTA9 & CN odd");
 #else
             *mod_fault |= FR_ILL_PROC;
 #endif
@@ -1482,7 +1482,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "AR n %u k %u\n", n, k - 1);
 
         default:
 #ifdef L68
-          doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseAlphanumericOperandDescriptor TA1 3");
+          doFault (FAULT_IPR, fst_ill_proc, "parseAlphanumericOperandDescriptor TA1 3");
 #else
           *mod_fault |= FR_ILL_PROC;
 #endif
@@ -1732,7 +1732,7 @@ sim_printf ("k %d N %d S %d\n", k, N, S);
         case CTN9:
             if (CN & 1u)
 #ifdef L68
-              doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseNumericOperandDescriptor CTA9 & CN odd");
+              doFault(FAULT_IPR, fst_ill_proc, "parseNumericOperandDescriptor CTA9 & CN odd");
 #else
               *mod_fault |= FR_ILL_PROC;
 #endif
@@ -1845,7 +1845,7 @@ static void parseBitstringOperandDescriptor (int k, fault_ipr_subtype_ *mod_faul
 
     if (B >= 9)
 #ifdef L68
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "parseBitstringOperandDescriptor B >= 9");
+      doFault (FAULT_IPR, fst_ill_proc, "parseBitstringOperandDescriptor B >= 9");
 #else
       *mod_fault |= FR_ILL_PROC;
 #endif
@@ -7789,14 +7789,14 @@ sim_debug (DBG_CAC, & cpu_dev, "Ovr %o\n", Ovr);
     cleanupOperandDescriptor (2);
     
     if (TST_I_TRUNC && T && tstOVFfault ())
-        doFault(FAULT_OFL, fst_zero, "mvn truncation(overflow) fault");
+        doFault (FAULT_OFL, fst_zero, "mvn truncation(overflow) fault");
     if (EOvr && tstOVFfault ())
-        doFault(FAULT_OFL, fst_zero, "mvn over/underflow fault");
+        doFault (FAULT_OFL, fst_zero, "mvn over/underflow fault");
     if (Ovr)
     {
         SET_I_OFLOW;
         if (tstOVFfault ())
-          doFault(FAULT_OFL, fst_zero, "mvn overflow fault");
+          doFault (FAULT_OFL, fst_zero, "mvn overflow fault");
     }
 }
 
@@ -9503,7 +9503,7 @@ void dtb (void)
     // If N2 = 0 or N2 > 8 an illegal procedure fault occurs.
     if (e->N2 == 0 || e->N2 > 8)
     {
-        doFault(FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "dtb():  N2 = 0 or N2 > 8");
+        doFault(FAULT_IPR, fst_ill_proc, "dtb():  N2 = 0 or N2 > 8 etc.");
     }
 
 
@@ -9632,7 +9632,7 @@ void ad2d (void)
     
     // Bits 1-8 MBZ
     if (IWB_IRODD & 0377000000000)
-      doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault}, "ad2d 1-8 MBZ");
+      doFault (FAULT_IPR, fst_ill_op, "ad2d 1-8 MBZ");
 
 #ifdef DPS8M
     // DPS8M raises it delayed
@@ -9720,8 +9720,8 @@ void ad2d (void)
     }
 
     if (n2 < 1)
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "ad2d adjusted n2<1");
-
+        doFault (FAULT_IPR, fst_ill_proc, "ad2d adjusted n2<1");
+    
 
     decContext set;
     //decContextDefault(&set, DEC_INIT_BASE);         // initialize
