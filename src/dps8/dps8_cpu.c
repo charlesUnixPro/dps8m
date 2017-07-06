@@ -1129,6 +1129,18 @@ t_stat threadz_sim_instr (void)
       {
         reason = 0;
 
+#if 0
+// This is needed for BCE_TRAP in install scripts
+        if (sim_brk_summ &&
+            sim_brk_test ((cpu.PPR.IC & 0777777) |
+                          ((((t_addr) cpu.PPR.PSR) & 037777) << 18),
+                          SWMASK ('E')))  /* breakpoint? */
+          {
+            setCPURun (thisCPUnum, false);
+            cpuRunningWait ();
+          }
+#endif
+
 //if (cpu.have_tst_lock) { unlock_tst (); cpu.have_tst_lock = false; }
 #ifdef STEADY
         static uint slowQueueSubsample = 0;
