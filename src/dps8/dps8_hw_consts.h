@@ -14,6 +14,8 @@
 #ifndef DPS8_HW_CONSTS_H
 #define DPS8_HW_CONSTS_H
 
+#include "dps8_math128.h"
+
 /////////////////////////////////////
 //
 // SCU/Memory
@@ -93,6 +95,7 @@ enum { N_DEV_CODES = 64 };
 #define MASKHI18        0777777000000LLU
 #define MASK20          03777777U                // 20-bit data mask
 #define MASK24          077777777U               // 24-bit data mask
+#define MASK28          01777777777U             // 28-bit data mask
 #define SIGN24          040000000U
 #define SIGN36          0400000000000LLU         // sign bit of a 36-bit word
 // NB. these 3 use the wrong bit number convention
@@ -114,7 +117,26 @@ enum { N_DEV_CODES = 64 };
 #define CARRY           01000000000000LLU        // carry from 2 36-bit additions/subs
 #define ZEROEXT         0777777777777LLU         // mask to zero extend a 36 => 64-bit int
 #define ZEROEXT18       0777777U                 // mask to zero extend a 18 => 32-bit int
-#define ZEROEXT72       (((word72)1U << 72) - 1U)  // mask to zero extend a 72 => 128 int
+
+#ifdef NEED_128
+
+#define SIGN72          (construct_128 (0200U, 0U))
+// NB. these use the wrong bit number convention
+#define BIT68           (construct_128 (010U, 0U))
+#define BIT69           (construct_128 (020U, 0U))
+#define BIT70           (construct_128 (040U, 0U))
+#define BIT71           (construct_128 (0100U, 0U)) // next to the sign bit
+#define BIT73           (construct_128 (0400U, 0U)) // carry out bit from 72 bit arithmetic
+#define BIT74           (construct_128 (01000U, 0U)) // carry out bit from 73 bit arithmetic
+#define MASK63          0x7FFFFFFFFFFFFFFF
+#define MASK64          0xFFFFFFFFFFFFFFFF
+#define MASK68          (construct_128 (017U, MASK64)) // Hex mode mantissa normalization mask
+#define MASK70          (construct_128 (0077U, MASK64))
+#define MASK71          (construct_128 (0177U, MASK64))
+#define MASK72          (construct_128 (0377U, MASK64))
+
+#else
+
 #define SIGN72          ((word72)1U << 71)
 // NB. these use the wrong bit number convention
 #define BIT68           ((word72)1U << 67)
@@ -123,9 +145,14 @@ enum { N_DEV_CODES = 64 };
 #define BIT71           ((word72)1U << 70)  // next to the sign bit
 #define BIT73           ((word72)1U << 72)       // carry out bit from 72 bit arithmetic
 #define BIT74           ((word72)1U << 73)       // carry out bit from 73 bit arithmetic
+
 #define MASK68          (((word72)1U << 68) - 1U) // Hex mode mantissa normalization mask
+#define MASK70          (((word72)1U << 70) - 1U)
 #define MASK71          (((word72)1U << 71) - 1U)
-#define MASK72          ZEROEXT72
+#define MASK72          (((word72)1U << 72) - 1U)
+#define ZEROEXT72       (((word72)1U << 72) - 1U)  // mask to zero extend a 72 => 128 int
+
+#endif
 
 #define SIGN64          ((uint64)1U << 63)
 
@@ -148,7 +175,6 @@ enum { N_DEV_CODES = 64 };
 #define SIGN6           0040U                    // sign bit of 6-bit signed numfer (e.g. Scaling Factor)
 
 #define MASK35          0377777777777llu
-#define MASK70          (((word72)1U << 70) - 1U)
 
 #define MASKBITS(x)     ( ~(~((uint64)0)<<x) )   // lower (x) bits all ones
 #define MASKBITS18(x)   ( ~(~((word18)0)<<x) )   // lower (x) bits all ones
@@ -288,12 +314,33 @@ static inline t_int64 SIGNEXT24_64 (word36 w)
 
 static inline int128 SIGNEXT72_128 (word72 w)
   {
+#ifdef NEED_128
+    if (isnonzero_128 (and_128 (w, SIGN72)))
+      {
+        uint128 v = or_128 (w, construct_128 (0xFFFFFFFFFFFFFF80, 0));
+        return cast_s128 (v);
+      }
+    uint128 v =  and_128 (w, MASK72);
+    return (int128) { (__int64_t) v.h, v.l};
+#else
     if (w & SIGN72)
       {
         return ((int128) w) | (int128) (((uint128) -1ll) << 72);
       }
     return w & MASK72;
+#endif
   }
+
+#ifdef NEED_128
+static inline int128 SIGNEXT36_128 (word36 w)
+  {
+    if (w & SIGN36)
+      {
+        return construct_s128 ((int64_t) MASK64, w | 0xFFFFFFF000000000);
+      }
+    return construct_s128 (0, w);
+  }
+#endif
 
 // Sign extend DPS8M words into DPS8M words
 // NB: The high order bits in the host container will
@@ -320,11 +367,21 @@ static inline word24 SIGNEXT18_24 (word18 w)
 
 static inline word72 SIGNEXT36_72 (word36 w)
   {
+#ifdef NEED_128
+    if (w & SIGN36)
+      {
+        //return (w | ((word72) DMASK) << 36) & MASK72;
+        return construct_128 (0377U, (w & MASK36) | 0xFFFFFFF000000000);
+      }
+    //return w & MASK36;
+    return construct_128 (0, w & MASK36);
+#else
     if (w & SIGN36)
       {
         return (w | ((word72) DMASK) << 36) & MASK72;
       }
     return w & MASK36;
+#endif
   }
 
 #define SETS36(x)       ((x) | SIGN36)

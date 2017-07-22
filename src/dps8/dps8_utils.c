@@ -564,28 +564,58 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 // because it does not require access to the internals of the addition.
 
     // 73 bit arithmetic for the above N+1 algorithm
+#ifdef NEED_128
+    word74 op1e = and_128 (op1, MASK72);
+    word74 op2e = and_128 (op2, MASK72);
+    word74 ci = construct_128 (0, carryin ? 1 : 0);
+#else
     word74 op1e = op1 & MASK72;
     word74 op2e = op2 & MASK72;
     word74 ci = carryin ? 1 : 0;
+#endif
 
     // extend sign bits
+#ifdef NEED_128
+    if (isnonzero_128 (and_128 (op1e, SIGN72)))
+      op1e = or_128 (op1e, BIT73);
+    if (isnonzero_128 (and_128 (op2e, SIGN72)))
+      op2e = or_128 (op2e, BIT73);
+#else
     if (op1e & SIGN72)
       op1e |= BIT73;
     if (op2e & SIGN72)
       op2e |= BIT73;
+#endif
 
     // Do the math
+#ifdef NEED_128
+    word74 res = add_128 (op1e, add_128 (op2e, ci));
+#else
     word74 res = op1e + op2e + ci;
+#endif
 
     // Extract the overflow bits
+#ifdef NEED_128
+    bool r73 = isnonzero_128 (and_128 (res, BIT73));
+    bool r72 = isnonzero_128 (and_128 (res, SIGN72));
+#else
     bool r73 = res & BIT73 ? true : false;
     bool r72 = res & SIGN72 ? true : false;
+#endif
 
     // Extract the carry bit
+#ifdef NEED_128
+    bool r74 = isnonzero_128 (and_128 (res, BIT74));
+#else
     bool r74 = res & BIT74 ? true : false;
+#endif
    
     // Truncate the result
+#ifdef NEED_128
+    res = and_128 (res, MASK72);
+#else
     res &= MASK72;
+#endif
 
     // Check for overflow 
     * ovf = r73 ^ r72;
@@ -624,7 +654,11 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
     
     if (flagsToSet & I_ZERO)
       {
+#ifdef NEED_128
+        if (isnonzero_128 (res))
+#else
         if (res)
+#endif
           CLRF (* flags, I_ZERO);
         else
           SETF (* flags, I_ZERO);       // zero result
@@ -632,7 +666,11 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
     
     if (flagsToSet & I_NEG)
       {
+#ifdef NEED_128
+        if (isnonzero_128 (and_128 (res, SIGN72)))
+#else
         if (res & SIGN72)
+#endif
           SETF (* flags, I_NEG);
         else
           CLRF (* flags, I_NEG);
@@ -656,8 +694,10 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 //sim_printf ("Sub72b op1 %012"PRIo64"%012"PRIo64" op2 %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o ovf %o\n",
  //(word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags, * ovf); 
 #endif
+#ifndef NEED_128
     sim_debug (DBG_TRACE, & cpu_dev, "Sub72b op1 %012"PRIo64"%012"PRIo64" op2 %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o\n",
  (word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags); 
+#endif
 
 // https://en.wikipedia.org/wiki/Two%27s_complement
 //
@@ -670,29 +710,62 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 //  If carry indicator OFF, then C(A) - C(Y) - 1 -> C(A)
 
     // 73 bit arithmetic for the above N+1 algorithm
+#ifdef NEED_128
+    word74 op1e = and_128 (op1, MASK72);
+    word74 op2e = and_128 (op2, MASK72);
+#else
     word74 op1e = op1 & MASK72;
     word74 op2e = op2 & MASK72;
+#endif
     // Note that carryin has an inverted sense for borrow
+#ifdef NEED_128
+    word74 ci = construct_128 (0, carryin ? 0 : 1);
+#else
     word74 ci = carryin ? 0 : 1;
+#endif
 
     // extend sign bits
+#ifdef NEED_128
+    if (isnonzero_128 (and_128 (op1e, SIGN72)))
+      op1e = or_128 (op1e, BIT73);
+    if (isnonzero_128 (and_128 (op2e, SIGN72)))
+      op2e = or_128 (op2e, BIT73);
+#else
     if (op1e & SIGN72)
       op1e |= BIT73;
     if (op2e & SIGN72)
       op2e |= BIT73;
+#endif
 
     // Do the math
+#ifdef NEED_128
+    word74 res = subtract_128 (subtract_128 (op1e, op2e), ci);
+#else
     word74 res = op1e - op2e - ci;
+#endif
 
     // Extract the overflow bits
+#ifdef NEED_128
+    bool r73 = isnonzero_128 (and_128 (res, BIT73));
+    bool r72 = isnonzero_128 (and_128 (res, SIGN72));
+#else
     bool r73 = res & BIT73 ? true : false;
     bool r72 = res & SIGN72 ? true : false;
+#endif
 
     // Extract the carry bit
+#ifdef NEED_128
+    bool r74 = isnonzero_128 (and_128 (res, BIT74));
+#else
     bool r74 = res & BIT74 ? true : false;
-   
+#endif   
+
     // Truncate the result
+#ifdef NEED_128
+    res = and_128 (res, MASK72);
+#else
     res &= MASK72;
+#endif
 
     // Check for overflow 
     * ovf = r73 ^ r72;
@@ -732,7 +805,11 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
     
     if (flagsToSet & I_ZERO)
       {
+#ifdef NEED_128
+        if (isnonzero_128 (res))
+#else
         if (res)
+#endif
           CLRF (* flags, I_ZERO);
         else
           SETF (* flags, I_ZERO);       // zero result
@@ -740,13 +817,19 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
     
     if (flagsToSet & I_NEG)
       {
+#ifdef NEED_128
+        if (isnonzero_128 (and_128 (res, SIGN72)))
+#else
         if (res & SIGN72)
+#endif
           SETF (* flags, I_NEG);
         else
           CLRF (* flags, I_NEG);
       }
     
+#ifndef NEED_128
     sim_debug (DBG_TRACE, & cpu_dev, "Sub72b res %012"PRIo64"%012"PRIo64" flags %06o ovf %o\n", (word36) ((res >> 36) & MASK36), (word36) (res & MASK36), * flags, * ovf); 
+#endif
     return res;
   }
 
@@ -961,13 +1044,30 @@ void putChar(word36 *dst, word6 data, int posn)
 
 word72 convertToWord72(word36 even, word36 odd)
 {
+#ifdef NEED_128
+//sim_debug (DBG_TRACE, & cpu_dev, "even %016llx\n", even);
+//sim_debug (DBG_TRACE, & cpu_dev, "construct even %016llx %016llx\n", construct_128 (0, even).h, construct_128 (0, even).l);
+//sim_debug (DBG_TRACE, & cpu_dev, "shift even %016llx %016llx\n", lshift_128 (construct_128 (0, even), 36).h, lshift_128 (construct_128 (0, even), 36).l);
+//sim_debug (DBG_TRACE, & cpu_dev, "odd %016llx\n", odd);
+//sim_debug (DBG_TRACE, & cpu_dev, "construct odd %016llx %016llx\n", construct_128 (0, odd).h, construct_128 (0, odd).l);
+//sim_debug (DBG_TRACE, & cpu_dev, "or %016llx %016llx\n",
+    //or_128 (lshift_128 (construct_128 (0, even), 36), construct_128 (0, odd)).h,
+    //or_128 (lshift_128 (construct_128 (0, even), 36), construct_128 (0, odd)).l);
+    return or_128 (lshift_128 (construct_128 (0, even), 36), construct_128 (0, odd));
+#else
     return ((word72)even << 36) | (word72)odd;
+#endif
 }
 
 void convertToWord36(word72 src, word36 *even, word36 *odd)
 {
+#ifdef NEED_128
+    *even = rshift_128 (src, 36).l & DMASK;
+    *odd = src.l & DMASK;
+#else
     *even = (word36)(src >> 36) & DMASK;
     *odd = (word36)src & DMASK;
+#endif
 }
 
 void cmp36(word36 oP1, word36 oP2, word18 *flags)
@@ -1130,12 +1230,32 @@ void cmp72(word72 op1, word72 op2, word18 *flags)
 #ifdef L68
     cpu.ou.cycle |= ou_GOS;
 #endif
+#ifdef NEED_128
+sim_debug (DBG_TRACE, & cpu_dev, "op1 %016llx%016llx\n", op1.h, op1.l);
+sim_debug (DBG_TRACE, & cpu_dev, "op2 %016llx%016llx\n", op2.h, op2.l);
+    int128 op1s =  SIGNEXT72_128 (and_128 (op1, MASK72));
+    int128 op2s =  SIGNEXT72_128 (and_128 (op2, MASK72));
+sim_debug (DBG_TRACE, & cpu_dev, "op1s %016llx%016llx\n", op1s.h, op1s.l);
+sim_debug (DBG_TRACE, & cpu_dev, "op2s %016llx%016llx\n", op2s.h, op2s.l);
+#else
+sim_debug (DBG_TRACE, & cpu_dev, "op1 %016lx%016lx\n", (uint64_t) (op1>>64), (uint64_t) op1);
+sim_debug (DBG_TRACE, & cpu_dev, "op2 %016lx%016lx\n", (uint64_t) (op2>>64), (uint64_t) op2);
     int128 op1s =  SIGNEXT72_128 (op1 & MASK72);
     int128 op2s =  SIGNEXT72_128 (op2 & MASK72);
-
+sim_debug (DBG_TRACE, & cpu_dev, "op1s %016lx%016lx\n", (uint64_t) (op1s>>64), (uint64_t) op1s);
+sim_debug (DBG_TRACE, & cpu_dev, "op2s %016lx%016lx\n", (uint64_t) (op2s>>64), (uint64_t) op2s);
+#endif
+#ifdef NEED_128
+    if (isgt_s128 (op1s, op2s))
+#else
     if (op1s > op2s)
+#endif
       {
+#ifdef NEED_128
+        if (isnonzero_128 (and_128 (op2, SIGN72)))
+#else
         if (op2 & SIGN72)
+#endif
           CLRF (* flags, I_CARRY);
         else
           {
@@ -1144,7 +1264,11 @@ void cmp72(word72 op1, word72 op2, word18 *flags)
           }
         CLRF (* flags, I_ZERO | I_NEG);
       }
+#ifdef NEED_128
+    else if (iseq_128 (cast_128 (op1s), cast_128 (op2s)))
+#else
     else if (op1s == op2s)
+#endif
       {
         CPT (cpt2L, 28); // carry
         CPT (cpt2L, 30); // zero
@@ -1154,7 +1278,11 @@ void cmp72(word72 op1, word72 op2, word18 *flags)
     else /* op1s < op2s */
       {
         CPT (cpt2L, 31); // neg
+#ifdef NEED_128
+        if (isnonzero_128 (and_128 (op1, SIGN72)))
+#else
         if (op1 & SIGN72)
+#endif
           {
             CPT (cpt2L, 28); // carry
             SETF (* flags, I_CARRY);
@@ -2518,7 +2646,8 @@ int insertWord36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, wo
     return 0;
   }
 
-static void print_uint128_r (__uint128_t n, char * p)
+#ifndef NEED_128
+static void print_uint128_r (uint128 n, char * p)
   {
     if (n == 0)
       return;
@@ -2535,7 +2664,7 @@ static void print_uint128_r (__uint128_t n, char * p)
       sim_printf("%c", (int) (n%10+0x30));
   }
 
-void print_int128 (__int128_t n, char * p)
+void print_int128 (int128 n, char * p)
   {
     if (n == 0)
       {
@@ -2553,8 +2682,9 @@ void print_int128 (__int128_t n, char * p)
           sim_printf ("-");
         n = -n;
       }
-    print_uint128_r ((__uint128_t) n, p);
+    print_uint128_r ((uint128) n, p);
   }
+#endif
 
 // Return simh's gtime as a long long.
 uint64 sim_timell (void)

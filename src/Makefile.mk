@@ -65,7 +65,9 @@ else
     endif
 endif
 
-#CFLAGS = -m32
+ifneq ($(M32),)
+CFLAGS += -m32
+endif
 #CFLAGS = -m64
 
 #CFLAGS += -I../decNumber -I../simhv40-beta -I ../include 
@@ -85,6 +87,9 @@ endif
 CFLAGS += -Wno-array-bounds
 
 LDFLAGS += -g
+ifneq ($(M32),)
+LDFLAGS += -m32
+endif
 
 MAKEFLAGS += --no-print-directory
 

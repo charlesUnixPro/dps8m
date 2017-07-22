@@ -52,7 +52,15 @@
 #define USE_INT64
 #endif
 
-#include "dps8_math128.h"
+#ifdef NEED_128
+typedef struct { uint64_t h; uint64_t l; } __uint128_t;
+typedef struct { int64_t h; uint64_t l; } __int128_t;
+
+#define construct_128(h, l) ((uint128) { (h), (l) })
+#define construct_s128(h, l) ((int128) { (h), (l) })
+
+#endif
+//#include "dps8_math128.h"
 
 // Quiet compiler unused warnings
 #define QUIET_UNUSED
@@ -227,6 +235,7 @@ typedef word72      float72;    // double precision float
 typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 
 #include "dps8_simh.h"
+#include "dps8_math128.h"
 #include "dps8_hw_consts.h"
 #include "dps8_em_consts.h"
 
@@ -281,8 +290,13 @@ typedef enum eMemoryAccessType MemoryAccessType;
 #define GETCHAR(src, pos) (word6)(((word36)src >> (word36)((5 - pos) * 6)) & 077)      ///< get 6-bit char @ pos
 #define GETBYTE(src, pos) (word9)(((word36)src >> (word36)((3 - pos) * 9)) & 0777)     ///< get 9-bit byte @ pos
 
+#ifdef NEED_128
+#define YPAIRTO72(ypair) construct_128 ((ypair[0] >> 28) & MASK8, \
+                                          ((ypair[0] & MASK28) << 36) | \
+                                          (ypair[1] & MASK36));
+#else
 #define YPAIRTO72(ypair)    (((((word72)(ypair[0] & DMASK)) << 36) | (ypair[1] & DMASK)) & MASK72)
-
+#endif
 
 
 #define GET_TALLY(src) (((src) >> 6) & MASK12)   // 12-bits

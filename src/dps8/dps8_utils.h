@@ -112,6 +112,7 @@ void sim_printf( const char * format, ... )    // not really simh, by my impl
 //           putbits (& data, 0, 18, 1) --> set the high 18 bits to '1'.
 //
 
+#if 0
 static inline word72 getbits72 (word72 x, uint i, uint n)
   {
     // bit 71 is right end, bit zero is 72nd from the right
@@ -124,6 +125,7 @@ static inline word72 getbits72 (word72 x, uint i, uint n)
      else
       return (x >> (unsigned) shift) & ~ (~0U << n);
   }
+#endif
 
 static inline word36 getbits36(word36 x, uint i, uint n) {
     // bit 35 is right end, bit zero is 36th from the right
@@ -789,11 +791,31 @@ static inline void putbits72 (word72 * x, uint p, uint n, word72 val)
         sim_printf ("putbits72: bad args (pos=%d,n=%d)\n", p, n);
         return;
       }
+#ifdef NEED_128
+// n low bits on
+    uint64_t lowmask = 0;
+    uint64_t highmask = 0;
+    if (n >= 64)
+      {
+        lowmask = MASK64;
+        highmask = ~ ((~(uint64_t)0) << n);
+        highmask &= 0377U;
+      }
+    else
+      {
+        lowmask = ~ ((~(uint64_t)0) << n);
+      }
+    word72 mask = construct_128 (highmask, lowmask);
+    mask = lshift_128 (mask, (uint) shift);
+    word72 notmask = complement_128 (mask);
+    * x = or_128 (and_128 (* x, notmask), and_128 (lshift_128 (val, 72 - p - n), mask));
+#else
     word72 mask = ~ ((~(word72)0) << n);  // n low bits on
     mask <<= (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
     // caller may provide val that is too big, e.g., a word with all bits
     // set to one, so we mask val
     * x = (* x & ~mask) | ((val & MASKBITS72 (n)) << (72 - p - n));
+#endif
     return;
   }
 
@@ -862,7 +884,7 @@ int extractASCII36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed
 int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, uint64 *wordp);
 int insertASCII36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 word);
 int insertWord36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 word);
-void print_int128 (__int128_t n, char * p);
+void print_int128 (int128 n, char * p);
 uint64 sim_timell (void);
 void sim_puts (char * str);
 #if 0
