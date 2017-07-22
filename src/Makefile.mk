@@ -67,6 +67,8 @@ endif
 
 ifneq ($(M32),)
 CFLAGS += -m32
+CC = gcc
+LD = gcc
 endif
 #CFLAGS = -m64
 

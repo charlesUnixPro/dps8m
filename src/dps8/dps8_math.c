@@ -1377,16 +1377,20 @@ IF1 sim_printf ("UFM e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >
     int128 t = SIGNEXT72_128(m2);
     uint128 ut = rshift_128 (* (uint128 *) & t, 44);
     int128 m3 = multiply_s128 (SIGNEXT72_128(m1), * (int128 *) & ut);
+sim_debug (DBG_TRACE, & cpu_dev, "m3 %016llx%016llx\n", m3.h, m3.l);
 #else
     int128 m3 = (SIGNEXT72_128(m1) * (SIGNEXT72_128(m2) >> 44));
 IF1 sim_printf ("UFM raw e3 %03o m3 %09"PRIo64"%012"PRIo64"%012"PRIo64"\n", e3, (word36) (m3 >> 72) & MASK36, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
+sim_debug (DBG_TRACE, & cpu_dev, "m3 %016lx%016lx\n", (uint64_t) (m3>>64), (uint64_t) m3);
 #endif
     // realign to 72bits
 #ifdef NEED_128
-    word72 m3a = and_128 (rshift_128 (* (uint128 *) & m3, 99u - 71u), MASK72);
+    word72 m3a = and_128 (rshift_128 (* (uint128 *) & m3, 98u - 71u), MASK72);
+sim_debug (DBG_TRACE, & cpu_dev, "m3a %016llx%016llx\n", m3a.h, m3a.l);
 #else
     word72 m3a = ((word72) m3 >> (98-71)) & MASK72;
 IF1 sim_printf ("UFM aligned e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3a >> 36) & MASK36, (word36) m3a & MASK36);
+sim_debug (DBG_TRACE, & cpu_dev, "m3a %016lx%016lx\n", (uint64_t) (m3a>>64), (uint64_t) m3a);
 #endif
 
     // A normalization is performed only in the case of both factor mantissas being 100...0 
@@ -1413,7 +1417,7 @@ IF1 sim_printf ("UFM aligned e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word
 
     convertToWord36 (m3a, & cpu.rA, & cpu.rQ);
     cpu . rE = (word8) e3 & MASK8;
-
+sim_debug (DBG_TRACE, & cpu_dev, "fmp A %012"PRIo64" Q %012"PRIo64" E %03o\n", cpu.rA, cpu.rQ, cpu.rE);
     SC_I_NEG (cpu.rA & SIGN36);
 
     if (cpu.rA == 0 && cpu.rQ == 0)

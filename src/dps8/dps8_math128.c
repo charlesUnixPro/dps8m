@@ -150,10 +150,13 @@ uint128 add_128 (uint128 a, uint128 b)
 
 uint128 subtract_128 (uint128 a, uint128 b)
   {
-    bool borrow = !! b.l > a.l;
+//printf ("sub a %016llx %016llx\n", a.h, a.l);
+//printf ("sub b %016llx %016llx\n", b.h, b.l);
+    bool borrow = !! (b.l > a.l);
     uint128 res = construct_128 (a.h - b.h, a.l - b.l);
     if (borrow)
       res.h --;
+//printf ("sub res %016llx %016llx\n", res.h, res.l);
     return res;
   }
 
