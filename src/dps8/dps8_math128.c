@@ -168,7 +168,7 @@ uint128 negate_128 (uint128 a)
 int128 negate_s128 (int128 a)
   {
     uint128 t = add_128 (complement_128 (cast_128 (a)), construct_128 (0, 1));
-    return * (int128 *) & t;
+    return cast_s128 (t);
   }
 
 uint128 lshift_128 (uint128 a, unsigned int n)

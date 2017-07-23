@@ -2456,7 +2456,8 @@ IF1 sim_printf ("%s testno %d\n", subtract ? "DUFS" : "DUFA", testno ++);
     // 64-bit mantissa (incl sign)
 #ifdef NEED_128
     word72 m2 = lshift_128 (construct_128 (0, (uint64_t) getbits36_28 (cpu.Ypair[0], 8)), 44u); // 28-bit mantissa (incl sign)
-           m2 = or_128 (m2, construct_128 (0, cpu.Ypair[1] << 8));
+           //m2 = or_128 (m2, construct_128 (0, cpu.Ypair[1] << 8));
+           m2 = or_128 (m2, lshift_128 (construct_128 (0, cpu.Ypair[1]), 8u));
 #else
     word72 m2 = ((word72) getbits36_28 (cpu.Ypair[0], 8)) << 44; 
            m2 |= (word72) cpu.Ypair[1] << 8;
@@ -2831,7 +2832,8 @@ void dufm (void)
      // 64-bit mantissa (incl sign)
 #ifdef NEED_128
     word72 m2 = lshift_128 (construct_128 (0, (uint64_t) getbits36_28 (cpu.Ypair[0], 8)), 44u); // 28-bit mantissa (incl sign)
-           m2 = or_128 (m2, construct_128 (0, cpu.Ypair[1] << 8));
+           //m2 = or_128 (m2, construct_128 (0, cpu.Ypair[1] << 8));
+           m2 = or_128 (m2, lshift_128 (construct_128 (0, cpu.Ypair[1]), 8u));
 #else
     word72 m2 = ((word72) getbits36_28 (cpu.Ypair[0], 8)) << 44; 
            m2 |= (word72) cpu.Ypair[1] << 8;
@@ -3006,6 +3008,12 @@ IF1 sim_printf ("DUFM aligned e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (wor
 // CANFAULT 
 static void dfdvX (bool bInvert)
   {
+#ifdef ISOLTS
+static int testno = 1;
+IF1 sim_printf ("DFDI testno %d\n", testno ++);
+IF1 sim_printf ("UFA E %03o A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
+#endif
+
     // C(EAQ) / C (Y) → C(EA)
     // C(Y) / C(EAQ) → C(EA) (Inverted)
     
@@ -3041,7 +3049,8 @@ static void dfdvX (bool bInvert)
         // 64-bit mantissa (incl sign)
 #ifdef NEED_128
         m2 = lshift_128 (construct_128 (0, (uint64_t) getbits36_28 (cpu.Ypair[0], 8)), 44u); // 28-bit mantissa (incl sign)
-        m2 = or_128 (m2, construct_128 (0, cpu.Ypair[1] << 8));
+        //m2 = or_128 (m2, construct_128 (0, cpu.Ypair[1] << 8));
+        m2 = or_128 (m2, lshift_128 (construct_128 (0, cpu.Ypair[1]), 8u));
 #else
         m2 = ((word72) getbits36_28 (cpu.Ypair[0], 8)) << 44; 
         m2 |= (word72) cpu.Ypair[1] << 8;
@@ -3059,7 +3068,7 @@ static void dfdvX (bool bInvert)
         // AQ(64-71), unconditionally. AQ(0-63) is then used as the divisor mantissa.
         // ISOLTS-745 10b
 #ifdef NEED_128
-        if ((isnonzero_128 (and_128 (m2, SIGN72))) && m2.l & 0377)
+        if ((iszero_128 (and_128 (m2, SIGN72))) && m2.l & 0377)
 #else
         if (!(m2 & SIGN72) && m2 & 0377)
 #endif
@@ -3082,7 +3091,8 @@ static void dfdvX (bool bInvert)
         // 64-bit mantissa (incl sign)
 #ifdef NEED_128
         m1 = lshift_128 (construct_128 (0, (uint64_t) getbits36_28 (cpu.Ypair[0], 8)), 44u); // 28-bit mantissa (incl sign)
-        m1 = or_128 (m1, construct_128 (0, cpu.Ypair[1] << 8));
+        //m1 = or_128 (m1, construct_128 (0, cpu.Ypair[1] << 8));
+        m1 = or_128 (m1, lshift_128 (construct_128 (0, cpu.Ypair[1]), 8u));
 #else
         m1 = ((word72) getbits36_28 (cpu.Ypair[0], 8)) << 44; 
         m1 |= (word72) cpu.Ypair[1] << 8;
@@ -3107,7 +3117,10 @@ static void dfdvX (bool bInvert)
         return;	// normalized 0 
       }
 
-#ifndef NEED_128
+#ifdef NEED_128
+IF1 sim_printf ("DFDV e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) rshift_128 (m1, 36).l & MASK36, (word36) m1.l & MASK36);
+IF1 sim_printf ("DFDV e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) rshift_128 (m2, 36).l & MASK36, (word36) m2.l & MASK36);
+#else
 IF1 sim_printf ("DFDV e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
 IF1 sim_printf ("DFDV e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 #endif
@@ -3180,7 +3193,11 @@ IF1 sim_printf ("DFDV e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 
             m2 = (~m2 + 1) & MASK72;
         sign = -sign;
     }
-
+#endif
+#ifdef NEED_128
+IF1 sim_printf ("DFDV abs e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) rshift_128 (m1, 36).l & MASK36, (word36) m1.l & MASK36);
+IF1 sim_printf ("DFDV abs e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) rshift_128 (m2, 36).l & MASK36, (word36) m2.l & MASK36); 
+#else
 IF1 sim_printf ("DFDV abs e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
 IF1 sim_printf ("DFDV abs e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36); 
 #endif
@@ -3191,6 +3208,7 @@ IF1 sim_printf ("DFDV abs e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) 
     if (m2 == 0)
 #endif
       {
+IF1 sim_printf ("DFDV m2==0\n");
         // NB: If C(Y-pair)8,71 == 0 then the alignment loop will never exit! That's why it been moved before the alignment
 
         SET_I_ZERO;
@@ -3204,7 +3222,7 @@ IF1 sim_printf ("DFDV abs e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) 
         if (!bInvert) {
           convertToWord36 (m1, & cpu.rA, & cpu.rQ);
         }
-         
+IF1 sim_printf ("rA %012"PRIo64" rQ %012"PRIo64"\n", cpu.rA, cpu.rQ);
         doFault (FAULT_DIV, (_fault_subtype) {.bits=0},
                  "DFDV: divide check fault");
       }
@@ -3232,10 +3250,14 @@ IF1 sim_printf ("DFDV abs e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) 
 #endif
         e1 += 1;
       }
-
+#endif
+#ifdef NEED_128
+IF1 sim_printf ("DFDV shifted e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) rshift_128 (m1, 36).l & MASK36, (word36) m1.l & MASK36); 
+#else
 IF1 sim_printf ("DFDV shifted e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36); 
 #endif
     int e3 = e1 - e2;
+IF1 sim_printf ("DFDV e3 %o\n", e3);
     if (e3 > 127)
       {
         SET_I_EOFL;
@@ -3262,10 +3284,12 @@ IF1 sim_printf ("DFDV shifted e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word
     word72 m3 = divide_128 (lshift_128 (m1, 63-8), rshift_128 (m2, 8), NULL);
 #else
     word72 m3 = ((uint128)m1 << (63-8)) / ((uint128)m2 >> 8);
-
+#endif
+#ifdef NEED_128
+IF1 sim_printf ("DFDV raw e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) rshift_128 (m3, 36).l & MASK36, (word36) m3.l & MASK36); 
+#else
 IF1 sim_printf ("DFDV raw e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36); 
 #endif
-
 #ifdef L68
     cpu.ou.cycle |= ou_GD2;
 #endif
@@ -3278,12 +3302,17 @@ IF1 sim_printf ("DFDV raw e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36)
     m3 <<= 8;  // convert back to float
     if (sign == -1)
         m3 = (~m3 + 1) & MASK72;
+#endif
 
+#ifdef NEED_128
+IF1 sim_printf ("DFDV final e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) rshift_128 (m3, 36).l & MASK36, (word36) m3.l & MASK36); 
+#else
 IF1 sim_printf ("DFDV final e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36); 
 #endif
 
     convertToWord36 (m3, & cpu.rA, & cpu.rQ);
     cpu.rE = (word8) e3 & MASK8;
+IF1 sim_printf ("rA %012"PRIo64" rQ %012"PRIo64" rE %o\n", cpu.rA, cpu.rQ, cpu.rE);
     
     SC_I_ZERO (cpu.rA == 0 && cpu . rQ == 0);
     SC_I_NEG (cpu.rA & SIGN36); 
@@ -4033,7 +4062,8 @@ void dfcmp (void)
     // C(Y-pair)8,71
 #ifdef NEED_128
     word72 m2 = lshift_128 (construct_128 (0, getbits36_28 (cpu.Ypair[0], 8)), (36 + 8));
-    m2 = or_128 (m2, construct_128 (0, cpu.Ypair[1] << 8));
+    //m2 = or_128 (m2, construct_128 (0, cpu.Ypair[1] << 8));
+    m2 = or_128 (m2, lshift_128 (construct_128 (0, cpu.Ypair[1]), 8u));
 #else
     word72 m2 = (word72) getbits36_28 (cpu.Ypair[0], 8) << (36 + 8);  
     m2 |= cpu.Ypair[1] << 8;
@@ -4218,7 +4248,8 @@ void dfcmg (void)
 #ifdef NEED_128
     //word72 m2 = construct_128 ((uint64_t) getbits36_28 (cpu.Ypair[0], 8) << 8, 0); // 28-bit mantissa (incl sign)
     word72 m2 = lshift_128 (construct_128 (0, getbits36_28 (cpu.Ypair[0], 8)), (36 + 8));
-    m2 = or_128 (m2, construct_128 (0, cpu.Ypair[1] << 8));
+    //m2 = or_128 (m2, construct_128 (0, cpu.Ypair[1] << 8));
+    m2 = or_128 (m2, lshift_128 (construct_128 (0, cpu.Ypair[1]), 8u));
 #else
     word72 m2 = (word72) getbits36_28 (cpu.Ypair[0], 8) << (36 + 8);  
     m2 |= cpu.Ypair[1] << 8;
