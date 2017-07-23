@@ -235,11 +235,18 @@ static int parseID (word36 * b, uint tally, char * qno, char * name)
     return 1;
   }
 
-#ifdef __MINGW64__
+
+//#ifdef __MINGW64__
+#if defined (__MINGW64__) || defined (NEED_128)
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-
+// XXX Temporary hack; read 'NEED_128' as 'pandora'
+#ifdef NEED_128
+#define O_BINARY 0
+// XXX hack to allow testing on 64 bit non-pandora tool chains.
+#define mkstemps local_mkstemps
+#endif
 // Copied from https://searchcode.com/codesearch/view/32512650/
 static int mkstemps (char *pattern, int suffix_len)
 {
