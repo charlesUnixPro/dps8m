@@ -355,7 +355,7 @@ static double float36ToIEEEdouble(word36 f36)
     double v = 0.5;
     for(int n = 26 ; n >= 0 ; n -= 1) // this also normalizes the mantissa
     {
-        if (Mant & ((word72)1 << n))
+        if (Mant & ((uint64)1 << n))
         {
             m += v;
         }   //else
@@ -1375,8 +1375,8 @@ IF1 sim_printf ("UFM e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >
     // shift the CY mantissa to get 98 bits precision
 #ifdef NEED_128
     int128 t = SIGNEXT72_128(m2);
-    uint128 ut = rshift_128 (* (uint128 *) & t, 44);
-    int128 m3 = multiply_s128 (SIGNEXT72_128(m1), * (int128 *) & ut);
+    uint128 ut = rshift_128 (cast_128 (t), 44);
+    int128 m3 = multiply_s128 (SIGNEXT72_128(m1), cast_s128 (ut));
 sim_debug (DBG_TRACE, & cpu_dev, "m3 %016llx%016llx\n", m3.h, m3.l);
 #else
     int128 m3 = (SIGNEXT72_128(m1) * (SIGNEXT72_128(m2) >> 44));
@@ -1385,7 +1385,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "m3 %016lx%016lx\n", (uint64_t) (m3>>64), (uint
 #endif
     // realign to 72bits
 #ifdef NEED_128
-    word72 m3a = and_128 (rshift_128 (* (uint128 *) & m3, 98u - 71u), MASK72);
+    word72 m3a = and_128 (rshift_128 (cast_128 (m3), 98u - 71u), MASK72);
 sim_debug (DBG_TRACE, & cpu_dev, "m3a %016llx%016llx\n", m3a.h, m3a.l);
 #else
     word72 m3a = ((word72) m3 >> (98-71)) & MASK72;
@@ -1889,7 +1889,7 @@ void fstr (word36 *Y)
    
     float72 m = convertToWord72 (A, Q);
 #ifdef NEED_128
-    if (iszero_128 (m) == 0)
+    if (iszero_128 (m))
 #else
     if (m == 0)
 #endif
@@ -4032,8 +4032,8 @@ void dfcmp (void)
 
     // C(Y-pair)8,71
 #ifdef NEED_128
-    word72 m2 = construct_128 ((uint64_t) getbits36_28 (cpu.Ypair[0], 8) << 8, 0); // 28-bit mantissa (incl sign)
-    m2 = or_128 (m1, construct_128 (0, cpu.Ypair[1] << 8));
+    word72 m2 = lshift_128 (construct_128 (0, getbits36_28 (cpu.Ypair[0], 8)), (36 + 8));
+    m2 = or_128 (m2, construct_128 (0, cpu.Ypair[1] << 8));
 #else
     word72 m2 = (word72) getbits36_28 (cpu.Ypair[0], 8) << (36 + 8);  
     m2 |= cpu.Ypair[1] << 8;
@@ -4216,8 +4216,9 @@ void dfcmg (void)
 
     // C(Y-pair)8,71
 #ifdef NEED_128
-    word72 m2 = construct_128 ((uint64_t) getbits36_28 (cpu.Ypair[0], 8) << 8, 0); // 28-bit mantissa (incl sign)
-    m2 = or_128 (m1, construct_128 (0, cpu.Ypair[1] << 8));
+    //word72 m2 = construct_128 ((uint64_t) getbits36_28 (cpu.Ypair[0], 8) << 8, 0); // 28-bit mantissa (incl sign)
+    word72 m2 = lshift_128 (construct_128 (0, getbits36_28 (cpu.Ypair[0], 8)), (36 + 8));
+    m2 = or_128 (m2, construct_128 (0, cpu.Ypair[1] << 8));
 #else
     word72 m2 = (word72) getbits36_28 (cpu.Ypair[0], 8) << (36 + 8);  
     m2 |= cpu.Ypair[1] << 8;

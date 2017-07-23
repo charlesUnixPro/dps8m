@@ -2871,17 +2871,10 @@ static t_stat DoBasicInstruction (void)
               }
             else
               {
+                word72 tmp72 = convertToWord72 (cpu.Ypair[0], cpu.Ypair[1]);
 #ifdef NEED_128
-                // 2*36 bit mapped to 2*64 bits
-                // high 64 <= high 8 bits of high 36
-                // low 64 <= low 28 bits of high 36 cat low 36
-                word72 tmp72 = construct_128 ((cpu.Ypair[0] >> 28) & MASK8,
-                                              ((cpu.Ypair[0] & MASK28) << 36) |
-                                              (cpu.Ypair[1] & MASK36));
-                tmp72 = complement_128 (tmp72);
+                tmp72 = negate_128 (tmp72);
 #else
-                word72 tmp72 = (((word72) (cpu.Ypair[0] & MASK36)) << 36) |
-                               (cpu.Ypair[1] & MASK36);
                 tmp72 = ~tmp72 + 1;
 #endif
                 convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
@@ -3572,21 +3565,9 @@ static t_stat DoBasicInstruction (void)
             cpu.ou.cycle |= ou_GOS;
 #endif
             bool ovf;
-#ifdef NEED_128
-            // 2*36 bit mapped to 2*64 bits
-            // high 64 <= high 8 bits of high 36
-            // low 64 <= low 28 bits of high 36 cat low 36
-            word72 AQ = construct_128 ((cpu.rA >> 28) & MASK8,
-                                          ((cpu.rA & MASK28) << 36) |
-                                          (cpu.rQ & MASK36));
-            word72 tmp72 = YPAIRTO72 (cpu.Ypair);
-            tmp72 = Add72b (AQ, tmp72, 0,
-                            I_ZNOC, & cpu.cu.IR, & ovf);
-#else
             word72 tmp72 = YPAIRTO72 (cpu.Ypair);
             tmp72 = Add72b (convertToWord72 (cpu.rA, cpu.rQ), tmp72, 0,
                             I_ZNOC, & cpu.cu.IR, & ovf);
-#endif
             convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
             overflow (ovf, false, "adaq overflow fault");
           }

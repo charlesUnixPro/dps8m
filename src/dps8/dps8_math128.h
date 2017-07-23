@@ -13,8 +13,10 @@ Defines 128 bits Integer for 32 bits platform
 
 #ifdef NEED_128
 
-#define cast_128(x) (* (uint128 *) & (x))
-#define cast_s128(x) (* (int128 *) & (x))
+//#define cast_128(x) (* (uint128 *) & (x))
+//#define cast_s128(x) (* (int128 *) & (x))
+#define cast_128(x) construct_128 ((uint64_t) (x).h, (x).l)
+#define cast_s128(x) construct_s128 ((int64_t) (x).h, (x).l)
 
 bool iszero_128 (uint128 w);
 bool isnonzero_128 (uint128 w);
