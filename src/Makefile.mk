@@ -66,7 +66,6 @@ else
 endif
 
 ifneq ($(M32),)
-CFLAGS += -m32
 CC = gcc
 LD = gcc
 endif
@@ -89,9 +88,6 @@ endif
 CFLAGS += -Wno-array-bounds
 
 LDFLAGS += -g
-ifneq ($(M32),)
-LDFLAGS += -m32
-endif
 
 MAKEFLAGS += --no-print-directory
 
