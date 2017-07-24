@@ -298,14 +298,14 @@ void close_connection (uv_stream_t* stream)
       {
         if (p->assoc)
           {
-            sim_printf ("DISCONNECT %c.d%03d\n", p->fnpno+'a', p->lineno);
+            sim_printf ("[FNP emulation: DISCONNECT %c.d%03d]\n", p->fnpno+'a', p->lineno);
             struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
             linep -> line_disconnected = true;
             linep -> listen = false;
           }
         else
           {
-            sim_printf ("DISCONNECT\n");
+            sim_printf ("[FNP emulation: DISCONNECT]\n");
           }
 
         // Clean up allocated data
@@ -458,7 +458,7 @@ void fnpuv_start_write_actual (uv_tcp_t * client, char * data, ssize_t datalen)
 // NULs.
 // If the socket has been closed, write will return BADF; just ignore it.
     if (ret < 0 && ret != -EBADF)
-      sim_printf ("uv_write returns %d\n", ret);
+      sim_printf ("[FNP emulation: uv_write returns %d]\n", ret);
   }
 
 //
@@ -519,7 +519,7 @@ static void on_new_connection (uv_stream_t * server, int status)
   {
     if (status < 0)
       {
-        fprintf (stderr, "New connection error %s\n", uv_strerror (status));
+        sim_printf ("[FNP emulation: New connection error %s]\n", uv_strerror (status));
         // error!
         return;
       }
@@ -552,7 +552,7 @@ sim_printf ("slave connection to %d.%d\n", p->fnpno, p->lineno);
             if (linep->client)
               {
                 uv_close ((uv_handle_t *) client, fuv_close_cb);
-sim_printf ("dropping 2nd slave\n");
+sim_printf ("[FNP emulation: dropping 2nd slave]\n");
                 return;
               }
 #endif
@@ -564,12 +564,12 @@ sim_printf ("dropping 2nd slave\n");
         int ret = uv_tcp_getpeername (client, & name, & namelen);
         if (ret < 0)
           {
-            sim_printf ("CONNECT; addr err %d\n", ret);
+            sim_printf ("[FNP emulation: CONNECT; addr err %d]\n", ret);
           }
         else
           {
             struct sockaddr_in * p = (struct sockaddr_in *) & name;
-            sim_printf ("CONNECT %s\n", inet_ntoa (p -> sin_addr));
+            sim_printf ("[FNP emulation: CONNECT %s]\n", inet_ntoa (p -> sin_addr));
           }
 
         uvClientData * p = (uvClientData *) malloc (sizeof (uvClientData));
@@ -677,14 +677,14 @@ void fnpuvInit (int telnet_port)
 
     // Bind and listen
     struct sockaddr_in addr;
-sim_printf ("listening to %d\n", telnet_port);
+    sim_printf ("[FNP emulation: listening to %d]\n", telnet_port);
     uv_ip4_addr ("0.0.0.0", telnet_port, & addr);
     uv_tcp_bind (& du_server, (const struct sockaddr *) & addr, 0);
     int r = uv_listen ((uv_stream_t *) & du_server, DEFAULT_BACKLOG, 
                        on_new_connection);
     if (r)
      {
-        fprintf (stderr, "Listen error %s\n", uv_strerror (r));
+        sim_printf ("[FNP emulation: Listen error %s]\n", uv_strerror (r));
       }
     du_server_inited = true;
   }
@@ -750,12 +750,18 @@ static void do_readcb (uv_stream_t* stream,
 
 static void on_do_connect (uv_connect_t * server, int status)
   {
-    sim_printf ("dialout connect\n");
+    sim_printf ("[FNP emulation: dialout connect]\n");
     uvClientData * p = (uvClientData *) server->handle->data;
+    // If data is NULL, assume that the line has already been torn down.
+    if (! p)
+      {
+         sim_printf ("[FNP emulation note: on_do_connect called with data == NULL]\n");
+         return;
+      }
     struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
     if (status < 0)
       {
-        sim_printf ("Dial-out connection error %s\n", uv_strerror (status));
+        sim_printf ("[FNP emulation: Dial-out connection error %s]\n", uv_strerror (status));
         //sim_printf ("%p\n", p);
         //sim_printf ("%d.%d\n", p->fnpno, p->lineno);
         linep->acu_dial_failure = true;
@@ -781,7 +787,7 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
   {
     if (! loop)
       return;
-    sim_printf ("received dial_out %c.h%03d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", fnpno+'a', lineno, d1, d2, d3);
+    sim_printf ("[FNP emulation: received dial_out %c.h%03d %012"PRIo64" %012"PRIo64" %012"PRIo64"]\n", fnpno+'a', lineno, d1, d2, d3);
     struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
     uint d01 = (d1 >> 30) & 017;
     uint d02 = (d1 >> 24) & 017;
@@ -826,20 +832,20 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
             linep->tun_fd = tun_alloc (a_name);
             if (linep->tun_fd < 0)
               {
-                sim_printf ("dialout TUN tun_alloc returned %d errno %d\n", linep->tun_fd, errno);
+                sim_printf ("[FNP emulation: dialout TUN tun_alloc returned %d errno %d]\n", linep->tun_fd, errno);
                 return;
              }
             int flags = fcntl (linep->tun_fd, F_GETFL, 0);
             if (flags < 0)
               {
-                sim_printf ("dialout TUN F_GETFL returned < 0\n");
+                sim_printf ("[FNP emulation: dialout TUN F_GETFL returned < 0]\n");
                 return;
               }
             flags |= O_NONBLOCK;
             int ret = fcntl (linep->tun_fd, F_SETFL, flags);
             if (ret)
               {
-                sim_printf ("dialout TUN F_SETFL returned %d\n", ret);
+                sim_printf ("[FNP emulation: dialout TUN F_SETFL returned %d]\n", ret);
                 return;
               }
           }
@@ -913,7 +919,7 @@ void fnpuv_open_slave (uint fnpno, uint lineno)
   {
     if (! loop)
       return;
-    sim_printf ("fnpuv_open_slave %d.%d\n", fnpno, lineno);
+    sim_printf ("[FNP emulation: fnpuv_open_slave %d.%d]\n", fnpno, lineno);
     struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
 
     // Do we already have a listening port (ie not first time)?
@@ -943,12 +949,12 @@ void fnpuv_open_slave (uint fnpno, uint lineno)
     struct sockaddr_in addr;
     uv_ip4_addr ("0.0.0.0", linep->port, & addr);
     uv_tcp_bind (& linep->server, (const struct sockaddr *) & addr, 0);
-sim_printf ("listening on port %d\n", linep->port);
+    sim_printf ("[FNP emulation: listening on port %d]\n", linep->port);
     int r = uv_listen ((uv_stream_t *) & linep->server, DEFAULT_BACKLOG, 
                        on_new_connection);
     if (r)
      {
-        fprintf (stderr, "Listen error %s\n", uv_strerror (r));
+        sim_printf ("[FNP emulation: Listen error %s]\n", uv_strerror (r));
       }
 
 // It should be possible to run a peer-to-peer TCP instead of client server,
@@ -993,7 +999,7 @@ static void processPacketInput (int fnpno, int lineno, unsigned char * buf, ssiz
     //uint lineno = p -> lineno;
     if (fnpno >= N_FNP_UNITS_MAX || lineno >= MAX_LINES)
       {
-        sim_printf ("bogus client data\n");
+        sim_printf ("[FNP emulation: processPacketInput bogus client data]\n");
         return;
       }
 //sim_printf ("assoc. %d.%d nread %ld <%*s>\n", fnpno, lineno, nread, (int) nread, buf);
@@ -1004,7 +1010,7 @@ static void processPacketInput (int fnpno, int lineno, unsigned char * buf, ssiz
     if (! fnpUnitData[fnpno].MState.accept_calls)
       {
         //fnpuv_start_writestr (client, "Multics is not accepting calls\r\n");
-        sim_printf ("TUN traffic, but Multics is not accepting calls\n");
+        sim_printf ("[FNP emulation: TUN traffic, but Multics is not accepting calls]\n");
         return;
       }
     struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
