@@ -352,7 +352,12 @@ static int wcd (void)
             sim_debug (DBG_TRACE, & fnpDev, "    disconnect_this_line\n");
             if (linep->client && linep->service == service_login)
               fnpuv_start_writestr (linep->client, "Multics has disconnected you\r\n");
+#ifdef DISC_DELAY
+            // '1' --> disconnect on next poll
+            linep -> line_disconnected = 1;
+#else
             linep -> line_disconnected = true;
+#endif
             linep -> listen = false;
             if (linep->client)
               {
@@ -2119,6 +2124,23 @@ void fnpProcessEvent (void)
           {
             struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
 
+#ifdef DISC_DELAY
+            // Disconnect pending?
+            if (linep -> line_disconnected > 1)
+              {
+                // Buffer not empty?
+                if (linep->inBuffer && linep->inUsed < linep->inSize)
+                  {
+                     // Reset timer
+                     linep -> line_disconnected = DISC_DELAY;
+                  }
+                else
+                  {
+                    // Decrement timer
+                    -- linep -> line_disconnected;
+                  }
+              }
+#endif
             // Need to send a 'send_output' command to CS?
 
             if (linep -> send_output)
@@ -2171,12 +2193,21 @@ void fnpProcessEvent (void)
 
             // Need to send an 'line_disconnected' command to CS?
 
+#ifdef DISC_DELAY
+            else if (linep -> line_disconnected == 1)
+              {
+                fnp_rcd_line_disconnected (mbx, fnpno, lineno);
+                linep -> line_disconnected = 0;
+                linep -> listen = false;
+              }
+#else
             else if (linep -> line_disconnected)
               {
                 fnp_rcd_line_disconnected (mbx, fnpno, lineno);
                 linep -> line_disconnected = false;
                 linep -> listen = false;
               }
+#endif
 
             // Need to send an 'wru_timeout' command to CS?
 

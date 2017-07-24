@@ -97,6 +97,9 @@
 // Enable ISOLTS support
 //#define ISOLTS
 
+// Experimential dial_out line disconnect delay
+// FNP polled ~100Hz; 10 secs. is 1000 polls
+#define DISC_DELAY 1000
 // Dependencies
 
 // ISOLTS requires multiple CPU support

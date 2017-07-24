@@ -300,7 +300,11 @@ void close_connection (uv_stream_t* stream)
           {
             sim_printf ("[FNP emulation: DISCONNECT %c.d%03d]\n", p->fnpno+'a', p->lineno);
             struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
+#ifdef DISC_DELAY
+            linep -> line_disconnected = DISC_DELAY;
+#else
             linep -> line_disconnected = true;
+#endif
             linep -> listen = false;
           }
         else
