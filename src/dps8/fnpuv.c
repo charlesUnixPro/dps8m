@@ -830,6 +830,7 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
     linep->is_tun = false;
     if (flags & 2)
       {
+        sim_printf ("FNP emulation: TUN\n");
         if (linep->tun_fd <= 0)
           {
             char a_name [IFNAMSIZ] = "dps8m";
@@ -1054,10 +1055,104 @@ static void processPacketInput (int fnpno, int lineno, unsigned char * buf, ssiz
 done:;
   }
 
+// http://backreference.org/2010/03/26/tuntap-interface-tutorial/
+
+#if 0
+/**************************************************************************
+ * cwrite: write routine that checks for errors and exits if an error is  *
+ *         returned.                                                      *
+ **************************************************************************/
+
+static int cwrite (int fd, char *buf, int n)
+  {
+
+    int nwrite;
+
+    if ((nwrite = write (fd, buf, n)) < 0)
+      {
+        //perror ("Writing data");
+        //exit (1);
+        sim_printf ("cwrite returned %d\n", nwrite);
+        return 0;
+      }
+    return nwrite;
+  }
+#endif
+
+#if 0
+/**************************************************************************
+ * cread: read routine that checks for errors and exits if an error is    *
+ *        returned.                                                       *
+ **************************************************************************/
+
+static ssize_t cread (int fd, char *buf, size_t n)
+  {
+
+    ssize_t nread;
+
+    if ((nread = read (fd, buf, n)) < 0)
+      {
+        //perror("Reading data");
+        //exit(1);
+        sim_printf ("cread returned %ld\n", nread);
+      }
+    return nread;
+  }
+#endif
+
+
+#if 0
+/**************************************************************************
+ * read_n: ensures we read exactly n bytes, and puts them into "buf".     *
+ *         (unless EOF, of course)                                        *
+ **************************************************************************/
+
+static ssize_t read_n (int fd, void * buf, size_t n)
+  {
+
+    ssize_t nread;
+    size_t left = n;
+
+    while (left > 0)
+      {
+        if ((nread = read (fd, buf, left)) < 0)
+          {
+            if (errno != EAGAIN && errno != EINVAL)
+              sim_printf ("read_n read returned %ld %d\n", nread, errno);
+            return 0;
+          }
+
+        if (nread == 0)
+          return 0;
+
+        left -= (size_t) nread;
+        buf += nread;
+      }
+    return (ssize_t) n;
+  }
+#endif
+
 static void fnoTUNProcessLine (int fnpno, int lineno, struct t_line * linep)
   {
 /* Note that "buffer" should be at least the MTU size of the interface, eg 1500 bytes */
     unsigned char buffer [1500 + 16];
+
+#if 0
+// http://backreference.org/2010/03/26/tuntap-interface-tutorial/
+    uint16_t plength;
+    ssize_t nread;
+    // Read length 
+    nread = read_n (linep->tun_fd, & plength, sizeof (plength));
+    if (nread == 0)
+      {  // no data availible
+        return;
+      }
+    sim_printf ("len %u\n", plength);
+    // read packet
+    nread = read_n (linep->tun_fd, buffer, ntohs (plength));
+
+
+#else
     ssize_t nread = read (linep->tun_fd, buffer, sizeof (buffer));
     if (nread < 0)
       {
@@ -1069,6 +1164,7 @@ static void fnoTUNProcessLine (int fnpno, int lineno, struct t_line * linep)
         printf ("%ld %d\n", nread, errno);
         return;
       }
+#endif
 
 // To make debugging easier, return data as a hex string rather than binary.
 // When the stack interface is debugged, switch to binary.
@@ -1087,63 +1183,63 @@ static void fnoTUNProcessLine (int fnpno, int lineno, struct t_line * linep)
 // 4 bytes of metadata
 #define ip 4 
     /* Do whatever with the data */
-    printf("Read %ld bytes\n", nread);
-    printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
+    sim_printf("Read %ld bytes\n", nread);
+    sim_printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
       buffer [0], buffer [1], buffer [2], buffer [3], 
       buffer [4], buffer [5], buffer [6], buffer [7]);
-    printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
+    sim_printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
       buffer [8], buffer [9], buffer [10], buffer [11], 
       buffer [12], buffer [13], buffer [14], buffer [15]);
-    uint version =                            (buffer [ip + 0] >> 4) & 0xf;
+    //uint version =                            (buffer [ip + 0] >> 4) & 0xf;
     uint ihl =                                (buffer [ip + 0]) & 0xf;
     uint payload_offset = ip + ihl * 4;
-    uint tos =                                 buffer [ip + 1];
-    uint tl = ((uint)                 (buffer [ip + 2]) << 8) + 
-                                                       buffer [ip + 3];
-    uint id = ((uint)                 (buffer [ip + 4]) << 8) + 
-                                                       buffer [ip + 5];
+    //uint tos =                                 buffer [ip + 1];
+    //uint tl = ((uint)                 (buffer [ip + 2]) << 8) + 
+    //                                                   buffer [ip + 3];
+    //uint id = ((uint)                 (buffer [ip + 4]) << 8) + 
+    //                                                   buffer [ip + 5];
 
-    uint df =                                 (buffer [ip + 6] & 0x40) ? 1 : 0;
-    uint mf =                                 (buffer [ip + 6] & 0x20) ? 1 : 0;
-    uint fragment_offset = ((uint)    (buffer [ip + 6] & 0x1f) << 8) + 
-                                                       buffer [ip + 7];
-    uint ttl =                                 buffer [ip + 8];
+    //uint df =                                 (buffer [ip + 6] & 0x40) ? 1 : 0;
+    //uint mf =                                 (buffer [ip + 6] & 0x20) ? 1 : 0;
+    //uint fragment_offset = ((uint)    (buffer [ip + 6] & 0x1f) << 8) + 
+    //                                                   buffer [ip + 7];
+    //uint ttl =                                 buffer [ip + 8];
     uint protocol =                            buffer [ip + 9];
-    uint header_checksum =    (((uint) buffer [ip + 10]) << 8) + 
-                                                       buffer [ip + 11];
-    uint source_address =     (((uint) buffer [ip + 12]) << 24) + 
-                                      (((uint) buffer [ip + 13]) << 16) + 
-                                      (((uint) buffer [ip + 14]) << 8) + 
-                                                       buffer [ip + 15];
-    uint dest_address =       (((uint) buffer [ip + 16]) << 24) + 
-                                      (((uint) buffer [ip + 17]) << 16) + 
-                                      (((uint) buffer [ip + 18]) << 8) + 
-                                                       buffer [ip + 19];
+    //uint header_checksum =    (((uint) buffer [ip + 10]) << 8) + 
+    //                                                   buffer [ip + 11];
+    //uint source_address =     (((uint) buffer [ip + 12]) << 24) + 
+    //                                  (((uint) buffer [ip + 13]) << 16) + 
+    //                                  (((uint) buffer [ip + 14]) << 8) + 
+    //                                                   buffer [ip + 15];
+    //uint dest_address =       (((uint) buffer [ip + 16]) << 24) + 
+    //                                  (((uint) buffer [ip + 17]) << 16) + 
+    //                                  (((uint) buffer [ip + 18]) << 8) + 
+    //                                                   buffer [ip + 19];
     if (protocol == 1)
       {
         uint type = buffer [payload_offset + 0];
         if (type == 0x08)
           {
-            printf ("ICMP Echo Request %d.%d.%d.%d %d.%d.%d.%d\n", 
+            sim_printf ("ICMP Echo Request %d.%d.%d.%d %d.%d.%d.%d\n", 
               buffer [ip + 12], buffer [ip + 13], buffer [ip + 14], buffer [ip + 15],
               buffer [ip + 16], buffer [ip + 17], buffer [ip + 18], buffer [ip + 19]);
           }
         else
           {
-            printf ("ICMP 0x%02x\n", type);
-            printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
+            sim_printf ("ICMP 0x%02x\n", type);
+            sim_printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
               buffer [payload_offset + 0], buffer [payload_offset + 1], buffer [payload_offset + 2], buffer [payload_offset + 3], 
               buffer [payload_offset + 4], buffer [payload_offset + 5], buffer [payload_offset + 6], buffer [payload_offset + 7]);
           }
       }
     if (protocol == 0x11)
       {
-        printf ("UDP\n");
+        sim_printf ("UDP\n");
        
       }
     else
       {
-        printf ("protocol %02x\n", protocol);
+        sim_printf ("protocol %02x\n", protocol);
       }
   }
 
