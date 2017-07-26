@@ -65,7 +65,10 @@ else
     endif
 endif
 
-#CFLAGS = -m32
+ifneq ($(M32),)
+CC = gcc
+LD = gcc
+endif
 #CFLAGS = -m64
 
 #CFLAGS += -I../decNumber -I../simhv40-beta -I ../include 

@@ -791,6 +791,20 @@ static uint64 getSCUclock (uint scu_unit_num)
       {
         // The is a bit of code that is waiting for 5000 ms; this
         // fools into going faster
+#ifdef NEED_128
+        uint128 big = construct_128 (0, sys_stats.total_cycles);
+        // Sync up the clock and the TR; see wiki page "CAC 08-Oct-2014"
+        //big *= 4u;
+        big = lshift_128 (big, 2);
+        if (scu [0] . bullet_time)
+          big = multiply_128 (big, construct_128 (0, 10000u));
+
+        //big += scu [0] . elapsed_days * 1000000llu * 60llu * 60llu * 24llu; 
+        uint128 days = construct_128 (0, scu[0].elapsed_days);
+        days = multiply_128 (days, construct_128 (0, 1000000));
+        days = multiply_128 (days, construct_128 (0, 60 * 60 * 24));
+        big = add_128 (big, days);
+#else
         __uint128_t big = sys_stats . total_cycles;
         // Sync up the clock and the TR; see wiki page "CAC 08-Oct-2014"
         big *= 4u;
@@ -799,6 +813,8 @@ static uint64 getSCUclock (uint scu_unit_num)
           big *= 10000;
 
         big += scu [0] . elapsed_days * 1000000llu * 60llu * 60llu * 24llu; 
+#endif
+
         // Boot time
 
 // load_fnp is complaining that FNP core image is more than 5 years old; try 
@@ -809,7 +825,11 @@ static uint64 getSCUclock (uint scu_unit_num)
         // 631184400
         uint64 UnixSecs = 631184400;
 
+#ifdef NEED_128
+        uint64 UnixuSecs = UnixSecs * 1000000llu + big.l;
+#else
         uint64 UnixuSecs = UnixSecs * 1000000llu + (uint64) big;
+#endif
         // now determine uSecs since Jan 1, 1901 ...
         uint64 MulticsuSecs = 2177452800000000llu + UnixuSecs;
 

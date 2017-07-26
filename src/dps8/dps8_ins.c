@@ -2866,11 +2866,13 @@ static t_stat DoBasicInstruction (void)
               }
             else
               {
-                word72 tmp72 = (((word72) (cpu.Ypair[0] & MASK36)) << 36) |
-                               (cpu.Ypair[1] & MASK36);
+                word72 tmp72 = convertToWord72 (cpu.Ypair[0], cpu.Ypair[1]);
+#ifdef NEED_128
+                tmp72 = negate_128 (tmp72);
+#else
                 tmp72 = ~tmp72 + 1;
-                cpu.rA = GETHI72 (tmp72); 
-                cpu.rQ = GETLO72 (tmp72);
+#endif
+                convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
 
                 SC_I_ZERO (cpu.rA == 0 && cpu.rQ == 0);
                 SC_I_NEG (cpu.rA & SIGN36);
@@ -4019,12 +4021,18 @@ static t_stat DoBasicInstruction (void)
 #ifdef L68
             cpu.ou.cycle |= ou_GD1;
 #endif
+#ifdef NEED_128
+            word72 tmp72 = multiply_128 (SIGNEXT36_72 (cpu.rA), SIGNEXT36_72 (cpu.CY));
+            tmp72 = and_128 (tmp72, MASK72);
+            tmp72 = lshift_128 (tmp72, 1);
+#else
             word72 tmp72 = SIGNEXT36_72 (cpu.rA) * SIGNEXT36_72 (cpu.CY);
+            tmp72 &= MASK72;
+            tmp72 <<= 1;    // left adjust so AQ71 contains 0
+#endif
 #ifdef L68
             cpu.ou.cycle |= ou_GD2;
 #endif
-            tmp72 &= MASK72;
-            tmp72 <<= 1;    // left adjust so AQ71 contains 0
             // Overflow can occur only in the case of A and Y containing
             // negative 1
             if (cpu.rA == MAXNEG && cpu.CY == MAXNEG)
@@ -4047,12 +4055,19 @@ static t_stat DoBasicInstruction (void)
 #ifdef L68
             cpu.ou.cycle |= ou_GOS;
 #endif
+#ifdef NEED_128
+            int128 prod = multiply_s128 (
+              SIGNEXT36_128 (cpu.rQ & DMASK),
+              SIGNEXT36_128 (cpu.CY & DMASK));
+            convertToWord36 (cast_128 (prod), &cpu.rA, &cpu.rQ);
+#else
             int64_t t0 = SIGNEXT36_64 (cpu.rQ & DMASK);
             int64_t t1 = SIGNEXT36_64 (cpu.CY & DMASK);
 
             __int128_t prod = (__int128_t) t0 * (__int128_t) t1;
 
             convertToWord36 ((word72)prod, &cpu.rA, &cpu.rQ);
+#endif
 
             SC_I_ZERO (cpu.rA == 0 && cpu.rQ == 0);
             SC_I_NEG (cpu.rA & SIGN36);
@@ -4242,10 +4257,17 @@ static t_stat DoBasicInstruction (void)
             }
 
             word72 tmp72 = convertToWord72 (cpu.rA, cpu.rQ);
+#ifdef NEED_128
+            tmp72 = negate_128 (tmp72);
+
+            SC_I_ZERO (iszero_128 (tmp72));
+            SC_I_NEG (isnonzero_128 (and_128 (tmp72, SIGN72)));
+#else
             tmp72 = -tmp72;
 
             SC_I_ZERO (tmp72 == 0);
             SC_I_NEG (tmp72 & SIGN72);
+#endif
 
             convertToWord36 (tmp72, &cpu.rA, &cpu.rQ);
           }
@@ -4356,11 +4378,30 @@ static t_stat DoBasicInstruction (void)
         case 0117:  // cmpaq
           // C(AQ) :: C(Y-pair)
           {
+sim_debug (DBG_TRACE, & cpu_dev, "ypair %012llo%012llo\n", cpu.Ypair[0], cpu.Ypair [1]);
+sim_debug (DBG_TRACE, & cpu_dev, "ypair %09llx%09llx\n", cpu.Ypair[0], cpu.Ypair [1]);
             word72 tmp72 = YPAIRTO72 (cpu.Ypair);
+#ifdef NEED_128
+sim_debug (DBG_TRACE, & cpu_dev, "tmp72 %016llx%016llx\n", tmp72.h, tmp72.l);
+sim_debug (DBG_TRACE, & cpu_dev, "aq %09llx %09llx\n", cpu.rA, cpu.rQ);
+#else
+sim_debug (DBG_TRACE, & cpu_dev, "tmp72 %016lx%016lx\n", (uint64_t) (tmp72>>64), (uint64_t) tmp72);
+sim_debug (DBG_TRACE, & cpu_dev, "aq %09llx %09llx\n", cpu.rA, cpu.rQ);
+#endif
 
             word72 trAQ = convertToWord72 (cpu.rA, cpu.rQ);
+#ifdef NEED_128
+sim_debug (DBG_TRACE, & cpu_dev, "trAQ %016llx%016llx\n", trAQ.h, trAQ.l);
+#else
+sim_debug (DBG_TRACE, & cpu_dev, "trAQ %016lx%016lx\n", (uint64_t) (trAQ>>64), (uint64_t) trAQ);
+#endif
+#ifdef NEED_128
+            trAQ = and_128 (trAQ, MASK72);
+sim_debug (DBG_TRACE, & cpu_dev, "trAQ %016llx%016llx\n", trAQ.h, trAQ.l);
+#else
             trAQ &= MASK72;
-
+sim_debug (DBG_TRACE, & cpu_dev, "trAQ %016lx%016lx\n", (uint64_t) (trAQ>>64), (uint64_t) trAQ);
+#endif
             cmp72 (trAQ, tmp72, &cpu.cu.IR);
           }
           break;
@@ -4400,11 +4441,19 @@ static t_stat DoBasicInstruction (void)
           {
               word72 tmp72 = YPAIRTO72 (cpu.Ypair);
               word72 trAQ = convertToWord72 (cpu.rA, cpu.rQ);
+#ifdef NEED_128
+              trAQ = and_128 (trAQ, tmp72);
+              trAQ = and_128 (trAQ, MASK72);
+
+              SC_I_ZERO (iszero_128 (trAQ));
+              SC_I_NEG (isnonzero_128 (and_128 (trAQ, SIGN72)));
+#else
               trAQ = trAQ & tmp72;
               trAQ &= MASK72;
 
               SC_I_ZERO (trAQ == 0);
               SC_I_NEG (trAQ & SIGN72);
+#endif
               convertToWord36 (trAQ, &cpu.rA, &cpu.rQ);
           }
           break;
@@ -4499,11 +4548,19 @@ static t_stat DoBasicInstruction (void)
           {
               word72 tmp72 = YPAIRTO72 (cpu.Ypair);
               word72 trAQ = convertToWord72 (cpu.rA, cpu.rQ);
+#ifdef NEED_128
+              trAQ = or_128 (trAQ, tmp72);
+              trAQ = and_128 (trAQ, MASK72);
+
+              SC_I_ZERO (iszero_128 (trAQ));
+              SC_I_NEG (isnonzero_128 (and_128 (trAQ, SIGN72)));
+#else
               trAQ = trAQ | tmp72;
               trAQ &= MASK72;
 
               SC_I_ZERO (trAQ == 0);
               SC_I_NEG (trAQ & SIGN72);
+#endif
               convertToWord36 (trAQ, &cpu.rA, &cpu.rQ);
           }
           break;
@@ -4597,11 +4654,19 @@ static t_stat DoBasicInstruction (void)
           {
             word72 tmp72 = YPAIRTO72 (cpu.Ypair);
             word72 trAQ = convertToWord72 (cpu.rA, cpu.rQ);
+#ifdef NEED_128
+            trAQ = xor_128 (trAQ, tmp72);
+            trAQ = and_128 (trAQ, MASK72);
+
+            SC_I_ZERO (iszero_128 (trAQ));
+            SC_I_NEG (isnonzero_128 (and_128 (trAQ, SIGN72)));
+#else
             trAQ = trAQ ^ tmp72;
             trAQ &= MASK72;
 
             SC_I_ZERO (trAQ == 0);
             SC_I_NEG (trAQ & SIGN72);
+#endif
 
             convertToWord36 (trAQ, &cpu.rA, &cpu.rQ);
           }
@@ -4697,11 +4762,19 @@ static t_stat DoBasicInstruction (void)
           {
             word72 tmp72 = YPAIRTO72 (cpu.Ypair);
             word72 trAQ = convertToWord72 (cpu.rA, cpu.rQ);
+#ifdef NEED_128
+            trAQ = and_128 (trAQ, tmp72);
+            trAQ = and_128 (trAQ, MASK72);
+
+            SC_I_ZERO (iszero_128 (trAQ));
+            SC_I_NEG (isnonzero_128 (and_128 (trAQ, SIGN72)));
+#else
             trAQ = trAQ & tmp72;
             trAQ &= MASK72;
 
             SC_I_ZERO (trAQ == 0);
             SC_I_NEG (trAQ & SIGN72);
+#endif
           }
             break;
 
@@ -4759,11 +4832,19 @@ static t_stat DoBasicInstruction (void)
             word72 tmp72 = YPAIRTO72 (cpu.Ypair);   //
 
             word72 trAQ = convertToWord72 (cpu.rA, cpu.rQ);
+#ifdef NEED_128
+            trAQ = and_128 (trAQ, complement_128 (tmp72));
+            trAQ = and_128 (trAQ, MASK72);
+
+            SC_I_ZERO (iszero_128 (trAQ));
+            SC_I_NEG (isnonzero_128 (and_128 (trAQ, SIGN72)));
+#else
             trAQ = trAQ & ~tmp72;
             trAQ &= MASK72;
 
             SC_I_ZERO (trAQ == 0);
             SC_I_NEG (trAQ & SIGN72);
+#endif
           }
           break;
 
@@ -5983,15 +6064,26 @@ static t_stat DoBasicInstruction (void)
                 uint64 MulticsuSecs = 2177452800000000LL + UnixuSecs;
 
                 // Back into 72 bits
-                __uint128_t big = ((__uint128_t) cpu.rA) << 36 | cpu.rQ;
+               word72 big = convertToWord72 (cpu.rA, cpu.rQ);
+#ifdef NEED_128
+                // Convert to time since boot
+                big = subtract_128 (big, construct_128 (0, MulticsuSecs));
+                uint32_t remainder;
+                uint128 bigsecs = divide_128_32 (big, 1000000u, & remainder);
+                uint64_t uSecs = remainder;
+                uint64_t secs = bigsecs.l;
+                sim_debug (DBG_TRACE, & cpu_dev,
+                           "Clock time since boot %4llu.%06llu seconds\n",
+                           secs, uSecs);
+#else
                 // Convert to time since boot
                 big -= MulticsuSecs;
-
                 unsigned long uSecs = big % 1000000u;
                 unsigned long secs = (unsigned long) (big / 1000000u);
                 sim_debug (DBG_TRACE, & cpu_dev,
                            "Clock time since boot %4lu.%06lu seconds\n",
                            secs, uSecs);
+#endif
               }
 #endif
           }
