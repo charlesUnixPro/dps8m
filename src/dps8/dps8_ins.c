@@ -4378,29 +4378,12 @@ static t_stat DoBasicInstruction (void)
         case 0117:  // cmpaq
           // C(AQ) :: C(Y-pair)
           {
-sim_debug (DBG_TRACE, & cpu_dev, "ypair %012llo%012llo\n", cpu.Ypair[0], cpu.Ypair [1]);
-sim_debug (DBG_TRACE, & cpu_dev, "ypair %09llx%09llx\n", cpu.Ypair[0], cpu.Ypair [1]);
             word72 tmp72 = YPAIRTO72 (cpu.Ypair);
-#ifdef NEED_128
-sim_debug (DBG_TRACE, & cpu_dev, "tmp72 %016llx%016llx\n", tmp72.h, tmp72.l);
-sim_debug (DBG_TRACE, & cpu_dev, "aq %09llx %09llx\n", cpu.rA, cpu.rQ);
-#else
-sim_debug (DBG_TRACE, & cpu_dev, "tmp72 %016lx%016lx\n", (uint64_t) (tmp72>>64), (uint64_t) tmp72);
-sim_debug (DBG_TRACE, & cpu_dev, "aq %09llx %09llx\n", cpu.rA, cpu.rQ);
-#endif
-
             word72 trAQ = convertToWord72 (cpu.rA, cpu.rQ);
 #ifdef NEED_128
-sim_debug (DBG_TRACE, & cpu_dev, "trAQ %016llx%016llx\n", trAQ.h, trAQ.l);
-#else
-sim_debug (DBG_TRACE, & cpu_dev, "trAQ %016lx%016lx\n", (uint64_t) (trAQ>>64), (uint64_t) trAQ);
-#endif
-#ifdef NEED_128
             trAQ = and_128 (trAQ, MASK72);
-sim_debug (DBG_TRACE, & cpu_dev, "trAQ %016llx%016llx\n", trAQ.h, trAQ.l);
 #else
             trAQ &= MASK72;
-sim_debug (DBG_TRACE, & cpu_dev, "trAQ %016lx%016lx\n", (uint64_t) (trAQ>>64), (uint64_t) trAQ);
 #endif
             cmp72 (trAQ, tmp72, &cpu.cu.IR);
           }
