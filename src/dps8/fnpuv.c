@@ -222,7 +222,10 @@ static int tun_alloc (char * dev)
      *
      *        IFF_NO_PI - Do not provide packet information  
      */ 
-    ifr.ifr_flags = IFF_TUN; 
+
+// Incoming packet analysis shows four bytes of meta data; 2 bytes of flags and // two bytes of protocol flags. Turning them off by setting IFF_NO_PI
+
+    ifr.ifr_flags = IFF_TUN | IFF_NO_PI; 
     if (* dev)
       strncpy (ifr.ifr_name, dev, IFNAMSIZ);
 
@@ -267,7 +270,7 @@ void fnpuv_associated_readcb (uv_tcp_t * client,
                            ssize_t nread,
                            unsigned char * buf)
   {
-    //printf ("assoc. <%*s>\n", (int) nread, buf->base);
+    //sim_printf ("assoc. <%*s>\n", (int) nread, buf->base);
     processLineInput (client, buf, nread);
   }
 
@@ -278,7 +281,7 @@ void fnpuv_unassociated_readcb (uv_tcp_t * client,
                            ssize_t nread,
                            unsigned char * buf)
   {
-    //printf ("unaassoc. <%*s>\n", (int) nread, buf->base);
+    //sim_printf ("unaassoc. <%*s>\n", (int) nread, buf->base);
     processUserInput (client, buf, nread);
   } 
 
@@ -855,12 +858,16 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
               }
           }
           linep->is_tun = true;
+          linep->listen = true;
+          linep->accept_new_terminal = true;
+
+
           return;
         }
 #endif
     char ipaddr [256];
     sprintf (ipaddr, "%d.%d.%d.%d", oct1, oct2, oct3, oct4);
-    printf ("calling %s:%d\n", ipaddr,port);
+    sim_printf ("calling %s:%d\n", ipaddr,port);
 
     struct sockaddr_in dest;
     uv_ip4_addr(ipaddr, (int) port, &dest);
@@ -1051,7 +1058,7 @@ static void processPacketInput (int fnpno, int lineno, unsigned char * buf, ssiz
         linep->inSize = (uint) nread;
         linep->inUsed = 0;
       }
-
+sim_printf (" packet in buffer %u %02x %02x %02x %02x\n", linep->inSize, linep->inBuffer[0], linep->inBuffer[1], linep->inBuffer[2], linep->inBuffer[3]);
 done:;
   }
 
@@ -1134,6 +1141,16 @@ static ssize_t read_n (int fd, void * buf, size_t n)
 
 static void fnoTUNProcessLine (int fnpno, int lineno, struct t_line * linep)
   {
+
+// For now, don't process a frame until the previous one has been consumed.
+
+    // old data in the buffer ?
+    if (linep->inBuffer)
+      {
+        //sim_printf ("[FNP emulator: TUN buffer overrun; packet check stalled\n");
+        return;
+     }
+
 /* Note that "buffer" should be at least the MTU size of the interface, eg 1500 bytes */
     unsigned char buffer [1500 + 16];
 
@@ -1153,7 +1170,8 @@ static void fnoTUNProcessLine (int fnpno, int lineno, struct t_line * linep)
 
 
 #else
-    ssize_t nread = read (linep->tun_fd, buffer, sizeof (buffer));
+    // Save 3 bytes at the beginning of the buffer for command and length
+    ssize_t nread = read (linep->tun_fd, buffer + 3, sizeof (buffer) - 3);
     if (nread < 0)
       {
         //perror ("Reading from interface");
@@ -1161,23 +1179,32 @@ static void fnoTUNProcessLine (int fnpno, int lineno, struct t_line * linep)
         //exit (1);
         if (errno == EAGAIN)
           return;
-        printf ("%ld %d\n", nread, errno);
+        sim_printf ("%ld %d\n", nread, errno);
         return;
       }
 #endif
+
+    buffer [0] = 0x80; // Command 'data'
+    * (uint16_t *) (buffer + 1) = (uint16_t) nread; // packet length
+
+    //processPacketInput (fnpno, lineno, buffer, nread + 3);
 
 // To make debugging easier, return data as a hex string rather than binary.
 // When the stack interface is debugged, switch to binary.
     unsigned char xbufr [2 * (1500 + 16)];
     unsigned char bin2hex [16] = "0123456789ABCDEF";
 
-    for (uint i = 0; i > nread; i ++)
+    for (uint i = 0; i < nread; i ++)
       {
-        xbufr [i * 2 + 0] = bin2hex [(buffer [i] >> 4) & 0xf];
-        xbufr [i * 2 + 1] = bin2hex [(buffer [i] >> 0) & 0xf];
+        xbufr [i * 2 + 0] = bin2hex [(buffer [i + 3] >> 4) & 0xf];
+//sim_printf ("i %u xi %u b[] %u >> %u & %u xb %u\n", i, i*2+0, buffer [i + 3], buffer [i + 3] >> 4, (buffer [i + 3] >> 4) & 0xf, bin2hex [(buffer [i + 3] >> 4) & 0xf]);
+        xbufr [i * 2 + 1] = bin2hex [(buffer [i + 3] >> 0) & 0xf];
+//sim_printf ("i %u xi %u b[] %u >> %u & %u xb %u\n", i, i*2+1, buffer [i + 3], buffer [i + 3] >> 4, (buffer [i + 3] >> 4) & 0xf, bin2hex [(buffer [i + 3] >> 0) & 0xf]);
       }
-     xbufr [nread * 2] = 0;
-     processPacketInput (fnpno, lineno, xbufr, nread * 2 + 1);
+    xbufr [nread * 2 + 0] = '\r';
+    xbufr [nread * 2 + 1] = '\n';
+    xbufr [nread * 2 + 2] = 0;
+    processPacketInput (fnpno, lineno, xbufr, nread * 2 + 3);
 
 // Debugging
 // 4 bytes of metadata

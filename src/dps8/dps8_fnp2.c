@@ -1838,21 +1838,26 @@ sim_printf ("CS interrupt %u\n", decoded.cell);
 // Process an input character according to the line discipline.
 // Return true if buffer should be shipped to the CS
 
-static inline bool processInputCharacter (struct t_line * linep, unsigned char kar)
+static inline bool processInputCharacter (struct t_line * linep, unsigned char kar, bool endOfBuffer)
   {
-
-// telnet sends keyboard returns as CR/NUL. Drop the null when we see it;
-    uvClientData * p = linep->client->data;
-    //sim_printf ("kar %03o isTelnet %d was CR %d is Null %d\n", kar, !!p->telnetp, linep->was_CR, kar == 0);
-//sim_printf ("%03o %c\n", kar, isprint(kar)? kar : '#');
-    if (p && p->telnetp && linep->was_CR && kar == 0)
+#ifdef TUN
+    // TUN doesn't have a client
+    if (! linep->is_tun)
+#endif
       {
-        //sim_printf ("dropping nul\n");
-        linep->was_CR = false;
-        return false;
+// telnet sends keyboard returns as CR/NUL. Drop the null when we see it;
+        uvClientData * p = linep->client->data;
+        //sim_printf ("kar %03o isTelnet %d was CR %d is Null %d\n", kar, !!p->telnetp, linep->was_CR, kar == 0);
+//sim_printf ("%03o %c\n", kar, isprint(kar)? kar : '#');
+        if (p && p->telnetp && linep->was_CR && kar == 0)
+          {
+            //sim_printf ("dropping nul\n");
+            linep->was_CR = false;
+            return false;
+          }
+        linep->was_CR = kar == 015;
+        //sim_printf ("was CR %d\n", linep->was_CR);
       }
-    linep->was_CR = kar == 015;
-    //sim_printf ("was CR %d\n", linep->was_CR);
 
 //sim_printf ("%03o %c\n", kar, isgraph (kar) ? kar : '.');
     if (linep->service == service_login)
@@ -2033,7 +2038,14 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
         linep->input_break = false;
         // To make IMFT work...
         if (linep->service == service_slave || linep->service == service_autocall)
-          linep->input_break = true;
+          {
+#ifdef TUN
+            if (linep->is_tun)
+              linep->input_break = endOfBuffer;
+            else
+#endif
+              linep->input_break = true;
+          }
 
         return true;
       }
@@ -2044,7 +2056,11 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
 static void fnpProcessBuffer (struct t_line * linep)
   {
     // The connection could have closed when we were not looking
+#ifdef TUN
+    if ((! linep->is_tun) && ! linep->client)
+#else
     if (! linep->client)
+#endif
       {
         if (linep->inBuffer)
           free (linep->inBuffer);
@@ -2058,8 +2074,8 @@ static void fnpProcessBuffer (struct t_line * linep)
        {
          unsigned char c = linep->inBuffer [linep->inUsed ++];
 //sim_printf ("processing %d/%d %o '%c'\n", linep->inUsed-1, linep->inSize, c, isprint (c) ? c : '?');
-
-         if (linep->inUsed >= linep->inSize)
+         bool eob = linep->inUsed >= linep->inSize;
+         if (eob)
            {
              free (linep->inBuffer);
              linep->inBuffer = NULL;
@@ -2069,7 +2085,7 @@ static void fnpProcessBuffer (struct t_line * linep)
              if (linep->client)
                fnpuv_read_start (linep->client);
            }
-         if (processInputCharacter (linep, c))
+         if (processInputCharacter (linep, c, eob))
            break;
        }
   }
