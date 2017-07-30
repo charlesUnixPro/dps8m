@@ -1217,6 +1217,53 @@ static void fnp_rcd_wru_timeout (int mbx, int fnpno, int lineno)
     notifyCS (mbx, fnpno, lineno);
   }
 
+#ifdef TUN
+static void tun_write (struct t_line * linep, uint16_t * data, uint tally)
+  {
+#if 0
+    for (uint i = 0; i < tally; i ++)
+      sim_printf ("%4o", data[i]);
+    sim_printf ("\r\n");
+#endif
+// XXX this code is buggy; if a buffer is recieved with an embedded frame start, the embedded frame 
+// XXX will be lost
+
+    for (uint i = 0; i < tally; i ++)
+      {
+        // Check for start of frame...
+        if (data [i] == 0x100)
+          {
+            linep->in_frame = true;
+            linep->frameLen = 0;
+            continue;
+          }
+
+        if (! linep->in_frame)
+          continue;
+
+        if (linep->frameLen >= 2+1500)
+          {
+            sim_printf ("inFrame overrun\n");
+            break;
+          }
+        linep->frame[linep->frameLen ++] = (uint8_t) (data [i] & 0xff);
+      }
+
+// Is frame complete?
+
+      if (linep->frameLen >= 2)
+        {
+          uint16_t target = (uint16_t) ((linep->frame[0] & 0xff) << 8) | (linep->frame[1]);
+          if (target + 2 >= linep->frameLen)
+            {
+              sim_printf ("frame received\n");
+              fnpuv_tun_write (linep);
+              linep->in_frame = false;
+            }
+        }
+  }
+#endif
+
 static void fnp_wtx_output (uint tally, uint dataAddr)
   {
     sim_debug (DBG_TRACE, & fnpDev, "rcd wtx_output\n");
@@ -1226,6 +1273,9 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
     uint wordOff = 0;
     word36 word = 0;
     uint lastWordOff = (uint) -1;
+#ifdef TUN
+    uint16_t data9 [tally];
+#endif
     unsigned char data [tally];
     uint ptPtr = decoded.p -> PCW_PAGE_TABLE_PTR;
 
@@ -1322,6 +1372,10 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
            }
          byte = getbits36_9 (word, byteOff * 9);
          data [i] = byte & 0377;
+#ifdef TUN
+         data9 [i] = (uint16_t) byte;
+#endif
+
 //sim_printf ("   %03o %c\n", data [i], isgraph (data [i]) ? data [i] : '.');
        }
 //#if 0
@@ -1357,6 +1411,10 @@ sim_printf ("']\n");
 #endif
 //sim_printf ("clean:%d.%d <%s>\r\n", decoded.devUnitIdx, decoded.slot_no, clean);
     //if (strlen ((char *) clean) && linep->client)
+#ifdef TUN
+    if (linep->is_tun && tally > 0)
+      tun_write (linep, data9, tally);
+#endif
     if (tally > 0 && linep->client)
       fnpuv_start_write (linep->client, (char *) clean, tally);
   }

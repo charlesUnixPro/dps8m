@@ -860,7 +860,7 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
           linep->is_tun = true;
           linep->listen = true;
           linep->accept_new_terminal = true;
-
+          linep->in_frame = false;
 
           return;
         }
@@ -1282,4 +1282,21 @@ void fnpTUNProcessEvent (void)
           }
       }
   }
+
+void fnpuv_tun_write (struct t_line * linep)
+  {
+// frame is in frame [2..frameLen]
+// XXX blocking I/O
+    size_t count = (size_t) linep->frameLen;
+    ssize_t rc = write (linep->tun_fd, linep->frame + 2, count);
+    if (rc < 0)
+      {
+        sim_printf ("[FNP emulation: fnpuv_tun_write write(2) returned %ld\n", rc);
+      }
+    else if (rc != count)
+      {
+        sim_printf ("[FNP emulation: fnpuv_tun_write write(2) returned %ld, expected %ld\n", rc, count);
+      }
+  }
+
 #endif

@@ -144,6 +144,9 @@ typedef struct
         // TUN hook
         bool is_tun;
         int tun_fd;
+        bool in_frame;
+        uint8_t frame [2+1500];
+        uint frameLen;
 #endif
 
       } line [MAX_LINES];
