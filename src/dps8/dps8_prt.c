@@ -336,7 +336,7 @@ static void openPrtFile (int prt_unit_num, word36 * buffer, uint tally)
         return;
       }
 
-    char qno [5], name [LONGEST + 1];
+    char qno [6], name [LONGEST + 1];
     int rc = parseID (buffer, tally, qno, name);
     char template [129 + LONGEST];
     if (rc == 0)
