@@ -1586,7 +1586,8 @@ static void console_logon (unsigned char * buf, ssize_t nread)
 
         if (isprint (kar))   // printable?
           {
-            console_putchar ((char) kar);
+            //console_putchar ((char) kar);
+            console_putchar ('*');
             pw_buffer[pw_nPos++] = (char) kar;
             pw_buffer[pw_nPos] = 0;
           }
