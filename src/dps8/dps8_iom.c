@@ -16,7 +16,7 @@
 //
 
 /**
- * \file dps8_mt.c
+ * \file dps8_iom.c
  * \project dps8
  * \date 9/17/12
  * \copyright Copyright (c) 2012 Harry Reed. All rights reserved.
@@ -226,10 +226,17 @@
 
 #define ASSUME_CPU_0 0
 
+// Nomenclature
+//
+//  IDX index   refers to emulator unit
+//  NUM         refers to the number that the unit is configured as ("IOMA,
+//              IOMB,..."). Encoded in the low to bits of configSwMultiplexBaseAddress
+
 // Default
 #define N_IOM_UNITS 1
 
-#define IOM_UNIT_NUM(uptr) ((uptr) - iomUnit)
+#define IOM_UNIT_IDX(uptr) ((uptr) - iomUnit)
+
 
 static inline void iom_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
@@ -255,7 +262,7 @@ static inline void iom_core_write2 (word24 addr, word36 even, word36 odd, UNUSED
 
 static t_stat iom_action (UNIT *up);
 
-static UNIT iomUnit [N_IOM_UNITS_MAX] =
+static UNIT iomUnit [/*IDX*/N_IOM_UNITS_MAX] =
   {
     { UDATA (iom_action, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
     { UDATA (iom_action, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
@@ -364,7 +371,7 @@ static UNIT bootChannelUnit [N_IOM_UNITS_MAX] =
 #define IOM_CONNECT_CHAN 2U
 #define IOM_SPECIAL_STATUS_CHAN 6U
 
-iomChanData_t iomChanData [N_IOM_UNITS_MAX] [MAX_CHANNELS];
+iomChanData_t iomChanData [/*IDX*/N_IOM_UNITS_MAX] [MAX_CHANNELS];
 
 
 
@@ -550,7 +557,11 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
 
 // Map memory to port
 // -1 -- no mapping
-static int iomScbankMap [N_IOM_UNITS_MAX] [N_SCBANKS];
+// iomScbankMap is indexed by IDX because the data are
+// based on the configuration switches associated with
+// the physical IOM
+
+static int iomScbankMap [/*IDX*/N_IOM_UNITS_MAX] [N_SCBANKS];
 
 static void setupIOMScbankMap (void)
   {
@@ -623,6 +634,8 @@ static int queryIomScbankMap (uint iomUnitIdx, word24 addr)
 
 static uint mbxLoc (uint iomUnitIdx, uint chan)
   {
+// IDX is correct here as computation is based on physical unit 
+// configuration switches
     word12 base = iomUnitData [iomUnitIdx] . configSwIomBaseAddress;
     word24 base_addr = ((word24) base) << 6; // 01400
     word24 mbx = base_addr + 4 * chan;
@@ -2663,7 +2676,7 @@ static t_stat iomSetUnits (UNUSED UNIT * uptr, UNUSED int value, const char * cp
 static t_stat iomShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val, 
                              UNUSED const void * desc)
   {
-    uint iomUnitIdx = (uint) IOM_UNIT_NUM (uptr);
+    uint iomUnitIdx = (uint) IOM_UNIT_IDX (uptr);
     if (iomUnitIdx >= iom_dev . numunits)
       {
         sim_printf ("error: invalid unit number %u\n", iomUnitIdx);
@@ -2823,7 +2836,7 @@ static config_list_t iom_config_list [] =
 
 static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, const char * cptr, UNUSED void * desc)
   {
-    uint iomUnitIdx = (uint) IOM_UNIT_NUM (uptr);
+    uint iomUnitIdx = (uint) IOM_UNIT_IDX (uptr);
     if (iomUnitIdx >= iom_dev . numunits)
       {
         sim_printf ("error: iomSetConfig: invalid unit number %d\n", iomUnitIdx);
