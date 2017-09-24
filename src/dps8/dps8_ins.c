@@ -516,11 +516,11 @@ static void scu2words (word36 *words)
 
     // words[3]
 
-    putbits36_3 (& words[3], 18, cpu.cu.TSN_PRNO[0]);
+    putbits36_3 (& words[3], 18, cpu.cu.TSN_VALID[0] ? cpu.cu.TSN_PRNO[0] : 0);
     putbits36_1 (& words[3], 21, cpu.cu.TSN_VALID[0]);
-    putbits36_3 (& words[3], 22, cpu.cu.TSN_PRNO[1]);
+    putbits36_3 (& words[3], 22, cpu.cu.TSN_VALID[1] ? cpu.cu.TSN_PRNO[1] : 0);
     putbits36_1 (& words[3], 25, cpu.cu.TSN_VALID[1]);
-    putbits36_3 (& words[3], 26, cpu.cu.TSN_PRNO[2]);
+    putbits36_3 (& words[3], 26, cpu.cu.TSN_VALID[2] ? cpu.cu.TSN_PRNO[2] : 0);
     putbits36_1 (& words[3], 29, cpu.cu.TSN_VALID[2]);
     putbits36_6 (& words[3], 30, cpu.TPR.TBR);
 
