@@ -6814,7 +6814,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                     parity = parity ^ (parity >> 4);
                     parity = ~ (0x6996u >> (parity & 0xf)); 
                 }
-                putbits36_1 (& cpu.Yblock16[j], 15, parity);
+                putbits36_1 (& cpu.Yblock16[j], 15, (word1) (parity & 1));
 
                 putbits36_6 (& cpu.Yblock16[j], 30,
                            cpu.SDWAM[toffset + j].USE);
@@ -8247,7 +8247,7 @@ elapsedtime ();
                     parity = parity ^ (parity >> 4);
                     parity = ~ (0x6996u >> (parity & 0xf)); 
                 }
-                putbits36_1 (& cpu.Yblock16[j], 23, parity);
+                putbits36_1 (& cpu.Yblock16[j], 23, (word1) (parity & 1));
 #endif
 #ifdef L68
                 putbits36_12 (& cpu.Yblock16[j], 15,
