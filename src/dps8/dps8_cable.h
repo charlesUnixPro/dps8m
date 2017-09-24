@@ -14,7 +14,7 @@
 typedef enum devType
   {
      DEVT_NONE = 0, DEVT_TAPE, DEVT_CON, DEVT_DISK, 
-     DEVT_MPC, DEVT_DN355, DEVT_CRDRDR, DEVT_CRDPUN, DEVT_PRT, DEVT_URP
+     DEVT_MPC, DEVT_DN355, DEVT_CRDRDR, DEVT_CRDPUN, DEVT_PRT, DEVT_URP, DEVT_ABSI
   } devType;
 
 typedef enum chanType { chanTypeCPI, chanTypePSI, chanTypeDirect } chanType;
@@ -96,4 +96,5 @@ extern struct cables_t * cables;
 
 t_stat sys_cable (UNUSED int32 arg, const char * buf);
 t_stat sys_cable_ripout (UNUSED int32 arg, UNUSED const char * buf);
+t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf);
 void sysCableInit (void);
