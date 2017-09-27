@@ -588,6 +588,10 @@ static int getval (char * * save, char * text)
         sim_printf ("error: sys_cable: can't parse %s\n", text);
         return -1;
       }
+    if (strlen (value) == 1 && value[0] >= 'a' && value[0] <= 'z')
+      return (int) (value[0] - 'a');
+    if (strlen (value) == 1 && value[0] >= 'A' && value[0] <= 'Z')
+      return (int) (value[0] - 'A');
     long l = strtol (value, & endptr, 0);
     if (* endptr || l < 0 || l > INT_MAX)
       {

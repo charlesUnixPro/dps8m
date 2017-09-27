@@ -213,6 +213,8 @@ static CTAB dps8_cmds[] =
     {"MOUNT", mountTape, 0, "Mount tape image and signal Mulitcs", NULL, NULL },
     {"CONSOLEPORT", consolePort, 0, "consolePort: set the Operator Console port number", NULL, NULL},
     {"CONSOLEPW", consolePW, 0, "consolePW: set the Operator Console port password", NULL, NULL},
+    {"CONSOLEPORT1", consolePort, 1, "consolePort: set the Operator Console port number", NULL, NULL},
+    {"CONSOLEPW1", consolePW, 1, "consolePW: set the Operator Console port password", NULL, NULL},
     { NULL, NULL, 0, NULL, NULL, NULL}
 };
 
@@ -2595,218 +2597,218 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
 sim_printf ("XXX resolve 'set tape0 boot_drive\n");
     doIniLine ("set tape0 boot_drive");
 
-    // ; Attach tape MPC to IOM 0, chan 012, dev_code 0
-    doIniLine ("cable tape,0,0,012,0");
+    // ; Attach tape MPC to IOM 0 (a), chan 012, dev_code 0
+    doIniLine ("cable tape,0,a,012,0");
     doIniLine ("set tape0 device_name=mpca");
-    // ; Attach TAPE unit 0 to IOM 0, chan 012, dev_code 1
-    doIniLine ("cable tape,1,0,012,1");
+    // ; Attach TAPE unit 0 to IOM 0 (a), chan 012, dev_code 1
+    doIniLine ("cable tape,1,a,012,1");
     doIniLine ("set tape1 device_name=tapa_01");
-    doIniLine ("cable tape,2,0,012,2");
+    doIniLine ("cable tape,2,a,012,2");
     doIniLine ("set tape2 device_name=tapa_02");
-    doIniLine ("cable tape,3,0,012,3");
+    doIniLine ("cable tape,3,a,012,3");
     doIniLine ("set tape3 device_name=tapa_03");
-    doIniLine ("cable tape,4,0,012,4");
+    doIniLine ("cable tape,4,a,012,4");
     doIniLine ("set tape4 device_name=tapa_04");
-    doIniLine ("cable tape,5,0,012,5");
+    doIniLine ("cable tape,5,a,012,5");
     doIniLine ("set tape5 device_name=tapa_05");
-    doIniLine ("cable tape,6,0,012,6");
+    doIniLine ("cable tape,6,a,012,6");
     doIniLine ("set tape6 device_name=tapa_06");
-    doIniLine ("cable tape,7,0,012,7");
+    doIniLine ("cable tape,7,a,012,7");
     doIniLine ("set tape7 device_name=tapa_07");
-    doIniLine ("cable tape,8,0,012,8");
+    doIniLine ("cable tape,8,a,012,8");
     doIniLine ("set tape8 device_name=tapa_08");
-    doIniLine ("cable tape,9,0,012,9");
+    doIniLine ("cable tape,9,a,012,9");
     doIniLine ("set tape9 device_name=tapa_09");
-    doIniLine ("cable tape,10,0,012,10");
+    doIniLine ("cable tape,10,a,012,10");
     doIniLine ("set tape10 device_name=tapa_10");
-    doIniLine ("cable tape,11,0,012,11");
+    doIniLine ("cable tape,11,a,012,11");
     doIniLine ("set tape11 device_name=tapa_11");
-    doIniLine ("cable tape,12,0,012,12");
+    doIniLine ("cable tape,12,a,012,12");
     doIniLine ("set tape12 device_name=tapa_12");
-    doIniLine ("cable tape,13,0,012,13");
+    doIniLine ("cable tape,13,a,012,13");
     doIniLine ("set tape13 device_name=tapa_13");
-    doIniLine ("cable tape,14,0,012,14");
+    doIniLine ("cable tape,14,a,012,14");
     doIniLine ("set tape14 device_name=tapa_14");
-    doIniLine ("cable tape,15,0,012,15");
+    doIniLine ("cable tape,15,a,012,15");
     doIniLine ("set tape15 device_name=tapa_15");
-    doIniLine ("cable tape,16,0,012,16");
+    doIniLine ("cable tape,16,a,012,16");
     doIniLine ("set tape16 device_name=tapa_16");
 
 // DISK0 - DISK15
 
-    // ; Attach DISK unit 0 to IOM 0, chan 013, dev_code 0");
-    doIniLine ("cable disk,0,0,013,0");
+    // ; Attach DISK unit 0 to IOM 0 (a), chan 013, dev_code 0");
+    doIniLine ("cable disk,0,a,013,0");
     // ; Attach DISK unit 1 to IOM 0, chan 013, dev_code 1");
-    doIniLine ("cable disk,1,0,013,1");
+    doIniLine ("cable disk,1,a,013,1");
     // ; Attach DISK unit 2 to IOM 0, chan 013, dev_code 2");
-    doIniLine ("cable disk,2,0,013,2");
+    doIniLine ("cable disk,2,a,013,2");
     // ; Attach DISK unit 3 to IOM 0, chan 013, dev_code 3");
-    doIniLine ("cable disk,3,0,013,3");
+    doIniLine ("cable disk,3,a,013,3");
     // ; Attach DISK unit 4 to IOM 0, chan 013, dev_code 4");
-    doIniLine ("cable disk,4,0,013,4");
+    doIniLine ("cable disk,4,a,013,4");
     // ; Attach DISK unit 5 to IOM 0, chan 013, dev_code 5");
-    doIniLine ("cable disk,5,0,013,5");
+    doIniLine ("cable disk,5,a,013,5");
     // ; Attach DISK unit 6 to IOM 0, chan 013, dev_code 6");
-    doIniLine ("cable disk,6,0,013,6");
+    doIniLine ("cable disk,6,a,013,6");
     // ; Attach DISK unit 7 to IOM 0, chan 013, dev_code 7");
-    doIniLine ("cable disk,7,0,013,7");
+    doIniLine ("cable disk,7,a,013,7");
     // ; Attach DISK unit 8 to IOM 0, chan 013, dev_code 8");
-    doIniLine ("cable disk,8,0,013,8");
+    doIniLine ("cable disk,8,a,013,8");
     // ; Attach DISK unit 9 to IOM 0, chan 013, dev_code 9");
-    doIniLine ("cable disk,9,0,013,9");
+    doIniLine ("cable disk,9,a,013,9");
     // ; Attach DISK unit 10 to IOM 0, chan 013, dev_code 10");
-    doIniLine ("cable disk,10,0,013,10");
+    doIniLine ("cable disk,10,a,013,10");
     // ; Attach DISK unit 11 to IOM 0, chan 013, dev_code 11");
-    doIniLine ("cable disk,11,0,013,11");
+    doIniLine ("cable disk,11,a,013,11");
     // ; Attach DISK unit 12 to IOM 0, chan 013, dev_code 12");
-    doIniLine ("cable disk,12,0,013,12");
+    doIniLine ("cable disk,12,a,013,12");
     // ; Attach DISK unit 13 to IOM 0, chan 013, dev_code 13");
-    doIniLine ("cable disk,13,0,013,13");
+    doIniLine ("cable disk,13,a,013,13");
     // ; Attach DISK unit 14 to IOM 0, chan 013, dev_code 14");
-    doIniLine ("cable disk,14,0,013,14");
+    doIniLine ("cable disk,14,a,013,14");
     // ; Attach DISK unit 15 to IOM 0, chan 013, dev_code 15");
-    doIniLine ("cable disk,15,0,013,15");
+    doIniLine ("cable disk,15,a,013,15");
 
 // OPCON0
 
-    // ; Attach OPCON unit 0 to IOM A, chan 036, dev_code 0
-    doIniLine ("cable opcon,0,0,036,0");
+    // ; Attach OPCON unit 0 to IOM 0 (a), chan 036, dev_code 0
+    doIniLine ("cable opcon,0,a,036,0");
 
 
 // FNP0 - FNP7
 
-    // ; Attach FNP unit 3 (d) to IOM A, chan 020, dev_code 0
-    doIniLine ("cable fnp,3,0,020,0");
+    // ; Attach FNP unit 3 (d) to IOM 0 (a), chan 020, dev_code 0
+    doIniLine ("cable fnp,3,a,020,0");
 
     // ; Attach FNP unit 0 (a) to IOM A, chan 021, dev_code 0
-    doIniLine ("cable fnp,0,0,021,0");
+    doIniLine ("cable fnp,0,a,021,0");
 
     // ; Attach FNP unit 1 (b) to IOM A, chan 022, dev_code 0
-    doIniLine ("cable fnp,1,0,022,0");
+    doIniLine ("cable fnp,1,a,022,0");
 
     // ; Attach FNP unit 2 (c) to IOM A, chan 023, dev_code 0
-    doIniLine ("cable fnp,2,0,023,0");
+    doIniLine ("cable fnp,2,a,023,0");
 
     // ; Attach FNP unit 4 (e) to IOM A, chan 024, dev_code 0
-    doIniLine ("cable fnp,4,0,024,0");
+    doIniLine ("cable fnp,4,a,024,0");
 
     // ; Attach FNP unit 5 (f) to IOM A, chan 025, dev_code 0
-    doIniLine ("cable fnp,5,0,025,0");
+    doIniLine ("cable fnp,5,a,025,0");
 
     // ; Attach FNP unit 6 (g) to IOM A, chan 026, dev_code 0
-    doIniLine ("cable fnp,6,0,026,0");
+    doIniLine ("cable fnp,6,a,026,0");
 
     // ; Attach FNP unit 7 (h) to IOM A, chan 027, dev_code 0
-    doIniLine ("cable fnp,7,0,027,0");
+    doIniLine ("cable fnp,7,a,027,0");
 
 
 // URP0 RDR0
 
     // ; Attach MPC unit 0 to IOM 0, char 015, dev_code 0
-    doIniLine ("cable urp,0,0,015, 0");
+    doIniLine ("cable urp,0,a,015, 0");
     doIniLine ("set urp0 device_name=urpa");
 
     // ; Attach CRDRDR unit 0 to IOM 0, chan 015, dev_code 1
-    doIniLine ("cable crdrdr,0,0,015,1");
+    doIniLine ("cable crdrdr,a,0,015,1");
     doIniLine ("set crdrdr0 device_name=rdra");
 
 // URP1 PUN0
 
     // ; Attach MPC unit 1 to IOM 0, char 016, dev_code 0
-    doIniLine ("cable urp,1,0,016, 0");
+    doIniLine ("cable urp,1,a,016, 0");
     doIniLine ("set urp1 device_name=urpb");
 
     // ; Attach CRDPUN unit 0 to IOM 0, chan 016, dev_code 1
-    doIniLine ("cable crdpun,0,0,016,1");
+    doIniLine ("cable crdpun,0,a,016,1");
     doIniLine ("set crdpun0 device_name=puna");
 
 // URP3 PRT0 - PRT16
 
     // ; Attach MPC unit 2 to IOM 0, char 017, dev_code 0
-    doIniLine ("cable urp,2,0,017,0");
+    doIniLine ("cable urp,2,a,017,0");
     doIniLine ("set urp2 device_name=urpc");
 
     // ; Attach PRT unit 0 to IOM 0, chan 017, dev_code 1
-    doIniLine ("cable prt,0,0,017,1");
+    doIniLine ("cable prt,0,a,017,1");
     doIniLine ("set prt0 device_name=prta");
 
     // ; Attach PRT unit 1 to IOM 0, chan 017, dev_code 2
-    doIniLine ("cable prt,1,0,017,2");
+    doIniLine ("cable prt,1,a,017,2");
     doIniLine ("set prt1 device_name=prtb");
 
     // ; Attach PRT unit 2 to IOM 0, chan 017, dev_code 3
-    doIniLine ("cable prt,2,0,017,3");
+    doIniLine ("cable prt,2,a,017,3");
     doIniLine ("set prt2 device_name=prtc");
 
     // ; Attach PRT unit 3 to IOM 0, chan 017, dev_code 4
-    doIniLine ("cable prt,3,0,017,4");
+    doIniLine ("cable prt,3,a,017,4");
     doIniLine ("set prt3 device_name=prtd");
 
     // ; Attach PRT unit 4 to IOM 0, chan 017, dev_code 5
-    doIniLine ("cable prt,4,0,017,5");
+    doIniLine ("cable prt,4,a,017,5");
     doIniLine ("set prt4 device_name=prte");
 
     // ; Attach PRT unit 5 to IOM 0, chan 017, dev_code 6
-    doIniLine ("cable prt,5,0,017,6");
+    doIniLine ("cable prt,5,a,017,6");
     doIniLine ("set prt5 device_name=prtf");
 
     // ; Attach PRT unit 6 to IOM 0, chan 017, dev_code 7
-    doIniLine ("cable prt,6,0,017,7");
+    doIniLine ("cable prt,6,a,017,7");
     doIniLine ("set prt6 device_name=prtg");
 
     // ; Attach PRT unit 7 to IOM 0, chan 017, dev_code 8
-    doIniLine ("cable prt,7,0,017,8");
+    doIniLine ("cable prt,7,a,017,8");
     doIniLine ("set prt7 device_name=prth");
 
     // ; Attach PRT unit 8 to IOM 0, chan 017, dev_code 9
-    doIniLine ("cable prt,8,0,017,9");
+    doIniLine ("cable prt,8,a,017,9");
     doIniLine ("set prt8 device_name=prti");
 
     // ; Attach PRT unit 9 to IOM 0, chan 017, dev_code 10
-    doIniLine ("cable prt,9,0,017,10");
+    doIniLine ("cable prt,9,a,017,10");
     doIniLine ("set prt9 device_name=prtj");
 
     // ; Attach PRT unit 10 to IOM 0, chan 017, dev_code 11
-    doIniLine ("cable prt,10,0,017,11");
+    doIniLine ("cable prt,10,a,017,11");
     doIniLine ("set prt10 device_name=prtk");
 
     // ; Attach PRT unit 11 to IOM 0, chan 017, dev_code 12
-    doIniLine ("cable prt,11,0,017,12");
+    doIniLine ("cable prt,11,a,017,12");
     doIniLine ("set prt11 device_name=prtl");
 
     // ; Attach PRT unit 12 to IOM 0, chan 017, dev_code 13
-    doIniLine ("cable prt,12,0,017,13");
+    doIniLine ("cable prt,12,a,017,13");
     doIniLine ("set prt12 device_name=prtm");
 
     // ; Attach PRT unit 13 to IOM 0, chan 017, dev_code 14
-    doIniLine ("cable prt,13,0,017,14");
+    doIniLine ("cable prt,13,a,017,14");
     doIniLine ("set prt13 device_name=prtn");
 
     // ; Attach PRT unit 14 to IOM 0, chan 017, dev_code 15
-    doIniLine ("cable prt,14,0,017,15");
+    doIniLine ("cable prt,14,a,017,15");
     doIniLine ("set prt14 device_name=prto");
 
     // ; Attach PRT unit 15 to IOM 0, chan 017, dev_code 16
-    doIniLine ("cable prt,15,0,017,16");
+    doIniLine ("cable prt,15,a,017,16");
     doIniLine ("set prt15 device_name=prtp");
 
     // ; Attach PRT unit 16 to IOM 0, chan 017, dev_code 17
-    doIniLine ("cable prt,16,0,017,17");
+    doIniLine ("cable prt,16,a,017,17");
     doIniLine ("set prt16 device_name=prtq");
 
 // IOM0
 
-    // ; Attach IOM unit 0 port A (0) to SCU unit 0, port 0
-    doIniLine ("cable iom,0,0,0,0");
+    // ; Attach IOM unit 0 (a) port A (0) to SCU unit 0 (A), port 0
+    doIniLine ("cable iom,a,0,A,0");
 
-    // ; Attach IOM unit 0 port B (1) to SCU unit 1, port 0
-    doIniLine ("cable iom,0,1,1,0");
+    // ; Attach IOM unit 0 (a) port B (1) to SCU unit 1 (B), port 0
+    doIniLine ("cable iom,a,1,B,0");
 
-    // ; Attach IOM unit 0 port C (2) to SCU unit 2, port 0
-    doIniLine ("cable iom,0,2,2,0");
+    // ; Attach IOM unit 0 (a) port C (2) to SCU unit 2 (B), port 0
+    doIniLine ("cable iom,a,2,C,0");
 
-    // ; Attach IOM unit 0 port D (3) to SCU unit 3, port 0
-    doIniLine ("cable iom,0,3,3,0");
+    // ; Attach IOM unit 0 (a) port D (3) to SCU unit 3 (B), port 0
+    doIniLine ("cable iom,a,3,D,0");
 
 
 // SCU0
