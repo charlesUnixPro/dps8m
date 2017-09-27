@@ -86,7 +86,7 @@ void hdbgTrace (void)
     if (! hevents)
       return;
 #ifdef ISOLTS
-if (currentRunningCPUnum == 0)
+if (currentRunningCpuIdx == 0)
   return;
 #endif
     hevents [hevtPtr] . type = hevtTrace;
@@ -104,7 +104,7 @@ void hdbgMRead (word24 addr, word36 data)
     if (! hevents)
       return;
 #ifdef ISOLTS
-if (currentRunningCPUnum == 0)
+if (currentRunningCpuIdx == 0)
   return;
 #endif
     hevents [hevtPtr] . type = hevtMRead;
@@ -119,7 +119,7 @@ void hdbgMWrite (word24 addr, word36 data)
     if (! hevents)
       return;
 #ifdef ISOLTS
-if (currentRunningCPUnum == 0)
+if (currentRunningCpuIdx == 0)
   return;
 #endif
     hevents [hevtPtr] . type = hevtMWrite;
@@ -136,7 +136,7 @@ void hdbgFault (_fault faultNumber, _fault_subtype subFault,
     if (! hevents)
       return;
 #ifdef ISOLTS
-if (currentRunningCPUnum == 0)
+if (currentRunningCpuIdx == 0)
   return;
 #endif
     hevents [hevtPtr] . type = hevtFault;

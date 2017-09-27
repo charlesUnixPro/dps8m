@@ -187,6 +187,22 @@ UNIT disk_unit [N_DISK_UNITS_MAX] =
     {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
     {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
     {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
     {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL}
   };
 

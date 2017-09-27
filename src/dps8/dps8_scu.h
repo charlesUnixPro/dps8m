@@ -77,21 +77,27 @@ typedef struct
     uint y2k;
     int64 userCorrection;
     uint64 lastTime;
+#ifdef SCUMEM
+enum { SCU_MEM_SIZE = 010000000 };
+    word36 M [SCU_MEM_SIZE];
+#endif
 } scu_t;
 
 extern scu_t scu [N_SCU_UNITS_MAX];
 
 extern DEVICE scu_dev;
-int scu_set_interrupt(uint scu_unit_num, uint inum);
+
+
+int scu_set_interrupt(uint scuUnitIdx, uint inum);
 void scu_init (void);
-t_stat scu_sscr (uint scu_unit_num, UNUSED uint cpu_unit_num, uint cpu_port_num, word18 addr, 
+t_stat scu_sscr (uint scuUnitIdx, UNUSED uint cpuUnitIdx, uint cpu_port_num, word18 addr, 
                  word36 rega, word36 regq);
-t_stat scu_smic (uint scu_unit_num, uint UNUSED cpu_unit_num, uint cpu_port_num, word36 rega);
-t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word18 addr, word36 * rega, word36 * regq);
-int scu_cioc (uint cpu_num, uint scu_unit_num, uint scu_port_num, uint expander_command, uint sub_mask);
-t_stat scu_rmcm (uint scu_unit_num, uint cpu_unit_num, word36 * rega, word36 * regq);
-t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq);
-void scu_clear_interrupt (uint scu_unit_num, uint inum);
+t_stat scu_smic (uint scuUnitIdx, uint UNUSED cpuUnitIdx, uint cpu_port_num, word36 rega);
+t_stat scu_rscr (uint scuUnitIdx, uint cpuUnitIdx, word18 addr, word36 * rega, word36 * regq);
+int scu_cioc (uint cpuUnitIdx, uint scuUnitIdx, uint scu_port_num, uint expander_command, uint sub_mask);
+t_stat scu_rmcm (uint scuUnitIdx, uint cpuUnitIdx, word36 * rega, word36 * regq);
+t_stat scu_smcm (uint scuUnitIdx, uint cpuUnitIdx, word36 rega, word36 regq);
+void scu_clear_interrupt (uint scuUnitIdx, uint inum);
 uint scuGetHighestIntr (uint scuUnitNum);
 t_stat scu_reset (DEVICE *dptr);
 t_stat scu_reset_unit (UNIT * uptr, int32 value, const char * cptr, 

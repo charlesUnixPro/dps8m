@@ -47,7 +47,9 @@ typedef struct {
 } stats_t;
 
 
+//#ifndef SCUMEM
 extern word36 *M;
+//#endif
 extern stats_t sys_stats;
 extern sysinfo_t sys_opts;
 extern uint64 sim_deb_start;

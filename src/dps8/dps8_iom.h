@@ -217,3 +217,7 @@ int send_marker_interrupt (uint iomUnitIdx, int chan);
 #ifdef PANEL
 void doBoot (void);
 #endif
+#ifdef SCUMEM
+int queryIomScbankMap (uint iomUnitIdx, word24 addr, word24 * base);
+word36 * iomLookupAddress (uint iomUnitIdx, word24 addr);
+#endif

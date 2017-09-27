@@ -326,7 +326,7 @@ static t_stat dpsCmd_InitUnpagedSegmentTable ()
 static t_stat dpsCmd_InitSDWAM ()
   {
 #ifdef ROUND_ROBIN
-    uint save = currentRunningCPUnum;
+    uint save = currentRunningCpuIdx;
     for (uint i = 0; i < N_CPU_UNITS_MAX; i ++)
       {
         setCPUnum (i);
@@ -763,9 +763,8 @@ void setup_scbank_map (void)
           continue;
         // Simplifing assumption: simh SCU unit 0 is the SCU with the
         // low 4MW of memory, etc...
-        int scu_unit_num = cables ->
-          cablesFromScuToCpu[currentRunningCPUnum].ports[port_num].scu_unit_num;
-
+        int scu_unit_idx = cables ->
+          cablesFromScuToCpu[currentRunningCpuIdx].ports[port_num].scu_unit_idx;
         // Calculate the amount of memory in the SCU in words
         uint store_size = cpu.switches.store_size [port_num];
         // Map store size configuration switch (0-8) to memory size.
@@ -821,7 +820,7 @@ void setup_scbank_map (void)
                 else
                   {
                     cpu.scbank_map [scpg] = port_num;
-                    cpu.scbank_pg_os [scpg] = (int) ((uint) scu_unit_num * 4u * 1024u * 1024u + scpg * SCBANK);
+                    cpu.scbank_pg_os [scpg] = (int) ((uint) scu_unit_idx * 4u * 1024u * 1024u + scpg * SCBANK);
                   }
               }
             else
@@ -833,7 +832,7 @@ void setup_scbank_map (void)
     for (uint pg = 0; pg < N_SCBANKS; pg ++)
       sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: %d:%d\n", pg, cpu.scbank_map [pg]);
     //for (uint pg = 0; pg < N_SCBANKS; pg ++)
-      //sim_printf ("scbank_pg_os: CPU %c %d:%08o\n", currentRunningCPUnum + 'A', pg, cpu.scbank_pg_os [pg]);
+      //sim_printf ("scbank_pg_os: CPU %c %d:%08o\n", currentRunningCpuIdx + 'A', pg, cpu.scbank_pg_os [pg]);
   }
 
 int query_scbank_map (word24 addr)
@@ -921,7 +920,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
       {
         //sim_debug (DBG_TRACE, & cpu_dev, "rTR zero %09o\n", cpu.rTR);
         if (cpu.switches.tro_enable)
-        setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
+        setG7fault (currentRunningCpuIdx, FAULT_TRO, (_fault_subtype) {.bits=0});
       }
     cpu.rTR -= 5120;
     cpu.rTR &= MASK27;
@@ -1333,7 +1332,7 @@ cpu_state_t cpus [N_CPU_UNITS_MAX];
 cpu_state_t * restrict cpup; 
 
 #ifdef ROUND_ROBIN
-uint currentRunningCPUnum;
+uint currentRunningCpuIdx;
 #endif
 
 // Scan the SCUs; it one has an interrupt present, return the fault pair
@@ -1375,7 +1374,7 @@ t_stat simh_hooks (void)
       return STOP_STOP;
 
 #ifdef ISOLTS
-    if (currentRunningCPUnum == 0)
+    if (currentRunningCpuIdx == 0)
 #endif
     // check clock queue 
     if (sim_interval <= 0)
@@ -1442,17 +1441,17 @@ static void setCpuCycle (cycles_t cycle)
 
 uint setCPUnum (UNUSED uint cpuNum)
   {
-    uint prev = currentRunningCPUnum;
+    uint prev = currentRunningCpuIdx;
 #ifdef ROUND_ROBIN
-    currentRunningCPUnum = cpuNum;
+    currentRunningCpuIdx = cpuNum;
 #endif
-    cpup = & cpus [currentRunningCPUnum];
+    cpup = & cpus [currentRunningCpuIdx];
     return prev;
   }
 
 uint getCPUnum (void)
   {
-    return currentRunningCPUnum;
+    return currentRunningCpuIdx;
   }
 
 #ifdef PANEL
@@ -1489,7 +1488,7 @@ static void panelProcessEvent (void)
           }
          else // EXECUTE FAULT
           {
-            setG7fault (currentRunningCPUnum, FAULT_EXF, fst_zero);
+            setG7fault (currentRunningCpuIdx, FAULT_EXF, fst_zero);
           }
       }
   }
@@ -1569,7 +1568,7 @@ t_stat sim_instr (void)
     setCPUnum (cpu_dev.numunits - 1);
 
 setCPU:;
-    uint current = currentRunningCPUnum;
+    uint current = currentRunningCpuIdx;
     uint c;
     for (c = 0; c < cpu_dev.numunits; c ++)
       {
@@ -1670,8 +1669,9 @@ setCPU:;
           }
 #endif
 
-        if (check_attn_key ())
-          console_attn (NULL);
+        int con_unit_idx = check_attn_key ();
+        if (con_unit_idx != -1)
+          console_attn_idx (con_unit_idx);
 
 #ifndef NO_EV_POLL
 #ifdef ISOLTS
@@ -1688,7 +1688,7 @@ setCPU:;
                   {
                     //sim_debug (DBG_TRACE, & cpu_dev, "rTR zero %09o\n", cpu.shadowTR);
                     if (cpu.switches.tro_enable)
-                      setG7fault (currentRunningCPUnum, FAULT_TRO, fst_zero);
+                      setG7fault (currentRunningCpuIdx, FAULT_TRO, fst_zero);
                   }
               }
           }
@@ -2104,7 +2104,7 @@ elapsedtime ();
                       {
                         //sim_debug (DBG_TRACE, & cpu_dev, "rTR zero %09o\n", cpu.rTR);
                         if (cpu.switches.tro_enable)
-                          setG7fault (currentRunningCPUnum, FAULT_TRO, fst_zero);
+                          setG7fault (currentRunningCpuIdx, FAULT_TRO, fst_zero);
                       }
                     cpu.rTR = (cpu.rTR - 5120) & MASK27;
 #endif
@@ -2997,10 +2997,10 @@ void set_addr_mode(addr_modes_t mode)
 
 //=============================================================================
 
-int query_scu_unit_num (int cpu_unit_num, int cpu_port_num)
+int queryScuUnitIdx (int cpu_unit_num, int cpu_port_num)
   {
     if (cables -> cablesFromScuToCpu [cpu_unit_num].ports [cpu_port_num].inuse)
-      return cables -> cablesFromScuToCpu [cpu_unit_num].ports [cpu_port_num].scu_unit_num;
+      return cables -> cablesFromScuToCpu [cpu_unit_num].ports [cpu_port_num].scu_unit_idx;
     return -1;
   }
 

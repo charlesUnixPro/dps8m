@@ -26,7 +26,7 @@ extern DEVICE scu_dev;
 #define if_sim_debug(dbits, dptr) \
   if ( \
       sim_deb && \
-      (isISOLTS == 0 || currentRunningCPUnum != 0) && \
+      (isISOLTS == 0 || currentRunningCpuIdx != 0) && \
       (((dptr)->dctrl & (dbits)) || (dbits) == 0) && \
       ((dptr != & cpu_dev) || sim_deb_segno == NO_SUCH_SEGNO || sim_deb_segno == cpu . PPR . PSR) && \
       ((dptr != & cpu_dev) || sim_deb_ringno == NO_SUCH_RINGNO || sim_deb_ringno == cpu . PPR. PRR) && \

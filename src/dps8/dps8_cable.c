@@ -112,18 +112,18 @@ static t_stat cable_to_iom (int uncable, uint iomUnitIdx, int chanNum, int dev_c
 
 
 // A scu is trying to attach a cable to a cpu.
-//  cpu port cpu_unit_num, cpu_port_num
-//  from  scu_unit_num, scu_port_num, scu_subport_num
+//  cpu port cpuUnitIdx, cpu_port_num
+//  from  scu_unit_idx, scu_port_num, scu_subport_num
 //
 
-static t_stat cable_to_cpu (int uncable, int cpu_unit_num, int cpu_port_num, 
-                            int scu_unit_num, int scu_port_num,
+static t_stat cable_to_cpu (int uncable, int cpuUnitIdx, int cpu_port_num, 
+                            int scu_unit_idx, int scu_port_num,
                             int scu_subport_num)
   {
-    if (cpu_unit_num < 0 || cpu_unit_num >= (int) cpu_dev . numunits)
+    if (cpuUnitIdx < 0 || cpuUnitIdx >= (int) cpu_dev . numunits)
       {
-        sim_printf ("cable_to_cpu: cpu_unit_num out of range <%d>\n", 
-                    cpu_unit_num);
+        sim_printf ("cable_to_cpu: cpuUnitIdx out of range <%d>\n", 
+                    cpuUnitIdx);
         return SCPE_ARG;
       }
 
@@ -143,17 +143,17 @@ static t_stat cable_to_cpu (int uncable, int cpu_unit_num, int cpu_port_num,
 
     if (uncable)
       {
-        if (! cables->cablesFromScuToCpu[cpu_unit_num].ports[cpu_port_num].inuse)
+        if (! cables->cablesFromScuToCpu[cpuUnitIdx].ports[cpu_port_num].inuse)
           {
             sim_printf ("cable_to_cpu: CPU socket not in use\n");
             return SCPE_ARG;
           }
 
         struct cpuPort * p = 
-          & cables -> cablesFromScuToCpu [cpu_unit_num] . ports [cpu_port_num];
+          & cables -> cablesFromScuToCpu [cpuUnitIdx] . ports [cpu_port_num];
 
         p -> inuse = false;
-        p -> scu_unit_num = 0;
+        p -> scu_unit_idx = 0;
         p -> scu_port_num = 0;
             p -> scu_subport_num = 0;
         p -> devp = NULL;
@@ -161,17 +161,17 @@ static t_stat cable_to_cpu (int uncable, int cpu_unit_num, int cpu_port_num,
       }
     else
       {
-        if (cables -> cablesFromScuToCpu [cpu_unit_num] . ports [cpu_port_num] . inuse)
+        if (cables -> cablesFromScuToCpu [cpuUnitIdx] . ports [cpu_port_num] . inuse)
           {
-            sim_printf ("cable_to_cpu: CPU socket in use; unit number %d, port number %d\n", cpu_unit_num, cpu_port_num);
+            sim_printf ("cable_to_cpu: CPU socket in use; unit number %d, port number %d\n", cpuUnitIdx, cpu_port_num);
             return SCPE_ARG;
           }
 
         struct cpuPort * p = 
-          & cables -> cablesFromScuToCpu [cpu_unit_num] . ports [cpu_port_num];
+          & cables -> cablesFromScuToCpu [cpuUnitIdx] . ports [cpu_port_num];
 
         p -> inuse = true;
-        p -> scu_unit_num = scu_unit_num;
+        p -> scu_unit_idx = scu_unit_idx;
         p -> scu_port_num = scu_port_num;
             p -> scu_subport_num = scu_subport_num;
         p -> devp = & scu_dev;
@@ -321,17 +321,17 @@ static t_stat cable_opcon (int uncable, int con_unit_num, int iomUnitIdx, int ch
     return SCPE_OK;
   }
 
-static t_stat cable_scu (int uncable, int scu_unit_num, int scu_port_num, int cpu_unit_num, 
+static t_stat cable_scu (int uncable, int scu_unit_idx, int scu_port_num, int cpuUnitIdx, 
                          int cpu_port_num)
   {
     sim_debug (DBG_DEBUG, & scu_dev, 
-               "cable_scu: scu_unit_num: %d, scu_port_num: %d, "
-               "cpu_unit_num: %d, cpu_port_num: %d\n", 
-               scu_unit_num, scu_port_num, cpu_unit_num, cpu_port_num);
-    if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
+               "cable_scu: scu_unit_idx: %d, scu_port_num: %d, "
+               "cpuUnitIdx: %d, cpu_port_num: %d\n", 
+               scu_unit_idx, scu_port_num, cpuUnitIdx, cpu_port_num);
+    if (scu_unit_idx < 0 || scu_unit_idx >= (int) scu_dev . numunits)
       {
-        sim_printf ("cable_scu: scu_unit_num out of range <%d>\n", 
-                    scu_unit_num);
+        sim_printf ("cable_scu: scu_unit_idx out of range <%d>\n", 
+                    scu_unit_idx);
         return SCPE_ARG;
       }
 
@@ -367,79 +367,79 @@ static t_stat cable_scu (int uncable, int scu_unit_num, int scu_port_num, int cp
 
     if (uncable)
       {
-        if (cables->cablesFromCpus[scu_unit_num][scu_port_num][scu_subport_num].cpu_unit_num != cpu_unit_num)
+        if (cables->cablesFromCpus[scu_unit_idx][scu_port_num][scu_subport_num].cpuUnitIdx != cpuUnitIdx)
           {
-            sim_printf ("cable_scu: wrong CPU; unit number %d. (%o); not uncabling.\n", scu_unit_num, scu_unit_num);
+            sim_printf ("cable_scu: wrong CPU; unit number %d. (%o); not uncabling.\n", scu_unit_idx, scu_unit_idx);
             return SCPE_ARG;
           }
 
         // Unplug the other end of the cable 
-        t_stat rc = cable_to_cpu (uncable, cpu_unit_num, cpu_port_num, scu_unit_num, 
+        t_stat rc = cable_to_cpu (uncable, cpuUnitIdx, cpu_port_num, scu_unit_idx, 
                                   scu_port_num, scu_subport_num);
         if (rc)
           {
-            sim_printf ("cable_scu: IOM socket error; not uncabling SCU unit number %d. (%o)\n", scu_unit_num, scu_unit_num);
+            sim_printf ("cable_scu: IOM socket error; not uncabling SCU unit number %d. (%o)\n", scu_unit_idx, scu_unit_idx);
             return rc;
           }
 
-        cables->cablesFromCpus[scu_unit_num][scu_port_num][scu_subport_num].cpu_unit_num = -1;
-        cables->cablesFromCpus[scu_unit_num][scu_port_num][scu_subport_num].cpu_port_num = -1;
+        cables->cablesFromCpus[scu_unit_idx][scu_port_num][scu_subport_num].cpuUnitIdx = -1;
+        cables->cablesFromCpus[scu_unit_idx][scu_port_num][scu_subport_num].cpu_port_num = -1;
 
-        scu[scu_unit_num].ports[scu_port_num].type = 0;
-        scu[scu_unit_num].ports[scu_port_num].idnum = 0;
+        scu[scu_unit_idx].ports[scu_port_num].type = 0;
+        scu[scu_unit_idx].ports[scu_port_num].idnum = 0;
 // XXX is this wrong? is is_exp supposed to be an accumulation of bits?
-        scu[scu_unit_num].ports[scu_port_num].is_exp = 0;
-        scu[scu_unit_num].ports[scu_port_num].dev_port [scu_subport_num] = 0;
+        scu[scu_unit_idx].ports[scu_port_num].is_exp = 0;
+        scu[scu_unit_idx].ports[scu_port_num].dev_port [scu_subport_num] = 0;
       }
     else
       {
-        if (cables -> cablesFromCpus [scu_unit_num] [scu_port_num] [scu_subport_num] . cpu_unit_num != -1)
+        if (cables -> cablesFromCpus [scu_unit_idx] [scu_port_num] [scu_subport_num] . cpuUnitIdx != -1)
           {
-            sim_printf ("cable_scu: SCU socket in use; unit number %d. (%o); uncabling.\n", scu_unit_num, scu_unit_num);
+            sim_printf ("cable_scu: SCU socket in use; unit number %d. (%o); uncabling.\n", scu_unit_idx, scu_unit_idx);
             return SCPE_ARG;
           }
 
         // Plug the other end of the cable in
-        t_stat rc = cable_to_cpu (uncable, cpu_unit_num, cpu_port_num, scu_unit_num, 
+        t_stat rc = cable_to_cpu (uncable, cpuUnitIdx, cpu_port_num, scu_unit_idx, 
                                   scu_port_num, scu_subport_num);
         if (rc)
           {
-            sim_printf ("cable_scu: IOM socket error; uncabling SCU unit number %d. (%o)\n", scu_unit_num, scu_unit_num);
+            sim_printf ("cable_scu: IOM socket error; uncabling SCU unit number %d. (%o)\n", scu_unit_idx, scu_unit_idx);
             return rc;
           }
 
-        cables -> cablesFromCpus [scu_unit_num] [scu_port_num] [scu_subport_num] . cpu_unit_num = 
-          cpu_unit_num;
-        cables -> cablesFromCpus [scu_unit_num] [scu_port_num] [scu_subport_num] . cpu_port_num = 
+        cables -> cablesFromCpus [scu_unit_idx] [scu_port_num] [scu_subport_num] . cpuUnitIdx = 
+          cpuUnitIdx;
+        cables -> cablesFromCpus [scu_unit_idx] [scu_port_num] [scu_subport_num] . cpu_port_num = 
           cpu_port_num;
 
-        scu [scu_unit_num] . ports [scu_port_num] . type = ADEV_CPU;
-        scu [scu_unit_num] . ports [scu_port_num] . idnum = cpu_unit_num;
+        scu [scu_unit_idx] . ports [scu_port_num] . type = ADEV_CPU;
+        scu [scu_unit_idx] . ports [scu_port_num] . idnum = cpuUnitIdx;
 // XXX is this right? is is_exp supposed to be an accumulation of bits? If so, change to a ref. count so uncable will work.
-        scu [scu_unit_num] . ports [scu_port_num] . is_exp |= is_exp;
-        scu [scu_unit_num] . ports [scu_port_num] . dev_port [scu_subport_num] = cpu_port_num;
-//if (scu [scu_unit_num] . ports [scu_port_num] . is_exp) sim_printf ("%o.%o is expanded\n", scu_unit_num, scu_port_num);
+        scu [scu_unit_idx] . ports [scu_port_num] . is_exp |= is_exp;
+        scu [scu_unit_idx] . ports [scu_port_num] . dev_port [scu_subport_num] = cpu_port_num;
+//if (scu [scu_unit_idx] . ports [scu_port_num] . is_exp) sim_printf ("%o.%o is expanded\n", scu_unit_idx, scu_port_num);
       }
     return SCPE_OK;
   }
 
 //  An IOM is trying to attach a cable 
-//  to SCU port scu_unit_num, scu_port_num
+//  to SCU port scu_unit_idx, scu_port_num
 //  from it's port iomUnitIdx, iom_port_num
 //
 
-static t_stat cable_to_scu (int uncable, int scu_unit_num, int scu_port_num, int iomUnitIdx, 
+static t_stat cable_to_scu (int uncable, int scu_unit_idx, int scu_port_num, int iomUnitIdx, 
                      int iom_port_num)
   {
     sim_debug (DBG_DEBUG, & scu_dev, 
-               "cable_to_scu: scu_unit_num: %d, scu_port_num: %d, "
+               "cable_to_scu: scu_unit_idx: %d, scu_port_num: %d, "
                "iomUnitIdx: %d, iom_port_num: %d\n", 
-               scu_unit_num, scu_port_num, iomUnitIdx, iom_port_num);
+               scu_unit_idx, scu_port_num, iomUnitIdx, iom_port_num);
 
-    if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
+    if (scu_unit_idx < 0 || scu_unit_idx >= (int) scu_dev . numunits)
       {
-        sim_printf ("cable_to_scu: scu_unit_num out of range <%d>\n", 
-                    scu_unit_num);
+        sim_printf ("cable_to_scu: scu_unit_idx out of range <%d>\n", 
+                    scu_unit_idx);
         return SCPE_ARG;
       }
 
@@ -452,35 +452,35 @@ static t_stat cable_to_scu (int uncable, int scu_unit_num, int scu_port_num, int
 
     if (uncable)
       {
-        if (scu [scu_unit_num] . ports [scu_port_num] . type != ADEV_IOM)
+        if (scu [scu_unit_idx] . ports [scu_port_num] . type != ADEV_IOM)
           {
-            sim_printf ("cable_to_scu: wrong SCU socket; unit number %d, port number %d\n", scu_unit_num, scu_port_num);
+            sim_printf ("cable_to_scu: wrong SCU socket; unit number %d, port number %d\n", scu_unit_idx, scu_port_num);
             return SCPE_ARG;
           }
 
-        scu [scu_unit_num] . ports [scu_port_num] . type = ADEV_NONE;
-        scu [scu_unit_num] . ports [scu_port_num] . idnum = 0;
-        scu [scu_unit_num] . ports [scu_port_num] . dev_port [0] = 0;
-        scu [scu_unit_num] . ports [scu_port_num] . is_exp = false;
+        scu [scu_unit_idx] . ports [scu_port_num] . type = ADEV_NONE;
+        scu [scu_unit_idx] . ports [scu_port_num] . idnum = 0;
+        scu [scu_unit_idx] . ports [scu_port_num] . dev_port [0] = 0;
+        scu [scu_unit_idx] . ports [scu_port_num] . is_exp = false;
       }
     else
       {
-        if (scu [scu_unit_num] . ports [scu_port_num] . type != ADEV_NONE)
+        if (scu [scu_unit_idx] . ports [scu_port_num] . type != ADEV_NONE)
           {
-            sim_printf ("cable_to_scu: SCU socket in use; unit number %d, port number %d\n", scu_unit_num, scu_port_num);
+            sim_printf ("cable_to_scu: SCU socket in use; unit number %d, port number %d\n", scu_unit_idx, scu_port_num);
             return SCPE_ARG;
           }
 
-        scu [scu_unit_num] . ports [scu_port_num] . type = ADEV_IOM;
-        scu [scu_unit_num] . ports [scu_port_num] . idnum = iomUnitIdx;
-        scu [scu_unit_num] . ports [scu_port_num] . dev_port [0] = iom_port_num;
-        scu [scu_unit_num] . ports [scu_port_num] . is_exp = false;
+        scu [scu_unit_idx] . ports [scu_port_num] . type = ADEV_IOM;
+        scu [scu_unit_idx] . ports [scu_port_num] . idnum = iomUnitIdx;
+        scu [scu_unit_idx] . ports [scu_port_num] . dev_port [0] = iom_port_num;
+        scu [scu_unit_idx] . ports [scu_port_num] . is_exp = false;
       }
 
     return SCPE_OK;
   }
 
-static t_stat cable_iom (int uncable, uint iomUnitIdx, int iomPortNum, int scuUnitNum, 
+static t_stat cable_iom (int uncable, uint iomUnitIdx, int iomPortNum, int scuUnitIdx, 
                          int scuPortNum)
   {
     if (iomUnitIdx >= iom_dev . numunits)
@@ -504,7 +504,7 @@ static t_stat cable_iom (int uncable, uint iomUnitIdx, int iomPortNum, int scuUn
           }
 
         // Plug the other end of the cable in
-        t_stat rc = cable_to_scu (uncable, scuUnitNum, scuPortNum, (int) iomUnitIdx, iomPortNum);
+        t_stat rc = cable_to_scu (uncable, scuUnitIdx, scuPortNum, (int) iomUnitIdx, iomPortNum);
         if (rc)
           {
             sim_printf ("cable_iom: SCU socket error; not uncabling IOM unit number %d. (%o), port number %d. (%o)\n", iomUnitIdx, iomUnitIdx, iomPortNum, iomPortNum);
@@ -512,7 +512,7 @@ static t_stat cable_iom (int uncable, uint iomUnitIdx, int iomPortNum, int scuUn
           }
 
         cables -> cablesFromScus [iomUnitIdx] [iomPortNum] . inuse = false;
-        cables -> cablesFromScus [iomUnitIdx] [iomPortNum] . scuUnitNum = 0;
+        cables -> cablesFromScus [iomUnitIdx] [iomPortNum] . scuUnitIdx = 0;
         cables -> cablesFromScus [iomUnitIdx] [iomPortNum] . scuPortNum = 0;
       }
     else
@@ -524,7 +524,7 @@ static t_stat cable_iom (int uncable, uint iomUnitIdx, int iomPortNum, int scuUn
           }
 
         // Plug the other end of the cable in
-        t_stat rc = cable_to_scu (uncable, scuUnitNum, scuPortNum, (int) iomUnitIdx, iomPortNum);
+        t_stat rc = cable_to_scu (uncable, scuUnitIdx, scuPortNum, (int) iomUnitIdx, iomPortNum);
         if (rc)
           {
             sim_printf ("cable_iom: SCU socket error; uncabling IOM unit number %d. (%o), port number %d. (%o)\n", iomUnitIdx, iomUnitIdx, iomPortNum, iomPortNum);
@@ -532,7 +532,7 @@ static t_stat cable_iom (int uncable, uint iomUnitIdx, int iomPortNum, int scuUn
           }
 
         cables -> cablesFromScus [iomUnitIdx] [iomPortNum] . inuse = true;
-        cables -> cablesFromScus [iomUnitIdx] [iomPortNum] . scuUnitNum = scuUnitNum;
+        cables -> cablesFromScus [iomUnitIdx] [iomPortNum] . scuUnitIdx = scuUnitIdx;
         cables -> cablesFromScus [iomUnitIdx] [iomPortNum] . scuPortNum = scuPortNum;
       }
 
@@ -604,11 +604,11 @@ static int getval (char * * save, char * text)
 //
 //   or iom to scu
 //
-//   cable IOM <iomUnitIdx>,<iom_port_num>,<scu_unit_num>,<scu_port_num>
+//   cable IOM <iomUnitIdx>,<iom_port_num>,<scu_unit_idx>,<scu_port_num>
 //
 //   or scu to cpu
 //
-//   cable SCU <scu_unit_num>,<scu_port_num>,<cpu_unit_num>,<cpu_port_num>
+//   cable SCU <scu_unit_idx>,<scu_port_num>,<cpuUnitIdx>,<cpu_port_num>
 //
 //   or opcon to iom
 //
@@ -723,7 +723,7 @@ static void cable_init (void)
     for (int u = 0; u < N_SCU_UNITS_MAX; u ++)
       for (int p = 0; p < N_SCU_PORTS; p ++)
         for (int s = 0; s < N_SCU_SUBPORTS; s ++)
-          cables -> cablesFromCpus [u] [p] [s] . cpu_unit_num = -1; // not connected
+          cables -> cablesFromCpus [u] [p] [s] . cpuUnitIdx = -1; // not connected
     for (int i = 0; i < N_OPCON_UNITS_MAX; i ++)
       cables -> cablesFromIomToCon [i] . iomUnitIdx = -1;
     for (int i = 0; i < N_DISK_UNITS_MAX; i ++)

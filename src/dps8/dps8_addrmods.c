@@ -418,7 +418,7 @@ startCA:;
     // state and restart the fetch.
     if (cpu.cu.CT_HOLD)
       {
-//if (currentRunningCPUnum) sim_printf ("restart CT_HOLD %o\n", cpu.cu.CT_HOLD);
+//if (currentRunningCpuIdx) sim_printf ("restart CT_HOLD %o\n", cpu.cu.CT_HOLD);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "%s(startCA): IR mode restart; CT_HOLD %02o\n",
                    __func__, cpu.cu.CT_HOLD);
@@ -784,7 +784,7 @@ startCA:;
 
             case TM_RI:
               {
-//if (currentRunningCPUnum) sim_printf ("TM_RI\n");
+//if (currentRunningCpuIdx) sim_printf ("TM_RI\n");
                 word18 Cr = getCr (Td);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,

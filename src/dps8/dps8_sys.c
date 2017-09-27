@@ -185,7 +185,11 @@ static CTAB dps8_cmds[] =
     {"WATCH", memWatch, 1, "watch: watch memory location\n", NULL, NULL},
     {"NOWATCH", memWatch, 0, "watch: watch memory location\n", NULL, NULL},
     {"AUTOINPUT", opconAutoinput, 0, "set console auto-input\n", NULL, NULL},
-    {"CLRAUTOINPUT", opconAutoinput, 1, "clear console auto-input\n", NULL, NULL},
+    {"AI", opconAutoinput, 0, "set console auto-input\n", NULL, NULL},
+    {"AUTOINPUT2", opconAutoinput, 1, "set console auto-input\n", NULL, NULL},
+    {"AI2", opconAutoinput, 1, "set console auto-input\n", NULL, NULL},
+    {"CLRAUTOINPUT", opconClearAutoinput, 0, "clear console auto-input\n", NULL, NULL},
+    {"CLRAUTOINPUT2", opconClearAutoinput, 1, "clear console auto-input\n", NULL, NULL},
 #ifdef LAUNCH
     {"LAUNCH", launch, 0, "start subprocess\n", NULL, NULL},
 #endif
@@ -2329,7 +2333,1002 @@ static void doIniLine (char * text)
 
 static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
   {
+#ifdef DPREED
+    // ; Disconnect everything...
+    doIniLine ("cable_ripout");
 
+    doIniLine ("set cpu nunits=2");
+    doIniLine ("set iom nunits=2");
+    // ; 32 drives plus 2 controllers
+    doIniLine ("set tape nunits=34");
+    // ; 32 drives; no controller
+    doIniLine ("set disk nunits=32");
+    doIniLine ("set scu nunits=8");
+    doIniLine ("set opcon nunits=2");
+    doIniLine ("set fnp nunits=16");
+    doIniLine ("set urp nunits=6");
+    doIniLine ("set crdrdr nunits=2");
+    doIniLine ("set crdpun nunits=2");
+    doIniLine ("set prt nunits=34");
+#ifndef __MINGW64__
+    // ;Create card reader queue directory
+    doIniLine ("! if [ ! -e /tmp/rdra ]; then mkdir /tmp/rdra; fi");
+#else
+    doIniLine ("! mkdir %TEMP%\\rdra");
+#endif
+
+
+// Cluster 0
+//
+//    CPU0
+//    IOM0
+//    SCU0 SCU1 SCU2 SCU3
+
+
+// CPU0
+
+    doIniLine ("set cpu0 config=faultbase=Multics");
+
+    doIniLine ("set cpu0 config=num=0");
+    // ; As per GB61-01 Operators Guide, App. A
+    // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
+    doIniLine ("set cpu0 config=data=024000717200");
+
+    // ; enable ports 0 and 1 (scu connections)
+    // ; portconfig: ABCD
+    // ;   each is 3 bits addr assignment
+    // ;           1 bit enabled 
+    // ;           1 bit sysinit enabled
+    // ;           1 bit interlace enabled (interlace?)
+    // ;           3 bit memory size
+    // ;              0 - 32K
+    // ;              1 - 64K
+    // ;              2 - 128K
+    // ;              3 - 256K
+    // ;              4 - 512K
+    // ;              5 - 1M
+    // ;              6 - 2M
+    // ;              7 - 4M  
+
+    doIniLine ("set cpu0 config=port=A");
+    doIniLine ("set cpu0   config=assignment=0");
+    doIniLine ("set cpu0   config=interlace=0");
+    doIniLine ("set cpu0   config=enable=1");
+    doIniLine ("set cpu0   config=init_enable=1");
+    doIniLine ("set cpu0   config=store_size=4M");
+ 
+    doIniLine ("set cpu0 config=port=B");
+    doIniLine ("set cpu0   config=assignment=1");
+    doIniLine ("set cpu0   config=interlace=0");
+    doIniLine ("set cpu0   config=enable=1");
+    doIniLine ("set cpu0   config=init_enable=1");
+    doIniLine ("set cpu0   config=store_size=4M");
+
+    doIniLine ("set cpu0 config=port=C");
+    doIniLine ("set cpu0   config=assignment=2");
+    doIniLine ("set cpu0   config=interlace=0");
+    doIniLine ("set cpu0   config=enable=1");
+    doIniLine ("set cpu0   config=init_enable=1");
+    doIniLine ("set cpu0   config=store_size=4M");
+
+    doIniLine ("set cpu0 config=port=D");
+    doIniLine ("set cpu0   config=assignment=3");
+    doIniLine ("set cpu0   config=interlace=0");
+    doIniLine ("set cpu0   config=enable=1");
+    doIniLine ("set cpu0   config=init_enable=1");
+    doIniLine ("set cpu0   config=store_size=4M");
+
+    // ; 0 = GCOS 1 = VMS
+    doIniLine ("set cpu0 config=mode=Multics");
+    // ; 0 = 8/70
+    doIniLine ("set cpu0 config=speed=0");
+
+
+// IOM 0
+
+    doIniLine ("set iom0 config=iom_base=Multics");
+    doIniLine ("set iom0 config=multiplex_base=0120");
+    doIniLine ("set iom0 config=os=Multics");
+    doIniLine ("set iom0 config=boot=tape");
+    doIniLine ("set iom0 config=tapechan=012");
+    doIniLine ("set iom0 config=cardchan=011");
+    doIniLine ("set iom0 config=scuport=0");
+
+    doIniLine ("set iom0 config=port=0");
+    doIniLine ("set iom0   config=addr=0");
+    doIniLine ("set iom0   config=interlace=0");
+    doIniLine ("set iom0   config=enable=1");
+    doIniLine ("set iom0   config=initenable=0");
+    doIniLine ("set iom0   config=halfsize=0");
+    doIniLine ("set iom0   config=store_size=4M");
+
+    doIniLine ("set iom0 config=port=1");
+    doIniLine ("set iom0   config=addr=1");
+    doIniLine ("set iom0   config=interlace=0");
+    doIniLine ("set iom0   config=enable=1");
+    doIniLine ("set iom0   config=initenable=0");
+    doIniLine ("set iom0   config=halfsize=0");
+    doIniLine ("set iom0   config=store_size=4M");
+
+    doIniLine ("set iom0 config=port=2");
+    doIniLine ("set iom0   config=addr=2");
+    doIniLine ("set iom0   config=interlace=0");
+    doIniLine ("set iom0   config=enable=1");
+    doIniLine ("set iom0   config=initenable=0");
+    doIniLine ("set iom0   config=halfsize=0");
+    doIniLine ("set iom0   config=store_size=4M");
+
+    doIniLine ("set iom0 config=port=3");
+    doIniLine ("set iom0   config=addr=3");
+    doIniLine ("set iom0   config=interlace=0");
+    doIniLine ("set iom0   config=enable=1");
+    doIniLine ("set iom0   config=initenable=0");
+    doIniLine ("set iom0   config=halfsize=0");
+    doIniLine ("set iom0   config=store_size=4M");
+
+    doIniLine ("set iom0 config=port=4");
+    doIniLine ("set iom0   config=enable=0");
+
+    doIniLine ("set iom0 config=port=5");
+    doIniLine ("set iom0   config=enable=0");
+
+    doIniLine ("set iom0 config=port=6");
+    doIniLine ("set iom0   config=enable=0");
+
+    doIniLine ("set iom0 config=port=7");
+    doIniLine ("set iom0   config=enable=0");
+
+// SCU0
+
+    doIniLine ("set scu0 config=mode=program");
+    doIniLine ("set scu0 config=port0=enable");
+    doIniLine ("set scu0 config=port1=enable");
+    doIniLine ("set scu0 config=port2=enable");
+    doIniLine ("set scu0 config=port3=enable");
+    doIniLine ("set scu0 config=port4=enable");
+    doIniLine ("set scu0 config=port5=enable");
+    doIniLine ("set scu0 config=port6=enable");
+    doIniLine ("set scu0 config=port7=enable");
+    doIniLine ("set scu0 config=maska=7");
+    doIniLine ("set scu0 config=maskb=off");
+    doIniLine ("set scu0 config=lwrstoresize=7");
+    doIniLine ("set scu0 config=cyclic=0040");
+    doIniLine ("set scu0 config=nea=0200");
+    doIniLine ("set scu0 config=onl=014");
+    doIniLine ("set scu0 config=int=0");
+    doIniLine ("set scu0 config=lwr=0");
+
+// SCU1
+
+    doIniLine ("set scu1 config=mode=program");
+    doIniLine ("set scu1 config=port0=enable");
+    doIniLine ("set scu1 config=port1=enable");
+    doIniLine ("set scu1 config=port2=enable");
+    doIniLine ("set scu1 config=port3=enable");
+    doIniLine ("set scu1 config=port4=enable");
+    doIniLine ("set scu1 config=port5=enable");
+    doIniLine ("set scu1 config=port6=enable");
+    doIniLine ("set scu1 config=port7=enable");
+    doIniLine ("set scu1 config=maska=off");
+    doIniLine ("set scu1 config=maskb=off");
+    doIniLine ("set scu1 config=lwrstoresize=7");
+    doIniLine ("set scu1 config=cyclic=0040");
+    doIniLine ("set scu1 config=nea=0200");
+    doIniLine ("set scu1 config=onl=014");
+    doIniLine ("set scu1 config=int=0");
+    doIniLine ("set scu1 config=lwr=0");
+
+// SCU2
+
+    doIniLine ("set scu2 config=mode=program");
+    doIniLine ("set scu2 config=port0=enable");
+    doIniLine ("set scu2 config=port1=enable");
+    doIniLine ("set scu2 config=port2=enable");
+    doIniLine ("set scu2 config=port3=enable");
+    doIniLine ("set scu2 config=port4=enable");
+    doIniLine ("set scu2 config=port5=enable");
+    doIniLine ("set scu2 config=port6=enable");
+    doIniLine ("set scu2 config=port7=enable");
+    doIniLine ("set scu2 config=maska=off");
+    doIniLine ("set scu2 config=maskb=off");
+    doIniLine ("set scu2 config=lwrstoresize=7");
+    doIniLine ("set scu2 config=cyclic=0040");
+    doIniLine ("set scu2 config=nea=0200");
+    doIniLine ("set scu2 config=onl=014");
+    doIniLine ("set scu2 config=int=0");
+    doIniLine ("set scu2 config=lwr=0");
+
+// SCU3
+
+    doIniLine ("set scu3 config=mode=program");
+    doIniLine ("set scu3 config=port0=enable");
+    doIniLine ("set scu3 config=port1=enable");
+    doIniLine ("set scu3 config=port2=enable");
+    doIniLine ("set scu3 config=port3=enable");
+    doIniLine ("set scu3 config=port4=enable");
+    doIniLine ("set scu3 config=port5=enable");
+    doIniLine ("set scu3 config=port6=enable");
+    doIniLine ("set scu3 config=port7=enable");
+    doIniLine ("set scu3 config=maska=off");
+    doIniLine ("set scu3 config=maskb=off");
+    doIniLine ("set scu3 config=lwrstoresize=7");
+    doIniLine ("set scu3 config=cyclic=0040");
+    doIniLine ("set scu3 config=nea=0200");
+    doIniLine ("set scu3 config=onl=014");
+    doIniLine ("set scu3 config=int=0");
+    doIniLine ("set scu3 config=lwr=0");
+
+
+    // ; There are bugs in the FNP code that require sim unit number
+    // ; to be the same as the Multics unit number; ie fnp0 == fnpa, etc.
+    // ;
+    // ; fnp a 3400
+    // ; fnp b 3700
+    // ; fnp c 4200
+    // ; fnp d 4500
+    // ; fnp e 5000
+    // ; fnp f 5300
+    // ; fnp g 5600
+    // ; fnp h 6100
+
+// FNP0 - FNP7
+
+    doIniLine ("set fnp0 config=mailbox=03400");
+    doIniLine ("set fnp0 ipc_name=fnp-a");
+    doIniLine ("set fnp1 config=mailbox=03700");
+    doIniLine ("set fnp1 ipc_name=fnp-b");
+    doIniLine ("set fnp2 config=mailbox=04200");
+    doIniLine ("set fnp2 ipc_name=fnp-c");
+    doIniLine ("set fnp3 config=mailbox=04500");
+    doIniLine ("set fnp3 ipc_name=fnp-d");
+    doIniLine ("set fnp4 config=mailbox=05000");
+    doIniLine ("set fnp4 ipc_name=fnp-e");
+    doIniLine ("set fnp5 config=mailbox=05300");
+    doIniLine ("set fnp5 ipc_name=fnp-f");
+    doIniLine ("set fnp6 config=mailbox=05600");
+    doIniLine ("set fnp6 ipc_name=fnp-g");
+    doIniLine ("set fnp7 config=mailbox=06100");
+    doIniLine ("set fnp7 ipc_name=fnp-h");
+
+// TAPE0 - TAPE16
+
+sim_printf ("XXX resolve 'set tape0 boot_drive\n");
+    doIniLine ("set tape0 boot_drive");
+
+    // ; Attach tape MPC to IOM 0, chan 012, dev_code 0
+    doIniLine ("cable tape,0,0,012,0");
+    doIniLine ("set tape0 device_name=mpca");
+    // ; Attach TAPE unit 0 to IOM 0, chan 012, dev_code 1
+    doIniLine ("cable tape,1,0,012,1");
+    doIniLine ("set tape1 device_name=tapa_01");
+    doIniLine ("cable tape,2,0,012,2");
+    doIniLine ("set tape2 device_name=tapa_02");
+    doIniLine ("cable tape,3,0,012,3");
+    doIniLine ("set tape3 device_name=tapa_03");
+    doIniLine ("cable tape,4,0,012,4");
+    doIniLine ("set tape4 device_name=tapa_04");
+    doIniLine ("cable tape,5,0,012,5");
+    doIniLine ("set tape5 device_name=tapa_05");
+    doIniLine ("cable tape,6,0,012,6");
+    doIniLine ("set tape6 device_name=tapa_06");
+    doIniLine ("cable tape,7,0,012,7");
+    doIniLine ("set tape7 device_name=tapa_07");
+    doIniLine ("cable tape,8,0,012,8");
+    doIniLine ("set tape8 device_name=tapa_08");
+    doIniLine ("cable tape,9,0,012,9");
+    doIniLine ("set tape9 device_name=tapa_09");
+    doIniLine ("cable tape,10,0,012,10");
+    doIniLine ("set tape10 device_name=tapa_10");
+    doIniLine ("cable tape,11,0,012,11");
+    doIniLine ("set tape11 device_name=tapa_11");
+    doIniLine ("cable tape,12,0,012,12");
+    doIniLine ("set tape12 device_name=tapa_12");
+    doIniLine ("cable tape,13,0,012,13");
+    doIniLine ("set tape13 device_name=tapa_13");
+    doIniLine ("cable tape,14,0,012,14");
+    doIniLine ("set tape14 device_name=tapa_14");
+    doIniLine ("cable tape,15,0,012,15");
+    doIniLine ("set tape15 device_name=tapa_15");
+    doIniLine ("cable tape,16,0,012,16");
+    doIniLine ("set tape16 device_name=tapa_16");
+
+// DISK0 - DISK15
+
+    // ; Attach DISK unit 0 to IOM 0, chan 013, dev_code 0");
+    doIniLine ("cable disk,0,0,013,0");
+    // ; Attach DISK unit 1 to IOM 0, chan 013, dev_code 1");
+    doIniLine ("cable disk,1,0,013,1");
+    // ; Attach DISK unit 2 to IOM 0, chan 013, dev_code 2");
+    doIniLine ("cable disk,2,0,013,2");
+    // ; Attach DISK unit 3 to IOM 0, chan 013, dev_code 3");
+    doIniLine ("cable disk,3,0,013,3");
+    // ; Attach DISK unit 4 to IOM 0, chan 013, dev_code 4");
+    doIniLine ("cable disk,4,0,013,4");
+    // ; Attach DISK unit 5 to IOM 0, chan 013, dev_code 5");
+    doIniLine ("cable disk,5,0,013,5");
+    // ; Attach DISK unit 6 to IOM 0, chan 013, dev_code 6");
+    doIniLine ("cable disk,6,0,013,6");
+    // ; Attach DISK unit 7 to IOM 0, chan 013, dev_code 7");
+    doIniLine ("cable disk,7,0,013,7");
+    // ; Attach DISK unit 8 to IOM 0, chan 013, dev_code 8");
+    doIniLine ("cable disk,8,0,013,8");
+    // ; Attach DISK unit 9 to IOM 0, chan 013, dev_code 9");
+    doIniLine ("cable disk,9,0,013,9");
+    // ; Attach DISK unit 10 to IOM 0, chan 013, dev_code 10");
+    doIniLine ("cable disk,10,0,013,10");
+    // ; Attach DISK unit 11 to IOM 0, chan 013, dev_code 11");
+    doIniLine ("cable disk,11,0,013,11");
+    // ; Attach DISK unit 12 to IOM 0, chan 013, dev_code 12");
+    doIniLine ("cable disk,12,0,013,12");
+    // ; Attach DISK unit 13 to IOM 0, chan 013, dev_code 13");
+    doIniLine ("cable disk,13,0,013,13");
+    // ; Attach DISK unit 14 to IOM 0, chan 013, dev_code 14");
+    doIniLine ("cable disk,14,0,013,14");
+    // ; Attach DISK unit 15 to IOM 0, chan 013, dev_code 15");
+    doIniLine ("cable disk,15,0,013,15");
+
+// OPCON0
+
+    // ; Attach OPCON unit 0 to IOM A, chan 036, dev_code 0
+    doIniLine ("cable opcon,0,0,036,0");
+
+
+// FNP0 - FNP7
+
+    // ; Attach FNP unit 3 (d) to IOM A, chan 020, dev_code 0
+    doIniLine ("cable fnp,3,0,020,0");
+
+    // ; Attach FNP unit 0 (a) to IOM A, chan 021, dev_code 0
+    doIniLine ("cable fnp,0,0,021,0");
+
+    // ; Attach FNP unit 1 (b) to IOM A, chan 022, dev_code 0
+    doIniLine ("cable fnp,1,0,022,0");
+
+    // ; Attach FNP unit 2 (c) to IOM A, chan 023, dev_code 0
+    doIniLine ("cable fnp,2,0,023,0");
+
+    // ; Attach FNP unit 4 (e) to IOM A, chan 024, dev_code 0
+    doIniLine ("cable fnp,4,0,024,0");
+
+    // ; Attach FNP unit 5 (f) to IOM A, chan 025, dev_code 0
+    doIniLine ("cable fnp,5,0,025,0");
+
+    // ; Attach FNP unit 6 (g) to IOM A, chan 026, dev_code 0
+    doIniLine ("cable fnp,6,0,026,0");
+
+    // ; Attach FNP unit 7 (h) to IOM A, chan 027, dev_code 0
+    doIniLine ("cable fnp,7,0,027,0");
+
+
+// URP0 RDR0
+
+    // ; Attach MPC unit 0 to IOM 0, char 015, dev_code 0
+    doIniLine ("cable urp,0,0,015, 0");
+    doIniLine ("set urp0 device_name=urpa");
+
+    // ; Attach CRDRDR unit 0 to IOM 0, chan 015, dev_code 1
+    doIniLine ("cable crdrdr,0,0,015,1");
+    doIniLine ("set crdrdr0 device_name=rdra");
+
+// URP1 PUN0
+
+    // ; Attach MPC unit 1 to IOM 0, char 016, dev_code 0
+    doIniLine ("cable urp,1,0,016, 0");
+    doIniLine ("set urp1 device_name=urpb");
+
+    // ; Attach CRDPUN unit 0 to IOM 0, chan 016, dev_code 1
+    doIniLine ("cable crdpun,0,0,016,1");
+    doIniLine ("set crdpun0 device_name=puna");
+
+// URP3 PRT0 - PRT16
+
+    // ; Attach MPC unit 2 to IOM 0, char 017, dev_code 0
+    doIniLine ("cable urp,2,0,017,0");
+    doIniLine ("set urp2 device_name=urpc");
+
+    // ; Attach PRT unit 0 to IOM 0, chan 017, dev_code 1
+    doIniLine ("cable prt,0,0,017,1");
+    doIniLine ("set prt0 device_name=prta");
+
+    // ; Attach PRT unit 1 to IOM 0, chan 017, dev_code 2
+    doIniLine ("cable prt,1,0,017,2");
+    doIniLine ("set prt1 device_name=prtb");
+
+    // ; Attach PRT unit 2 to IOM 0, chan 017, dev_code 3
+    doIniLine ("cable prt,2,0,017,3");
+    doIniLine ("set prt2 device_name=prtc");
+
+    // ; Attach PRT unit 3 to IOM 0, chan 017, dev_code 4
+    doIniLine ("cable prt,3,0,017,4");
+    doIniLine ("set prt3 device_name=prtd");
+
+    // ; Attach PRT unit 4 to IOM 0, chan 017, dev_code 5
+    doIniLine ("cable prt,4,0,017,5");
+    doIniLine ("set prt4 device_name=prte");
+
+    // ; Attach PRT unit 5 to IOM 0, chan 017, dev_code 6
+    doIniLine ("cable prt,5,0,017,6");
+    doIniLine ("set prt5 device_name=prtf");
+
+    // ; Attach PRT unit 6 to IOM 0, chan 017, dev_code 7
+    doIniLine ("cable prt,6,0,017,7");
+    doIniLine ("set prt6 device_name=prtg");
+
+    // ; Attach PRT unit 7 to IOM 0, chan 017, dev_code 8
+    doIniLine ("cable prt,7,0,017,8");
+    doIniLine ("set prt7 device_name=prth");
+
+    // ; Attach PRT unit 8 to IOM 0, chan 017, dev_code 9
+    doIniLine ("cable prt,8,0,017,9");
+    doIniLine ("set prt8 device_name=prti");
+
+    // ; Attach PRT unit 9 to IOM 0, chan 017, dev_code 10
+    doIniLine ("cable prt,9,0,017,10");
+    doIniLine ("set prt9 device_name=prtj");
+
+    // ; Attach PRT unit 10 to IOM 0, chan 017, dev_code 11
+    doIniLine ("cable prt,10,0,017,11");
+    doIniLine ("set prt10 device_name=prtk");
+
+    // ; Attach PRT unit 11 to IOM 0, chan 017, dev_code 12
+    doIniLine ("cable prt,11,0,017,12");
+    doIniLine ("set prt11 device_name=prtl");
+
+    // ; Attach PRT unit 12 to IOM 0, chan 017, dev_code 13
+    doIniLine ("cable prt,12,0,017,13");
+    doIniLine ("set prt12 device_name=prtm");
+
+    // ; Attach PRT unit 13 to IOM 0, chan 017, dev_code 14
+    doIniLine ("cable prt,13,0,017,14");
+    doIniLine ("set prt13 device_name=prtn");
+
+    // ; Attach PRT unit 14 to IOM 0, chan 017, dev_code 15
+    doIniLine ("cable prt,14,0,017,15");
+    doIniLine ("set prt14 device_name=prto");
+
+    // ; Attach PRT unit 15 to IOM 0, chan 017, dev_code 16
+    doIniLine ("cable prt,15,0,017,16");
+    doIniLine ("set prt15 device_name=prtp");
+
+    // ; Attach PRT unit 16 to IOM 0, chan 017, dev_code 17
+    doIniLine ("cable prt,16,0,017,17");
+    doIniLine ("set prt16 device_name=prtq");
+
+// IOM0
+
+    // ; Attach IOM unit 0 port A (0) to SCU unit 0, port 0
+    doIniLine ("cable iom,0,0,0,0");
+
+    // ; Attach IOM unit 0 port B (1) to SCU unit 1, port 0
+    doIniLine ("cable iom,0,1,1,0");
+
+    // ; Attach IOM unit 0 port C (2) to SCU unit 2, port 0
+    doIniLine ("cable iom,0,2,2,0");
+
+    // ; Attach IOM unit 0 port D (3) to SCU unit 3, port 0
+    doIniLine ("cable iom,0,3,3,0");
+
+
+// SCU0
+
+    // ; Attach SCU unit 0 port 7 to CPU unit A (0), port 0
+    doIniLine ("cable scu,0,7,0,0");
+
+// SCU1
+
+    // ; Attach SCU unit 1 port 7 to CPU unit A (0), port 1
+    doIniLine ("cable scu,1,7,0,1");
+
+// SCU2
+
+    // ; Attach SCU unit 2 port 7 to CPU unit A (0), port 2
+    doIniLine ("cable scu,2,7,0,2");
+
+// SCU3
+
+    // ; Attach SCU unit 3 port 7 to CPU unit A (0), port 3
+    doIniLine ("cable scu,3,7,0,3");
+
+
+    doIniLine ("set cpu0 config=dis_enable=enable");
+    doIniLine ("set cpu0 config=steady_clock=disable");
+    doIniLine ("set cpu0 config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu0 config=disable_wam=enable");
+    doIniLine ("set cpu0 config=tro_enable=enable");
+    doIniLine ("set cpu0 config=y2k=disable");
+
+
+// Cluster 1
+//
+//    CPU1
+//    IOM1
+//    SCU4 SCU5 SCU6 SCU7
+
+
+// CPU1
+
+    doIniLine ("set cpu1 config=faultbase=Multics");
+
+    doIniLine ("set cpu1 config=num=0");
+    // ; As per GB61-01 Operators Guide, App. A
+    // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
+    doIniLine ("set cpu1 config=data=024000717200");
+
+    // ; enable ports 0 and 1 (scu connections)
+    // ; portconfig: ABCD
+    // ;   each is 3 bits addr assignment
+    // ;           1 bit enabled 
+    // ;           1 bit sysinit enabled
+    // ;           1 bit interlace enabled (interlace?)
+    // ;           3 bit memory size
+    // ;              0 - 32K
+    // ;              1 - 64K
+    // ;              2 - 128K
+    // ;              3 - 256K
+    // ;              4 - 512K
+    // ;              5 - 1M
+    // ;              6 - 2M
+    // ;              7 - 4M  
+
+    doIniLine ("set cpu1 config=port=A");
+    doIniLine ("set cpu1   config=assignment=0");
+    doIniLine ("set cpu1   config=interlace=0");
+    doIniLine ("set cpu1   config=enable=1");
+    doIniLine ("set cpu1   config=init_enable=1");
+    doIniLine ("set cpu1   config=store_size=4M");
+ 
+    doIniLine ("set cpu1 config=port=B");
+    doIniLine ("set cpu1   config=assignment=1");
+    doIniLine ("set cpu1   config=interlace=0");
+    doIniLine ("set cpu1   config=enable=1");
+    doIniLine ("set cpu1   config=init_enable=1");
+    doIniLine ("set cpu1   config=store_size=4M");
+
+    doIniLine ("set cpu1 config=port=C");
+    doIniLine ("set cpu1   config=assignment=2");
+    doIniLine ("set cpu1   config=interlace=0");
+    doIniLine ("set cpu1   config=enable=1");
+    doIniLine ("set cpu1   config=init_enable=1");
+    doIniLine ("set cpu1   config=store_size=4M");
+
+    doIniLine ("set cpu1 config=port=D");
+    doIniLine ("set cpu1   config=assignment=3");
+    doIniLine ("set cpu1   config=interlace=0");
+    doIniLine ("set cpu1   config=enable=1");
+    doIniLine ("set cpu1   config=init_enable=1");
+    doIniLine ("set cpu1   config=store_size=4M");
+
+    // ; 0 = GCOS 1 = VMS
+    doIniLine ("set cpu1 config=mode=Multics");
+    // ; 0 = 8/70
+    doIniLine ("set cpu1 config=speed=0");
+
+
+// IOM 1
+
+    doIniLine ("set iom1 config=iom_base=Multics");
+    doIniLine ("set iom1 config=multiplex_base=0120");
+    doIniLine ("set iom1 config=os=Multics");
+    doIniLine ("set iom1 config=boot=tape");
+    doIniLine ("set iom1 config=tapechan=012");
+    doIniLine ("set iom1 config=cardchan=011");
+    doIniLine ("set iom1 config=scuport=0");
+
+    doIniLine ("set iom1 config=port=0");
+    doIniLine ("set iom1   config=addr=0");
+    doIniLine ("set iom1   config=interlace=0");
+    doIniLine ("set iom1   config=enable=1");
+    doIniLine ("set iom1   config=initenable=0");
+    doIniLine ("set iom1   config=halfsize=0");
+    doIniLine ("set iom1   config=store_size=4M");
+
+    doIniLine ("set iom1 config=port=1");
+    doIniLine ("set iom1   config=addr=1");
+    doIniLine ("set iom1   config=interlace=0");
+    doIniLine ("set iom1   config=enable=1");
+    doIniLine ("set iom1   config=initenable=0");
+    doIniLine ("set iom1   config=halfsize=0");
+    doIniLine ("set iom1   config=store_size=4M");
+
+    doIniLine ("set iom1 config=port=2");
+    doIniLine ("set iom1   config=addr=2");
+    doIniLine ("set iom1   config=interlace=0");
+    doIniLine ("set iom1   config=enable=1");
+    doIniLine ("set iom1   config=initenable=0");
+    doIniLine ("set iom1   config=halfsize=0");
+    doIniLine ("set iom1   config=store_size=4M");
+
+    doIniLine ("set iom1 config=port=3");
+    doIniLine ("set iom1   config=addr=3");
+    doIniLine ("set iom1   config=interlace=0");
+    doIniLine ("set iom1   config=enable=1");
+    doIniLine ("set iom1   config=initenable=0");
+    doIniLine ("set iom1   config=halfsize=0");
+    doIniLine ("set iom1   config=store_size=4M");
+
+    doIniLine ("set iom1 config=port=4");
+    doIniLine ("set iom1   config=enable=0");
+
+    doIniLine ("set iom1 config=port=5");
+    doIniLine ("set iom1   config=enable=0");
+
+    doIniLine ("set iom1 config=port=6");
+    doIniLine ("set iom1   config=enable=0");
+
+    doIniLine ("set iom1 config=port=7");
+    doIniLine ("set iom1   config=enable=0");
+
+// SCU4
+
+    doIniLine ("set scu4 config=mode=program");
+    doIniLine ("set scu4 config=port0=enable");
+    doIniLine ("set scu4 config=port1=enable");
+    doIniLine ("set scu4 config=port2=enable");
+    doIniLine ("set scu4 config=port3=enable");
+    doIniLine ("set scu4 config=port4=enable");
+    doIniLine ("set scu4 config=port5=enable");
+    doIniLine ("set scu4 config=port6=enable");
+    doIniLine ("set scu4 config=port7=enable");
+    doIniLine ("set scu4 config=maska=7");
+    doIniLine ("set scu4 config=maskb=off");
+    doIniLine ("set scu4 config=lwrstoresize=7");
+    doIniLine ("set scu4 config=cyclic=0040");
+    doIniLine ("set scu4 config=nea=0200");
+    doIniLine ("set scu4 config=onl=014");
+    doIniLine ("set scu4 config=int=0");
+    doIniLine ("set scu4 config=lwr=0");
+
+// SCU5
+
+    doIniLine ("set scu5 config=mode=program");
+    doIniLine ("set scu5 config=port0=enable");
+    doIniLine ("set scu5 config=port1=enable");
+    doIniLine ("set scu5 config=port2=enable");
+    doIniLine ("set scu5 config=port3=enable");
+    doIniLine ("set scu5 config=port4=enable");
+    doIniLine ("set scu5 config=port5=enable");
+    doIniLine ("set scu5 config=port6=enable");
+    doIniLine ("set scu5 config=port7=enable");
+    doIniLine ("set scu5 config=maska=off");
+    doIniLine ("set scu5 config=maskb=off");
+    doIniLine ("set scu5 config=lwrstoresize=7");
+    doIniLine ("set scu5 config=cyclic=0040");
+    doIniLine ("set scu5 config=nea=0200");
+    doIniLine ("set scu5 config=onl=014");
+    doIniLine ("set scu5 config=int=0");
+    doIniLine ("set scu5 config=lwr=0");
+
+// SCU6
+
+    doIniLine ("set scu6 config=mode=program");
+    doIniLine ("set scu6 config=port0=enable");
+    doIniLine ("set scu6 config=port1=enable");
+    doIniLine ("set scu6 config=port2=enable");
+    doIniLine ("set scu6 config=port3=enable");
+    doIniLine ("set scu6 config=port4=enable");
+    doIniLine ("set scu6 config=port5=enable");
+    doIniLine ("set scu6 config=port6=enable");
+    doIniLine ("set scu6 config=port7=enable");
+    doIniLine ("set scu6 config=maska=off");
+    doIniLine ("set scu6 config=maskb=off");
+    doIniLine ("set scu6 config=lwrstoresize=7");
+    doIniLine ("set scu6 config=cyclic=0040");
+    doIniLine ("set scu6 config=nea=0200");
+    doIniLine ("set scu6 config=onl=014");
+    doIniLine ("set scu6 config=int=0");
+    doIniLine ("set scu6 config=lwr=0");
+
+// SCU7
+
+    doIniLine ("set scu7 config=mode=program");
+    doIniLine ("set scu7 config=port0=enable");
+    doIniLine ("set scu7 config=port1=enable");
+    doIniLine ("set scu7 config=port2=enable");
+    doIniLine ("set scu7 config=port3=enable");
+    doIniLine ("set scu7 config=port4=enable");
+    doIniLine ("set scu7 config=port5=enable");
+    doIniLine ("set scu7 config=port6=enable");
+    doIniLine ("set scu7 config=port7=enable");
+    doIniLine ("set scu7 config=maska=off");
+    doIniLine ("set scu7 config=maskb=off");
+    doIniLine ("set scu7 config=lwrstoresize=7");
+    doIniLine ("set scu7 config=cyclic=0040");
+    doIniLine ("set scu7 config=nea=0200");
+    doIniLine ("set scu7 config=onl=014");
+    doIniLine ("set scu7 config=int=0");
+    doIniLine ("set scu7 config=lwr=0");
+
+    // ; There are bugs in the FNP code that require sim unit number
+    // ; to be the same as the Multics unit number; ie fnp0 == fnpa, etc.
+    // ;
+    // ; fnp a 3400
+    // ; fnp b 3700
+    // ; fnp c 4200
+    // ; fnp d 4500
+    // ; fnp e 5000
+    // ; fnp f 5300
+    // ; fnp g 5600
+    // ; fnp h 6100
+
+// FNP8 - FNP15
+
+    doIniLine ("set fnp8 config=mailbox=03400");
+    doIniLine ("set fnp8 ipc_name=fnp-a");
+    doIniLine ("set fnp9 config=mailbox=03700");
+    doIniLine ("set fnp9 ipc_name=fnp-b");
+    doIniLine ("set fnp10 config=mailbox=04200");
+    doIniLine ("set fnp11 ipc_name=fnp-c");
+    doIniLine ("set fnp11 config=mailbox=04500");
+    doIniLine ("set fnp11 ipc_name=fnp-d");
+    doIniLine ("set fnp12 config=mailbox=05000");
+    doIniLine ("set fnp12 ipc_name=fnp-e");
+    doIniLine ("set fnp13 config=mailbox=05300");
+    doIniLine ("set fnp13 ipc_name=fnp-f");
+    doIniLine ("set fnp14 config=mailbox=05600");
+    doIniLine ("set fnp14 ipc_name=fnp-g");
+    doIniLine ("set fnp15 config=mailbox=06100");
+    doIniLine ("set fnp15 ipc_name=fnp-h");
+
+
+// TAPE17 - TAPE33
+
+sim_printf ("XXX resolve 'set tape17 boot_drive\n");
+    doIniLine ("set tape17 boot_drive");
+
+    // ; Attach tape MPC to IOM 1, chan 012, dev_code 0
+    doIniLine ("cable tape,17,1,012,0");
+    doIniLine ("set tape17 device_name=mpca");
+    // ; Attach TAPE unit 0 to IOM 0, chan 012, dev_code 1
+    doIniLine ("cable tape,18,1,012,1");
+    doIniLine ("set tape18 device_name=tapa_01");
+    doIniLine ("cable tape,19,1,012,2");
+    doIniLine ("set tape19 device_name=tapa_02");
+    doIniLine ("cable tape,20,1,012,3");
+    doIniLine ("set tape20 device_name=tapa_03");
+    doIniLine ("cable tape,21,1,012,4");
+    doIniLine ("set tape21 device_name=tapa_04");
+    doIniLine ("cable tape,22,1,012,5");
+    doIniLine ("set tape22 device_name=tapa_05");
+    doIniLine ("cable tape,23,1,012,6");
+    doIniLine ("set tape23 device_name=tapa_06");
+    doIniLine ("cable tape,24,1,012,7");
+    doIniLine ("set tape24 device_name=tapa_07");
+    doIniLine ("cable tape,25,1,012,8");
+    doIniLine ("set tape25 device_name=tapa_08");
+    doIniLine ("cable tape,26,1,012,9");
+    doIniLine ("set tape26 device_name=tapa_09");
+    doIniLine ("cable tape,27,1,012,10");
+    doIniLine ("set tape27 device_name=tapa_10");
+    doIniLine ("cable tape,28,1,012,11");
+    doIniLine ("set tape28 device_name=tapa_11");
+    doIniLine ("cable tape,29,1,012,12");
+    doIniLine ("set tape29 device_name=tapa_12");
+    doIniLine ("cable tape,30,1,012,13");
+    doIniLine ("set tape30 device_name=tapa_13");
+    doIniLine ("cable tape,31,1,012,14");
+    doIniLine ("set tape31 device_name=tapa_14");
+    doIniLine ("cable tape,32,1,012,15");
+    doIniLine ("set tape32 device_name=tapa_15");
+    doIniLine ("cable tape,33,1,012,16");
+    doIniLine ("set tape33 device_name=tapa_16");
+
+
+// DISK16 - DISK31
+
+    // ; Attach DISK unit 16 to IOM 1, chan 013, dev_code 0");
+    doIniLine ("cable disk,16,1,013,0");
+    // ; Attach DISK unit 1 to IOM 0, chan 013, dev_code 1");
+    doIniLine ("cable disk,17,1,013,1");
+    // ; Attach DISK unit 2 to IOM 0, chan 013, dev_code 2");
+    doIniLine ("cable disk,18,1,013,2");
+    // ; Attach DISK unit 3 to IOM 0, chan 013, dev_code 3");
+    doIniLine ("cable disk,19,1,013,3");
+    // ; Attach DISK unit 4 to IOM 0, chan 013, dev_code 4");
+    doIniLine ("cable disk,20,1,013,4");
+    // ; Attach DISK unit 5 to IOM 0, chan 013, dev_code 5");
+    doIniLine ("cable disk,21,1,013,5");
+    // ; Attach DISK unit 6 to IOM 0, chan 013, dev_code 6");
+    doIniLine ("cable disk,22,1,013,6");
+    // ; Attach DISK unit 7 to IOM 0, chan 013, dev_code 7");
+    doIniLine ("cable disk,23,1,013,7");
+    // ; Attach DISK unit 8 to IOM 0, chan 013, dev_code 8");
+    doIniLine ("cable disk,24,1,013,8");
+    // ; Attach DISK unit 9 to IOM 0, chan 013, dev_code 9");
+    doIniLine ("cable disk,25,1,013,9");
+    // ; Attach DISK unit 10 to IOM 0, chan 013, dev_code 10");
+    doIniLine ("cable disk,26,1,013,10");
+    // ; Attach DISK unit 11 to IOM 0, chan 013, dev_code 11");
+    doIniLine ("cable disk,27,1,013,11");
+    // ; Attach DISK unit 12 to IOM 0, chan 013, dev_code 12");
+    doIniLine ("cable disk,28,1,013,12");
+    // ; Attach DISK unit 13 to IOM 0, chan 013, dev_code 13");
+    doIniLine ("cable disk,29,1,013,13");
+    // ; Attach DISK unit 14 to IOM 0, chan 013, dev_code 14");
+    doIniLine ("cable disk,30,1,013,14");
+    // ; Attach DISK unit 15 to IOM 0, chan 013, dev_code 15");
+    doIniLine ("cable disk,31,1,013,15");
+
+
+// OPCON1
+
+    // ; Attach OPCON unit 1 to IOM B, chan 036, dev_code 0
+    doIniLine ("cable opcon,1,1,036,0");
+
+// FNP8 - FNP15
+
+    // ; Attach FNP unit 11 (d) to IOM B, chan 020, dev_code 0
+    doIniLine ("cable fnp,11,1,020,0");
+
+    // ; Attach FNP unit 8 (a) to IOM B, chan 021, dev_code 0
+    doIniLine ("cable fnp,8,1,021,0");
+
+    // ; Attach FNP unit 9 (b) to IOM B, chan 022, dev_code 0
+    doIniLine ("cable fnp,9,1,022,0");
+
+    // ; Attach FNP unit 10 (c) to IOM B, chan 023, dev_code 0
+    doIniLine ("cable fnp,10,1,023,0");
+
+    // ; Attach FNP unit 12 (e) to IOM B, chan 024, dev_code 0
+    doIniLine ("cable fnp,12,1,024,0");
+
+    // ; Attach FNP unit 13 (f) to IOM B, chan 025, dev_code 0
+    doIniLine ("cable fnp,13,1,025,0");
+
+    // ; Attach FNP unit 14 (g) to IOM B, chan 026, dev_code 0
+    doIniLine ("cable fnp,14,1,026,0");
+
+    // ; Attach FNP unit 15 (h) to IOM B, chan 027, dev_code 0
+    doIniLine ("cable fnp,15,1,027,0");
+
+
+// URP3 RDR1
+
+    // ; Attach MPC unit 3 to IOM 1, char 015, dev_code 0
+    doIniLine ("cable urp,3,1,015, 0");
+    doIniLine ("set urp3 device_name=urpa");
+
+    // ; Attach CRDRDR unit 1 to IOM 1, chan 015, dev_code 1
+    doIniLine ("cable crdrdr,1,1,015,1");
+    doIniLine ("set crdrdr1 device_name=rdra");
+
+// URP4 PUN1
+
+    // ; Attach MPC unit 4 to IOM 1, char 016, dev_code 0
+    doIniLine ("cable urp,4,1,016, 0");
+    doIniLine ("set urp4 device_name=urpb");
+
+    // ; Attach CRDPUN unit 1 to IOM 1, chan 016, dev_code 1
+    doIniLine ("cable crdpun,1,1,016,1");
+    doIniLine ("set crdpun1 device_name=puna");
+
+// URP5 PRT17 - PRT33
+
+    // ; Attach MPC unit 5 to IOM 1, char 017, dev_code 0
+    doIniLine ("cable urp,5,1,017,0");
+    doIniLine ("set urp5 device_name=urpc");
+
+    // ; Attach PRT unit 17 to IOM 1, chan 017, dev_code 1
+    doIniLine ("cable prt,17,1,017,1");
+    doIniLine ("set prt17 device_name=prta");
+
+    // ; Attach PRT unit 18 to IOM 1, chan 017, dev_code 2
+    doIniLine ("cable prt,18,1,017,2");
+    doIniLine ("set prt18 device_name=prtb");
+
+    // ; Attach PRT unit 19 to IOM 1, chan 017, dev_code 3
+    doIniLine ("cable prt,19,1,017,3");
+    doIniLine ("set prt19 device_name=prtc");
+
+    // ; Attach PRT unit 20 to IOM 1, chan 017, dev_code 4
+    doIniLine ("cable prt,20,1,017,4");
+    doIniLine ("set prt20 device_name=prtd");
+
+    // ; Attach PRT unit 21 to IOM 1, chan 017, dev_code 5
+    doIniLine ("cable prt,21,1,017,5");
+    doIniLine ("set prt21 device_name=prte");
+
+    // ; Attach PRT unit 22 to IOM 1, chan 017, dev_code 6
+    doIniLine ("cable prt,22,1,017,6");
+    doIniLine ("set prt22 device_name=prtf");
+
+    // ; Attach PRT unit 23 to IOM 1, chan 017, dev_code 7
+    doIniLine ("cable prt,23,1,017,7");
+    doIniLine ("set prt23 device_name=prtg");
+
+    // ; Attach PRT unit 24 to IOM 1, chan 017, dev_code 8
+    doIniLine ("cable prt,24,1,017,8");
+    doIniLine ("set prt24 device_name=prth");
+
+    // ; Attach PRT unit 25 to IOM 1, chan 017, dev_code 9
+    doIniLine ("cable prt,25,1,017,9");
+    doIniLine ("set prt25 device_name=prti");
+
+    // ; Attach PRT unit 26 to IOM 1, chan 017, dev_code 10
+    doIniLine ("cable prt,26,1,017,10");
+    doIniLine ("set prt26 device_name=prtj");
+
+    // ; Attach PRT unit 27 to IOM 1, chan 017, dev_code 11
+    doIniLine ("cable prt,27,1,017,11");
+    doIniLine ("set prt27 device_name=prtk");
+
+    // ; Attach PRT unit 28 to IOM 1, chan 017, dev_code 12
+    doIniLine ("cable prt,28,1,017,12");
+    doIniLine ("set prt28 device_name=prtl");
+
+    // ; Attach PRT unit 29 to IOM 1, chan 017, dev_code 13
+    doIniLine ("cable prt,29,1,017,13");
+    doIniLine ("set prt29 device_name=prtm");
+
+    // ; Attach PRT unit 30 to IOM 1, chan 017, dev_code 14
+    doIniLine ("cable prt,30,1,017,14");
+    doIniLine ("set prt30 device_name=prtn");
+
+    // ; Attach PRT unit 31 to IOM 1, chan 017, dev_code 15
+    doIniLine ("cable prt,31,1,017,15");
+    doIniLine ("set prt31 device_name=prto");
+
+    // ; Attach PRT unit 32 to IOM 1, chan 017, dev_code 16
+    doIniLine ("cable prt,32,1,017,16");
+    doIniLine ("set prt32 device_name=prtp");
+
+    // ; Attach PRT unit 33 to IOM 1, chan 017, dev_code 17
+    doIniLine ("cable prt,33,1,017,17");
+    doIniLine ("set prt33 device_name=prtq");
+
+
+// IOM1
+
+    // ; Attach IOM unit 1 port A (0) to SCU unit 4, port 0
+    doIniLine ("cable iom,1,0,4,0");
+
+    // ; Attach IOM unit 1 port B (1) to SCU unit 5, port 0
+    doIniLine ("cable iom,1,1,5,0");
+
+    // ; Attach IOM unit 1 port C (2) to SCU unit 6, port 0
+    doIniLine ("cable iom,1,2,6,0");
+
+    // ; Attach IOM unit 1 port D (3) to SCU unit 7, port 0
+    doIniLine ("cable iom,1,3,7,0");
+
+// SCU4
+
+    // ; Attach SCU unit 4 port 7 to CPU unit B (1), port 0
+    doIniLine ("cable scu,4,7,1,0");
+
+// SCU1
+
+    // ; Attach SCU unit 5 port 7 to CPU unit B (1), port 1
+    doIniLine ("cable scu,5,7,1,1");
+
+// SCU2
+
+    // ; Attach SCU unit 6 port 7 to CPU unit B (1), port 2
+    doIniLine ("cable scu,6,7,1,2");
+
+// SCU3
+
+    // ; Attach SCU unit 7 port 7 to CPU unit B (1), port 3
+    doIniLine ("cable scu,7,7,1,3");
+
+
+    doIniLine ("set cpu1 config=dis_enable=enable");
+    doIniLine ("set cpu1 config=steady_clock=disable");
+    doIniLine ("set cpu1 config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu1 config=disable_wam=enable");
+    doIniLine ("set cpu1 config=tro_enable=enable");
+    doIniLine ("set cpu1 config=y2k=disable");
+
+// Generic
+
+    doIniLine ("set sys config=activate_time=8");
+    doIniLine ("set sys config=terminate_time=8");
+
+
+sim_printf ("XXX fix fnpserverport 6180\n");
+    doIniLine ("fnpserverport 6180");
+
+
+#else
     // ;
     // ; Configure test system
     // ;
@@ -3450,7 +4449,7 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("fnpload Devices.txt");
 #endif
     doIniLine ("fnpserverport 6180");
-
+#endif
     return SCPE_OK;
   }
 

@@ -37,7 +37,7 @@ struct cableFromScuToCpu
     struct cpuPort
       {
         bool inuse;
-        int scu_unit_num; 
+        int scu_unit_idx; 
         int scu_port_num; 
         int scu_subport_num; 
       
@@ -56,13 +56,13 @@ struct cableFromIom
 struct cablesFromScu
   {
     bool inuse;
-    int scuUnitNum;
+    int scuUnitIdx;
     int scuPortNum;
   };
 
 struct cableFromCpu
   {
-    int cpu_unit_num;
+    int cpuUnitIdx;
     int cpu_port_num;
   };
 

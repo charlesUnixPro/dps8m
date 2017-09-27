@@ -494,7 +494,7 @@ typedef enum iomSysFaults_t
     iomPTWFlagFault = 015,  // PTW-Flag-Fault: Page Present flag zero, or
                             // Write Control Bit 0, or Housekeeping bit set,
     // = 016,               // ILL-LPW-STD LPW had bit 20 on in GCOS mode
-    // = 017,               // NO-PRT-SEL No port selected during attempt
+    iomNoPortFault = 017,   // NO-PRT-SEL No port selected during attempt
                             // to access memory.
   } iomSysFaults_t;
 
@@ -555,13 +555,20 @@ enum iomImwPics
 
 static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics pic);
 
+#ifdef SCUMEM
 // Map memory to port
 // -1 -- no mapping
 // iomScbankMap is indexed by IDX because the data are
 // based on the configuration switches associated with
 // the physical IOM
 
-static int iomScbankMap [/*IDX*/N_IOM_UNITS_MAX] [N_SCBANKS];
+typedef struct
+  {
+    int portNum;
+    word24 base;
+  } map_t;
+
+static map_t  iomScbankMap [/*IDX*/N_IOM_UNITS_MAX] [N_SCBANKS];
 
 static void setupIOMScbankMap (void)
   {
@@ -573,7 +580,7 @@ static void setupIOMScbankMap (void)
       {
         // Initalize to unmapped
         for (int pg = 0; pg < (int) N_SCBANKS; pg ++)
-          iomScbankMap [iomUnitIdx] [pg] = -1;
+          iomScbankMap[iomUnitIdx][pg].portNum = -1;
     
         iomUnitData_t * p = iomUnitData + iomUnitIdx;
         // For each port (which is connected to a SCU
@@ -601,34 +608,54 @@ static void setupIOMScbankMap (void)
     
             // Now convert to SCBANKs
             sz = sz / SCBANK;
-            base = base / SCBANK;
+            uint scbase = base / SCBANK;
     
             sim_debug (DBG_DEBUG, & cpu_dev,
               "%s: unit:%u port:%d ss:%u as:%u sz:%u ba:%u\n",
               __func__, iomUnitIdx, port_num, store_size, assignment, sz, 
-              base);
+              scbase);
     
             for (uint pg = 0; pg < sz; pg ++)
               {
-                uint scpg = base + pg;
+                uint scpg = scbase + pg;
                 if (/*scpg >= 0 && */ scpg < N_SCBANKS)
-                  iomScbankMap [iomUnitIdx] [scpg] = port_num;
+                  {
+                    iomScbankMap[iomUnitIdx][scpg].base = base;
+                    iomScbankMap[iomUnitIdx][scpg].portNum = port_num;
+                  }
               }
           }
       }
+#if 0
     for (uint iomUnitIdx = 0; iomUnitIdx < iom_dev . numunits; iomUnitIdx ++)
         for (int pg = 0; pg < (int) N_SCBANKS; pg ++)
           sim_debug (DBG_DEBUG, & cpu_dev, "%s: %d:%d\n", 
-            __func__, pg, iomScbankMap [iomUnitIdx] [pg]);
+            __func__, pg, iomScbankMap [iomUnitIdx] [pg].portNum);
+#endif
   }
 
-#if 0   
-static int queryIomScbankMap (uint iomUnitIdx, word24 addr)
+int queryIomScbankMap (uint iomUnitIdx, word24 addr, word24 * base)
   {
     uint scpg = addr / SCBANK;
     if (scpg < N_SCBANKS)
-      return iomScbankMap [iomUnitIdx] [scpg];
+      {
+        * base = iomScbankMap[iomUnitIdx][scpg].base;
+        return iomScbankMap[iomUnitIdx][scpg].portNum;
+      }
     return -1;
+  }
+
+word36 * iomLookupAddress (uint iomUnitIdx, word24 addr)
+  {
+    word24 base;
+    int port = queryIomScbankMap (iomUnitIdx, addr, & base);
+    if (port < 0)
+      {
+        sim_printf ("IOM %d mem fail %08o\n", iomUnitIdx, addr); 
+        return NULL;
+      }
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][port].scuUnitNum;
+    return & scu[scuUnitIdx].M [addr - base];
   }
 #endif
 
@@ -2175,7 +2202,10 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
     uint imw_addr;
     uint chan_group = chan < 32 ? 1 : 0;
     uint chan_in_group = chan & 037;
-    uint interrupt_num = iomUnitIdx | (chan_group << 2) | ((uint) pic << 3);
+
+    uint iomUnitNum =
+      iomUnitData[iomUnitIdx].configSwMultiplexBaseAddress & 3u;
+    uint interrupt_num = iomUnitNum | (chan_group << 2) | ((uint) pic << 3);
     // Section 3.2.7 defines the upper bits of the IMW address as
     // being defined by the mailbox base address switches and the
     // multiplex base address switches.
@@ -2222,7 +2252,7 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
     int cpu_port_num = queryIomScbankMap (iomUnitIdx, base_addr);
     int scuUnitNum;
     if (cpu_port_num >= 0)
-      scuUnitNum = query_scu_unit_num (ASSUME_CPU_0, cpu_port_num);
+      scuUnitNum = queryScuUnitIdx (ASSUME_CPU_0, cpu_port_num);
     else
       scuUnitNum = 0;
     // XXX Print warning
@@ -2359,8 +2389,9 @@ static t_stat iomReset (UNUSED DEVICE * dptr)
       }
     
 
+#ifdef SCUMEM
     setupIOMScbankMap ();
-
+#endif
     return SCPE_OK;
   }
 
@@ -2611,7 +2642,12 @@ static t_stat bootSvc (UNIT * unitp)
     startFNPListener ();
 
     // simulate $CON
-    iom_interrupt (0 /*ASSUME0*/, iomUnitIdx);
+// XXX XXX XXX
+// Making the assumption that low memory is connected to port 0, ..., high to 3
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][0].scuUnitIdx;
+    if (scuUnitIdx < 0)
+      sim_err ("boot iom can't find a SCU\n");
+    iom_interrupt ((uint) scuUnitIdx /*ASSUME0*/, iomUnitIdx);
 
     sim_debug (DBG_DEBUG, &iom_dev, "%s finished\n", __func__);
 

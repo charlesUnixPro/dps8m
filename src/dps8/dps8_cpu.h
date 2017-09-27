@@ -1784,6 +1784,7 @@ typedef struct
 #endif
     // Map memory to port
     int scbank_map [N_SCBANKS];
+// scu_unit_idx * 4u * 1024u * 1024u + scpg * SCBANK
     int scbank_pg_os [N_SCBANKS];
 
     uint history_cyclic [N_HIST_SETS]; // 0..63
@@ -1821,9 +1822,9 @@ extern cpu_state_t * restrict cpup;
 
 uint setCPUnum (uint cpuNum);
 #ifdef ROUND_ROBIN
-extern uint currentRunningCPUnum;
+extern uint currentRunningCpuIdx;
 #else
-#define currentRunningCPUnum 0
+#define currentRunningCpuIdx 0
 #endif
 
 // Support code to access ARn.BITNO, ARn.CHAR, PRn.BITNO
@@ -2021,7 +2022,7 @@ bool get_went_appending (void);
 bool get_bar_mode (void);
 addr_modes_t get_addr_mode (void);
 void set_addr_mode (addr_modes_t mode);
-int query_scu_unit_num (int cpu_unit_num, int cpu_port_num);
+int queryScuUnitIdx (int cpu_unit_num, int cpu_port_num);
 void init_opcodes (void);
 void decodeInstruction (word36 inst, DCDstruct * p);
 t_stat dpsCmd_Dump (int32 arg, const char *buf);

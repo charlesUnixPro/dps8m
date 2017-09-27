@@ -545,7 +545,7 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
   {
     CPT (cpt2L, 21); // Add72b
 #ifdef ISOLTS
-//if (currentRunningCPUnum)
+//if (currentRunningCpuIdx)
 //sim_printf ("Add72b op1 %012"PRIo64"%012"PRIo64" op2 %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o ovf %o\n",
  //(word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags, * ovf); 
 #endif
@@ -631,7 +631,7 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 #endif
 
 #ifdef ISOLTS
-//if (currentRunningCPUnum)
+//if (currentRunningCpuIdx)
 //{
 ////char buf [1024];
 ////print_int128 (res, buf);
@@ -677,7 +677,7 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
       }
     
 #ifdef ISOLTS
-//if (currentRunningCPUnum)
+//if (currentRunningCpuIdx)
 //{
 //sim_printf ("Sub72b res %012"PRIo64"%012"PRIo64" flags %06o ovf %o\n", (word36) ((res >> 36) & MASK36), (word36) (res & MASK36), * flags, * ovf); 
 //}
@@ -690,7 +690,7 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
   {
     CPT (cpt2L, 22); // Sub72b
 #ifdef ISOLTS
-//if (currentRunningCPUnum)
+//if (currentRunningCpuIdx)
 //sim_printf ("Sub72b op1 %012"PRIo64"%012"PRIo64" op2 %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o ovf %o\n",
  //(word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags, * ovf); 
 #endif
@@ -789,7 +789,7 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
     bool cry = r74;
 
 #ifdef ISOLTS
-//if (currentRunningCPUnum)
+//if (currentRunningCpuIdx)
 //{
 ////char buf [1024];
 ////print_int128 (res, buf);
