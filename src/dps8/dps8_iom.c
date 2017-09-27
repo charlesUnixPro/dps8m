@@ -409,8 +409,18 @@ typedef struct
     // Interrupt multiplex base address: 12 toggles
     word12 configSwIomBaseAddress;
             
+
     // Mailbox base aka IOM base address: 9 toggles
     // Note: The IOM number is encoded in the lower two bits
+
+    // AM81, pg 60 shows an image of a Level 68 IOM configuration panel
+    // The switches are arranged and labeled
+    //
+    //  12   13   14   15   16   17   18   --   --  --  IOM
+    //                                                  NUMBER
+    //   X    X    X    X    X    X    X                X     X
+    //
+
     word9 configSwMultiplexBaseAddress;
             
     // OS: Three position switch: GCOS, EXT GCOS, Multics
@@ -2911,6 +2921,22 @@ static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, const char * cptr, UN
               break;
 
             case 3: // MULTIPLEX_BASE
+              // The IOM number is in the low 2 bits
+              // The address is in the high 7 bits which are mapped
+              // to bits 12 to 18 of a 24 bit addrss
+              //
+//  0  1  2  3  4  5  6  7  8
+//  x  x  x  x  x  x  x  y  y
+//
+//  Address
+//  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 29 20 21 22 23 24
+//  0  0  0  0  0  0  0  0  0  0  0  0  x  x  x  x  x  x  x  0  0  0  0  0  0
+//
+// IOM number
+//
+//  0  1
+//  y  y
+
               p -> configSwMultiplexBaseAddress = (word9) v;
               break;
 

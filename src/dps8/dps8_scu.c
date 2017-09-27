@@ -527,6 +527,19 @@
  *
  */
 
+// SCU numbering:
+//
+// AM81-04, pg 49: "... the ports are listed in order of increasing base 
+//    address, which corresponds to the order of mem config cards."
+// pg 97: "mem port size state ... port as a value (a through h) that
+//        corresponds to the number of the active module port to which the
+//        system controller is connected.
+//
+// From this, I conclude;
+//   The SCU connected to port A (0) is SCUA, 1 B, 2 C, etc.
+//   SCUA starts at address 0, and the SCUs are sorted by increasing addresses.
+//
+
 // ============================================================================
 
 #include <sys/time.h>
