@@ -221,3 +221,9 @@ void doBoot (void);
 int queryIomScbankMap (uint iomUnitIdx, word24 addr, word24 * base);
 word36 * iomLookupAddress (uint iomUnitIdx, word24 addr);
 #endif
+
+void iom_core_read (word24 addr, word36 *data, UNUSED const char * ctx);
+void iom_core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx);
+void iom_core_write (word24 addr, word36 data, UNUSED const char * ctx);
+void iom_core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx);
+

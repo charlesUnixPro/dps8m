@@ -612,7 +612,11 @@ static void sendConsole (int conUnitIdx, word12 stati)
             if (csp->readp >= csp->tailp)
               break;
             unsigned char c = (unsigned char) (* csp->readp ++);
-            putbits36_9 (& M [daddr], charno * 9, c);
+            //putbits36_9 (& M [daddr], charno * 9, c);
+            word36 w;
+            iom_core_read (daddr, & w, __func__);
+            putbits36_9 (& w, charno * 9, c);
+            iom_core_write (daddr, w, __func__);
           }
         // cp = charno % 4;
 
@@ -822,13 +826,18 @@ sim_printf ("uncomfortable with this\n");
                     tally = 4096;
                   }
 
+                word36 w0, w1, w2;
+                iom_core_read (daddr + 0, & w0, __func__);
+                iom_core_read (daddr + 1, & w1, __func__);
+                iom_core_read (daddr + 2, & w2, __func__);
+
                 // When the console prints out "Command:", press the Attention
                 // key one second later
                 if (csp->attn_hack &&
                     tally == 3 &&
-                    M [daddr + 0] == 0103157155155llu &&
-                    M [daddr + 1] == 0141156144072llu &&
-                    M [daddr + 2] == 0040177177177llu)
+                    w0 == 0103157155155llu &&
+                    w1 == 0141156144072llu &&
+                    w2 == 0040177177177llu)
                   {
                     //sim_printf ("attn!\n");
                     if (! csp->once_per_boot)
@@ -842,8 +851,8 @@ sim_printf ("uncomfortable with this\n");
                 // key one second later
                 if (csp->attn_hack &&
                     tally == 2 &&
-                    M [daddr + 0] == 0122145141144llu &&
-                    M [daddr + 1] == 0171015012177llu)
+                    w0 == 0122145141144llu &&
+                    w1 == 0171015012177llu)
                   {
                     //sim_printf ("attn!\n");
                     if (! csp->once_per_boot)
@@ -865,7 +874,10 @@ sim_printf ("uncomfortable with this\n");
 // XXX this should be iomIndirectDataService
                 while (tally)
                   {
-                    word36 datum = M [daddr ++];
+                    //word36 datum = M [daddr ++];
+                    word36 datum;
+                    iom_core_read (daddr, & datum, __func__);
+                    daddr ++;
                     tally --;
     
                     for (int i = 0; i < 4; i ++)

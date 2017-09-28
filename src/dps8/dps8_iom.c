@@ -238,23 +238,23 @@
 #define IOM_UNIT_IDX(uptr) ((uptr) - iomUnit)
 
 
-static inline void iom_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
+void iom_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
     * data = M [addr] & DMASK;
   }
 
-static inline void iom_core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
+void iom_core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
   {
     * even = M [addr ++] & DMASK;
     * odd =  M [addr]    & DMASK;
   }
 
-static inline void iom_core_write (word24 addr, word36 data, UNUSED const char * ctx)
+void iom_core_write (word24 addr, word36 data, UNUSED const char * ctx)
   {
     M [addr] = data & DMASK;
   }
 
-static inline void iom_core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
+void iom_core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
   {
     M [addr ++] = even;
     M [addr] =    odd;
