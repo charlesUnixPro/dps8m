@@ -64,7 +64,7 @@ static t_stat con_show_config (UNUSED FILE * st, UNUSED UNIT * uptr,
                                UNUSED int  val, UNUSED const void * desc);
 static MTAB opcon_mod[] = {
     { MTAB_XTD | MTAB_VUN | MTAB_NC, /* mask */
-        0,            /* patch */
+        0,            /* match */
         "AUTOINPUT",  /* print string */
         "AUTOINPUT",  /* match pstring */
         opcon_autoinput_set, 
@@ -72,7 +72,7 @@ static MTAB opcon_mod[] = {
         NULL, 
         NULL },
     {
-      MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
+      MTAB_XTD | MTAB_VDV | MTAB_VALR, /* mask */
       0,            /* match */
       "NUNITS",     /* print string */
       "NUNITS",         /* match string */
@@ -82,7 +82,7 @@ static MTAB opcon_mod[] = {
       NULL // Help
     },
     {
-      MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
+      MTAB_XTD | MTAB_VUN /* | MTAB_VALR */, /* mask */
       0,            /* match */
       (char *) "CONFIG",     /* print string */
       (char *) "CONFIG",         /* match string */
