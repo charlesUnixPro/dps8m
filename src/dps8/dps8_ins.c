@@ -27,13 +27,13 @@
 #include "dps8_addrmods.h"
 #include "dps8_sys.h"
 #include "dps8_faults.h"
+#include "dps8_scu.h"
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_eis.h"
 #include "dps8_ins.h"
 #include "dps8_math.h"
 #include "dps8_opcodetable.h"
-#include "dps8_scu.h"
 #include "dps8_utils.h"
 #include "dps8_decimal.h"
 #include "dps8_iefp.h"
@@ -7434,7 +7434,12 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
             // cioc The system controller addressed by Y (i.e., contains
             // the word at Y) sends a connect signal to the port specified
             // by C(Y) 33,35.
-            int cpu_port_num = query_scbank_map (cpu.iefpFinalAddress);
+#ifdef SCUMEM
+            word24 offset;
+            int cpu_port_num = lookup_cpu_mem_map (cpu.iefpFinalAddress, & offset);
+#else
+            int cpu_port_num = lookup_cpu_mem_map (cpu.iefpFinalAddress);
+#endif
             // If the there is no port to that memory location, fault
             if (cpu_port_num < 0)
               {
@@ -7636,6 +7641,16 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                 sim_debug (DBG_MSG, & cpu_dev, "BCE DIS causes CPU halt\n");
                 longjmp (cpu.jmpMain, JMP_STOP);
               }
+
+#ifdef ROUND_ROBIN
+          if (cpu.PPR.PSR == 0e4 && cpu.PPR.IC == 03535)
+              {
+                sim_printf ("sys_trouble$die  DIS causes CPU halt\n");
+                sim_debug (DBG_MSG, & cpu_dev, "BCE DIS causes CPU halt\n");
+                //longjmp (cpu.jmpMain, JMP_STOP);
+                cpu.isRunning = false;
+              }
+#endif
 
           sim_debug (DBG_TRACEEXT, & cpu_dev, "entered DIS_cycle\n");
           //sim_printf ("entered DIS_cycle\n");

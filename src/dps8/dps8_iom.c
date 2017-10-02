@@ -73,7 +73,7 @@
 //
 //   Using the cable tables, doPayloadChannel determines the handler and
 //   unit_idx for that channel number and calls 
-//     iom_unit [channel_number] . iomCmd (unit_idx, DCW)
+//     iomUnit [channel_number] . iomCmd (unit_idx, DCW)
 //   It then walks the channel DCW list, passing DCWs to the handler. 
 //
 
@@ -216,11 +216,11 @@
 #include "dps8.h"
 #include "dps8_sys.h"
 #include "dps8_faults.h"
+#include "dps8_scu.h"
 #include "dps8_cpu.h"
 #include "dps8_utils.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
-#include "dps8_scu.h"
 #include "dps8_console.h"
 #include "dps8_fnp2.h"
 
@@ -238,6 +238,41 @@
 #define IOM_UNIT_IDX(uptr) ((uptr) - iomUnit)
 
 
+#ifdef SCUMEM
+void iom_core_read (uint iomUnitIdx, word24 addr, word36 *data, UNUSED const char * ctx)
+  {
+    word24 offset;
+    int scuUnitNum = queryIomScbankMap (iomUnitIdx, addr, & offset);
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
+    *data = scu [scuUnitIdx].M[offset] & DMASK;
+  }
+
+void iom_core_read2 (uint iomUnitIdx, word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
+  {
+    word24 offset;
+    int scuUnitNum = queryIomScbankMap (iomUnitIdx, addr, & offset);
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
+    * even = scu [scuUnitIdx].M[offset ++] & DMASK;
+    * odd  = scu [scuUnitIdx].M[offset   ] & DMASK;
+  }
+
+void iom_core_write (uint iomUnitIdx, word24 addr, word36 data, UNUSED const char * ctx)
+  {
+    word24 offset;
+    int scuUnitNum = queryIomScbankMap (iomUnitIdx, addr, & offset);
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
+    scu [scuUnitIdx].M[offset] = data & DMASK;
+  }
+
+void iom_core_write2 (uint iomUnitIdx, word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
+  {
+    word24 offset;
+    int scuUnitNum = queryIomScbankMap (iomUnitIdx, addr, & offset);
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
+    scu [scuUnitIdx].M[offset ++] = even & DMASK;
+    scu [scuUnitIdx].M[offset   ] = odd & DMASK;
+  }
+#else
 void iom_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
     * data = M [addr] & DMASK;
@@ -259,6 +294,7 @@ void iom_core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * 
     M [addr ++] = even;
     M [addr] =    odd;
   }
+#endif
 
 static t_stat iom_action (UNIT *up);
 
@@ -277,6 +313,7 @@ static t_stat iomShowUnits (FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat iomSetUnits (UNIT * uptr, int value, const char * cptr, void * desc);
 static t_stat iomReset (DEVICE * dptr);
 static t_stat iomBoot (int unitNum, DEVICE * dptr);
+static t_stat iom_reset_unit (UNIT * uptr, UNUSED int32 value, UNUSED const char * cptr, UNUSED void * desc);
 
 
 static MTAB iomMod [] =
@@ -300,6 +337,16 @@ static MTAB iomMod [] =
       iomShowConfig, /* display routine */
       NULL,          /* value descriptor */
       NULL   // help string
+    },
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_VALR, /* mask */
+      0,            /* match */
+      (char *) "RESET",     /* print string */
+      (char *) "RESET",         /* match string */
+      iom_reset_unit, /* validation routine */
+      NULL, /* display routine */
+      (char *) "reset IOM unit", /* value descriptor */
+      NULL /* help */
     },
     {
       MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
@@ -468,7 +515,7 @@ typedef struct
     //   test/normal
     iomStat_t iomStatus;
 
-    uint invokingScuUnitNum; // the unit number of the SCU that did the connect.
+    uint invokingScuUnitIdx; // the unit number of the SCU that did the connect.
   } iomUnitData_t;
 
 static iomUnitData_t iomUnitData [N_IOM_UNITS_MAX];
@@ -580,76 +627,72 @@ typedef struct
 
 static map_t  iomScbankMap [/*IDX*/N_IOM_UNITS_MAX] [N_SCBANKS];
 
-static void setupIOMScbankMap (void)
+static void setupIOMScbankMap (uint iomUnitIdx)
   {
     sim_debug (DBG_DEBUG, & cpu_dev,
       "%s: setupIOMScbankMap: SCBANK %d N_SCBANKS %d MEM_SIZE_MAX %d\n", 
       __func__, SCBANK, N_SCBANKS, MEM_SIZE_MAX);
 
-    for (uint iomUnitIdx = 0; iomUnitIdx < iom_dev . numunits; iomUnitIdx ++)
-      {
-        // Initalize to unmapped
-        for (int pg = 0; pg < (int) N_SCBANKS; pg ++)
-          iomScbankMap[iomUnitIdx][pg].portNum = -1;
+    // Initalize to unmapped
+    for (int pg = 0; pg < (int) N_SCBANKS; pg ++)
+      iomScbankMap[iomUnitIdx][pg].portNum = -1;
     
-        iomUnitData_t * p = iomUnitData + iomUnitIdx;
-        // For each port (which is connected to a SCU
-        for (int port_num = 0; port_num < N_IOM_PORTS; port_num ++)
-          {
-            if (! p -> configSwPortEnable [port_num])
-              continue;
-            // Calculate the amount of memory in the SCU in words
-            uint store_size = p -> configSwPortStoresize [port_num];
+    iomUnitData_t * p = iomUnitData + iomUnitIdx;
+    // For each port (which is connected to a SCU
+    for (int port_num = 0; port_num < N_IOM_PORTS; port_num ++)
+      {
+        if (! p -> configSwPortEnable [port_num])
+          continue;
+        // Calculate the amount of memory in the SCU in words
+        uint store_size = p -> configSwPortStoresize [port_num];
 #ifdef DPS8M
-            uint store_table [8] = 
-              { 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304 };
+        uint store_table [8] = 
+          { 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304 };
 #endif
 #ifdef L68
-            uint store_table [8] = 
-              { 32768, 65536, 4194304, 131072, 524288, 1048576, 2097152, 262144 };
+        uint store_table [8] = 
+          { 32768, 65536, 4194304, 131072, 524288, 1048576, 2097152, 262144 };
 #endif
-            //uint sz = 1 << (store_size + 16);
-            uint sz = store_table [store_size];
-    
-            // Calculate the base address of the memory in words
-            uint assignment = p -> configSwPortAddress [port_num];
-            //uint assignment = cpu.switches.assignment [port_num];
-            uint base = assignment * sz;
-    
-            // Now convert to SCBANKs
-            sz = sz / SCBANK;
-            uint scbase = base / SCBANK;
-    
-            sim_debug (DBG_DEBUG, & cpu_dev,
-              "%s: unit:%u port:%d ss:%u as:%u sz:%u ba:%u\n",
-              __func__, iomUnitIdx, port_num, store_size, assignment, sz, 
-              scbase);
-    
-            for (uint pg = 0; pg < sz; pg ++)
+        //uint sz = 1 << (store_size + 16);
+        uint sz = store_table [store_size];
+ 
+        // Calculate the base address of the memory in words
+        uint assignment = p -> configSwPortAddress [port_num];
+        //uint assignment = cpu.switches.assignment [port_num];
+        uint base = assignment * sz;
+ 
+        // Now convert to SCBANKs
+        sz = sz / SCBANK;
+        uint scbase = base / SCBANK;
+ 
+        sim_debug (DBG_DEBUG, & cpu_dev,
+          "%s: unit:%u port:%d ss:%u as:%u sz:%u ba:%u\n",
+          __func__, iomUnitIdx, port_num, store_size, assignment, sz, 
+          scbase);
+ 
+        for (uint pg = 0; pg < sz; pg ++)
+          {
+            uint scpg = scbase + pg;
+            if (/*scpg >= 0 && */ scpg < N_SCBANKS)
               {
-                uint scpg = scbase + pg;
-                if (/*scpg >= 0 && */ scpg < N_SCBANKS)
-                  {
-                    iomScbankMap[iomUnitIdx][scpg].base = base;
-                    iomScbankMap[iomUnitIdx][scpg].portNum = port_num;
-                  }
+                iomScbankMap[iomUnitIdx][scpg].base = base;
+                iomScbankMap[iomUnitIdx][scpg].portNum = port_num;
               }
           }
       }
 #if 0
-    for (uint iomUnitIdx = 0; iomUnitIdx < iom_dev . numunits; iomUnitIdx ++)
-        for (int pg = 0; pg < (int) N_SCBANKS; pg ++)
-          sim_debug (DBG_DEBUG, & cpu_dev, "%s: %d:%d\n", 
-            __func__, pg, iomScbankMap [iomUnitIdx] [pg].portNum);
+    for (int pg = 0; pg < (int) N_SCBANKS; pg ++)
+      sim_debug (DBG_DEBUG, & cpu_dev, "%s: %d:%d\n", 
+        __func__, pg, iomScbankMap [iomUnitIdx] [pg].portNum);
 #endif
   }
 
-int queryIomScbankMap (uint iomUnitIdx, word24 addr, word24 * base)
+int queryIomScbankMap (uint iomUnitIdx, word24 addr, word24 * offset)
   {
     uint scpg = addr / SCBANK;
     if (scpg < N_SCBANKS)
       {
-        * base = iomScbankMap[iomUnitIdx][scpg].base;
+        * offset = addr-iomScbankMap[iomUnitIdx][scpg].base;
         return iomScbankMap[iomUnitIdx][scpg].portNum;
       }
     return -1;
@@ -657,15 +700,15 @@ int queryIomScbankMap (uint iomUnitIdx, word24 addr, word24 * base)
 
 word36 * iomLookupAddress (uint iomUnitIdx, word24 addr)
   {
-    word24 base;
-    int port = queryIomScbankMap (iomUnitIdx, addr, & base);
+    word24 offset;
+    int port = queryIomScbankMap (iomUnitIdx, addr, & offset);
     if (port < 0)
       {
         sim_printf ("IOM %d mem fail %08o\n", iomUnitIdx, addr); 
         return NULL;
       }
-    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][port].scuUnitNum;
-    return & scu[scuUnitIdx].M [addr - base];
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][port].scuUnitIdx;
+    return & scu[scuUnitIdx].M [offset];
   }
 #endif
 
@@ -803,7 +846,11 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
     uint chanloc = mbxLoc (iomUnitIdx, chan);
     word24 scwAddr = chanloc + 2;
     word36 scw;
+#ifdef SCUMEM
+    iom_core_read (iomUnitIdx, scwAddr, & scw, __func__);
+#else
     iom_core_read (scwAddr, & scw, __func__);
+#endif
     sim_debug (DBG_DEBUG, & iom_dev,
                "SCW chan %02o %012"PRIo64"\n", chan, scw);
     word18 addr = getbits36_18 (scw, 0);   // absolute
@@ -828,7 +875,11 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
         lq = 0;
       }
 //sim_printf ("status %d %08o %012"PRIo64" %012"PRIo64"\n", chan, addr, word1, word2);
+#ifdef SCUMEM
+    iom_core_write2 (iomUnitIdx, addr, word1, word2, __func__);
+#else
     iom_core_write2 (addr, word1, word2, __func__);
+#endif
 
     if (tally > 0 || (tally == 0 && lq != 0))
       {
@@ -882,7 +933,11 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s:                at: %06o\n",
                    __func__, scwAddr);
+#ifdef SCUMEM
+        iom_core_write (iomUnitIdx, scwAddr, scw, __func__);
+#else
         iom_core_write (scwAddr, scw, __func__);
+#endif
       }
 
     // BUG: update SCW in core
@@ -930,7 +985,11 @@ static void fetchDDSPTW (uint iomUnitIdx, int chan, word18 addr)
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     word24 pgte = buildDDSPTWaddress (p -> PCW_PAGE_TABLE_PTR, 
                                       (addr >> 10) & MASK8);
+#ifdef SCUMEM
+    iom_core_read (iomUnitIdx, pgte, & p -> PTW_DCW, __func__);
+#else
     iom_core_read (pgte, & p -> PTW_DCW, __func__);
+#endif
   }
 
 static word24 buildIDSPTWaddress (word18 PCW_PAGE_TABLE_PTR, word1 seg, word8 pageNumber)
@@ -965,7 +1024,11 @@ static void fetchIDSPTW (uint iomUnitIdx, int chan, word18 addr)
     word24 pgte = buildIDSPTWaddress (p -> PCW_PAGE_TABLE_PTR, 
                                       p -> SEG, 
                                       (addr >> 10) & MASK8);
+#ifdef SCUMEM
+    iom_core_read (iomUnitIdx, pgte, & p -> PTW_DCW, __func__);
+#else
     iom_core_read (pgte, & p -> PTW_DCW, __func__);
+#endif
 //sim_printf ("       %08o %012"PRIo64"\n", pgte, p -> PTW_DCW);
   }
 
@@ -1000,7 +1063,11 @@ static void fetchLPWPTW (uint iomUnitIdx, uint chan)
     word24 addr = buildLPWPTWaddress (p -> PCW_PAGE_TABLE_PTR, 
                                       p -> SEG,
                                       (p -> LPW_DCW_PTR >> 10) & MASK6);
+#ifdef SCUMEM
+    iom_core_read (iomUnitIdx, addr, & p -> PTW_LPW, __func__);
+#else
     iom_core_read (addr, & p -> PTW_LPW, __func__);
+#endif
   }
 
 // 'write' means periperal write; i.e. the peripheral is writing to core after
@@ -1038,10 +1105,17 @@ sim_warn ("iomDirectDataService DCW paged\n");
           break;
       }
 
+#ifdef SCUMEM
+    if (write)
+      iom_core_write (iomUnitIdx, daddr, * data, __func__);
+    else
+      iom_core_read (iomUnitIdx, daddr, data, __func__);
+#else
     if (write)
       iom_core_write (daddr, * data, __func__);
     else
       iom_core_read (daddr, data, __func__);
+#endif
   }
 
 // 'tally' is the transfer size request by Multics.
@@ -1076,7 +1150,11 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
               {
                 fetchIDSPTW (iomUnitIdx, (int) chan, daddr);
                 word24 addr = ((word24) (getbits36_14 (p -> PTW_DCW, 4) << 10)) | (daddr & MASK10);
+#ifdef SCUMEM
+                iom_core_write (iomUnitIdx, addr, * data, __func__);
+#else
                 iom_core_write (addr, * data, __func__);
+#endif
 //sim_printf (" %o %08o %08o %012"PRIo64" %012"PRIo64"\n", p -> SEG, daddr, addr, * data, p -> PTW_DCW);
               }
             else
@@ -1089,7 +1167,11 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
 // If PTP is not set, we are in cm1e or cm2e. Both are 'EXT DCW', so
 // we can elide the mode check here.
                 uint daddr2 = daddr | (uint) p -> ADDR_EXT << 18;
+#ifdef SCUMEM
+                iom_core_write (iomUnitIdx, daddr2, * data, __func__);
+#else
                 iom_core_write (daddr2, * data, __func__);
+#endif
               }
             daddr ++;
             data ++;
@@ -1112,14 +1194,22 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
               {
                 fetchIDSPTW (iomUnitIdx, (int) chan, daddr);
                 word24 addr = ((word24) (getbits36_14 (p -> PTW_DCW, 4) << 10)) | (daddr & MASK10);
+#ifdef SCUMEM
+                iom_core_read (iomUnitIdx, addr, data, __func__);
+#else
                 iom_core_read (addr, data, __func__);
+#endif
               }
             else
               {
 // If PTP is not set, we are in cm1e or cm2e. Both are 'EXT DCW', so
 // we can elide the mode check here.
                 uint daddr2 = daddr | (uint) p -> ADDR_EXT << 18;
+#ifdef SCUMEM
+                iom_core_read (iomUnitIdx, daddr2, data, __func__);
+#else
                 iom_core_read (daddr2, data, __func__);
+#endif
               }
             daddr ++;
             p -> tallyResidue --;
@@ -1261,9 +1351,15 @@ static void writeLPW (uint iomUnitIdx, uint chan)
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
 
     uint chanLoc = mbxLoc (iomUnitIdx, chan);
+#ifdef SCUMEM
+    iom_core_write (iomUnitIdx, chanLoc, p -> LPW, __func__);
+    if (chan != IOM_CONNECT_CHAN)
+      iom_core_write (iomUnitIdx, chanLoc + 1, p -> LPWX, __func__);
+#else
     iom_core_write (chanLoc, p -> LPW, __func__);
     if (chan != IOM_CONNECT_CHAN)
       iom_core_write (chanLoc + 1, p -> LPWX, __func__);
+#endif
   }
 
 static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
@@ -1273,7 +1369,11 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
 
     uint chanLoc = mbxLoc (iomUnitIdx, chan);
 
+#ifdef SCUMEM
+    iom_core_read (iomUnitIdx, chanLoc, & p -> LPW, __func__);
+#else
     iom_core_read (chanLoc, & p -> LPW, __func__);
+#endif
     sim_debug (DBG_DEBUG, & iom_dev, "lpw %012"PRIo64"\n", p -> LPW);
 
     p -> LPW_DCW_PTR = getbits36_18 (p -> LPW,  0);
@@ -1294,7 +1394,11 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
       }
     else
       {
+#ifdef SCUMEM
+        iom_core_read (iomUnitIdx, chanLoc + 1, & p -> LPWX, __func__);
+#else
         iom_core_read (chanLoc + 1, & p -> LPWX, __func__);
+#endif
         p -> LPWX_BOUND = getbits36_18 (p -> LPWX, 0);
         p -> LPWX_SIZE = getbits36_18 (p -> LPWX, 18);
       }   
@@ -1384,7 +1488,11 @@ static void packLPW (uint iomUnitIdx, uint chan)
 static void fetchAndParsePCW (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+#ifdef SCUMEM
+    iom_core_read2 (iomUnitIdx, p -> LPW_DCW_PTR, & p -> PCW0, & p -> PCW1, __func__);
+#else
     iom_core_read2 (p -> LPW_DCW_PTR, & p -> PCW0, & p -> PCW1, __func__);
+#endif
 //sim_printf ("%012"PRIo64" %012"PRIo64"\n", p -> PCW0, p ->  PCW1);
     p -> PCW_CHAN = getbits36_6 (p -> PCW1, 3);
     p -> PCW_AE = getbits36_6 (p -> PCW0, 12);
@@ -1436,7 +1544,11 @@ sim_err ("unhandled fetchAndParseDCW\n");
         case cm1:
         case cm1e:
           {
+#ifdef SCUMEM
+            iom_core_read (iomUnitIdx, addr, & p -> DCW, __func__);
+#else
             iom_core_read (addr, & p -> DCW, __func__);
+#endif
           }
           break;
 
@@ -1444,7 +1556,11 @@ sim_err ("unhandled fetchAndParseDCW\n");
         case cm2e:
           {
             addr |= ((word24) p -> LPWX_BOUND << 18);
+#ifdef SCUMEM
+            iom_core_read (iomUnitIdx, addr, & p -> DCW, __func__);
+#else
             iom_core_read (addr, & p -> DCW, __func__);
+#endif
           }
           break;
 
@@ -1471,7 +1587,11 @@ sim_err ("unhandled fetchAndParseDCW\n");
             // PTW 4-17 || LPW 8-17
             word24 addr_ = ((word24) (getbits36_14 (p -> PTW_LPW, 4) << 10)) | ((p -> LPW_DCW_PTR) & MASK10);
 //sim_printf ("addr now %08o\n", addr_);
+#ifdef SCUMEM
+            iom_core_read (iomUnitIdx, addr_, & p -> DCW, __func__);
+#else
             iom_core_read (addr_, & p -> DCW, __func__);
+#endif
 //sim_printf ("dcw now %012"PRIo64"\n", p -> DCW);
           }
           break;
@@ -1525,17 +1645,29 @@ static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
       }
     // No address extension or paging nonsense for channels 0-7. 
     uint addr = p -> DDCW_ADDR;
+#ifdef SCUMEM
+    iom_core_write (iomUnitIdx, addr, faultWord, __func__);
+#else
     iom_core_write (addr, faultWord, __func__);
+#endif
 
     send_general_interrupt (iomUnitIdx, 1, imwSystemFaultPic);
 
     word36 ddcw;
+#ifdef SCUMEM
+    iom_core_read (iomUnitIdx, mbx, & ddcw, __func__);
+#else
     iom_core_read (mbx, & ddcw, __func__);
+#endif
     // incr addr
     putbits36_18 (& ddcw, 0, (getbits36_18 (ddcw, 0) + 1u) & MASK18);
     // decr tally
     putbits36_12 (& ddcw, 24, (getbits36_12 (ddcw, 24) - 1u) & MASK12);
+#ifdef SCUMEM
+    iom_core_write (iomUnitIdx, mbx, ddcw, __func__);
+#else
     iom_core_write (mbx, ddcw, __func__);
+#endif
   }
 
 // 0 ok
@@ -2235,7 +2367,11 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
                __func__, 'A' + iomUnitIdx, chan, chan, pic, interrupt_num, 
                interrupt_num);
     word36 imw;
+#ifdef SCUMEM
+    iom_core_read (iomUnitIdx, imw_addr, &imw, __func__);
+#else
     iom_core_read (imw_addr, &imw, __func__);
+#endif
     // The 5 least significant bits of the channel determine a bit to be
     // turned on.
     sim_debug (DBG_DEBUG, & iom_dev, 
@@ -2244,13 +2380,17 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
     putbits36_1 (& imw, chan_in_group, 1);
     sim_debug (DBG_INFO, & iom_dev, 
                "%s: IMW at %#o now %012"PRIo64"\n", __func__, imw_addr, imw);
-    (void) iom_core_write (imw_addr, imw, __func__);
+#ifdef SCUMEM
+    iom_core_write (iomUnitIdx, imw_addr, imw, __func__);
+#else
+    iom_core_write (imw_addr, imw, __func__);
+#endif
     
 // XXX this should call scu_svc
 
 // XXX shouldn't it interrupt the SCU that invoked the connect?
 #if 1
-    return scu_set_interrupt (iomUnitData [iomUnitIdx] . invokingScuUnitNum, interrupt_num);
+    return scu_set_interrupt (iomUnitData [iomUnitIdx] . invokingScuUnitIdx, interrupt_num);
 #else
     uint base = iomUnitData [iomUnitIdx] . configSwIomBaseAddress;
     uint base_addr = base << 6; // 01400
@@ -2306,17 +2446,29 @@ int send_special_interrupt (uint iomUnitIdx, uint chan, uint devCode,
 // we will just assume that everything is set up the way we expect,
 // and update the circular queue.
     word36 lpw;
+#ifdef SCUMEM
+    iom_core_read (iomUnitIdx, chanloc + 0, & lpw, __func__);
+#else
     iom_core_read (chanloc + 0, & lpw, __func__);
+#endif
 
     word36 dcw;
+#ifdef SCUMEM
+    iom_core_read (iomUnitIdx, chanloc + 3, & dcw, __func__);
+#else
     iom_core_read (chanloc + 3, & dcw, __func__);
+#endif
 
     word36 status = 0400000000000;   
     status |= (((word36) chan) & MASK6) << 27;
     status |= (((word36) devCode) & MASK8) << 18;
     status |= (((word36) status0) & MASK8) <<  9;
     status |= (((word36) status1) & MASK8) <<  0;
+#ifdef SCUMEM
+    iom_core_write (iomUnitIdx, (dcw >> 18) & MASK18, status, __func__);
+#else
     iom_core_write ((dcw >> 18) & MASK18, status, __func__);
+#endif
 
     uint tally = dcw & MASK12;
     if (tally > 1)
@@ -2326,7 +2478,11 @@ int send_special_interrupt (uint iomUnitIdx, uint chan, uint devCode,
       }
     else
       dcw = 001320010012llu; // reset to beginning of queue
+#ifdef SCUMEM
+    iom_core_write (iomUnitIdx, chanloc + 3, dcw, __func__);
+#else
     iom_core_write (chanloc + 3, dcw, __func__);
+#endif
 
     send_general_interrupt (iomUnitIdx, IOM_SPECIAL_STATUS_CHAN, imwSpecialPic);
     return 0;
@@ -2348,12 +2504,12 @@ int send_terminate_interrupt (uint iomUnitIdx, uint chan)
     return 0;
   }
 
-void iom_interrupt (uint scuUnitNum, uint iomUnitIdx)
+void iom_interrupt (uint scuUnitIdx, uint iomUnitIdx)
   {
     sim_debug (DBG_DEBUG, & iom_dev, "%s: IOM %c starting.\n",
                __func__, 'A' + iomUnitIdx);
 
-    iomUnitData [iomUnitIdx] . invokingScuUnitNum = scuUnitNum;
+    iomUnitData [iomUnitIdx] . invokingScuUnitIdx = scuUnitIdx;
 
     int ret = doConnectChan (iomUnitIdx);
 
@@ -2374,6 +2530,14 @@ void iom_interrupt (uint scuUnitNum, uint iomUnitIdx)
 //  Note that all reset ()s run after once-only init ().
 //
 //
+
+t_stat iomUnitResetIdx (uint iomUnitIdx)
+  {
+#ifdef SCUMEM
+    setupIOMScbankMap (iomUnitIdx);
+#endif
+    return SCPE_OK;
+  }
 
 static t_stat iomReset (UNUSED DEVICE * dptr)
   {
@@ -2396,12 +2560,8 @@ static t_stat iomReset (UNUSED DEVICE * dptr)
                   }
               }
           }
+        iomUnitResetIdx (iomUnitIdx);
       }
-    
-
-#ifdef SCUMEM
-    setupIOMScbankMap ();
-#endif
     return SCPE_OK;
   }
 
@@ -2432,6 +2592,9 @@ void iom_init (void)
 
 static void initMemoryIOM (uint iomUnitIdx)
   {
+#ifdef SCUMEM
+    word36 * M = iomLookupAddress (iomUnitIdx, 0);
+#endif
     // The presence of a 0 in the top six bits of word 0 denote an IOM boot
     // from an IOX boot
     
@@ -2638,12 +2801,17 @@ static t_stat bootSvc (UNIT * unitp)
     sim_debug (DBG_DEBUG, & iom_dev, "%s: starting on IOM %c\n",
       __func__, 'A' + iomUnitIdx);
 
-    // initialize memory with boot program
-    initMemoryIOM (iomUnitIdx);
-
     // This is needed to reset the interrupt mask registers; Multics tampers
     // with runtime values, and mucks up rebooting on multi-CPU systems.
-    scu_reset (NULL);
+    //scu_reset (NULL);
+    for (int port_num = 0; port_num < N_SCU_PORTS; port_num ++)
+      {
+        int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][port_num].scuUnitIdx;
+        scuUnitReset (scuUnitIdx);
+      }
+
+    // initialize memory with boot program
+    initMemoryIOM (iomUnitIdx);
 
     // Start the remote console listener
     startRemoteConsole ();
@@ -2657,11 +2825,26 @@ static t_stat bootSvc (UNIT * unitp)
     int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][0].scuUnitIdx;
     if (scuUnitIdx < 0)
       sim_err ("boot iom can't find a SCU\n");
-    iom_interrupt ((uint) scuUnitIdx /*ASSUME0*/, iomUnitIdx);
+    iom_interrupt ((uint) scuUnitIdx, iomUnitIdx);
 
     sim_debug (DBG_DEBUG, &iom_dev, "%s finished\n", __func__);
 
     // returning OK from the simh BOOT command causes simh to start the CPU
+    return SCPE_OK;
+  }
+
+t_stat boot2 (UNUSED int32 arg, UNUSED const char * buf)
+  {
+#ifdef ROUND_ROBIN
+    uint cpuUnitIdx = 1U;
+    uint save = setCPUnum ((uint) cpuUnitIdx);
+if (cpuUnitIdx && ! cpu.isRunning)
+ sim_printf ("starting CPU %c early\n", cpuUnitIdx + 'A');
+    cpu.isRunning = true;
+                    setCPUnum (save);
+    //bootSvc (& bootChannelUnit [1]);
+    iomBoot ((int) cpuUnitIdx, & iom_dev);
+#endif
     return SCPE_OK;
   }
 
@@ -2681,12 +2864,8 @@ static t_stat iomBoot (int unitNum, UNUSED DEVICE * dptr)
       }
     uint iomUnitIdx = (uint) unitNum;
 #if 0
-    // initialize memory with boot program
-    initMemoryIOM ((uint)iomUnitIdx);
-
-    // simulate $CON
-    iom_interrupt (0 /*ASSUME0*/, iomUnitIdx);
-
+    bootSvc (& bootChannelUnit [1]);
+    
 #else
     sim_activate (& bootChannelUnit [iomUnitIdx], sys_opts . iom_times . boot_time );
     // returning OK from the simh BOOT command causes simh to start the CPU
@@ -3000,14 +3179,22 @@ static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, const char * cptr, UN
     return SCPE_OK;
   }
 
+static t_stat iom_reset_unit (UNIT * uptr, UNUSED int32 value, UNUSED const char * cptr, 
+                       UNUSED void * desc)
+  {
+    uint iomUnitIdx = (uint) (uptr - iomUnit);
+    iomUnitResetIdx (iomUnitIdx);
+    return SCPE_OK;
+  }
+
 // Used by scu_cioc() to schedule connects
 
 static t_stat iom_action (UNIT *up)
   {
     // Recover the stash parameters
-    uint scuUnitNum = (uint) (up -> u3);
+    uint scuUnitIdx = (uint) (up -> u3);
     uint iomUnitIdx = (uint) (up -> u4);
-//sim_printf ("int %u %u\n", scuUnitNum, iomUnitIdx);
-    iom_interrupt (scuUnitNum, iomUnitIdx);
+//sim_printf ("int %u %u\n", scuUnitIdx, iomUnitIdx);
+    iom_interrupt (scuUnitIdx, iomUnitIdx);
     return SCPE_OK;
   }

@@ -546,8 +546,8 @@
 #include "dps8.h"
 #include "dps8_sys.h"
 #include "dps8_faults.h"
-#include "dps8_cpu.h"
 #include "dps8_scu.h"
+#include "dps8_cpu.h"
 #include "dps8_utils.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
@@ -751,44 +751,63 @@ static void dumpIR (char * ctx, uint scuUnitIdx)
 #endif
    }
 
+void scuUnitReset (int scuUnitIdx)
+  {
+    scu_t * up = scu + scuUnitIdx;
+    struct config_switches * sw = config_switches + scuUnitIdx;
+
+    for (int i = 0; i < N_SCU_PORTS; i ++)
+      {
+        up -> port_enable [i] = sw -> port_enable [i];
+      }
+
+    for (int i = 0; i < N_ASSIGNMENTS; i ++)
+      {
+        up -> mask_enable [i] = sw -> mask_enable [i];
+        up -> mask_assignment [i] = sw -> mask_assignment [i];
+      }
+    up -> lower_store_size = sw -> lower_store_size;
+    up -> cyclic = sw -> cyclic;
+    up -> nea = sw -> nea;
+    up -> onl = sw -> onl;
+    up -> interlace = sw -> interlace;
+    up -> lwr = sw -> lwr;
+
+   
+#ifdef SCUMEM
+    memset (up->M, 0, sizeof (up->M));
+#endif
+
+// This is to allow the CPU reset to update the memory map. IAC clears the 
+// attached SCUs; they clear the attached IOMs.
+
+    for (uint portNum = 0; portNum < N_SCU_PORTS; portNum ++)
+      {
+        struct ports * portp = & scu [scuUnitIdx] . ports [portNum];
+        if (portp->type != ADEV_IOM)
+          continue;
+        //if (! scu [scuUnitIdx] . port_enable [scu_port_num])
+          //continue;
+        iomUnitResetIdx ((uint) portp->devIdx);
+      }
+
+// CAC - These settings were reversed engineer from the code instead
+// of from the documentation. In case of issues, try fixing these, not the
+// code.
+
+    for (int i = 0; i < N_ASSIGNMENTS; i ++)
+      {
+// XXX Hack for t4d
+        up -> exec_intr_mask [i] = 037777777777;
+      }
+  }
+
 t_stat scu_reset (UNUSED DEVICE * dptr)
   {
     // On reset, instantiate the config switch settings
 
     for (int scuUnitIdx = 0; scuUnitIdx < N_SCU_UNITS_MAX; scuUnitIdx ++)
-      {
-        scu_t * up = scu + scuUnitIdx;
-        struct config_switches * sw = config_switches + scuUnitIdx;
-
-        for (int i = 0; i < N_SCU_PORTS; i ++)
-          {
-            up -> port_enable [i] = sw -> port_enable [i];
-          }
-
-        for (int i = 0; i < N_ASSIGNMENTS; i ++)
-          {
-            up -> mask_enable [i] = sw -> mask_enable [i];
-            up -> mask_assignment [i] = sw -> mask_assignment [i];
-          }
-        up -> lower_store_size = sw -> lower_store_size;
-        up -> cyclic = sw -> cyclic;
-        up -> nea = sw -> nea;
-        up -> onl = sw -> onl;
-        up -> interlace = sw -> interlace;
-        up -> lwr = sw -> lwr;
-
-   
-// CAC - These settings were reversed engineer from the code instead
-// of from the documentation. In case of issues, try fixing these, not the
-// code.
-
-
-        for (int i = 0; i < N_ASSIGNMENTS; i ++)
-          {
-// XXX Hack for t4d
-            up -> exec_intr_mask [i] = 037777777777;
-          }
-      }
+      scuUnitReset (scuUnitIdx);
     return SCPE_OK;
   }
 
@@ -1630,10 +1649,10 @@ sim_printf ("port %u xipmaskval %d\n", scu_port_num, portp->xipmaskval);
 
     if (portp -> type == ADEV_IOM)
       {
-        int iomUnitNum = portp -> idnum;
+        int iomUnitIdx = portp -> devIdx;
         if (sys_opts . iom_times . connect < 0)
           {
-            iom_interrupt (scuUnitIdx, (uint) iomUnitNum);
+            iom_interrupt (scuUnitIdx, (uint) iomUnitIdx);
             return 0;
           }
         else
@@ -1646,10 +1665,10 @@ sim_printf ("port %u xipmaskval %d\n", scu_port_num, portp->xipmaskval);
                        "(for the connect channel)\n", 
                        sys_opts . iom_times . connect);
             // Stash the iom_interrupt call parameters
-            iom_dev.units[iomUnitNum].u3 = (int32) scuUnitIdx;
-            iom_dev.units[iomUnitNum].u4 = (int32) iomUnitNum;
+            iom_dev.units[iomUnitIdx].u3 = (int32) scuUnitIdx;
+            iom_dev.units[iomUnitIdx].u4 = (int32) iomUnitIdx;
             int rc;
-            if ((rc = sim_activate (& iom_dev . units [iomUnitNum], 
+            if ((rc = sim_activate (& iom_dev . units [iomUnitIdx], 
                 sys_opts . iom_times.connect)) != SCPE_OK) 
               {
                 sim_warn ("sim_activate failed (%d)\n", rc); // Dosen't return
@@ -1775,14 +1794,14 @@ int scu_set_interrupt (uint scuUnitIdx, uint inum)
 static void deliverInterrupts (uint scuUnitIdx)
   {
     sim_debug (DBG_DEBUG, & scu_dev, "deliverInterrupts %o\n", scuUnitIdx);
-#ifdef ROUND_ROBIN
-    for (uint cpun = 0; cpun < cpu_dev.numunits; cpun ++)
-      {
-        cpus[cpun].events.XIP[scuUnitIdx] = false;
-      }
-#else
-    cpu . events . XIP [scuUnitIdx] = false;
-#endif
+//#ifdef ROUND_ROBIN
+//    for (uint cpun = 0; cpun < cpu_dev.numunits; cpun ++)
+//      {
+//        cpus[cpun].events.XIP[scuUnitIdx] = false;
+//      }
+//#else
+    scu[scuUnitIdx].XIP = false;
+//#endif
 
     for (uint inum = 0; inum < N_CELL_INTERRUPTS; inum ++)
       {
@@ -1808,6 +1827,10 @@ static void deliverInterrupts (uint scuUnitIdx)
               continue;
             if ((mask & (1u << (31 - inum))) != 0)
               {
+                scu [scuUnitIdx].XIP = true;
+                sim_debug (DBG_DEBUG, & scu_dev,
+                           "XIP set for SCU %d\n", scuUnitIdx);
+#ifdef ROUND_ROBIN
                 int cpuUnitIdx = -1;
                 if (scu[scuUnitIdx].ports[port].is_exp)
                   {
@@ -1822,32 +1845,19 @@ static void deliverInterrupts (uint scuUnitIdx)
                   {
                     cpuUnitIdx = cables->cablesFromCpus[scuUnitIdx][port][0].cpuUnitIdx;
                   }
-                //sim_debug (DBG_DEBUG, & scu_dev,
-                          //"mask set; cpuUnitIdx %u\n", cpuUnitIdx);
                 if (cpuUnitIdx < 0 || cpuUnitIdx >= (int) cpu_dev . numunits)
                   {
-                    sim_err ("bad cpuUnitIdx %u\n", cpuUnitIdx);
+                    sim_warn ("bad cpuUnitIdx %u\n", cpuUnitIdx);
                   }
                 else
                   {
-#ifdef ROUND_ROBIN
                     uint save = setCPUnum ((uint) cpuUnitIdx);
-//if (cpuUnitIdx && ! cpu.isRunning)
-// sim_printf ("starting CPU %c\n", cpuUnitIdx + 'A');
+if (cpuUnitIdx && ! cpu.isRunning)
+ sim_printf ("starting CPU %c\n", cpuUnitIdx + 'A');
                     cpu.isRunning = true;
-                    cpu.events.XIP[scuUnitIdx] = true;
                     setCPUnum (save);
-#else
-                    cpu.events.XIP[scuUnitIdx] = true;
-#endif
-                    sim_debug (DBG_DEBUG, & scu_dev,
-                               "interrupt set for CPU %d SCU %d\n",
-                               cpuUnitIdx, scuUnitIdx);
-#ifdef RCFDBG
-if (cpuUnitIdx || scuUnitIdx)
-   sim_printf ("interrupt set for CPU %d SCU %d\n", cpuUnitIdx, scuUnitIdx);
-#endif
                   }
+#endif
               }
           }
       }
@@ -1859,25 +1869,25 @@ if (cpuUnitIdx || scuUnitIdx)
 // is present, return 1.
 //
 
-uint scuGetHighestIntr (uint scuUnitNum)
+uint scuGetHighestIntr (uint scuUnitIdx)
   {
     //for (uint inum = 0; inum < N_CELL_INTERRUPTS; inum ++)
     for (int inum = N_CELL_INTERRUPTS - 1; inum >= 0; inum --)
       {
         for (uint pima = 0; pima < N_ASSIGNMENTS; pima ++) // A, B
           {
-            if (scu [scuUnitNum] . mask_enable [pima] == 0)
+            if (scu [scuUnitIdx] . mask_enable [pima] == 0)
               continue;
-            uint mask = scu [scuUnitNum] . exec_intr_mask [pima];
-            uint port = scu [scuUnitNum] . mask_assignment [pima];
-            if (scu [scuUnitNum] . ports [port] . type != ADEV_CPU)
+            uint mask = scu [scuUnitIdx] . exec_intr_mask [pima];
+            uint port = scu [scuUnitIdx] . mask_assignment [pima];
+            if (scu [scuUnitIdx] . ports [port] . type != ADEV_CPU)
               continue;
-            if (scu [scuUnitNum] . cells [inum] &&
+            if (scu [scuUnitIdx] . cells [inum] &&
                 (mask & (1u << (31 - inum))) != 0)
               {
-                scu [scuUnitNum] . cells [inum] = false;
-                dumpIR ("scuGetHighestIntr", scuUnitNum);
-                deliverInterrupts (scuUnitNum);
+                scu [scuUnitIdx] . cells [inum] = false;
+                dumpIR ("scuGetHighestIntr", scuUnitIdx);
+                deliverInterrupts (scuUnitIdx);
                 return (uint) inum * 2;
               }
           }
@@ -1925,9 +1935,9 @@ static t_stat scu_show_state (UNUSED FILE * st, UNIT *uptr, UNUSED int val,
       {
         struct ports * pp = scup -> ports + i;
 
-        sim_printf ("    Port %d %s idnum %d dev_port %d type %s\n",
+        sim_printf ("    Port %d %s devIdx %d dev_port %d type %s\n",
                     i, scup->port_enable[i] ? "ENABLE " : "DISABLE",
-                    pp->idnum, pp->dev_port[XXX_TEMP_SCU_SUBPORT],
+                    pp->devIdx, pp->dev_port[XXX_TEMP_SCU_SUBPORT],
                     pp->type == ADEV_NONE ? "NONE" :
                     pp->type == ADEV_CPU ? "CPU" :
                     pp->type == ADEV_IOM ? "IOM" :
@@ -2112,7 +2122,7 @@ static config_list_t scu_config_list [] =
 
     // Hacks
 
-    /* 17 */ { "elapsed_days", 0, 10000, NULL },
+    /* 17 */ { "elapsed_days", 0, 20000, NULL },
     /* 18 */ { "steady_clock", 0, 1, cfg_on_off },
     /* 19 */ { "bullet_time", 0, 1, cfg_on_off },
     /* 20 */ { "y2k", 0, 1, cfg_on_off },
@@ -2238,30 +2248,12 @@ static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
     return SCPE_OK;
   }
 
+
 t_stat scu_reset_unit (UNIT * uptr, UNUSED int32 value, UNUSED const char * cptr, 
                        UNUSED void * desc)
   {
     uint scuUnitIdx = (uint) (uptr - scu_unit);
-    scu_t * up = scu + scuUnitIdx;
-    struct config_switches * sw = config_switches + scuUnitIdx;
-
-    //up -> mode = sw -> mode;
-    for (int i = 0; i < N_SCU_PORTS; i ++)
-      {
-        up -> port_enable [i] = sw -> port_enable [i];
-      }
-
-    for (int i = 0; i < N_ASSIGNMENTS; i ++)
-      {
-        up -> mask_enable [i] = sw -> mask_enable [i];
-        up -> mask_assignment [i] = sw -> mask_assignment [i];
-      }
-    up -> lower_store_size = sw -> lower_store_size;
-    up -> cyclic = sw -> cyclic;
-    up -> nea = sw -> nea;
-    up -> onl = sw -> onl;
-    up -> interlace = sw -> interlace;
-    up -> lwr = sw -> lwr;
+    scuUnitReset ((int) scuUnitIdx);
     return SCPE_OK;
   }
 

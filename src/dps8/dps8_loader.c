@@ -24,12 +24,14 @@
 #include "dps8.h"
 #include "dps8_sys.h"
 #include "dps8_faults.h"
+#include "dps8_scu.h"
 #include "dps8_cpu.h"
 #include "dps8_loader.h"
 #include "dps8_utils.h"
 
 #include "utlist.h" // for linked list ops
 
+#ifndef SCUMEM
 /* Master loader */
 #define FMT_O   1 // .oct
 #define FMT_S   2 // .sav
@@ -383,6 +385,7 @@ static void makeITS(int segno, int offset, int tag, word36 *Ypair)
 //
 //    return &SDW0;
 //}
+#endif // ndef SCUMEM
 
 int getAddress(int segno, int offset)
 {
@@ -395,6 +398,7 @@ int getAddress(int segno, int offset)
     return (s->ADDR + (word18) offset) & 0xffffff; // keep to 24-bits
 }
 
+#ifndef SCUMEM
 /*
  * for a given 24-bit address see if it can be mapped to a segment + offset
  */
@@ -1398,10 +1402,13 @@ static t_stat sim_dump (FILE *fileref, UNUSED const char * cptr, UNUSED const ch
     }
     return SCPE_OK;
 }
-
+#endif // ndef SCUMEM
 // This is part of the simh interface
 t_stat sim_load (FILE *fileref, const char *cptr, const char *fnam, int flag)
 {
+#ifdef SCUMEM
+    return SCPE_ARG;
+#else
     if (flag)
         return sim_dump (fileref, cptr, fnam, flag);
       
@@ -1569,7 +1576,7 @@ t_stat sim_load (FILE *fileref, const char *cptr, const char *fnam, int flag)
     
     sim_printf ("Can't determine load file format\n");
     return SCPE_FMT;
+#endif
 }
-
 
 

@@ -28,6 +28,7 @@
 #include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_faults.h"
+#include "dps8_scu.h"
 #include "dps8_cpu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
@@ -183,16 +184,25 @@ static int telnet_port = 6180;
 
 struct fnpUnitData fnpUnitData [N_FNP_UNITS_MAX];
 
+#ifndef SCUMEM
 static inline void fnp_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
+#ifdef SCUMEM
+    iom_core_read (addr, data, ctx);
+#else
     * data = M [addr] & DMASK;
+#endif
   }
 
 static inline void fnp_core_write (word24 addr, word36 data, UNUSED const char * ctx)
   {
+#ifdef SCUMEM
+    iom_core_write (addr, data, ctx);
+#else
     M [addr] = data & DMASK;
+#endif
   }
-
+#endif
 
 
 //
@@ -229,6 +239,24 @@ struct mailbox
     struct fnp_submailbox fnp_sub_mbxes [4];
   };
 
+//
+// As mailbox messages are processed, decoded data are stashed here
+///
+
+static struct
+  {
+    uint devUnitIdx;
+    uint op_code;
+    uint slot_no;
+    struct dn355_submailbox * smbxp;
+    struct fnp_submailbox * fsmbxp;
+    struct fnpUnitData * fudp;
+    iomChanData_t * p;
+    struct mailbox * mbxp;
+    uint cell;
+  } decoded;
+
+
 
 //
 // Convert virtual address to physical
@@ -240,7 +268,12 @@ static uint virtToPhys (uint ptPtr, uint l66Address)
     uint l66AddressPage = l66Address / 1024u;
 
     word36 ptw;
+#ifdef SCUMEM
+    uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [decoded.devUnitIdx].iomUnitIdx;
+    iom_core_read (iomUnitIdx, pageTable + l66AddressPage, & ptw, "fnpIOMCmd get ptw");
+#else
     fnp_core_read (pageTable + l66AddressPage, & ptw, "fnpIOMCmd get ptw");
+#endif
     uint page = getbits36_14 (ptw, 4);
     uint addr = page * 1024u + l66Address % 1024u;
     return addr;
@@ -285,9 +318,17 @@ static t_stat fnpReset (DEVICE * dptr)
 // Debugging...
 //
 
+#ifdef FNPDBG
 static void dmpmbx (uint mailboxAddress)
   {
+#ifdef SCUMEM
+    word24 base;
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, mailboxAddress, & base);
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[mailboxAddress-base];
+#else
     struct mailbox * mbxp = (struct mailbox *) & M [mailboxAddress];
+#endif
     sim_printf ("dia_pcw            %012"PRIo64"\n", mbxp -> dia_pcw);
     sim_printf ("mailbox_requests   %012"PRIo64"\n", mbxp -> mailbox_requests);
     sim_printf ("term_inpt_mpx_wd   %012"PRIo64"\n", mbxp -> term_inpt_mpx_wd);
@@ -317,6 +358,7 @@ static void dmpmbx (uint mailboxAddress)
       }
         
   }
+#endif
 
 //
 // Locate an available fnp_submailbox
@@ -332,29 +374,15 @@ static int findMbx (uint fnpUnitIdx)
   }
 
 //
-// As mailbox messages are processed, decoded data are stashed here
-///
-
-static struct
-  {
-    uint devUnitIdx;
-    uint op_code;
-    uint slot_no;
-    struct dn355_submailbox * smbxp;
-    struct fnp_submailbox * fsmbxp;
-    struct fnpUnitData * fudp;
-    iomChanData_t * p;
-    struct mailbox * mbxp;
-    uint cell;
-  } decoded;
-
-
-//
 // wcd; Multics has sent a Write Control Data command to the FNP
 //
 
 static int wcd (void)
   {
+#ifdef SCUMEM
+    uint iomUnitIdx = (uint) cables->cablesFromIomToFnp[decoded.devUnitIdx].iomUnitIdx;
+#endif
+
     struct t_line * linep = & decoded.fudp->MState.line[decoded.slot_no];
     sim_debug (DBG_TRACE, & fnpDev, "[%u] wcd op_code %u 0%o\n", decoded.slot_no, decoded.op_code, decoded.op_code);
     switch (decoded.op_code)
@@ -471,7 +499,11 @@ static int wcd (void)
                 //sim_printf ("dataAddrPhys %06o\n", dataAddrPhys);
                 for (uint i = 0; i < echoTableLen; i ++)
                   {
+#ifdef SCUMEM
+                    iom_core_read (iomUnitIdx, dataAddrPhys + i, & echoTable [i], __func__);
+#else
                     echoTable [i] = M [dataAddrPhys + i];
+#endif
                     //sim_printf ("   %012"PRIo64"\n", echoTable [i]);
                   }
               }
@@ -985,7 +1017,15 @@ static void notifyCS (int mbx, int fnpno, int lineno)
 sim_printf ("notifyCS mbx %d\n", mbx);
 #endif
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
+#ifdef SCUMEM
+    uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
+    word24 base;
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+#else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
+#endif
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
     putbits36_3 (& smbxp -> word1, 0, (word3) fnpno); // dn355_no XXX
@@ -1005,7 +1045,15 @@ static void fnp_rcd_ack_echnego_init (int mbx, int fnpno, int lineno)
     sim_debug (DBG_TRACE, & fnpDev, "[%d]rcd ack_echnego_init\n", lineno);
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
+#ifdef SCUMEM
+    word24 base;
+    uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+#else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
+#endif
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
     putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len
@@ -1021,7 +1069,15 @@ static void fnp_rcd_line_disconnected (int mbx, int fnpno, int lineno)
     sim_debug (DBG_TRACE, & fnpDev, "[%d]rcd line_disconnected\n", lineno);
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
+#ifdef SCUMEM
+    word24 base;
+    uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+#else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
+#endif
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
     putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len
@@ -1037,7 +1093,15 @@ static void fnp_rcd_input_in_mailbox (int mbx, int fnpno, int lineno)
     sim_debug (DBG_TRACE, & fnpDev, "[%d]rcd input_in_mailbox\n", lineno);
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     struct t_line * linep = & fudp->MState.line[lineno];
+#ifdef SCUMEM
+    word24 base;
+    uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+#else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
+#endif
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 //sim_printf ("fnp_rcd_input_in_mailbox nPos %d\n", linep->nPos);
     putbits36_9 (& smbxp -> word2, 9, (word9) linep->nPos); // n_chars
@@ -1116,7 +1180,15 @@ static void fnp_rcd_accept_input (int mbx, int fnpno, int lineno)
     sim_debug (DBG_TRACE, & fnpDev, "[%d]rcd accept_input\n", lineno);
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     struct t_line * linep = & fudp->MState.line[lineno];
+#ifdef SCUMEM
+    word24 base;
+    uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+#else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
+#endif
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
     //sim_printf ("accept_input mbx %d fnpno %d lineno %d nPos %d\n", mbx, fnpno, lineno, linep->nPos);
 
@@ -1150,7 +1222,15 @@ static void fnp_rcd_line_break (int mbx, int fnpno, int lineno)
     sim_debug (DBG_TRACE, & fnpDev, "[%d]rcd line_break\n", lineno);
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
+#ifdef SCUMEM
+    word24 base;
+    uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+#else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
+#endif
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
     putbits36_9 (& smbxp -> word2, 9, 0); // cmd_data_len XXX
@@ -1168,7 +1248,15 @@ sim_printf ("send_output\n");
 #endif
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
+#ifdef SCUMEM
+    word24 base;
+    uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+#else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
+#endif
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
     putbits36_9 (& smbxp -> word2, 9, 0); // cmd_data_len XXX
@@ -1184,7 +1272,15 @@ static void fnp_rcd_acu_dial_failure (int mbx, int fnpno, int lineno)
     //sim_printf ("acu_dial_failure %d %d %d\n", mbx, fnpno, lineno);
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
+#ifdef SCUMEM
+    word24 base;
+    uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+#else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
+#endif
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
     putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len XXX
@@ -1200,7 +1296,15 @@ static void fnp_rcd_accept_new_terminal (int mbx, int fnpno, int lineno)
     //sim_printf ("accept_new_terminal %d %d %d\n", mbx, fnpno, lineno);
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
+#ifdef SCUMEM
+    word24 base;
+    uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+#else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
+#endif
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
     putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len XXX
@@ -1219,7 +1323,15 @@ static void fnp_rcd_wru_timeout (int mbx, int fnpno, int lineno)
     //sim_printf ("wru_timeout %d %d %d\n", mbx, fnpno, lineno);
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
+#ifdef SCUMEM
+    word24 base;
+    uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+#else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
+#endif
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
     putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len XXX
@@ -1379,7 +1491,12 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
            {
              lastWordOff = wordOff;
              uint wordAddr = virtToPhys (ptPtr, dataAddr + wordOff);
+#ifdef SCUMEM
+             uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [decoded.devUnitIdx].iomUnitIdx;
+             iom_core_read (iomUnitIdx, wordAddr, & word, __func__);
+#else
              word = M [wordAddr];
+#endif
 //sim_printf ("   %012"PRIo64"\n", M [wordAddr]);
            }
          byte = getbits36_9 (word, byteOff * 9);
@@ -1456,7 +1573,13 @@ static int wtx (void)
 
         // The dcw
         //word36 dcw = M [dcwAddrPhys + i];
+#ifdef SCUMEM
+        word36 dcw;
+        uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [decoded.devUnitIdx].iomUnitIdx;
+        iom_core_read (iomUnitIdx, dcwAddrPhys, & dcw, __func__);
+#else
         word36 dcw = M [dcwAddrPhys];
+#endif
         //sim_printf ("  %012"PRIo64"\n", dcw);
 
         // Get the address and the tally from the dcw
@@ -1534,6 +1657,9 @@ sim_printf ("\\%03o", linep->buffer [i]);
 sim_printf ("']\n");
 }
 }
+#ifdef SCUMEM
+    uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [decoded.devUnitIdx].iomUnitIdx;
+#endif
 //sim_printf ("long  in; line %d tally %d\n", decoded.slot_no, linep->nPos);
     for (int i = 0; i < tally0 + 3; i += 4)
       {
@@ -1547,7 +1673,11 @@ sim_printf ("']\n");
         if (i + 3 < tally0)
           putbits36_9 (& v, 27, data [i + 3]);
 //sim_printf ("%012"PRIo64"\n", v);
+#ifdef SCUMEM
+        iom_core_write (iomUnitIdx, addr0 ++, v, __func__);
+#else
         M [addr0 ++] = v;
+#endif
       }
 
     for (int i = 0; i < tally1 + 3; i += 4)
@@ -1562,7 +1692,11 @@ sim_printf ("']\n");
         if (i + 3 < tally1)
           putbits36_9 (& v, 27, data [tally0 + i + 3]);
 //sim_printf ("%012"PRIo64"\n", v);
+#ifdef SCUMEM
+        iom_core_write (iomUnitIdx, addr1 ++, v, __func__);
+#else
         M [addr1 ++] = v;
+#endif
       }
 
 // command_data is at mystery[25]?
@@ -1842,7 +1976,14 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
       devices [chan] [decoded.p -> IDCW_DEV_CODE];
     decoded.devUnitIdx = d -> devUnitIdx;
     decoded.fudp = & fnpUnitData [decoded.devUnitIdx];
+#ifdef SCUMEM
+    word24 base;
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, decoded.fudp->mailboxAddress, & base);
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
+    decoded.mbxp = (struct mailbox *) & scu [scuUnitIdx].M [decoded.fudp->mailboxAddress];
+#else
     decoded.mbxp = (struct mailbox *) & M [decoded.fudp -> mailboxAddress];
+#endif
     word36 dia_pcw = decoded.mbxp -> dia_pcw;
 
 // AN85, pg 13-5
@@ -2412,7 +2553,14 @@ static void processMBX (uint iomUnitIdx, uint chan)
 // mailbox and 7 Channel mailboxes."
 
     bool ok = true;
+#ifdef SCUMEM
+    word24 base;
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+#else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp -> mailboxAddress];
+#endif
 
     word36 dia_pcw;
     dia_pcw = mbxp -> dia_pcw;
@@ -2626,19 +2774,32 @@ sim_printf ("data xfer??\n");
 #ifdef FNPDBG
 dmpmbx (fudp->mailboxAddress);
 #endif
+#ifdef SCUMEM
+        iom_core_write (iomUnitIdx, fudp -> mailboxAddress, 0, "fnpIOMCmd clear dia_pcw");
+#else
         fnp_core_write (fudp -> mailboxAddress, 0, "fnpIOMCmd clear dia_pcw");
+#endif
         putbits36_1 (& bootloadStatus, 0, 1); // real_status = 1
         putbits36_3 (& bootloadStatus, 3, 0); // major_status = BOOTLOAD_OK;
         putbits36_8 (& bootloadStatus, 9, 0); // substatus = BOOTLOAD_OK;
         putbits36_17 (& bootloadStatus, 17, 0); // channel_no = 0;
+#ifdef SCUMEM
+        iom_core_write (iomUnitIdx, fudp -> mailboxAddress + 6, bootloadStatus, "fnpIOMCmd set bootload status");
+#else
         fnp_core_write (fudp -> mailboxAddress + 6, bootloadStatus, "fnpIOMCmd set bootload status");
+#endif
       }
     else
       {
-        dmpmbx (fudp->mailboxAddress);
+        //dmpmbx (fudp->mailboxAddress);
 // 3 error bit (1) unaligned, /* set to "1"b if error on connect */
         putbits36_1 (& dia_pcw, 18, 1); // set bit 18
+#ifdef SCUMEM
+        iom_core_write (iomUnitIdx, fudp -> mailboxAddress, dia_pcw, "fnpIOMCmd set error bit");
+#else
         fnp_core_write (fudp -> mailboxAddress, dia_pcw, "fnpIOMCmd set error bit");
+#endif
+
       }
   }
 

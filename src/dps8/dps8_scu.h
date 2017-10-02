@@ -16,6 +16,7 @@ enum active_dev { ADEV_NONE, ADEV_CPU, ADEV_IOM };
 
 typedef struct
   {
+    bool XIP;
     uint port_enable [N_SCU_PORTS];  // enable/disable
 
     // Mask registers A and B, each with 32 interrupt bits.
@@ -56,7 +57,7 @@ typedef struct
     struct ports {
         //bool is_enabled;
         enum active_dev type; // type of connected device
-        int idnum; // id # of connected dev, 0..7
+        int devIdx; // index of connected dev (cpuUnitIdx, iomUnitIdx
         bool is_exp;
         // which port on the connected device?
         // if is_exp is false, then only [0] is used.
@@ -78,7 +79,7 @@ typedef struct
     int64 userCorrection;
     uint64 lastTime;
 #ifdef SCUMEM
-enum { SCU_MEM_SIZE = 010000000 };
+enum { SCU_MEM_SIZE = 020000000 };
     word36 M [SCU_MEM_SIZE];
 #endif
 } scu_t;
@@ -102,4 +103,5 @@ uint scuGetHighestIntr (uint scuUnitNum);
 t_stat scu_reset (DEVICE *dptr);
 t_stat scu_reset_unit (UNIT * uptr, int32 value, const char * cptr, 
                        void * desc);
+void scuUnitReset (int scuUnitIdx);
 

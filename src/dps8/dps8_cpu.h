@@ -731,7 +731,7 @@ typedef struct
     int fault [N_FAULT_GROUPS];
                           // only one fault in groups 1..6 can be pending
     //bool interrupts [N_SCU_UNITS_MAX] [N_INTERRUPTS];
-    bool XIP [N_SCU_UNITS_MAX];
+    //bool XIP [N_SCU_UNITS_MAX];
   } events_t;
 
 // Physical Switches
@@ -1784,6 +1784,7 @@ typedef struct
 #endif
     // Map memory to port
     int scbank_map [N_SCBANKS];
+    word24 scbank_base [N_SCBANKS];
 // scu_unit_idx * 4u * 1024u * 1024u + scpg * SCBANK
     int scbank_pg_os [N_SCBANKS];
 
@@ -1865,6 +1866,12 @@ static inline void trackport (word24 a, word36 d)
 #endif
 
 #ifdef SPEED
+#ifdef SCUMEM
+// XXX Stupid include file dependency order; should more core_xxx into it's 
+// XXX own include?
+int lookup_cpu_mem_map (word24 addr, word24 * offset);
+int queryScuUnitIdx (int cpu_unit_num, int cpu_port_num);
+#endif
 static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
     PNL (cpu.portBusy = true;)
@@ -1894,7 +1901,14 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
       }
 #endif
 #endif
+#ifdef SCUMEM
+    word24 offset;
+    int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
+    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    *data = scu [scuUnitIdx].M[offset] & DMASK;
+#else
     *data = M[addr] & DMASK;
+#endif
     PNL (trackport (addr, * data);)
     return 0;
   }
@@ -1926,7 +1940,14 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
         cpu.MR.separ = 0;
       }
 #endif
+#ifdef SCUMEM
+    word24 offset;
+    int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
+    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    scu [scuUnitIdx].M[offset] = data & DMASK;
+#else
     M[addr] = data & DMASK;
+#endif
     PNL (trackport (addr, data);)
     return 0;
   }
@@ -1959,10 +1980,18 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED con
       }
 #endif
 #endif
+#ifdef SCUMEM
+    word24 offset;
+    int scuUnitNum = lookup_cpu_mem_map (addr, & offset);
+    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    *even = scu [scuUnitIdx].M[offset++] & DMASK;
+    *odd = scu [scuUnitIdx].M[offset] & DMASK;
+#else
     *even = M[addr++] & DMASK;
     PNL (trackport (addr - 1, * even);)
     *odd = M[addr] & DMASK;
     PNL (trackport (addr, * odd);)
+#endif
     return 0;
   }
 static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
@@ -1992,10 +2021,18 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED cons
         cpu.MR.separ = 0;
       }
 #endif
+#ifdef SCUMEM
+    word24 offset;
+    int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
+    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    scu [scuUnitIdx].M[offset++] = even & DMASK;
+    scu [scuUnitIdx].M[offset] = odd & DMASK;
+#else
     M[addr++] = even;
     PNL (trackport (addr - 1, even);)
     M[addr] = odd;
     PNL (trackport (addr, odd);)
+#endif
     return 0;
   }
 #else
@@ -2035,7 +2072,11 @@ t_stat memWatch (int32 arg, const char * buf);
 _sdw *fetchSDW (word15 segno);
 //char *strSDW0 (_sdw0 *SDW);
 char *strSDW0 (_sdw *SDW);
-int query_scbank_map (word24 addr);
+#ifdef SCUMEM
+int lookup_cpu_mem_map (word24 addr, word24 * offset);
+#else
+int lookup_cpu_mem_map (word24 addr);
+#endif
 void cpu_init (void);
 void setup_scbank_map (void);
 #ifdef DPS8M

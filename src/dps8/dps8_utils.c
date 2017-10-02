@@ -25,6 +25,7 @@
 #include "dps8.h"
 #include "dps8_sys.h"
 #include "dps8_faults.h"
+#include "dps8_scu.h"
 #include "dps8_cpu.h"
 #include "dps8_ins.h"
 #include "dps8_utils.h"

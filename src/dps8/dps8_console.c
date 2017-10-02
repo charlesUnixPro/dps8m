@@ -36,6 +36,7 @@
 #include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_faults.h"
+#include "dps8_scu.h"
 #include "dps8_cpu.h"
 #include "dps8_mt.h"  // attachTape
 #include "dps8_disk.h"  // attachDisk
@@ -613,10 +614,17 @@ static void sendConsole (int conUnitIdx, word12 stati)
               break;
             unsigned char c = (unsigned char) (* csp->readp ++);
             //putbits36_9 (& M [daddr], charno * 9, c);
+#ifdef SCUMEM
+            word36 w;
+            iom_core_read ((uint) iomUnitIdx, daddr, & w, __func__);
+            putbits36_9 (& w, charno * 9, c);
+            iom_core_write ((uint) iomUnitIdx, daddr, w, __func__);
+#else
             word36 w;
             iom_core_read (daddr, & w, __func__);
             putbits36_9 (& w, charno * 9, c);
             iom_core_write (daddr, w, __func__);
+#endif
           }
         // cp = charno % 4;
 
@@ -826,11 +834,17 @@ sim_printf ("uncomfortable with this\n");
                     tally = 4096;
                   }
 
+#ifdef SCUMEM
+                word36 w0, w1, w2;
+                iom_core_read (iomUnitIdx, daddr + 0, & w0, __func__);
+                iom_core_read (iomUnitIdx, daddr + 1, & w1, __func__);
+                iom_core_read (iomUnitIdx, daddr + 2, & w2, __func__);
+#else
                 word36 w0, w1, w2;
                 iom_core_read (daddr + 0, & w0, __func__);
                 iom_core_read (daddr + 1, & w1, __func__);
                 iom_core_read (daddr + 2, & w2, __func__);
-
+#endif
                 // When the console prints out "Command:", press the Attention
                 // key one second later
                 if (csp->attn_hack &&
@@ -876,7 +890,11 @@ sim_printf ("uncomfortable with this\n");
                   {
                     //word36 datum = M [daddr ++];
                     word36 datum;
+#ifdef SCUMEM
+                    iom_core_read (iomUnitIdx, daddr, & datum, __func__);
+#else
                     iom_core_read (daddr, & datum, __func__);
+#endif
                     daddr ++;
                     tally --;
     
@@ -1562,8 +1580,7 @@ static void console_write_cb (uv_write_t * req, int status)
     free (req);
   }
 
-
-static void console_putstr (int conUnitIdx, char * str)
+static void console_putstr_force (int conUnitIdx, char * str)
   {
     size_t l = strlen (str);
     for (size_t i = 0; i < l; i ++)
@@ -1571,10 +1588,29 @@ static void console_putstr (int conUnitIdx, char * str)
     console_start_write (console_state[conUnitIdx].console_client, str, (ssize_t) l);
   }
 
-static void console_putchar (int conUnitIdx, char ch)
+
+static void console_putstr (int conUnitIdx, char * str)
+  {
+    size_t l = strlen (str);
+    for (size_t i = 0; i < l; i ++)
+      sim_putchar (str [i]);
+    con_state_t * csp = console_state + conUnitIdx;
+    if (csp->loggedon)
+      console_start_write (console_state[conUnitIdx].console_client, str, (ssize_t) l);
+  }
+
+static void console_putchar_force (int conUnitIdx, char ch)
   {
     sim_putchar (ch);
     console_start_write (console_state[conUnitIdx].console_client, & ch, 1);
+  }
+
+static void console_putchar (int conUnitIdx, char ch)
+  {
+    sim_putchar (ch);
+    con_state_t * csp = console_state + conUnitIdx;
+    if (csp->loggedon)
+      console_start_write (console_state[conUnitIdx].console_client, & ch, 1);
   }
 
 static int console_getchar (int conUnitIdx)
@@ -1673,7 +1709,7 @@ static void console_logon (int conUnitIdx, unsigned char * buf, ssize_t nread)
                 case '\b':  // backspace
                 case 127:   // delete
                   {
-                    console_putstr (conUnitIdx, "\b \b");    // remove char from line
+                    console_putstr_force (conUnitIdx, "\b \b");    // remove char from line
                     pw_buffer[pw_nPos] = 0;     // remove char from buffer
                     pw_nPos -= 1;                 // back up buffer pointer
                   }
@@ -1688,9 +1724,9 @@ static void console_logon (int conUnitIdx, unsigned char * buf, ssize_t nread)
 
                 case 0x12:  // ^R
                   {
-                    console_putstr (conUnitIdx, "^R\r\n");       // echo ^R
+                    console_putstr_force (conUnitIdx, "^R\r\n");       // echo ^R
                     consoleConnectPrompt (csp->console_client);
-                    console_putstr (conUnitIdx, pw_buffer);
+                    console_putstr_force (conUnitIdx, pw_buffer);
                   }
                  break;
 
@@ -1703,7 +1739,7 @@ static void console_logon (int conUnitIdx, unsigned char * buf, ssize_t nread)
         if (isprint (kar))   // printable?
           {
             //console_putchar ((char) kar);
-            console_putchar (conUnitIdx, '*');
+            console_putchar_force (conUnitIdx, '*');
             pw_buffer[pw_nPos++] = (char) kar;
             pw_buffer[pw_nPos] = 0;
           }
@@ -1714,7 +1750,7 @@ static void console_logon (int conUnitIdx, unsigned char * buf, ssize_t nread)
                 case '\b':  // backspace
                 case 127:   // delete
                   {
-                    console_putstr (conUnitIdx, "\b \b");    // remove char from line
+                    console_putstr_force (conUnitIdx, "\b \b");    // remove char from line
                     pw_buffer[pw_nPos] = 0;     // remove char from buffer
                     pw_nPos -= 1;                 // back up buffer pointer
                   }
@@ -1729,9 +1765,9 @@ static void console_logon (int conUnitIdx, unsigned char * buf, ssize_t nread)
 
                 case 0x12:  // ^R
                   {
-                    console_putstr (conUnitIdx, "^R\r\n");       // echo ^R
+                    console_putstr_force (conUnitIdx, "^R\r\n");       // echo ^R
                     consoleConnectPrompt (csp->console_client);
-                    console_putstr (conUnitIdx, pw_buffer);
+                    console_putstr_force (conUnitIdx, pw_buffer);
                   }
                   break;
 
@@ -1749,19 +1785,19 @@ check:;
     trim (cpy);
     //sim_printf ("<%s>", cpy);
     pw_nPos = 0;
-    console_putstr (conUnitIdx, "\r\n");
+    console_putstr_force (conUnitIdx, "\r\n");
 
     if (strcmp (cpy, csp->console_pw) == 0)
       {
-        console_putstr (conUnitIdx, "ok\r\n");
+        console_putstr_force (conUnitIdx, "ok\r\n");
         goto associate;
       }
     else
       {
-        //console_putstr ("<");
-        //console_putstr (pw_buffer);
-        //console_putstr (">\r\n");
-        console_putstr (conUnitIdx, "nope\r\n");
+        //console_putstr_force ("<");
+        //console_putstr_force (pw_buffer);
+        //console_putstr_force (">\r\n");
+        console_putstr_force (conUnitIdx, "nope\r\n");
         goto reprompt;
       }
  

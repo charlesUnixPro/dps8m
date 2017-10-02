@@ -24,6 +24,7 @@
 #include "dps8_bar.h"
 #include "dps8_sys.h"
 #include "dps8_faults.h"
+#include "dps8_scu.h"
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_iefp.h"

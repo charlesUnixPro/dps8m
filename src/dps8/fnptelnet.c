@@ -16,6 +16,7 @@
 #include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_faults.h"
+#include "dps8_scu.h"
 #include "dps8_cpu.h"
 #include "dps8_fnp2.h"
 #include "fnpuv.h"

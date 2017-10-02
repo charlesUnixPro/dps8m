@@ -37,12 +37,12 @@
 #endif
 #include "dps8_sys.h"
 #include "dps8_faults.h"
+#include "dps8_scu.h"
 #include "dps8_cpu.h"
 #include "dps8_ins.h"
 #include "dps8_iom.h"
 #include "dps8_loader.h"
 #include "dps8_math.h"
-#include "dps8_scu.h"
 #include "dps8_mt.h"
 #include "dps8_disk.h"
 #include "dps8_utils.h"
@@ -161,6 +161,7 @@ static CTAB dps8_cmds[] =
     {"ABSOLUTE", absAddr, 0, "abs: Compute the absolute address of segno:offset\n", NULL, NULL},
     {"VIRTUAL", virtAddr, 0, "virtual: Compute the virtural address(es) of segno:offset\n", NULL, NULL},
     {"SPATH", setSearchPath, 0, "spath: Set source code search path\n", NULL, NULL},
+    {"BT2", boot2, 0, "boot2: boot 2nd cpu\n", NULL, NULL},
     {"TEST", brkbrk, 0, "test: internal testing\n", NULL, NULL},
 // copied from scp.c
 #define SSH_ST          0                               /* set */
@@ -499,9 +500,11 @@ char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * c
 #endif
 
     char * ret = lookupSystemBookAddress (segno, offset, compname, compoffset);
+#ifndef SCUMEM
     if (ret)
       return ret;
     ret = lookupSegmentAddress (segno, offset, compname, compoffset);
+#endif
     return ret;
   }
 
@@ -1702,6 +1705,9 @@ static t_addr parse_addr (UNUSED DEVICE * dptr, const char *cptr, const char **o
             
             if (!prt->alias)    // not a PR or alias
             {
+#ifdef SCUMEM
+              return 0;
+#else
                 segment *s = findSegmentNoCase(seg);
                 if (s == NULL)
                 {
@@ -1711,6 +1717,7 @@ static t_addr parse_addr (UNUSED DEVICE * dptr, const char *cptr, const char **o
                     return 0;
                 }
                 segno = s->segno;
+#endif
             }
         }
         
@@ -1719,6 +1726,9 @@ static t_addr parse_addr (UNUSED DEVICE * dptr, const char *cptr, const char **o
         if (endp == off)
         {
             // not numeric...
+#ifdef SCUMEM
+            return 0;
+#else
             segdef *s = findSegdefNoCase(seg, off);
             if (s == NULL)
             {
@@ -1728,6 +1738,7 @@ static t_addr parse_addr (UNUSED DEVICE * dptr, const char *cptr, const char **o
                 return 0;
             }
             offset = (uint) s->value;
+#endif
         }
         
         // if we get here then seg contains a segment# and offset.
@@ -1773,12 +1784,16 @@ static t_addr parse_addr (UNUSED DEVICE * dptr, const char *cptr, const char **o
 
 static void fprint_addr (FILE * stream, UNUSED DEVICE *  dptr, t_addr simh_addr)
 {
+#ifdef SCUMEM
+    fprintf(stream, "%06o", simh_addr);
+#else
     char temp[256];
     bool bFound = getSegmentAddressString((int)simh_addr, temp);
     if (bFound)
         fprintf(stream, "%s (%08o)", temp, simh_addr);
     else
         fprintf(stream, "%06o", simh_addr);
+#endif
 }
 
 // This is part of the simh interface
@@ -2835,7 +2850,7 @@ sim_printf ("XXX resolve 'set tape0 boot_drive\n");
     doIniLine ("set cpu0 config=dis_enable=enable");
     doIniLine ("set cpu0 config=steady_clock=disable");
     doIniLine ("set cpu0 config=halt_on_unimplemented=disable");
-    doIniLine ("set cpu0 config=disable_wam=enable");
+    doIniLine ("set cpu0 config=disable_wam=disable");
     doIniLine ("set cpu0 config=tro_enable=enable");
     doIniLine ("set cpu0 config=y2k=disable");
 
@@ -2851,7 +2866,12 @@ sim_printf ("XXX resolve 'set tape0 boot_drive\n");
 
     doIniLine ("set cpu1 config=faultbase=Multics");
 
+#define DPREEDTEST
+#ifdef DPREEDTEST
+    doIniLine ("set cpu1 config=num=1");
+#else
     doIniLine ("set cpu1 config=num=0");
+#endif
     // ; As per GB61-01 Operators Guide, App. A
     // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
     doIniLine ("set cpu1 config=data=024000717200");
@@ -3292,33 +3312,52 @@ sim_printf ("XXX resolve 'set tape17 boot_drive\n");
     // ; Attach IOM unit 1 port D (3) to SCU unit 7, port 0
     doIniLine ("cable iom,1,3,7,0");
 
+#ifdef DPREEDTEST
+doIniLine ("cable scu,0,6,1,0");
+doIniLine ("cable scu,1,6,1,1");
+doIniLine ("cable scu,2,6,1,2");
+doIniLine ("cable scu,3,6,1,3");
+#else
 // SCU4
 
     // ; Attach SCU unit 4 port 7 to CPU unit B (1), port 0
     doIniLine ("cable scu,4,7,1,0");
 
-// SCU1
+// SCU5
 
     // ; Attach SCU unit 5 port 7 to CPU unit B (1), port 1
     doIniLine ("cable scu,5,7,1,1");
 
-// SCU2
+// SCU6
 
     // ; Attach SCU unit 6 port 7 to CPU unit B (1), port 2
     doIniLine ("cable scu,6,7,1,2");
 
-// SCU3
+// SCU7
 
     // ; Attach SCU unit 7 port 7 to CPU unit B (1), port 3
     doIniLine ("cable scu,7,7,1,3");
-
+#endif // DPREEDTEST
 
     doIniLine ("set cpu1 config=dis_enable=enable");
     doIniLine ("set cpu1 config=steady_clock=disable");
     doIniLine ("set cpu1 config=halt_on_unimplemented=disable");
-    doIniLine ("set cpu1 config=disable_wam=enable");
+    doIniLine ("set cpu1 config=disable_wam=disable");
     doIniLine ("set cpu1 config=tro_enable=enable");
     doIniLine ("set cpu1 config=y2k=disable");
+
+    doIniLine ("set cpu0 reset");
+    doIniLine ("set cpu1 reset");
+    doIniLine ("set scu0 reset");
+    doIniLine ("set scu1 reset");
+    doIniLine ("set scu2 reset");
+    doIniLine ("set scu3 reset");
+    doIniLine ("set scu4 reset");
+    doIniLine ("set scu5 reset");
+    doIniLine ("set scu6 reset");
+    doIniLine ("set scu7 reset");
+    doIniLine ("set iom0 reset");
+    doIniLine ("set iom1 reset");
 
 // Generic
 
@@ -4439,9 +4478,16 @@ sim_printf ("XXX fix fnpserverport 6180\n");
     doIniLine ("set cpu config=dis_enable=enable");
     doIniLine ("set cpu config=steady_clock=disable");
     doIniLine ("set cpu config=halt_on_unimplemented=disable");
-    doIniLine ("set cpu config=disable_wam=enable");
+    doIniLine ("set cpu config=disable_wam=disable");
     doIniLine ("set cpu config=tro_enable=enable");
     doIniLine ("set cpu config=y2k=disable");
+
+    doIniLine ("set cpu0 reset");
+    doIniLine ("set scu0 reset");
+    doIniLine ("set scu1 reset");
+    doIniLine ("set scu2 reset");
+    doIniLine ("set scu3 reset");
+    doIniLine ("set iom0 reset");
 
     doIniLine ("set sys config=activate_time=8");
     doIniLine ("set sys config=terminate_time=8");

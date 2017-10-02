@@ -386,7 +386,7 @@ static t_stat cable_scu (int uncable, int scu_unit_idx, int scu_port_num, int cp
         cables->cablesFromCpus[scu_unit_idx][scu_port_num][scu_subport_num].cpu_port_num = -1;
 
         scu[scu_unit_idx].ports[scu_port_num].type = 0;
-        scu[scu_unit_idx].ports[scu_port_num].idnum = 0;
+        scu[scu_unit_idx].ports[scu_port_num].devIdx = 0;
 // XXX is this wrong? is is_exp supposed to be an accumulation of bits?
         scu[scu_unit_idx].ports[scu_port_num].is_exp = 0;
         scu[scu_unit_idx].ports[scu_port_num].dev_port [scu_subport_num] = 0;
@@ -414,7 +414,7 @@ static t_stat cable_scu (int uncable, int scu_unit_idx, int scu_port_num, int cp
           cpu_port_num;
 
         scu [scu_unit_idx] . ports [scu_port_num] . type = ADEV_CPU;
-        scu [scu_unit_idx] . ports [scu_port_num] . idnum = cpuUnitIdx;
+        scu [scu_unit_idx] . ports [scu_port_num] . devIdx = cpuUnitIdx;
 // XXX is this right? is is_exp supposed to be an accumulation of bits? If so, change to a ref. count so uncable will work.
         scu [scu_unit_idx] . ports [scu_port_num] . is_exp |= is_exp;
         scu [scu_unit_idx] . ports [scu_port_num] . dev_port [scu_subport_num] = cpu_port_num;
@@ -459,7 +459,7 @@ static t_stat cable_to_scu (int uncable, int scu_unit_idx, int scu_port_num, int
           }
 
         scu [scu_unit_idx] . ports [scu_port_num] . type = ADEV_NONE;
-        scu [scu_unit_idx] . ports [scu_port_num] . idnum = 0;
+        scu [scu_unit_idx] . ports [scu_port_num] . devIdx = 0;
         scu [scu_unit_idx] . ports [scu_port_num] . dev_port [0] = 0;
         scu [scu_unit_idx] . ports [scu_port_num] . is_exp = false;
       }
@@ -472,7 +472,7 @@ static t_stat cable_to_scu (int uncable, int scu_unit_idx, int scu_port_num, int
           }
 
         scu [scu_unit_idx] . ports [scu_port_num] . type = ADEV_IOM;
-        scu [scu_unit_idx] . ports [scu_port_num] . idnum = iomUnitIdx;
+        scu [scu_unit_idx] . ports [scu_port_num] . devIdx = iomUnitIdx;
         scu [scu_unit_idx] . ports [scu_port_num] . dev_port [0] = iom_port_num;
         scu [scu_unit_idx] . ports [scu_port_num] . is_exp = false;
       }
@@ -748,6 +748,19 @@ static void cable_init (void)
 
 t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
   {
+    for (int i = 0; i < N_CPU_UNITS_MAX; i ++)
+      for (int j = 0; j < N_CPU_PORTS; j ++)
+        sim_printf ("cpu %3o port %3o: inuse %d scu %d port %d subport %d\n", i, j, 
+                    cables->cablesFromScuToCpu[i].ports[j].inuse,
+                    cables->cablesFromScuToCpu[i].ports[j].scu_unit_idx,
+                    cables->cablesFromScuToCpu[i].ports[j].scu_port_num,
+                    cables->cablesFromScuToCpu[i].ports[j].scu_subport_num);
+    for (int i = 0; i < N_IOM_UNITS_MAX; i ++)
+      for (int j = 0; j < N_IOM_PORTS; j ++)
+        sim_printf ("cpu %3o port %3o: inuse %d scu %d port %d\n", i, j, 
+                    cables->cablesFromScus[i][j].inuse,
+                    cables->cablesFromScus[i][j].scuUnitIdx,
+                    cables->cablesFromScus[i][j].scuPortNum);
     for (int i = 0; i < N_IOM_UNITS_MAX; i ++)
       for (int c = 0; c < MAX_CHANNELS; c ++)
         for (int d = 0; d < N_DEV_CODES; d ++)
