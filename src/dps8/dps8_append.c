@@ -1409,7 +1409,6 @@ _sdw0 * getSDW (word15 segno)
 void fauxDoAppendCycle (_processor_cycle_type thisCycle)
   {
     cpu.apu.lastCycle = thisCycle;
-    //cpu.cu.XSF = 0;
   }
 
 //word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, word36 * data, uint nWords)
@@ -1466,24 +1465,10 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWord
     _processor_cycle_type lastCycle = cpu.apu.lastCycle;
     cpu.apu.lastCycle = thisCycle;
 
-#ifdef XSF_IND
     sim_debug (DBG_APPENDING, & cpu_dev,
                "doAppendCycle(Entry) XSF %o\n",
                    cpu.cu.XSF);
     bool wasXSF = !! cpu.cu.XSF;
-    //cpu.cu.XSF = (thisCycle == INDIRECT_WORD_FETCH) ? 1 : 0;
-    if (thisCycle == INDIRECT_WORD_FETCH)
-      cpu.cu.XSF = 1;
-#endif
-#ifdef XSF_ITS
-    sim_debug (DBG_APPENDING, & cpu_dev,
-               "doAppendCycle(Entry) XSF %o\n",
-                   cpu.cu.XSF);
-    bool wasXSF = !! cpu.cu.XSF;
-    //cpu.cu.XSF = (thisCycle == INDIRECT_WORD_FETCH) ? 1 : 0;
-    //if (thisCycle == INDIRECT_WORD_FETCH)
-      //cpu.cu.XSF = 1;
-#endif
 
     PNL (L68_ (cpu.apu.state = 0;))
 
@@ -1515,20 +1500,8 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWord
         lastCycle == OPERAND_READ)
       goto A;
 
-#ifdef XSF_IND
-    //if (wasXSF && lastCycle != INDIRECT_WORD_FETCH)
-      //sim_printf ("XSF but not IWF %lld\n", sim_timell ());
     if (lastCycle == INDIRECT_WORD_FETCH || wasXSF)
       goto A;
-#else // XSF_IND
-#ifdef XSF_ITS
-    if (lastCycle == INDIRECT_WORD_FETCH || wasXSF)
-      goto A;
-#else // XSF_ITS
-    if (lastCycle == INDIRECT_WORD_FETCH)
-      goto A;
-#endif // XSF_ITS
-#endif // XSF_IND
 
     if (lastCycle == RTCD_OPERAND_FETCH)
       goto A;
@@ -1575,10 +1548,7 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWord
                 cpu.TPR.TRR = cpu.PPR.PRR;
              }
             cpu.TPR.TSR = cpu.PAR[n].SNR;
-#ifdef XSF_ITS
             cpu.cu.XSF = 1;
-sim_debug (DBG_TRACE, & cpu_dev, "B29 set XSF\n");
-#endif
             sim_debug (DBG_APPENDING, & cpu_dev, "TSN TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
             goto A;
           }
@@ -2251,13 +2221,6 @@ HI:
     if (thisCycle == INDIRECT_WORD_FETCH)
       goto J;
 
-#ifdef XSF_IND
-    // An operand read/store has succeeded; the case of indirect followed
-    // by faulting operand read/store has been traversed. (No faults are 
-    // thrown after this point
-    cpu.cu.XSF = 0;
-#endif
-
     // Was this an rtcd operand fetch?
     if (thisCycle == RTCD_OPERAND_FETCH)
       goto K;
@@ -2495,13 +2458,6 @@ O:; // ITS, RTCD
     sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(O)\n");
     sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(O) TRR %o RSDWH.R1 %o ITS.RNR %o\n", cpu.TPR.TRR, cpu.RSDWH_R1, (word3) (((* data) >> (18 - 3)) & MASK3));
 
-#ifdef XSF_IND
-    //if (! rtcdOperandFetch)
-      //cpu.cu.XSF = 1;
-#endif
-
-    //word3 y = getbits36_3 (* data, 18);
-
     // C(TPR.TRR) >= RSDWH.R1?
     if (cpu.TPR.TRR >= cpu.RSDWH_R1)
       {
@@ -2531,10 +2487,6 @@ O:; // ITS, RTCD
 P:; // ITP
 
     sim_debug (DBG_APPENDING, & cpu_dev, "doAppendCycle(P)\n");
-
-#ifdef XSF_IND
-    //cpu.cu.XSF = 1;
-#endif
 
     n = GET_PRN (* data);
     // C(TPR.TRR) >= RSDWH.R1?

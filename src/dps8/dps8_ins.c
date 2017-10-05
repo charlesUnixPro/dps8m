@@ -453,7 +453,6 @@ static void scu2words (word36 *words)
     putbits36_15 (& words[0],  3, cpu.PPR.PSR);
     putbits36_1 (& words[0], 18,  cpu.PPR.P);
     putbits36_1 (& words[0], 19,  cpu.cu.XSF);
-if (cpu.cu.XSF) {sim_debug (DBG_TRACE, & cpu_dev, "SCU XSF %lld\n", sim_timell ());}
     // 20, 1 SDWAMM Match on SDWAM
     putbits36_1 (& words[0], 21,  cpu.cu.SD_ON);
     // 22, 1 PTWAMM Match on PTWAM
@@ -637,7 +636,6 @@ static void words2scu (word36 * words)
     cpu.PPR.PSR         = getbits36_15 (words[0], 3);
     cpu.PPR.P           = getbits36_1  (words[0], 18);
     cpu.cu.XSF          = getbits36_1  (words[0], 19);
-if (cpu.cu.XSF) {sim_debug (DBG_TRACE, & cpu_dev, "RCU XSF %lld\n", sim_timell ());}
     //cpu.cu.SDWAMM       = getbits36_1  (words[0], 20);
     //cpu.cu.SD_ON        = getbits36_1  (words[0], 21);
     //cpu.cu.PTWAMM       = getbits36_1  (words[0], 22);
@@ -1540,13 +1538,8 @@ IF1 sim_printf ("trapping opcode match......\n");
     if (ci->restart)
       goto restart_1;
 
-#ifdef XSF_IND
     cpu.cu.XSF = 0;
-#endif
-#ifdef XSF_ITS
-    cpu.cu.XSF = 0;
-    sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction clear XSF\n");
-#endif
+
     CPT (cpt2U, 14); // non-restart processing
     // Set Address register empty
     PNL (L68_ (cpu.AR_F_E = false;))
@@ -1861,12 +1854,6 @@ restart_1:
 
     cpu.du.JMP = (word3) info->ndes;
     cpu.dlyFlt = false;
-#ifndef XSF_IND
-#ifndef XSF_ITS
-    cpu.cu.XSF = 0;
-    //cpu.cu.XSF = 0; // not here; may be restart
-#endif
-#endif
 
 ///
 /// executeInstruction: RPT/RPD/RPL special processing for 'first time'
@@ -2219,16 +2206,9 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
         // 'EPP ITS; TRA' confuses the APU by leaving last_cycle 
         // at INDIRECT_WORD_FETCH; defoobarize the APU:
         fauxDoAppendCycle (OPERAND_READ);
-#ifdef XSF_IND
         cpu.TPR.TRR = cpu.PPR.PRR;
         cpu.TPR.TSR = cpu.PPR.PSR;
         cpu.TPR.TBR = 0;
-#endif
-#ifdef XSF_ITS
-        cpu.TPR.TRR = cpu.PPR.PRR;
-        cpu.TPR.TSR = cpu.PPR.PSR;
-        cpu.TPR.TBR = 0;
-#endif
       }
 
 ///

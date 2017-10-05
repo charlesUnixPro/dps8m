@@ -2040,10 +2040,7 @@ elapsedtime ();
                     //processorCycle = INSTRUCTION_FETCH;
                     // fetch next instruction into current instruction struct
                     clr_went_appending (); // XXX not sure this is the right place
-#ifdef XSF_ITS
-cpu.cu.XSF = 0; // Hmm. Is XSF == clr_went_appending ?
-sim_debug (DBG_TRACE, & cpu_dev, "FETCH_cycle clear XSF\n");
-#endif
+                    cpu.cu.XSF = 0; // Hmm. Is XSF == clr_went_appending ?
                     cpu.cu.TSN_VALID [0] = 0;
                     PNL (cpu.prepare_state = ps_PIA);
                     PNL (L68_ (cpu.INS_FETCH = true;))
