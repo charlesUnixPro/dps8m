@@ -73,7 +73,9 @@ typedef struct { int64_t h; uint64_t l; } __int128_t;
 #define VM_DPS8
 
 // Use XSF bit to manage APU 'last cycle == INDIRECT_WORD_FETCH
-#define XSF_IND
+//#define XSF_IND
+// Use XSF bit to manage APU segment walking.
+#define XSF_ITS
 
 #ifdef TESTING
 #else

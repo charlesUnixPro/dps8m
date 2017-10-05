@@ -16,10 +16,10 @@ extern DEVICE scu_dev;
 #ifdef ISOLTS
 #define isISOLTS (currentRunningCpuIdx != 0)
 #else
-#if 1 // CPU1 only
+#if 0 // CPU1 only
 #define isISOLTS (currentRunningCpuIdx != 0)
 #else // Any CPU
-#define isISOLTS
+#define isISOLTS true
 #endif
 #endif
 

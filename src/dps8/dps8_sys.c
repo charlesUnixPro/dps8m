@@ -3346,8 +3346,12 @@ doIniLine ("cable scu,3,6,1,3");
     doIniLine ("set cpu1 config=tro_enable=enable");
     doIniLine ("set cpu1 config=y2k=disable");
 
+#ifdef DPREEDTEST
     doIniLine ("set cpu0 reset");
     doIniLine ("set cpu1 reset");
+#else
+    doIniLine ("set cpu  reset");
+#endif
     doIniLine ("set scu0 reset");
     doIniLine ("set scu1 reset");
     doIniLine ("set scu2 reset");

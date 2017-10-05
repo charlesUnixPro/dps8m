@@ -336,6 +336,10 @@ static void doITSITP (word6 Tag, word6 * newtag)
     * newtag = GET_TAG (cpu.itxPair [1]);
     //didITSITP = true;
     set_went_appending ();
+#ifdef XSF_ITS
+    cpu.cu.XSF = 1;
+sim_debug (DBG_TRACE, & cpu_dev, "ITx set XSF\n");
+#endif
   }
 
 
@@ -476,11 +480,16 @@ startCA:;
             //cpu.TPR.CA = cpu.ou.directOperand;
             //updateIWB (identity) // known that rTag is DL or DU
 #else
+#ifdef XSF_ITS
+            //cpu.TPR.CA = cpu.ou.directOperand;
+            //updateIWB (identity) // known that rTag is DL or DU
+#else
             sim_debug (DBG_TRACE, & cpu_dev, "dl/du do %012llo IWB %012llo\n", cpu.ou.directOperand, IWB_IRODD);
             updateIWB ((Td == TD_DU ? (cpu.ou.directOperand >> 18) :
                                        cpu.ou.directOperand) & MASK18,
                         cpu.rTAG);
-#endif
+#endif // XSF_ITS
+#endif // XSF_IND
             return SCPE_OK;
           }
 
@@ -670,8 +679,12 @@ startCA:;
 #ifdef XSF_IND // OLDCYCLE
         updateIWB (cpu.TPR.CA, cpu.rTAG);
 #else
+#ifdef XSF_ITS
+        updateIWB (cpu.TPR.CA, cpu.rTAG);
+#else
         sim_debug (DBG_TRACE, & cpu_dev, "skipping updateIWB CA %06o tag %02o\n", cpu.TPR.CA, cpu.rTAG);
-#endif
+#endif // XSF_ITS
+#endif // XSF_IND
         goto startCA;
       } // RI_MOD
 
@@ -777,7 +790,10 @@ startCA:;
 
 #ifdef XSF_IND // OLDCYCLE
                     updateIWB (cpu.TPR.CA, 0);
-#endif
+#endif // XSF_IND
+#ifdef XSF_ITS // OLDCYCLE
+                    updateIWB (cpu.TPR.CA, 0);
+#endif // XSF_ITS
                   }
                 cpu.cu.CT_HOLD = 0;
                 return SCPE_OK;
@@ -822,6 +838,9 @@ startCA:;
             case TM_IR:
               {
 #ifdef XSF_IND // OLDCYCLE
+                updateIWB (cpu.TPR.CA, cpu.rTAG); // XXX guessing here...
+#endif
+#ifdef XSF_ITS // OLDCYCLE
                 updateIWB (cpu.TPR.CA, cpu.rTAG); // XXX guessing here...
 #endif
                 goto IR_MOD;

@@ -1475,6 +1475,15 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWord
     if (thisCycle == INDIRECT_WORD_FETCH)
       cpu.cu.XSF = 1;
 #endif
+#ifdef XSF_ITS
+    sim_debug (DBG_APPENDING, & cpu_dev,
+               "doAppendCycle(Entry) XSF %o\n",
+                   cpu.cu.XSF);
+    bool wasXSF = !! cpu.cu.XSF;
+    //cpu.cu.XSF = (thisCycle == INDIRECT_WORD_FETCH) ? 1 : 0;
+    //if (thisCycle == INDIRECT_WORD_FETCH)
+      //cpu.cu.XSF = 1;
+#endif
 
     PNL (L68_ (cpu.apu.state = 0;))
 
@@ -1511,10 +1520,15 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWord
       //sim_printf ("XSF but not IWF %lld\n", sim_timell ());
     if (lastCycle == INDIRECT_WORD_FETCH || wasXSF)
       goto A;
-#else
+#else // XSF_IND
+#ifdef XSF_ITS
+    if (lastCycle == INDIRECT_WORD_FETCH || wasXSF)
+      goto A;
+#else // XSF_ITS
     if (lastCycle == INDIRECT_WORD_FETCH)
       goto A;
-#endif
+#endif // XSF_ITS
+#endif // XSF_IND
 
     if (lastCycle == RTCD_OPERAND_FETCH)
       goto A;
@@ -1561,6 +1575,10 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data, uint nWord
                 cpu.TPR.TRR = cpu.PPR.PRR;
              }
             cpu.TPR.TSR = cpu.PAR[n].SNR;
+#ifdef XSF_ITS
+            cpu.cu.XSF = 1;
+sim_debug (DBG_TRACE, & cpu_dev, "B29 set XSF\n");
+#endif
             sim_debug (DBG_APPENDING, & cpu_dev, "TSN TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
             goto A;
           }
