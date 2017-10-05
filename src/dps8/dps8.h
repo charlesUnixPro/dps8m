@@ -72,10 +72,18 @@ typedef struct { int64_t h; uint64_t l; } __int128_t;
 // Enable IPC
 #define VM_DPS8
 
-// Use XSF bit to manage APU 'last cycle == INDIRECT_WORD_FETCH
-//#define XSF_IND
-// Use XSF bit to manage APU segment walking.
-#define XSF_ITS
+// Replaces went_appending with XSF.
+// Crashes at 15117901 after RCU instruction restart; the faulting instruction
+// had XSF set, but somewhere in the instruction reset code, XSF is cleared;
+// most likely in the set_addr_mode logic not understanding restart.
+//set cpu config=steady_clock=enable
+//set scu0 config=elapsed_days=11000
+//CFLAGS += -DNO_EV_POLL
+//#define NOWENT
+
+#ifdef NOWENT
+#define get_went_appending() (cpu.cu.XSF)
+#endif
 
 #ifdef TESTING
 #else

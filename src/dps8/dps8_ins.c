@@ -2077,7 +2077,11 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            n, offset, cpu.TPR.CA, cpu.TPR.TBR, 
                            cpu.TPR.TSR, cpu.TPR.TRR);
 
+#ifdef NOWENT
+                cpu.cu.XSF = 1;
+#else
                 set_went_appending ();
+#endif
 
 // Putting the a29 clear here makes sense, but breaks the emulator for unclear
 // reasons (possibly ABSA?). Do it in updateIWB instead
@@ -2098,7 +2102,11 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                     cpu.TPR.TRR = 0;
                     cpu.RSDWH_R1 = 0;
                   }
+#ifdef NOWENT
+                cpu.cu.XSF = 0;
+#else
                 clr_went_appending ();
+#endif
               }
           //}
 
@@ -9235,7 +9243,11 @@ static int doABSA (word36 * result)
     sim_debug (DBG_APPENDING, & cpu_dev, "absa CA:%08o\n", cpu.TPR.CA);
 
     //if (get_addr_mode () == ABSOLUTE_mode && ! cpu.isb29)
+#ifdef NOWENT
+    if (get_addr_mode () == ABSOLUTE_mode && ! cpu.cu.XSF) // ISOLTS-860
+#else
     if (get_addr_mode () == ABSOLUTE_mode && ! cpu.went_appending) // ISOLTS-860
+#endif
       {
         * result = ((word36) (cpu.TPR.CA & MASK18)) << 12; // 24:12 format
         return SCPE_OK;

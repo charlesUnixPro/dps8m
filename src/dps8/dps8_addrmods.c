@@ -335,7 +335,9 @@ static void doITSITP (word6 Tag, word6 * newtag)
 
     * newtag = GET_TAG (cpu.itxPair [1]);
     //didITSITP = true;
+#ifndef NOWENT
     set_went_appending ();
+#endif
     cpu.cu.XSF = 1;
   }
 

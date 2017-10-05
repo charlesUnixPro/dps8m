@@ -1775,7 +1775,9 @@ typedef struct
     //word36 instr_buf [2];
     uint64 lufCounter;
     bool secret_addressing_mode;
+#ifndef NOWENT
     bool went_appending; // we will go....
+#endif
 #if 0
     bool bar_attempt;
 #endif
@@ -2053,9 +2055,11 @@ static inline void core_writeN (word24 addr, word36 *data, uint n, UNUSED const 
   }
 
 int is_priv_mode (void);
+#ifndef NOWENT
 void set_went_appending (void);
 void clr_went_appending (void);
 bool get_went_appending (void);
+#endif
 bool get_bar_mode (void);
 addr_modes_t get_addr_mode (void);
 void set_addr_mode (addr_modes_t mode);

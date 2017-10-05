@@ -2039,7 +2039,9 @@ elapsedtime ();
                     cpu.isXED = false;
                     //processorCycle = INSTRUCTION_FETCH;
                     // fetch next instruction into current instruction struct
+#ifndef NOWENT
                     clr_went_appending (); // XXX not sure this is the right place
+#endif
                     cpu.cu.XSF = 0; // Hmm. Is XSF == clr_went_appending ?
                     cpu.cu.TSN_VALID [0] = 0;
                     PNL (cpu.prepare_state = ps_PIA);
@@ -3054,6 +3056,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "is_priv_mode P %u get_addr_mode %d get_bar_mod
     return 0;
   }
 
+#ifndef NOWENT
 void set_went_appending (void)
   {
     CPT (cpt1L, 18); // set went appending
@@ -3070,6 +3073,7 @@ bool get_went_appending (void)
   {
     return cpu.went_appending;
   }
+#endif
 
 /*
  * addr_modes_t get_addr_mode()
@@ -3085,15 +3089,24 @@ static void set_TEMPORARY_ABSOLUTE_mode (void)
 {
     CPT (cpt1L, 20); // set temp. abs. mode
     cpu.secret_addressing_mode = true;
+#ifdef NOWENT
+    cpu.cu.XSF = false;
+#else
     cpu.went_appending = false;
+#endif
 }
 
 static bool clear_TEMPORARY_ABSOLUTE_mode (void)
 {
     CPT (cpt1L, 21); // clear temp. abs. mode
     cpu.secret_addressing_mode = false;
+#ifdef NOWENT
+    //sim_debug (DBG_TRACE, & cpu_dev, "clear_TEMPORARY_ABSOLUTE_mode returns %s\n", cpu.cu.XSF ? "true" : "false");
+    return cpu.cu.XSF;
+#else
     //sim_debug (DBG_TRACE, & cpu_dev, "clear_TEMPORARY_ABSOLUTE_mode returns %s\n", cpu.went_appending ? "true" : "false");
     return cpu.went_appending;
+#endif
 }
 
 /* 
@@ -3137,7 +3150,11 @@ addr_modes_t get_addr_mode(void)
 
 void set_addr_mode(addr_modes_t mode)
 {
+#ifdef NOWENT
+    cpu.cu.XSF = false;
+#else
     cpu.went_appending = false;
+#endif
 // Temporary hack to fix fault/intr pair address mode state tracking
 //   1. secret_addressing_mode is only set in fault/intr pair processing.
 //   2. Assume that the only set_addr_mode that will occur is the b29 special
