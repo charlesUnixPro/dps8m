@@ -1792,7 +1792,6 @@ int scu_set_interrupt (uint scuUnitIdx, uint inum)
   {
     const char* moi = "SCU::interrupt";
     
-    //sim_printf ("received %d (%o)\n", inum, inum);
     if (inum >= N_CELL_INTERRUPTS) 
       {
         sim_debug (DBG_WARN, & scu_dev, 

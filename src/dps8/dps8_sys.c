@@ -2866,7 +2866,7 @@ sim_printf ("XXX resolve 'set tape0 boot_drive\n");
 
     doIniLine ("set cpu1 config=faultbase=Multics");
 
-#define DPREEDTEST
+//#define DPREEDTEST
 #ifdef DPREEDTEST
     doIniLine ("set cpu1 config=num=1");
 #else
