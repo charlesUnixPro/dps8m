@@ -1711,7 +1711,8 @@ static void console_logon (int conUnitIdx, unsigned char * buf, ssize_t nread)
                   {
                     console_putstr_force (conUnitIdx, "\b \b");    // remove char from line
                     pw_buffer[pw_nPos] = 0;     // remove char from buffer
-                    pw_nPos -= 1;                 // back up buffer pointer
+                    if (pw_nPos > 0)
+                      pw_nPos -= 1;                 // back up buffer pointer
                   }
                   break;
 
@@ -1752,7 +1753,8 @@ static void console_logon (int conUnitIdx, unsigned char * buf, ssize_t nread)
                   {
                     console_putstr_force (conUnitIdx, "\b \b");    // remove char from line
                     pw_buffer[pw_nPos] = 0;     // remove char from buffer
-                    pw_nPos -= 1;                 // back up buffer pointer
+                    if (pw_nPos > 0)
+                      pw_nPos -= 1;                 // back up buffer pointer
                   }
                   break;
 
