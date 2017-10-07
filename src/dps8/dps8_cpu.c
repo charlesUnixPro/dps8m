@@ -1435,15 +1435,11 @@ uint currentRunningCpuIdx;
  
 static uint get_highest_intr (void)
   {
-    //for (uint scuUnitNum = 0; scuUnitNum < N_SCU_UNITS_MAX; scuUnitNum ++)
-    for (uint portNum = 0; portNum < N_CPU_PORTS; portNum ++)
+    for (uint scuUnitNum = 0; scuUnitNum < N_SCU_UNITS_MAX; scuUnitNum ++)
       {
-        int scuUnitIdx = cables->cablesFromScuToCpu[currentRunningCpuIdx].ports[portNum].scu_unit_idx;
-        if (scuUnitIdx < 0)
-          continue;
-        if (scu [scuUnitIdx].XIP)
+        if (cpu.events.XIP [scuUnitNum])
           {
-            uint fp = scuGetHighestIntr ((uint) scuUnitIdx);
+            uint fp = scuGetHighestIntr (scuUnitNum);
             if (fp != 1)
               return fp;
           }
@@ -1454,13 +1450,9 @@ static uint get_highest_intr (void)
 bool sample_interrupts (void)
   {
     cpu.lufCounter = 0;
-    //for (uint scuUnitNum = 0; scuUnitNum < N_SCU_UNITS_MAX; scuUnitNum ++)
-    for (uint portNum = 0; portNum < N_CPU_PORTS; portNum ++)
+    for (uint scuUnitNum = 0; scuUnitNum < N_SCU_UNITS_MAX; scuUnitNum ++)
       {
-        int scuUnitIdx = cables->cablesFromScuToCpu[currentRunningCpuIdx].ports[portNum].scu_unit_idx;
-        if (scuUnitIdx < 0)
-          continue;
-        if (scu [scuUnitIdx].XIP)
+        if (cpu.events.XIP [scuUnitNum])
           {
             return true;
           }

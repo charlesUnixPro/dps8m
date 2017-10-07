@@ -16,7 +16,6 @@ enum active_dev { ADEV_NONE, ADEV_CPU, ADEV_IOM };
 
 typedef struct
   {
-    bool XIP;
     uint port_enable [N_SCU_PORTS];  // enable/disable
 
     // Mask registers A and B, each with 32 interrupt bits.

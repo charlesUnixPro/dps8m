@@ -631,13 +631,14 @@ static MTAB scu_mod [] =
 
 static DEBTAB scu_dt [] =
   {
-    { (char *) "TRACE", DBG_TRACE, NULL },
+    { (char *) "TRACE",  DBG_TRACE, NULL },
     { (char *) "NOTIFY", DBG_NOTIFY, NULL },
-    { (char *) "INFO", DBG_INFO, NULL },
-    { (char *) "ERR", DBG_ERR, NULL },
-    { (char *) "WARN", DBG_WARN, NULL },
-    { (char *) "DEBUG", DBG_DEBUG, NULL },
-    { (char *) "ALL", DBG_ALL, NULL }, // don't move as it messes up DBG message
+    { (char *) "INFO",   DBG_INFO, NULL },
+    { (char *) "ERR",    DBG_ERR, NULL },
+    { (char *) "WARN",   DBG_WARN, NULL },
+    { (char *) "DEBUG",  DBG_DEBUG, NULL },
+    { (char *) "INTR",   DBG_INTR, NULL        },
+    { (char *) "ALL",    DBG_ALL, NULL }, // don't move as it messes up DBG message
     { NULL, 0, NULL }
   };
 
@@ -976,18 +977,18 @@ static uint64 getSCUclock (uint scuUnitIdx)
   }
 
 
-static char pcellb [N_CELL_INTERRUPTS + 1];
-static char * pcells (uint scuUnitIdx)
+//static char pcellb [N_CELL_INTERRUPTS + 1];
+static char * pcells (uint scuUnitIdx, char * buf)
   {
     for (uint i = 0; i < N_CELL_INTERRUPTS; i ++)
       {
         if (scu [scuUnitIdx] . cells [i])
-          pcellb [i] = '1';
+          buf [i] = '1';
         else
-          pcellb [i] = '0';
+          buf [i] = '0';
       }
-    pcellb [N_CELL_INTERRUPTS] = '\0';
-    return pcellb;
+    buf [N_CELL_INTERRUPTS] = '\0';
+    return buf;
   }
 
 t_stat scu_smic (uint scuUnitIdx, uint UNUSED cpuUnitIdx, 
@@ -1002,9 +1003,10 @@ t_stat scu_smic (uint scuUnitIdx, uint UNUSED cpuUnitIdx,
             if (getbits36_1 (rega, i))
               scu [scuUnitIdx].cells [i + 16] = 1;
           }
+        char pcellb [N_CELL_INTERRUPTS + 1];
         sim_debug (DBG_TRACE, & scu_dev,
                    "SMIC low: Unit %u Cells: %s\n", 
-                   scuUnitIdx, pcells (scuUnitIdx));
+                   scuUnitIdx, pcells (scuUnitIdx, pcellb));
       }
     else
       {
@@ -1013,9 +1015,10 @@ t_stat scu_smic (uint scuUnitIdx, uint UNUSED cpuUnitIdx,
             if (getbits36_1 (rega, i))
               scu [scuUnitIdx].cells [i] = 1;
           }
+        char pcellb [N_CELL_INTERRUPTS + 1];
         sim_debug (DBG_TRACE, & scu_dev,
                    "SMIC high: Unit %d Cells: %s\n",
-                   scuUnitIdx, pcells (scuUnitIdx));
+                   scuUnitIdx, pcells (scuUnitIdx, pcellb));
       }
 #else
     if (getbits36_1 (rega, 35))
@@ -1024,9 +1027,10 @@ t_stat scu_smic (uint scuUnitIdx, uint UNUSED cpuUnitIdx,
           {
             scu [scuUnitIdx] . cells [i + 16] = getbits36_1 (rega, i) ? 1 : 0;
           }
+        char pcellb [N_CELL_INTERRUPTS + 1];
         sim_debug (DBG_TRACE, & scu_dev,
                    "SMIC low: Unit %u Cells: %s\n", 
-                   scuUnitIdx, pcells (scuUnitIdx));
+                   scuUnitIdx, pcells (scuUnitIdx, pcellb));
       }
     else
       {
@@ -1035,9 +1039,10 @@ t_stat scu_smic (uint scuUnitIdx, uint UNUSED cpuUnitIdx,
             scu [scuUnitIdx] . cells [i] = 
               getbits36_1 (rega, i) ? 1 : 0;
           }
+        char pcellb [N_CELL_INTERRUPTS + 1];
         sim_debug (DBG_TRACE, & scu_dev,
                    "SMIC high: Unit %d Cells: %s\n",
-                   scuUnitIdx, pcells (scuUnitIdx));
+                   scuUnitIdx, pcells (scuUnitIdx, pcellb));
       }
 #endif
     dumpIR ("smic", scuUnitIdx);
@@ -1147,6 +1152,10 @@ t_stat scu_sscr (uint scuUnitIdx, UNUSED uint cpuUnitIdx,
                       }
          
                   }
+                sim_debug (DBG_INTR, & scu_dev,
+                           "SCU%u SSCR1 mask %c enable set to %u assigned to port %u\n",
+                           scuUnitIdx, 'a' + maskab, up->mask_enable[maskab],
+                           up->mask_assignment[maskab]);
               }
             // AN87-00A, pg 2-5, 2-6 specifiy which fields are and are not settable.
  
@@ -1240,6 +1249,11 @@ t_stat scu_sscr (uint scuUnitIdx, UNUSED uint cpuUnitIdx,
                        scu [scuUnitIdx] . exec_intr_mask [mask_num]);
             dumpIR ("sscr set mask", scuUnitIdx);
             scu [scuUnitIdx] . mask_enable [mask_num] = 1;
+            sim_debug (DBG_INTR, & scu_dev,
+                       "SCU%u SSCR2 exec_intr mask %c set to 0x%08x and enabled.\n",
+                       scuUnitIdx, 'a' + mask_num, 
+                       scu[scuUnitIdx].exec_intr_mask[mask_num]);
+
             deliverInterrupts (scuUnitIdx);
           }
           break;
@@ -1253,9 +1267,13 @@ t_stat scu_sscr (uint scuUnitIdx, UNUSED uint cpuUnitIdx,
                 scu [scuUnitIdx] . cells [i + 16] = 
                   getbits36_1 (regq, i) ? 1 : 0;
               }
+            char pcellb [N_CELL_INTERRUPTS + 1];
             sim_debug (DBG_TRACE, & scu_dev, 
                        "SSCR Set int. cells: Unit %u Cells: %s\n", 
-                       scuUnitIdx, pcells (scuUnitIdx));
+                       scuUnitIdx, pcells (scuUnitIdx, pcellb));
+            sim_debug (DBG_INTR, & scu_dev, 
+                       "SCU%u SSCR3  Set int. cells %s\n", 
+                       scuUnitIdx, pcells (scuUnitIdx, pcellb));
             dumpIR ("sscr set interrupt cells", scuUnitIdx);
             deliverInterrupts (scuUnitIdx);
           }
@@ -1794,70 +1812,95 @@ int scu_set_interrupt (uint scuUnitIdx, uint inum)
 static void deliverInterrupts (uint scuUnitIdx)
   {
     sim_debug (DBG_DEBUG, & scu_dev, "deliverInterrupts %o\n", scuUnitIdx);
-//#ifdef ROUND_ROBIN
-//    for (uint cpun = 0; cpun < cpu_dev.numunits; cpun ++)
-//      {
-//        cpus[cpun].events.XIP[scuUnitIdx] = false;
-//      }
-//#else
-    scu[scuUnitIdx].XIP = false;
-//#endif
+#ifdef ROUND_ROBIN
+    for (uint cpun = 0; cpun < cpu_dev.numunits; cpun ++)
+      {
+        cpus[cpun].events.XIP[scuUnitIdx] = false;
+      }
+#else
+    cpu . events . XIP [scuUnitIdx] = false;
+#endif
 
     for (uint inum = 0; inum < N_CELL_INTERRUPTS; inum ++)
       {
         if (! scu [scuUnitIdx] . cells [inum])
           continue; //
         sim_debug (DBG_DEBUG, & scu_dev, "trying to deliver %d\n", inum);
+        sim_debug (DBG_INTR, & scu_dev, "scu %u trying to deliver %d\n", scuUnitIdx, inum);
 
 
         for (uint pima = 0; pima < N_ASSIGNMENTS; pima ++) // A, B
           {
-            //sim_debug (DBG_DEBUG, & scu_dev,
-                       //"trying inum %u pima %u enable %u\n",
-                       //inum, pima, scu [scuUnitIdx] . mask_enable [pima]);
+            //sim_debug (DBG_DEBUG, & scu_dev, "trying inum %u pima %u enable %u\n", inum, pima, scu [scuUnitIdx] . mask_enable [pima]);
             if (scu [scuUnitIdx] . mask_enable [pima] == 0)
               continue;
             uint mask = scu [scuUnitIdx] . exec_intr_mask [pima];
             uint port = scu [scuUnitIdx] . mask_assignment [pima];
-            //sim_debug (DBG_DEBUG, & scu_dev, 
-                       //"mask %u port %u type %u cells %o\n", mask, port,
-                       // scu[scuUnitIdx].ports[port].type,
-                       // scu[scuUnitIdx].cells[inum]);
+            //sim_debug (DBG_DEBUG, & scu_dev, "mask %u port %u type %u cells %o\n", mask, port, scu [scuUnitIdx] . ports [port] . type, scu [scuUnitIdx] . cells [inum]);
             if (scu [scuUnitIdx].ports [port].type != ADEV_CPU)
               continue;
             if ((mask & (1u << (31 - inum))) != 0)
               {
-                scu [scuUnitIdx].XIP = true;
-                sim_debug (DBG_DEBUG, & scu_dev,
-                           "XIP set for SCU %d\n", scuUnitIdx);
-#ifdef ROUND_ROBIN
                 int cpuUnitIdx = -1;
                 if (scu[scuUnitIdx].ports[port].is_exp)
                   {
-                    cpuUnitIdx = cables->cablesFromCpus
-                      [scuUnitIdx]
-                        [port]
-                          [scu
-                            [scuUnitIdx].ports[port].xipmaskval]
-                            .cpuUnitIdx;
+                    cpuUnitIdx = cables->cablesFromCpus[scuUnitIdx][port][scu[scuUnitIdx].ports[port].xipmaskval].cpuUnitIdx;
                   }
                 else
                   {
                     cpuUnitIdx = cables->cablesFromCpus[scuUnitIdx][port][0].cpuUnitIdx;
                   }
+                //sim_debug (DBG_DEBUG, & scu_dev, "mask set; cpuUnitIdx %u\n", cpuUnitIdx);
                 if (cpuUnitIdx < 0 || cpuUnitIdx >= (int) cpu_dev . numunits)
                   {
-                    sim_warn ("bad cpuUnitIdx %u\n", cpuUnitIdx);
+                    sim_err ("bad cpuUnitIdx %u\n", cpuUnitIdx);
                   }
                 else
                   {
+#ifdef ROUND_ROBIN
                     uint save = setCPUnum ((uint) cpuUnitIdx);
+//if (cpuUnitIdx && ! cpu.isRunning) sim_printf ("starting CPU %c\n", cpuUnitIdx + 'A');
+                    cpu.isRunning = true;
+                    cpu.events.XIP[scuUnitIdx] = true;
+                    setCPUnum (save);
+#else
+                    cpu.events.XIP[scuUnitIdx] = true;
+#endif
+sim_debug (DBG_DEBUG, & scu_dev, "interrupt set for CPU %d SCU %d\n", cpuUnitIdx, scuUnitIdx);
+                    sim_debug (DBG_INTR, & scu_dev,
+                               "XIP set for SCU %d\n", scuUnitIdx);
+#ifdef RCFDBG
+if (cpuUnitIdx || scuUnitIdx) sim_printf ("interrupt set for CPU %d SCU %d\n", cpuUnitIdx, scuUnitIdx);
+#ifdef ROUND_ROBIN
+                    int cpuUnitIdx = -1;
+                    if (scu[scuUnitIdx].ports[port].is_exp)
+                      {
+                        cpuUnitIdx = cables->cablesFromCpus
+                          [scuUnitIdx]
+                            [port]
+                              [scu
+                                [scuUnitIdx].ports[port].xipmaskval]
+                                .cpuUnitIdx;
+                      }
+                    else
+                      {
+                        cpuUnitIdx = cables->cablesFromCpus[scuUnitIdx][port][0].cpuUnitIdx;
+                      }
+                    if (cpuUnitIdx < 0 || cpuUnitIdx >= (int) cpu_dev . numunits)
+                      {
+                        sim_warn ("bad cpuUnitIdx %u\n", cpuUnitIdx);
+                      }
+                    else
+                      {
+                        uint save = setCPUnum ((uint) cpuUnitIdx);
 if (cpuUnitIdx && ! cpu.isRunning)
  sim_printf ("starting CPU %c\n", cpuUnitIdx + 'A');
-                    cpu.isRunning = true;
-                    setCPUnum (save);
-                  }
+                        cpu.isRunning = true;
+                        setCPUnum (save);
+                      }
 #endif
+#endif
+                  }
               }
           }
       }

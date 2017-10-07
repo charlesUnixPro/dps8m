@@ -7645,9 +7645,9 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
               }
 
 #ifdef ROUND_ROBIN
-          if (cpu.PPR.PSR == 0e4 && cpu.PPR.IC == 03535)
+          if (cpu.PPR.PSR == 034 && cpu.PPR.IC == 03535)
               {
-                sim_printf ("sys_trouble$die  DIS causes CPU halt\n");
+                sim_printf ("[%lld] sys_trouble$die  DIS causes CPU halt\n", sim_timell ());
                 sim_debug (DBG_MSG, & cpu_dev, "BCE DIS causes CPU halt\n");
                 //longjmp (cpu.jmpMain, JMP_STOP);
                 cpu.isRunning = false;
