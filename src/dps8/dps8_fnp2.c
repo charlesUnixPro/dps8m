@@ -322,10 +322,10 @@ static t_stat fnpReset (DEVICE * dptr)
 static void dmpmbx (uint mailboxAddress)
   {
 #ifdef SCUMEM
-    word24 base;
-    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, mailboxAddress, & base);
+    word24 offset;
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, mailboxAddress, & offset);
     int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
-    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[mailboxAddress-base];
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[offset];
 #else
     struct mailbox * mbxp = (struct mailbox *) & M [mailboxAddress];
 #endif
@@ -1019,10 +1019,10 @@ sim_printf ("notifyCS mbx %d\n", mbx);
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
 #ifdef SCUMEM
     uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
-    word24 base;
-    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    word24 offset;
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & offset);
     int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
-    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[offset];
 #else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
 #endif
@@ -1046,11 +1046,11 @@ static void fnp_rcd_ack_echnego_init (int mbx, int fnpno, int lineno)
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
 #ifdef SCUMEM
-    word24 base;
+    word24 offset;
     uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
-    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & offset);
     int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
-    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[offset];
 #else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
 #endif
@@ -1070,11 +1070,11 @@ static void fnp_rcd_line_disconnected (int mbx, int fnpno, int lineno)
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
 #ifdef SCUMEM
-    word24 base;
+    word24 offset;
     uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
-    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & offset);
     int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
-    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[offset];
 #else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
 #endif
@@ -1094,11 +1094,11 @@ static void fnp_rcd_input_in_mailbox (int mbx, int fnpno, int lineno)
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     struct t_line * linep = & fudp->MState.line[lineno];
 #ifdef SCUMEM
-    word24 base;
+    word24 offset;
     uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
-    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & offset);
     int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
-    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[offset];
 #else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
 #endif
@@ -1181,11 +1181,11 @@ static void fnp_rcd_accept_input (int mbx, int fnpno, int lineno)
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     struct t_line * linep = & fudp->MState.line[lineno];
 #ifdef SCUMEM
-    word24 base;
+    word24 offset;
     uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
-    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & offset);
     int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
-    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[offset];
 #else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
 #endif
@@ -1223,11 +1223,11 @@ static void fnp_rcd_line_break (int mbx, int fnpno, int lineno)
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
 #ifdef SCUMEM
-    word24 base;
+    word24 offset;
     uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
-    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & offset);
     int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
-    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[offset];
 #else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
 #endif
@@ -1249,11 +1249,11 @@ sim_printf ("send_output\n");
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
 #ifdef SCUMEM
-    word24 base;
+    word24 offset;
     uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
-    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & offset);
     int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
-    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[offset];
 #else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
 #endif
@@ -1273,11 +1273,11 @@ static void fnp_rcd_acu_dial_failure (int mbx, int fnpno, int lineno)
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
 #ifdef SCUMEM
-    word24 base;
+    word24 offset;
     uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
-    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & offset);
     int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
-    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[offset];
 #else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
 #endif
@@ -1297,11 +1297,11 @@ static void fnp_rcd_accept_new_terminal (int mbx, int fnpno, int lineno)
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
 #ifdef SCUMEM
-    word24 base;
+    word24 offset;
     uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
-    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & offset);
     int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
-    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[offset];
 #else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
 #endif
@@ -1324,11 +1324,11 @@ static void fnp_rcd_wru_timeout (int mbx, int fnpno, int lineno)
     struct fnpUnitData * fudp = & fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
 #ifdef SCUMEM
-    word24 base;
+    word24 offset;
     uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [fnpno].iomUnitIdx;
-    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & offset);
     int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
-    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[offset];
 #else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
 #endif
@@ -1977,8 +1977,8 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
     decoded.devUnitIdx = d -> devUnitIdx;
     decoded.fudp = & fnpUnitData [decoded.devUnitIdx];
 #ifdef SCUMEM
-    word24 base;
-    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, decoded.fudp->mailboxAddress, & base);
+    word24 offset;
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, decoded.fudp->mailboxAddress, & offset);
     int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
     decoded.mbxp = (struct mailbox *) & scu [scuUnitIdx].M [decoded.fudp->mailboxAddress];
 #else
@@ -2554,10 +2554,10 @@ static void processMBX (uint iomUnitIdx, uint chan)
 
     bool ok = true;
 #ifdef SCUMEM
-    word24 base;
-    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & base);
+    word24 offset;
+    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, fudp->mailboxAddress, & offset);
     int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
-    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[fudp->mailboxAddress-base];
+    struct mailbox * mbxp = (struct mailbox *) & scu [scuUnitIdx].M[offset];
 #else
     struct mailbox * mbxp = (struct mailbox *) & M [fudp -> mailboxAddress];
 #endif
