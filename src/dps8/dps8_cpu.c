@@ -1080,23 +1080,26 @@ static void cpuResetUnitIdx (UNUSED uint cpun, bool clearMem)
 #ifdef ROUND_ROBIN
     uint save = setCPUnum (cpun);
 #endif
-#ifdef SCUMEM
-    for (int cpu_port_num = 0; cpu_port_num < N_CPU_PORTS; cpu_port_num ++)
+    if (clearMem)
       {
-        int scuUnitIdx =
-                 queryScuUnitIdx ((int) currentRunningCpuIdx,
-                                  (int) cpu_port_num);
-
-        if (scuUnitIdx >= 0)
+#ifdef SCUMEM
+        for (int cpu_port_num = 0; cpu_port_num < N_CPU_PORTS; cpu_port_num ++)
           {
-            for (uint i = 0; i < SCU_MEM_SIZE; i ++)
-              scu [scuUnitIdx].M[i] = MEM_UNINITIALIZED;
+            int scuUnitIdx =
+                     queryScuUnitIdx ((int) currentRunningCpuIdx,
+                                      (int) cpu_port_num);
+
+            if (scuUnitIdx >= 0)
+              {
+                for (uint i = 0; i < SCU_MEM_SIZE; i ++)
+                  scu [scuUnitIdx].M[i] = MEM_UNINITIALIZED;
+              }
           }
-      }
 #else
-    for (uint i = 0; i < MEMSIZE; i ++)
-      M [i] = MEM_UNINITIALIZED;
+        for (uint i = 0; i < MEMSIZE; i ++)
+          M [i] = MEM_UNINITIALIZED;
 #endif
+      }
     cpu.rA = 0;
     cpu.rQ = 0;
     
