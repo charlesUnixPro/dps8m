@@ -1871,6 +1871,7 @@ static inline void trackport (word24 a, word36 d)
 #ifdef SCUMEM
 // Stupid dependency order
 int lookup_cpu_mem_map (word24 addr, word24 * offset);
+int queryScuUnitIdx (int cpu_unit_num, int cpu_port_num);
 #endif
 
 static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
