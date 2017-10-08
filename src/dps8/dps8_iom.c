@@ -250,7 +250,7 @@ void iom_core_read (uint iomUnitIdx, word24 addr, word36 *data, UNUSED const cha
 void iom_core_read2 (uint iomUnitIdx, word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
   {
     word24 offset;
-    int scuUnitNum = queryIomScbankMap (iomUnitIdx, addr, & offset);
+    int scuUnitNum = queryIomScbankMap (iomUnitIdx, addr & PAEVEN, & offset);
     int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
     * even = scu [scuUnitIdx].M[offset ++] & DMASK;
     * odd  = scu [scuUnitIdx].M[offset   ] & DMASK;
@@ -267,7 +267,7 @@ void iom_core_write (uint iomUnitIdx, word24 addr, word36 data, UNUSED const cha
 void iom_core_write2 (uint iomUnitIdx, word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
   {
     word24 offset;
-    int scuUnitNum = queryIomScbankMap (iomUnitIdx, addr, & offset);
+    int scuUnitNum = queryIomScbankMap (iomUnitIdx, addr & PAEVEN, & offset);
     int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
     scu [scuUnitIdx].M[offset ++] = even & DMASK;
     scu [scuUnitIdx].M[offset   ] = odd & DMASK;

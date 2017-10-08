@@ -31,7 +31,8 @@ enum { N_CELL_INTERRUPTS = 32 };
 
 #define PASIZE          24                       /* phys addr width */
 #define PAMASK          ((1U << PASIZE) - 1U)
-
+// Mask out low bit
+#define PAEVEN          (((1U << (PASIZE - 1)) - 1U) << 1)
 #define MEM_SIZE_MAX    (1U << PASIZE)           /* maximum memory */
 
 // The minimum allocation size of a SCU is 64K (2^16) 
