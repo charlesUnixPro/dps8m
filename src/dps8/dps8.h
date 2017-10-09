@@ -50,7 +50,15 @@
 #define USE_INT64
 #endif
 
-#include "dps8_math128.h"
+#ifdef NEED_128
+typedef struct { uint64_t h; uint64_t l; } __uint128_t;
+typedef struct { int64_t h; uint64_t l; } __int128_t;
+
+#define construct_128(h, l) ((uint128) { (h), (l) })
+#define construct_s128(h, l) ((int128) { (h), (l) })
+
+#endif
+//#include "dps8_math128.h"
 
 // Quiet compiler unused warnings
 #define QUIET_UNUSED
@@ -58,14 +66,27 @@
 // Enable IPC
 #define VM_DPS8
 
-// Use XSF bit to manage APU 'last cycle == INDIRECT_WORD_FETCH
-#define XSF_IND
+// Replaces went_appending with XSF.
+// Crashes at 15117901 after RCU instruction restart; the faulting instruction
+// had XSF set, but somewhere in the instruction reset code, XSF is cleared;
+// most likely in the set_addr_mode logic not understanding restart.
+//set cpu config=steady_clock=enable
+//set scu0 config=elapsed_days=11000
+//CFLAGS += -DNO_EV_POLL
+//#define NOWENT
+
+#ifdef NOWENT
+#define get_went_appending() (cpu.cu.XSF)
+#endif
 
 #ifdef TESTING
 #else
 // Enable speed over debuggibility
 #define SPEED
 #endif
+
+// Enable WAM
+//#define WAM
 
 // Enable panel support
 //#define PANEL
@@ -76,6 +97,9 @@
 // Enable ISOLTS support
 //#define ISOLTS
 
+// Experimential dial_out line disconnect delay
+// FNP polled ~100Hz; 10 secs. is 1000 polls
+#define DISC_DELAY 1000
 // Dependencies
 
 // PANEL only works on L68
@@ -108,7 +132,7 @@
 
 // debugging tool
 #ifdef ISOLTS
-#define IF1 if (thisCPUnum && sim_deb)
+#define IF1 if (currentRunningCpuIdx && sim_deb)
 #else
 #define IF1 if (0)
 #endif
@@ -187,6 +211,7 @@ typedef word72      float72;    // double precision float
 typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 
 #include "dps8_simh.h"
+#include "dps8_math128.h"
 #include "dps8_hw_consts.h"
 #include "dps8_em_consts.h"
 
@@ -240,8 +265,13 @@ typedef enum eMemoryAccessType MemoryAccessType;
 #define GETCHAR(src, pos) (word6)(((word36)src >> (word36)((5 - pos) * 6)) & 077)      ///< get 6-bit char @ pos
 #define GETBYTE(src, pos) (word9)(((word36)src >> (word36)((3 - pos) * 9)) & 0777)     ///< get 9-bit byte @ pos
 
+#ifdef NEED_128
+#define YPAIRTO72(ypair) construct_128 ((ypair[0] >> 28) & MASK8, \
+                                          ((ypair[0] & MASK28) << 36) | \
+                                          (ypair[1] & MASK36));
+#else
 #define YPAIRTO72(ypair)    (((((word72)(ypair[0] & DMASK)) << 36) | (ypair[1] & DMASK)) & MASK72)
-
+#endif
 
 
 #define GET_TALLY(src) (((src) >> 6) & MASK12)   // 12-bits

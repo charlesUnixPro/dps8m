@@ -18,7 +18,9 @@ typedef struct {
 } stats_t;
 
 
+#ifndef SCUMEM
 extern word36 volatile *M;
+#endif
 extern uint64 sim_deb_start;
 extern uint64 sim_deb_stop;
 extern uint64 sim_deb_break;

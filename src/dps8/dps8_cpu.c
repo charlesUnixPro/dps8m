@@ -24,12 +24,12 @@
 #include "dps8.h"
 #include "dps8_addrmods.h"
 #include "dps8_sys.h"
+#include "dps8_scu.h"
 #include "dps8_cpu.h"
 #include "dps8_faults.h"
 #include "dps8_append.h"
 #include "dps8_ins.h"
 #include "dps8_math.h"
-#include "dps8_scu.h"
 #include "dps8_utils.h"
 #include "dps8_iefp.h"
 #include "dps8_console.h"
@@ -46,7 +46,7 @@
 #include "sim_defs.h"
 #include "threadz.h"
 
-__thread uint thisCPUnum;
+__thread uint currentRunningCpuIdx;
 
 // XXX Use this when we assume there is only a single cpu unit
 #define ASSUME0 0
@@ -75,7 +75,13 @@ static UNIT cpu_unit [N_CPU_UNITS_MAX] =
 
 static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat cpu_set_config (UNIT * uptr, int32 value, const char * cptr, void * desc);
-static t_stat cpu_set_initialize_and_clear (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat simhCpuResetAndClearUnit (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat simhCpuResetUnit (UNIT * uptr, UNUSED int32 value, UNUSED const char * cptr, UNUSED void * desc);
+#ifndef SCUMEM
+#ifndef SPEED
+static int cpu_show_stack(FILE *st, UNIT *uptr, int val, const void *desc);
+#endif
+#endif
 static t_stat cpu_show_nunits(FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat cpu_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
 
@@ -93,12 +99,47 @@ static MTAB cpu_mod[] = {
       NULL,          /* value descriptor */
       NULL // help
     },
+
+
+// RESET  -- reset CPU
+// INITIALIZE -- reset CPU
+// INITAILIZEANDCLEAR -- reset CPU, clear Memory
+// IAC -- reset CPU, clear Memory
+
+    {
+#ifdef ROUND_ROBIN
+      MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
+#else
+      MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
+#endif
+      0,            /* match */
+      "RESET",     /* print string */
+      "RESET",         /* match string */
+      simhCpuResetUnit,         /* validation routine */
+      NULL, /* display routine */
+      NULL,          /* value descriptor */
+      NULL // help
+    },
+    {
+#ifdef ROUND_ROBIN
+      MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
+#else
+      MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
+#endif
+      0,            /* match */
+      "INITIALIZE",     /* print string */
+      "INITIALIZE",         /* match string */
+      simhCpuResetUnit,         /* validation routine */
+      NULL, /* display routine */
+      NULL,          /* value descriptor */
+      NULL // help
+    },
     {
       MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
       0,            /* match */
       "INITIALIZEANDCLEAR",     /* print string */
       "INITIALIZEANDCLEAR",         /* match string */
-      cpu_set_initialize_and_clear,         /* validation routine */
+      simhCpuResetAndClearUnit,         /* validation routine */
       NULL, /* display routine */
       NULL,          /* value descriptor */
       NULL // help
@@ -108,7 +149,7 @@ static MTAB cpu_mod[] = {
       0,            /* match */
       "IAC",     /* print string */
       "IAC",         /* match string */
-      cpu_set_initialize_and_clear,         /* validation routine */
+      simhCpuResetAndClearUnit,         /* validation routine */
       NULL, /* display routine */
       NULL,          /* value descriptor */
       NULL // help
@@ -122,7 +163,7 @@ static MTAB cpu_mod[] = {
       0,            /* match */
       "IAC",     /* print string */
       "IAC",         /* match string */
-      cpu_set_initialize_and_clear,         /* validation routine */
+      simhCpuResetAndClearUnit,         /* validation routine */
       NULL, /* display routine */
       NULL,          /* value descriptor */
       NULL // help
@@ -343,9 +384,8 @@ void setup_scbank_map (void)
           continue;
         // Simplifing assumption: simh SCU unit 0 is the SCU with the
         // low 4MW of memory, etc...
-        int scu_unit_num = cables ->
-          cablesFromScuToCpu[thisCPUnum].ports[port_num].scu_unit_num;
-
+        int scu_unit_idx = cables ->
+          cablesFromScuToCpu[currentRunningCpuIdx].ports[port_num].scu_unit_idx;
         // Calculate the amount of memory in the SCU in words
         uint store_size = cpu.switches.store_size [port_num];
         // Map store size configuration switch (0-8) to memory size.
@@ -385,13 +425,13 @@ void setup_scbank_map (void)
 
         // Now convert to SCBANK (number of pages, page number)
         uint sz_pages = sz / SCBANK;
-        base = base / SCBANK;
+        uint scbase = base / SCBANK;
 
-        sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: port:%d ss:%u as:%u sz_pages:%u ba:%u\n", port_num, store_size, assignment, sz_pages, base);
+        sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: port:%d ss:%u as:%u sz_pages:%u ba:%u\n", port_num, store_size, assignment, sz_pages, scbase);
 
         for (uint pg = 0; pg < sz_pages; pg ++)
           {
-            uint scpg = base + pg;
+            uint scpg = scbase + pg;
             if (scpg < N_SCBANKS)
               {
                 if (cpu.scbank_map [scpg] != -1)
@@ -401,7 +441,8 @@ void setup_scbank_map (void)
                 else
                   {
                     cpu.scbank_map [scpg] = port_num;
-                    cpu.scbank_pg_os [scpg] = (int) ((uint) scu_unit_num * 4u * 1024u * 1024u + scpg * SCBANK);
+                    cpu.scbank_base [scpg] = base;
+                    cpu.scbank_pg_os [scpg] = (int) ((uint) scu_unit_idx * 4u * 1024u * 1024u + scpg * SCBANK);
                   }
               }
             else
@@ -412,18 +453,34 @@ void setup_scbank_map (void)
       }
     for (uint pg = 0; pg < N_SCBANKS; pg ++)
       sim_debug (DBG_DEBUG, & cpu_dev, "setup_scbank_map: %d:%d\n", pg, cpu.scbank_map [pg]);
-    //for (uint pg = 0; pg < N_SCBANKS; pg ++)
-      //sim_printf ("scbank_pg_os: CPU %c %d:%08o\n", thisCPUnum + 'A', pg, cpu.scbank_pg_os [pg]);
   }
 
-int query_scbank_map (word24 addr)
+#ifdef SCUMEM
+int lookup_cpu_mem_map (word24 addr, word24 * offset)
   {
     uint scpg = addr / SCBANK;
     if (scpg < N_SCBANKS)
-      return cpu.scbank_map [scpg];
+      {
+        * offset = addr - cpu.scbank_base[scpg];
+if (addr == 016670056) 
+{ 
+sim_debug (DBG_CAC, & cpu_dev, "lu %08o scpg %d %o offset %o idx %o\n", addr, scpg, scpg, * offset, cpu.scbank_map[scpg]); 
+}
+        return cpu.scbank_map[scpg];
+      }
     return -1;
   }
-
+#else
+int lookup_cpu_mem_map (word24 addr)
+  {
+    uint scpg = addr / SCBANK;
+    if (scpg < N_SCBANKS)
+      {
+        return cpu.scbank_map[scpg];
+      }
+    return -1;
+  }
+#endif
 //
 // serial.txt format
 //
@@ -528,7 +585,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
       {
         //sim_debug (DBG_TRACE, & cpu_dev, "rTR zero %09o\n", cpu.rTR);
         if (cpu.switches.tro_enable)
-        setG7fault (thisCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
+        setG7fault (currentRunningCpuIdx, FAULT_TRO, (_fault_subtype) {.bits=0});
       }
     cpu.rTR -= 5120;
     cpu.rTR &= MASK27;
@@ -551,6 +608,7 @@ void cpu_init (void)
 // !!!! Do not use 'cpu' in this routine; usage of 'cpus' violates 'restrict'
 // !!!! attribute
 
+#ifndef SCUMEM
 #ifdef M_SHARED
     if (! M)
       {
@@ -567,6 +625,7 @@ void cpu_init (void)
         sim_printf ("create M failed\n");
         sim_err ("create M failed\n");
       }
+#endif
 
 #ifdef M_SHARED
     if (! cpus)
@@ -596,15 +655,42 @@ void cpu_init (void)
 #ifndef STEADY
     uv_timer_start (& ev_poll_handle, ev_poll_cb, 10, 10);
 #endif
+
+    sim_brk_types = sim_brk_dflt = SWMASK ('E');
+    // TODO: reset *all* other structures to zero
+    
+#ifdef MATRIX
+    initializeTheMatrix();
+#endif
   }
 
 // DPS8M Memory of 36 bit words is implemented as an array of 64 bit words.
 // Put state information into the unused high order bits.
 #define MEM_UNINITIALIZED 0x4000000000000000LLU
 
-static void cpun_reset2 (UNUSED uint cpun)
+static void cpuResetUnitIdx (UNUSED uint cpun, bool clearMem)
 {
     setCPUnum (cpun);
+    if (clearMem)
+      {
+#ifdef SCUMEM
+        for (int cpu_port_num = 0; cpu_port_num < N_CPU_PORTS; cpu_port_num ++)
+          {
+            int scuUnitIdx =
+                     queryScuUnitIdx ((int) currentRunningCpuIdx,
+                                      (int) cpu_port_num);
+
+            if (scuUnitIdx >= 0)
+              {
+                for (uint i = 0; i < SCU_MEM_SIZE; i ++)
+                  scu [scuUnitIdx].M[i] = MEM_UNINITIALIZED;
+              }
+          }
+#else
+        for (uint i = 0; i < MEMSIZE; i ++)
+          M [i] = MEM_UNINITIALIZED;
+#endif
+      }
     cpu.rA = 0;
     cpu.rQ = 0;
     
@@ -624,6 +710,8 @@ static void cpun_reset2 (UNUSED uint cpun)
     SET_I_NBAR;
     
     cpu.CMR.luf = 3;    // default of 16 mS
+    cpu.cu.SD_ON = cpu.switches.disable_wam ? 0 : 1;
+    cpu.cu.PT_ON = cpu.switches.disable_wam ? 0 : 1;
  
     setCpuCycle (FETCH_cycle);
 
@@ -645,13 +733,16 @@ static void cpun_reset2 (UNUSED uint cpun)
     setup_scbank_map ();
 
     tidy_cu ();
+#ifdef ROUND_ROBIN
+    setCPUnum (save);
+#endif
 }
 
-static void cpu_reset2 (void)
+static void cpuReset (void)
 {
     for (uint i = 0; i < N_CPU_UNITS_MAX; i ++)
       {
-        cpun_reset2 (i);
+        cpuResetUnitIdx (i, true);
       }
 
     setCPUnum (0);
@@ -670,17 +761,15 @@ static void cpu_reset2 (void)
     
 }
 
-static t_stat cpu_reset (UNUSED DEVICE *dptr)
+static t_stat simhCpuReset (UNUSED DEVICE *dptr)
 {
     //memset (M, -1, MEMSIZE * sizeof (word36));
 
     // Fill DPS8M memory with zeros, plus a flag only visible to the emulator
     // marking the memory as uninitialized.
 
-    for (uint i = 0; i < MEMSIZE; i ++)
-      M [i] = MEM_UNINITIALIZED;
 
-    cpu_reset2 ();
+    cpuReset ();
     return SCPE_OK;
 }
 
@@ -696,7 +785,13 @@ static t_stat cpu_ex (t_value *vptr, t_addr addr, UNUSED UNIT * uptr, UNUSED int
         return SCPE_NXM;
     if (vptr != NULL)
       {
+#ifdef SCUMEM
+        word36 w;
+        core_read (addr, & w, __func__);
+        *vptr = w;
+#else
         *vptr = M[addr] & DMASK;
+#endif
       }
     return SCPE_OK;
 }
@@ -706,7 +801,12 @@ static t_stat cpu_dep (t_value val, t_addr addr, UNUSED UNIT * uptr,
                        UNUSED int32 sw)
 {
     if (addr >= MEMSIZE) return SCPE_NXM;
+#ifdef SCUMEM
+    word36 w = val & DMASK;
+    core_write (addr, w, __func__);
+#else
     M[addr] = val & DMASK;
+#endif
     return SCPE_OK;
 }
 
@@ -751,7 +851,7 @@ DEVICE cpu_dev = {
     36,             /*!< data width */
     &cpu_ex,        /*!< examine routine */
     &cpu_dep,       /*!< deposit routine */
-    &cpu_reset,     /*!< reset routine */
+    &simhCpuReset,     /*!< reset routine */
     &cpu_boot,           /*!< boot routine */
     NULL,           /*!< attach routine */
     NULL,           /*!< detach routine */
@@ -813,8 +913,8 @@ t_stat simh_hooks (void)
     if (stop_cpu)
       return STOP_STOP;
 
-#ifdef xISOLTS
-    if (thisCPUnum == 0)
+#ifdef ISOLTS
+    if (currentRunningCpuIdx == 0)
 #endif
     // check clock queue 
     if (sim_interval <= 0)
@@ -865,15 +965,15 @@ static void setCpuCycle (cycles_t cycle)
 
 uint setCPUnum (UNUSED uint cpuNum)
   {
-    uint prev = thisCPUnum;
-    thisCPUnum = cpuNum;
-    cpup = & cpus [thisCPUnum];
+    uint prev = currentRunningCpuIdx;
+    currentRunningCpuIdx = cpuNum;
+    cpup = & cpus [currentRunningCpuIdx];
     return prev;
   }
 
 uint getCPUnum (void)
   {
-    return thisCPUnum;
+    return currentRunningCpuIdx;
   }
 
 #ifdef PANEL
@@ -886,9 +986,9 @@ static void panelProcessEvent (void)
          while (cpu.panelInitialize) 
            ;
          if (cpu.DATA_panel_init_sw)
-           cpu_reset (& cpu_dev); // INITIALIZE & CLEAR
+           cpuResetUnitIdx (ASSUME0, true); // INITIALIZE & CLEAR
          else
-           cpu_reset2 (); // INITIALIZE
+           cpuResetUnitIdx (ASSUME0, false); // INITIALIZE
          // XXX Until a boot switch is wired up
          doBoot ();
       }
@@ -904,13 +1004,13 @@ static void panelProcessEvent (void)
 
         if (cpu.DATA_panel_exec_sw) // EXECUTE SWITCH
           {
-            cpu_reset2 ();
+            cpuResetUnitIdx (ASSUME0, false);
             cpu.cu.IWB = cpu.switches.data_switches;
             setCpuCycle (EXEC_cycle);
           }
          else // EXECUTE FAULT
           {
-            setG7fault (thisCPUnum, FAULT_EXF, fst_zero);
+            setG7fault (currentRunningCpuIdx, FAULT_EXF, fst_zero);
           }
       }
   }
@@ -1056,8 +1156,9 @@ t_stat sim_instr (void)
         unlock_libuv ();
         PNL (panelProcessEvent ());
 
-        if (check_attn_key ())
-          console_attn (NULL);
+        int con_unit_idx = check_attn_key ();
+        if (con_unit_idx != -1)
+          console_attn_idx (con_unit_idx);
 
         usleep (1000); // 1000 us == 1 ms == 1/1000 sec.
       }
@@ -1136,7 +1237,7 @@ t_stat threadz_sim_instr (void)
                           ((((t_addr) cpu.PPR.PSR) & 037777) << 18),
                           SWMASK ('E')))  /* breakpoint? */
           {
-            setCPURun (thisCPUnum, false);
+            setCPURun (currentRunningCpuIdx, false);
             cpuRunningWait ();
           }
 #endif
@@ -1145,7 +1246,7 @@ t_stat threadz_sim_instr (void)
 #ifdef STEADY
         static uint slowQueueSubsample = 0;
         static uint queueSubsample = 0;
-        if (thisCPUnum == 0)
+        if (currentRunningCpuIdx == 0)
           {
             if (slowQueueSubsample ++ > 1024000) // ~ 1Hz
               {
@@ -1190,7 +1291,7 @@ t_stat threadz_sim_instr (void)
             if (ovf)
               {
                 clock_gettime (CLOCK_BOOTTIME, & cpu.rTRTime);
-                setG7fault (thisCPUnum, FAULT_TRO, fst_zero);
+                setG7fault (currentRunningCpuIdx, FAULT_TRO, fst_zero);
               }
          }
 #endif
@@ -1209,13 +1310,13 @@ t_stat threadz_sim_instr (void)
                   {
                     //sim_debug (DBG_TRACE, & cpu_dev, "rTR zero %09o\n", cpu.shadowTR);
                     if (cpu.switches.tro_enable)
-                      setG7fault (thisCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
+                      setG7fault (currentRunningCpuIdx, FAULT_TRO, fst_zero);
                   }
               }
           }
 #endif
 
-        sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
+        sim_debug (DBG_CYCLE, & cpu_dev, "Cycle is %s\n",
                    cycleStr (cpu.cycle));
 
 #ifdef PANEL
@@ -1458,7 +1559,10 @@ elapsedtime ();
                     cpu.isXED = false;
                     //processorCycle = INSTRUCTION_FETCH;
                     // fetch next instruction into current instruction struct
+#ifndef NOWENT
                     clr_went_appending (); // XXX not sure this is the right place
+#endif
+                    cpu.cu.XSF = 0; // Hmm. Is XSF == clr_went_appending ?
                     cpu.cu.TSN_VALID [0] = 0;
                     PNL (cpu.prepare_state = ps_PIA);
                     PNL (L68_ (cpu.INS_FETCH = true;))
@@ -1601,7 +1705,7 @@ elapsedtime ();
                             if (cpu.switches.tro_enable)
                               {
                                 clock_gettime (CLOCK_BOOTTIME, & cpu.rTRTime);
-                                setG7fault (thisCPUnum, FAULT_TRO, fst_zero);
+                                setG7fault (currentRunningCpuIdx, FAULT_TRO, fst_zero);
                               }
                           }
 #endif
@@ -1626,7 +1730,7 @@ elapsedtime ();
                       {
                         //sim_debug (DBG_TRACE, & cpu_dev, "rTR zero %09o\n", cpu.rTR);
                         if (cpu.switches.tro_enable)
-                          setG7fault (thisCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
+                          setG7fault (currentRunningCpuIdx, FAULT_TRO, fst_zero);
                       }
                     cpu.rTR = (cpu.rTR - 5120) & MASK27;
 #endif
@@ -1833,7 +1937,7 @@ elapsedtime ();
 
 leave:
 
-sim_printf ("cpu %u leaves; reason %d\n", thisCPUnum, reason);
+sim_printf ("cpu %u leaves; reason %d\n", currentRunningCpuIdx, reason);
     sim_printf("\nsimCycles = %llu\n", cpu.cycleCnt);
     sim_printf("\ninstructions = %llu\n", cpu.instrCnt);
     for (int i = 0; i < N_FAULTS; i ++)
@@ -2016,11 +2120,20 @@ t_stat memWatch (int32 arg, const char * buf)
 #ifndef SPEED
 static void nem_check (word24 addr, char * context)
   {
-    if (query_scbank_map (addr) < 0)
+#ifdef SCUMEM
+    word24 offset;
+    if (lookup_cpu_mem_map (addr, & offset) < 0)
+      {
+        //sim_printf ("nem %o [%"PRId64"]\n", addr, sim_timell ());
+        doFault (FAULT_STR, fst_str_nea,  context);
+      }
+#else
+    if (lookup_cpu_mem_map (addr) < 0)
       {
         //sim_printf ("nem %o [%"PRId64"]\n", addr, cpu.cycleCnt);
         doFault (FAULT_STR, fst_str_nea,  context);
       }
+#endif
   }
 #endif
 
@@ -2063,6 +2176,16 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
       }
 #endif
 #endif
+#ifdef SCUMEM
+    word24 offset;
+    int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
+    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    *data = scu [scuUnitIdx].M[offset] & DMASK;
+    if (watchBits [addr])
+      {
+        sim_printf ("WATCH [%"PRId64"] read   %08o %012"PRIo64" (%s)\n", sim_timell (), addr, *data, ctx);
+      }
+#else
     if (M[addr] & MEM_UNINITIALIZED)
       {
         sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o (%s(\n", addr, cpu.PPR.PSR, cpu.PPR.IC, ctx);
@@ -2075,6 +2198,7 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
         traceInstruction (0);
       }
     *data = M[addr] & DMASK;
+#endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read  %08o %012"PRIo64" (%s)\n",
                 addr, * data, ctx);
@@ -2122,6 +2246,7 @@ int core_write(word24 addr, word36 data, const char * ctx) {
     if (! cpu.havelock)
       lock_mem ();
 
+#ifndef SCUMEM
     M[addr] = data & DMASK;
     if (watchBits [addr])
     //if (watchBits [addr] && M[addr]==0)
@@ -2130,6 +2255,7 @@ int core_write(word24 addr, word36 data, const char * ctx) {
         sim_printf ("WATCH [%"PRId64"] write  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
+#endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write %08o %012"PRIo64" (%s)\n",
                 addr, data, ctx);
@@ -2275,6 +2401,21 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
       }
 #endif
 
+#ifdef SCUMEM
+    word24 offset;
+    int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
+    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    scu [scuUnitIdx].M[offset++] = even & DMASK;
+    if (watchBits [addr])
+      {
+        sim_printf ("WATCH [%"PRId64"] write2 %08o %012"PRIo64" (%s)\n", sim_timell (), addr, even, ctx);
+      }
+    scu [scuUnitIdx].M[offset] = odd & DMASK;
+    if (watchBits [addr+1])
+      {
+        sim_printf ("WATCH [%"PRId64"] write2 %08o %012"PRIo64" (%s)\n", sim_timell (), addr+1, odd, ctx);
+      }
+#else
     if (watchBits [addr])
     //if (watchBits [addr] && even==0)
       {
@@ -2282,6 +2423,7 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
         sim_printf ("WATCH [%"PRId64"] write2 %08o %012"PRIo64" (%s)\n", sim_timell (), addr, even, ctx);
         traceInstruction (0);
       }
+#endif
 
     if (! cpu.havelock)
       lock_mem ();
@@ -2303,6 +2445,7 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
         traceInstruction (0);
       }
     M[addr] = odd;
+    PNL (trackport (addr, odd));
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write2 %08o %012"PRIo64" (%s)\n",
                 addr, odd, ctx);
@@ -2405,6 +2548,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "is_priv_mode P %u get_addr_mode %d get_bar_mod
     return 0;
   }
 
+#ifndef NOWENT
 void set_went_appending (void)
   {
     CPT (cpt1L, 18); // set went appending
@@ -2421,6 +2565,7 @@ bool get_went_appending (void)
   {
     return cpu.went_appending;
   }
+#endif
 
 /*
  * addr_modes_t get_addr_mode()
@@ -2436,15 +2581,24 @@ static void set_TEMPORARY_ABSOLUTE_mode (void)
 {
     CPT (cpt1L, 20); // set temp. abs. mode
     cpu.secret_addressing_mode = true;
+#ifdef NOWENT
+    cpu.cu.XSF = false;
+#else
     cpu.went_appending = false;
+#endif
 }
 
 static bool clear_TEMPORARY_ABSOLUTE_mode (void)
 {
     CPT (cpt1L, 21); // clear temp. abs. mode
     cpu.secret_addressing_mode = false;
+#ifdef NOWENT
+    //sim_debug (DBG_TRACE, & cpu_dev, "clear_TEMPORARY_ABSOLUTE_mode returns %s\n", cpu.cu.XSF ? "true" : "false");
+    return cpu.cu.XSF;
+#else
     //sim_debug (DBG_TRACE, & cpu_dev, "clear_TEMPORARY_ABSOLUTE_mode returns %s\n", cpu.went_appending ? "true" : "false");
     return cpu.went_appending;
+#endif
 }
 
 /* 
@@ -2488,7 +2642,11 @@ addr_modes_t get_addr_mode(void)
 
 void set_addr_mode(addr_modes_t mode)
 {
+#ifdef NOWENT
+    cpu.cu.XSF = false;
+#else
     cpu.went_appending = false;
+#endif
 // Temporary hack to fix fault/intr pair address mode state tracking
 //   1. secret_addressing_mode is only set in fault/intr pair processing.
 //   2. Assume that the only set_addr_mode that will occur is the b29 special
@@ -2521,14 +2679,14 @@ void set_addr_mode(addr_modes_t mode)
 
 //=============================================================================
 
-int query_scu_unit_num (int cpu_unit_num, int cpu_port_num)
+int queryScuUnitIdx (int cpu_unit_num, int cpu_port_num)
   {
     if (cables -> cablesFromScuToCpu [cpu_unit_num].ports [cpu_port_num].inuse)
-      return cables -> cablesFromScuToCpu [cpu_unit_num].ports [cpu_port_num].scu_unit_num;
+      return cables -> cablesFromScuToCpu [cpu_unit_num].ports [cpu_port_num].scu_unit_idx;
     return -1;
   }
 
-// XXX when multiple cpus are supported, merge this into cpu_reset
+// XXX when multiple cpus are supported, merge this into simhCpuReset
 
 static void cpu_init_array (void)
   {
@@ -2568,8 +2726,8 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     sim_printf("Processor mode:           %s [%o]\n", cpu.switches.proc_mode ? "Multics" : "GCOS", cpu.switches.proc_mode);
     sim_printf("Processor speed:          %02o(8)\n", cpu.switches.proc_speed);
     sim_printf("Steady clock:             %01o(8)\n", scu [0].steady_clock);
-    sim_printf("SDWAM:                    %01o(8)\n", cpu.cu.SD_ON ? 0 : 1);
-    sim_printf("PTWAM:                    %01o(8)\n", cpu.cu.PT_ON ? 0 : 1);
+    sim_printf("Disable SDWAM/PTWAM:      %01o(8)\n", cpu.switches.disable_wam);
+
     //sim_printf("Bullet time:              %01o(8)\n", cpu.switches.bullet_time);
     sim_printf("Report faults:            %01o(8)\n", cpu.switches.report_faults);
     sim_printf("TRO faults enabled:       %01o(8)\n", cpu.switches.tro_enable);
@@ -2728,8 +2886,7 @@ static config_list_t cpu_config_list [] =
     { "enable", 0, 1, cfg_on_off },
     { "init_enable", 0, 1, cfg_on_off },
     { "store_size", 0, 7, cfg_size_list },
-    { "sdwam", 0, 1, cfg_on_off },
-    { "ptwam", 0, 1, cfg_on_off },
+    { "disable_wam", 0, 1, cfg_on_off },
 
     // Hacks
 
@@ -2740,15 +2897,13 @@ static config_list_t cpu_config_list [] =
     { NULL, 0, 0, NULL }
   };
 
-static t_stat cpu_set_initialize_and_clear (UNUSED UNIT * uptr,
-                                            UNUSED int32 value,
-                                            UNUSED const char * cptr, 
-                                            UNUSED void * desc)
+static t_stat simhCpuResetAndClearUnit (UNUSED UNIT * uptr, 
+                                        UNUSED int32 value,
+                                        UNUSED const char * cptr, 
+                                        UNUSED void * desc)
   {
-    // Crashes console?
-    //cpun_reset2 ((uint) cpu_unit_num);
-#ifdef ISOLTS
     long cpu_unit_num = UNIT_NUM (uptr);
+#ifdef ISOLTS
     cpu_state_t * cpun = cpus + cpu_unit_num;
     if (cpun->switches.useMap)
       {
@@ -2762,7 +2917,20 @@ static t_stat cpu_set_initialize_and_clear (UNUSED UNIT * uptr,
               M [addr + (uint) os] = MEM_UNINITIALIZED;
           }
       }
+#else
+    // Crashes console?
+    cpuResetUnitIdx ((uint) cpu_unit_num, true);
 #endif
+    return SCPE_OK;
+  }
+
+static t_stat simhCpuResetUnit (UNIT * uptr, 
+                            UNUSED int32 value,
+                            UNUSED const char * cptr, 
+                            UNUSED void * desc)
+  {
+    long cpuUnitIdx = UNIT_NUM (uptr);
+    cpuResetUnitIdx ((uint) cpuUnitIdx, false); // no clear memory
     return SCPE_OK;
   }
 
@@ -2826,11 +2994,9 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
         else if (strcmp (p, "store_size") == 0)
           cpu.switches.store_size [port_num] = (uint) v;
         else if (strcmp (p, "steady_clock") == 0)
-          scu[0].steady_clock = (uint) v;
-        else if (strcmp (p, "sdwam") == 0)
-          cpu.cu.SD_ON = (word1) v;
-        else if (strcmp (p, "ptwam") == 0)
-          cpu.cu.PT_ON = (word1) v;
+          scu [0].steady_clock = (uint) v;
+        else if (strcmp (p, "disable_wam") == 0)
+          cpu.switches.disable_wam = (uint) v;
         else if (strcmp (p, "report_faults") == 0)
           cpu.switches.report_faults = (uint) v;
         else if (strcmp (p, "tro_enable") == 0)
@@ -2852,7 +3018,6 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
 
     return SCPE_OK;
   }
-
 
 
 static t_stat cpu_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)

@@ -56,19 +56,20 @@ enum { N_FNP_UNITS_MAX = 16 };
 // Disk
 //
 
-enum { N_DISK_UNITS_MAX = 17 };
+enum { N_DISK_UNITS_MAX = 34 };
 
 //
 // SCU
 //
 
-enum { N_SCU_UNITS_MAX = 4 };
+// Although Multics can only use 4 units, it is possible to have more
+enum { N_SCU_UNITS_MAX = 8 };
 
 //
 // Operator console
 //
 
-enum { N_OPCON_UNITS_MAX = 1 };
+enum { N_OPCON_UNITS_MAX = 8 };
 
 //
 // IOM
@@ -127,13 +128,13 @@ enum { N_CPU_PORTS = 8 };
 //
 
 // Survey devices only has 16 slots, so 16 drives plus the controller
-enum { N_MT_UNITS_MAX = 17 };
+enum { N_MT_UNITS_MAX = 34 };
 
 //
 // Printer
 //
 
-enum { N_PRT_UNITS_MAX = 17 };
+enum { N_PRT_UNITS_MAX = 34 };
 
 #endif // DPS8_EM_CONSTS_H
 

@@ -15,6 +15,7 @@
 #include "dps8.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
+#include "dps8_scu.h"
 #include "dps8_cpu.h"
 #include "dps8_faults.h"
 #include "dps8_fnp2.h"
@@ -108,7 +109,8 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
 
         case TELNET_EV_IAC:
           {
-            if (event->iac.cmd == 243) // BRK
+            if (event->iac.cmd == 243 || // BRK
+                event->iac.cmd == 244) // IP
               {
                 //sim_printf ("BRK\n");
                 uvClientData * p = (uvClientData *) client->data;

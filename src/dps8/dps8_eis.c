@@ -46,6 +46,7 @@
 
 #include "dps8.h"
 #include "dps8_sys.h"
+#include "dps8_scu.h"
 #include "dps8_cpu.h"
 #include "dps8_faults.h"
 #include "dps8_utils.h"
@@ -1916,7 +1917,7 @@ void a4bd (void)
     uint ARn = GET_ARN (cpu.cu.IWB);
     CPTUR (cptUsePRn + ARn);
     int32_t address = SIGNEXT15_32 (GET_OFFSET (cpu.cu.IWB));
-//if (currentRunningCPUnum)
+//if (currentRunningCpuIdx)
 //sim_printf ("a4bd address %o %d.\n", address, address);
 
     word4 reg = GET_TD (cpu.cu.IWB); // 4-bit register modification (None except 
@@ -2215,7 +2216,7 @@ void abd (void)
     //cpu.AR[ARn].BITNO = bitno & MASK4;
 
     
-if (currentRunningCPUnum)
+if (currentRunningCpuIdx)
 sim_printf ("abd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.AR[ARn].CHAR, cpu.AR[ARn].BITNO, cpu.AR[ARn].BITNO);
   }
 #endif
@@ -8797,9 +8798,14 @@ static bool sign9n(word72 n128, int N)
     if (N < 1 || N > 8) // XXX largest int we'll play with is 72-bits? Makes sense
         return false;
     
+#ifdef NEED_128
+    word72 sgnmask = lshift_128 (construct_128 (0, 1), (uint) (N * 9 - 1));
+    return isnonzero_128 (and_128 (sgnmask, n128));
+#else
     word72 sgnmask = (word72)1 << ((N * 9) - 1);
     
     return (bool)(sgnmask & n128);
+#endif
 }
 
 /*
@@ -8815,11 +8821,23 @@ static word72s signExt9(word72 n128, int N)
     int bits = (N * 9) - 1;
     if (sign9n(n128, N))
     {
+#ifdef NEED_128
+        uint128 extBits = lshift_128 (construct_128 (MASK64, MASK64), (uint) bits);
+        uint128 or = or_128 (n128, extBits);
+        return cast_s128 (or);
+#else
         uint128 extBits = ((uint128)-1 << bits);
         return (word72s) (n128 | extBits);
+#endif
     }
+#ifdef NEED_128
+    uint128 zeroBits = complement_128 (lshift_128 (construct_128 (MASK64, MASK64), (uint) bits));
+    uint128 and = and_128 (n128, zeroBits);
+    return cast_s128 (and);
+#else
     uint128 zeroBits = ~((uint128)-1 << bits);
     return (word72s) (n128 & zeroBits);
+#endif
 }
 
 /*
@@ -8829,7 +8847,11 @@ static word72s signExt9(word72 n128, int N)
 static void load9x(int n, EISaddr *addr, int pos)
 {
     EISstruct * e = & cpu.currentEISinstruction;
+#ifdef NEED_128
+    word72 x = construct_128 (0, 0);
+#else
     word72 x = 0;
+#endif
 #ifdef EIS_PTR
     long eisaddr_idx = EISADDR_IDX (addr);
 if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
@@ -8840,7 +8862,11 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
     int m = n;
     while (m)
     {
+#ifdef NEED_128
+        x = lshift_128 (x, 9);
+#else
         x <<= 9;         // make room for next 9-bit byte
+#endif
         
         if (pos > 3)        // overflows to next word?
         {   // yep....
@@ -8853,7 +8879,11 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
             data = EISRead(addr);    // read it from memory
         }
         
+#ifdef NEED_128
+        x = or_128 (x, construct_128 (0, GETBYTE (data, pos)));
+#else
         x |= GETBYTE(data, pos);   // fetch byte at position pos and 'or' it in
+#endif
         
         pos += 1;           // onto next posotion
         
@@ -9127,6 +9157,29 @@ void btd (void)
 
     // handle sign
     e->sign = 1;
+#ifdef NEED_128
+    word72 x = cast_128 (e->x);
+    if (islt_s128 (e->x, construct_s128 (0, 0)))
+      {
+        e->sign = -1;
+        x = and_128 (negate_128 (x), MASK72);
+
+      }
+
+    // convert to decimal string, workaround missing sprintf uint128
+    char tmp[32];
+    tmp[31] = 0;
+    int i;
+    for (i=30;i>=0;i--) {
+        //tmp[i] = x%10 + '0';
+        //x /= 10;
+        uint16_t r;
+        x = divide_128_16 (x, 10, & r);
+        tmp[i] = (char) r + '0';
+        if (iszero_128 (x)) 
+            break;
+    }
+#else
     word72 x = (word72)e->x;
     if (e->x < 0) {
         e->sign = -1;
@@ -9143,6 +9196,7 @@ void btd (void)
         if (x == 0) 
             break;
     }
+#endif
 
     decNumber _1;
     decNumber *op1 = decNumberFromString(&_1, tmp+i, &set);
@@ -9541,7 +9595,11 @@ void dtb (void)
     EISloadInputBufferNumeric (1);   // according to MF1
 
     // prepare output mask
+#ifdef NEED_128
+    word72 msk = subtract_128 (lshift_128 (construct_128 (0, 1), (9*e->N2-1)),construct_128 (0, 1));
+#else
     word72 msk = ((word72)1<<(9*e->N2-1))-1; // excluding sign
+#endif
 
 #if 0
     decNumber _1;
@@ -9557,6 +9615,23 @@ sim_printf("dtb: N1 %d N2 %d nin %d CN1 %d CN2 %d msk %012"PRIo64" %012"PRIo64"\
 
     // input is unscaled fixed point, so just get the digits
     bool Ovr = false;
+#ifdef NEED_128
+    word72 x = construct_128 (0, 0);
+    for (int i = 0; i < n1; i++) {
+        //x *= 10;
+        x = multiply_128 (x, construct_128 (0, 10));
+        //x += e->inBuffer[i];
+        x = add_128 (x, construct_128 (0, (uint) e->inBuffer[i]));
+        //Ovr |= x>msk?1:0;
+        Ovr |= isgt_128 (x, msk) ? 1 : 0;
+        //x &= msk; // multiplication and addition mod msk+1
+        x = and_128 (x, msk); // multiplication and addition mod msk+1
+    }
+    if (e->sign == -1)
+        //x = -x; // no need to mask it
+        x = negate_128 (x); // no need to mask it
+
+#else
     word72 x = 0;
     for (int i = 0; i < n1; i++) {
         x *= 10;
@@ -9569,19 +9644,27 @@ sim_printf("dtb: N1 %d N2 %d nin %d CN1 %d CN2 %d msk %012"PRIo64" %012"PRIo64"\
         x = -x; // no need to mask it
 
     //sim_printf ("dtb out %012"PRIo64" %012"PRIo64"\n", (word36)((x >> 36) & DMASK), (word36)(x & DMASK));
-
+#endif
     int pos = (int)e->CN2;
 
     // now write to memory in proper format.....
 
     int shift = 9*((int)e->N2-1);
     for(int i = 0; i < (int)e->N2; i++) {
+#ifdef NEED_128
+        EISwrite9(&e->ADDR2, &pos, (word9) rshift_128 (x, (uint) shift).l & 0777);
+#else
         EISwrite9(&e->ADDR2, &pos, (word9) (x >> shift )& 0777);
+#endif
         shift -= 9;
     }
 
     SC_I_NEG (e->sign == -1);  // set negative indicator
+#ifdef NEED_128
+    SC_I_ZERO (iszero_128 (x)); // set zero indicator
+#else
     SC_I_ZERO (x==0);     // set zero indicator
+#endif
     
     cleanupOperandDescriptor (1);
     cleanupOperandDescriptor (2);

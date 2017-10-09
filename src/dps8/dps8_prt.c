@@ -28,6 +28,7 @@
 #include "dps8_prt.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
+#include "dps8_scu.h"
 #include "dps8_cpu.h"
 #include "dps8_faults.h"
 #include "dps8_cable.h"
@@ -58,6 +59,24 @@ static t_stat prt_set_device_name (UNIT * uptr, int32 value, const char * cptr, 
                      UNIT_IDLE )
 UNIT prt_unit [N_PRT_UNITS_MAX] =
   {
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
     {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
     {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
     {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
@@ -235,11 +254,18 @@ static int parseID (word36 * b, uint tally, char * qno, char * name)
     return 1;
   }
 
-#ifdef __MINGW64__
+
+//#ifdef __MINGW64__
+#if defined (__MINGW64__) || defined (NEED_128)
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-
+// XXX Temporary hack; read 'NEED_128' as 'pandora'
+#ifdef NEED_128
+#define O_BINARY 0
+// XXX hack to allow testing on 64 bit non-pandora tool chains.
+#define mkstemps local_mkstemps
+#endif
 // Copied from https://searchcode.com/codesearch/view/32512650/
 static int mkstemps (char *pattern, int suffix_len)
 {
@@ -329,7 +355,7 @@ static void openPrtFile (int prt_unit_num, word36 * buffer, uint tally)
         return;
       }
 
-    char qno [5], name [LONGEST + 1];
+    char qno [6], name [LONGEST + 1];
     int rc = parseID (buffer, tally, qno, name);
     char template [129 + LONGEST];
     if (rc == 0)

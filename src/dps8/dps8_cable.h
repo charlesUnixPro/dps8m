@@ -14,7 +14,7 @@
 typedef enum devType
   {
      DEVT_NONE = 0, DEVT_TAPE, DEVT_CON, DEVT_DISK, 
-     DEVT_MPC, DEVT_DN355, DEVT_CRDRDR, DEVT_CRDPUN, DEVT_PRT, DEVT_URP
+     DEVT_MPC, DEVT_DN355, DEVT_CRDRDR, DEVT_CRDPUN, DEVT_PRT, DEVT_URP, DEVT_ABSI
   } devType;
 extern char * devTypeStrs [];
 
@@ -38,7 +38,7 @@ struct cableFromScuToCpu
     struct cpuPort
       {
         bool inuse;
-        int scu_unit_num; 
+        int scu_unit_idx; 
         int scu_port_num; 
         int scu_subport_num; 
       
@@ -57,13 +57,13 @@ struct cableFromIom
 struct cablesFromScu
   {
     bool inuse;
-    int scuUnitNum;
+    int scuUnitIdx;
     int scuPortNum;
   };
 
 struct cableFromCpu
   {
-    int cpu_unit_num;
+    int cpuUnitIdx;
     int cpu_port_num;
   };
 
@@ -97,4 +97,5 @@ extern struct cables_t * cables;
 
 t_stat sys_cable (UNUSED int32 arg, const char * buf);
 t_stat sys_cable_ripout (UNUSED int32 arg, UNUSED const char * buf);
+t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf);
 void sysCableInit (void);

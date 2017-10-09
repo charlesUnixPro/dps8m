@@ -217,7 +217,7 @@ void setCPURun (uint cpuNum, bool run)
 void cpuRunningWait (void)
   {
     int rc;
-    struct cpuThreadz_t * p = & cpuThreadz[thisCPUnum];
+    struct cpuThreadz_t * p = & cpuThreadz[currentRunningCpuIdx];
     if (p->run)
       return;
     rc = pthread_mutex_lock (& p->runLock);
@@ -239,7 +239,7 @@ void cpuRunningWait (void)
 void sleepCPU (unsigned long nsec)
   {
     int rc;
-    struct cpuThreadz_t * p = & cpuThreadz[thisCPUnum];
+    struct cpuThreadz_t * p = & cpuThreadz[currentRunningCpuIdx];
     struct timespec abstime;
     clock_gettime (CLOCK_REALTIME, & abstime);
     abstime.tv_nsec += (long int) nsec;

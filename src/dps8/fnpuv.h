@@ -37,4 +37,5 @@ void fnpuv_open_slave (uint fnpno, uint lineno);
 void close_connection (uv_stream_t* stream);
 #ifdef TUN
 void fnpTUNProcessEvent (void);
+void fnpuv_tun_write (struct t_line * linep);
 #endif

@@ -70,6 +70,10 @@ else
 CFLAGS += -Wall -Wno-conversion -Wsign-conversion
 endif
 
+ifneq ($(M32),)
+CFLAGS += -DNEED_128
+endif
+
 # Configuration switches
 
 ifeq ($(CROSS),MINGW64)
@@ -170,6 +174,8 @@ H_SRCS += dps8_iefp.h
 H_SRCS += dps8_ins.h
 H_SRCS += dps8_iom.h
 H_SRCS += dps8_math.h
+H_SRCS += dps8_math128.h
+#H_SRCS += dps8_mp.h
 H_SRCS += dps8_mt.h
 H_SRCS += dps8_opcodetable.h
 H_SRCS += dps8_prt.h

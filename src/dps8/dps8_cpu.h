@@ -695,6 +695,7 @@ typedef struct
     uint store_size [N_CPU_PORTS]; // 0-7 encoding 32K-4M
     uint proc_mode; // 1 bit  Read by rsw instruction; format unknown
     uint proc_speed; // 4 bits Read by rsw instruction; format unknown
+    uint disable_wam;     // If non-zero, disable PTWAM, STWAM
 
     // Emulator run-time options (virtual switches)
     uint report_faults;   // If set, faults are reported and ignored
@@ -1536,7 +1537,9 @@ typedef struct
     struct _par PAR [8]; // pointer/address resisters
     struct _bar BAR;   // Base Address Register
     struct _dsbr DSBR; // Descriptor Segment Base Register
+#ifdef WAM
     _sdw SDWAM [N_WAM_ENTRIES]; // Segment Descriptor Word Associative Memory
+#endif
 #ifdef L68
     word4 SDWAMR;
 #endif
@@ -1659,7 +1662,9 @@ typedef struct
     // Address Modification tally
     word12 AM_tally;
 
+#ifdef WAM
     _ptw PTWAM [N_WAM_ENTRIES];
+#endif
 #ifdef L68
     word4 PTWAMR;
 #endif
@@ -1708,9 +1713,13 @@ typedef struct
     //word36 instr_buf [2];
     uint64 lufCounter;
     bool secret_addressing_mode;
+#ifndef NOWENT
     bool went_appending; // we will go....
+#endif
     // Map memory to port
     int scbank_map [N_SCBANKS];
+    word24 scbank_base [N_SCBANKS];
+// scu_unit_idx * 4u * 1024u * 1024u + scpg * SCBANK
     int scbank_pg_os [N_SCBANKS];
 
     uint history_cyclic [N_HIST_SETS]; // 0..63
@@ -1748,7 +1757,7 @@ extern cpu_state_t cpus [N_CPU_UNITS_MAX];
 #endif
 
 extern __thread cpu_state_t * restrict cpup;
-extern __thread uint thisCPUnum;
+extern __thread uint currentRunningCpuIdx;
 #define cpu (* cpup)
 
 uint setCPUnum (uint cpuNum);
@@ -1799,6 +1808,11 @@ void unlock_mem (void);
 void doFault (_fault faultNumber, _fault_subtype faultSubtype, 
               const char * faultMsg) NO_RETURN;
 extern const _fault_subtype fst_str_nea;
+#ifdef SCUMEM
+// Stupid dependency order
+int lookup_cpu_mem_map (word24 addr, word24 * offset);
+int queryScuUnitIdx (int cpu_unit_num, int cpu_port_num);
+#endif
 
 static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
@@ -1842,6 +1856,14 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
       unlock_mem ();
 #endif
 
+#ifdef SCUMEM
+    word24 offset;
+    int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
+    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    *data = scu [scuUnitIdx].M[offset] & DMASK;
+#else
+    *data = M[addr] & DMASK;
+#endif
     PNL (trackport (addr, * data);)
     return 0;
   }
@@ -1882,6 +1904,14 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
     if (! cpu.havelock)
       unlock_mem ();
 
+#ifdef SCUMEM
+    word24 offset;
+    int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
+    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    scu [scuUnitIdx].M[offset] = data & DMASK;
+#else
+    M[addr] = data & DMASK;
+#endif
     PNL (trackport (addr, data);)
     return 0;
   }
@@ -1920,10 +1950,18 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED con
       lock_mem ();
 #endif
 
+#ifdef SCUMEM
+    word24 offset;
+    int scuUnitNum = lookup_cpu_mem_map (addr, & offset);
+    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    *even = scu [scuUnitIdx].M[offset++] & DMASK;
+    *odd = scu [scuUnitIdx].M[offset] & DMASK;
+#else
     *even = M[addr++] & DMASK;
     PNL (trackport (addr - 1, * even);)
     *odd = M[addr] & DMASK;
     PNL (trackport (addr, * odd);)
+#endif
 
 #ifdef lockread
     if (! cpu.havelock)
@@ -1963,14 +2001,21 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED cons
     if (! cpu.havelock)
       lock_mem ();
 
+#ifdef SCUMEM
+    word24 offset;
+    int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
+    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    scu [scuUnitIdx].M[offset++] = even & DMASK;
+    scu [scuUnitIdx].M[offset] = odd & DMASK;
+#else
     M[addr++] = even;
     PNL (trackport (addr - 1, even);)
     M[addr] = odd;
     PNL (trackport (addr, odd);)
+#endif
 
     if (! cpu.havelock)
       unlock_mem ();
-
     return 0;
   }
 #else
@@ -1991,13 +2036,15 @@ static inline void core_writeN (word24 addr, word36 *data, uint n, UNUSED const 
   }
 
 int is_priv_mode (void);
+#ifndef NOWENT
 void set_went_appending (void);
 void clr_went_appending (void);
 bool get_went_appending (void);
+#endif
 bool get_bar_mode (void);
 addr_modes_t get_addr_mode (void);
 void set_addr_mode (addr_modes_t mode);
-int query_scu_unit_num (int cpu_unit_num, int cpu_port_num);
+int queryScuUnitIdx (int cpu_unit_num, int cpu_port_num);
 void init_opcodes (void);
 void decodeInstruction (word36 inst, DCDstruct * p);
 t_stat dpsCmd_Dump (int32 arg, const char *buf);
@@ -2005,9 +2052,13 @@ t_stat dpsCmd_Init (int32 arg, const char *buf);
 t_stat dpsCmd_Segment (int32 arg, const char *buf);
 t_stat dpsCmd_Segments (int32 arg, const char *buf);
 t_stat memWatch (int32 arg, const char * buf);
-//_sdw *fetchSDW (word15 segno);
 char *strSDW0 (char * buff, _sdw *SDW);
 int query_scbank_map (word24 addr);
+#ifdef SCUMEM
+int lookup_cpu_mem_map (word24 addr, word24 * offset);
+#else
+int lookup_cpu_mem_map (word24 addr);
+#endif
 void cpu_init (void);
 void setup_scbank_map (void);
 #ifdef DPS8M

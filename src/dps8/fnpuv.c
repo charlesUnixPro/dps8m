@@ -222,7 +222,10 @@ static int tun_alloc (char * dev)
      *
      *        IFF_NO_PI - Do not provide packet information  
      */ 
-    ifr.ifr_flags = IFF_TUN; 
+
+// Incoming packet analysis shows four bytes of meta data; 2 bytes of flags and // two bytes of protocol flags. Turning them off by setting IFF_NO_PI
+
+    ifr.ifr_flags = IFF_TUN | IFF_NO_PI; 
     if (* dev)
       strncpy (ifr.ifr_name, dev, IFNAMSIZ);
 
@@ -267,7 +270,7 @@ void fnpuv_associated_readcb (uv_tcp_t * client,
                            ssize_t nread,
                            unsigned char * buf)
   {
-    //printf ("assoc. <%*s>\n", (int) nread, buf->base);
+    //sim_printf ("assoc. <%*s>\n", (int) nread, buf->base);
     processLineInput (client, buf, nread);
   }
 
@@ -278,7 +281,7 @@ void fnpuv_unassociated_readcb (uv_tcp_t * client,
                            ssize_t nread,
                            unsigned char * buf)
   {
-    //printf ("unaassoc. <%*s>\n", (int) nread, buf->base);
+    //sim_printf ("unaassoc. <%*s>\n", (int) nread, buf->base);
     processUserInput (client, buf, nread);
   } 
 
@@ -298,14 +301,18 @@ void close_connection (uv_stream_t* stream)
       {
         if (p->assoc)
           {
-            sim_printf ("DISCONNECT %c.d%03d\n", p->fnpno+'a', p->lineno);
+            sim_printf ("[FNP emulation: DISCONNECT %c.d%03d]\n", p->fnpno+'a', p->lineno);
             struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
+#ifdef DISC_DELAY
+            linep -> line_disconnected = DISC_DELAY;
+#else
             linep -> line_disconnected = true;
+#endif
             linep -> listen = false;
           }
         else
           {
-            sim_printf ("DISCONNECT\n");
+            sim_printf ("[FNP emulation: DISCONNECT]\n");
           }
 
         // Clean up allocated data
@@ -458,7 +465,7 @@ void fnpuv_start_write_actual (uv_tcp_t * client, char * data, ssize_t datalen)
 // NULs.
 // If the socket has been closed, write will return BADF; just ignore it.
     if (ret < 0 && ret != -EBADF)
-      sim_printf ("uv_write returns %d\n", ret);
+      sim_printf ("[FNP emulation: uv_write returns %d]\n", ret);
   }
 
 //
@@ -519,7 +526,7 @@ static void on_new_connection (uv_stream_t * server, int status)
   {
     if (status < 0)
       {
-        fprintf (stderr, "New connection error %s\n", uv_strerror (status));
+        sim_printf ("[FNP emulation: New connection error %s]\n", uv_strerror (status));
         // error!
         return;
       }
@@ -552,7 +559,7 @@ sim_printf ("slave connection to %d.%d\n", p->fnpno, p->lineno);
             if (linep->client)
               {
                 uv_close ((uv_handle_t *) client, fuv_close_cb);
-sim_printf ("dropping 2nd slave\n");
+sim_printf ("[FNP emulation: dropping 2nd slave]\n");
                 return;
               }
 #endif
@@ -564,12 +571,12 @@ sim_printf ("dropping 2nd slave\n");
         int ret = uv_tcp_getpeername (client, & name, & namelen);
         if (ret < 0)
           {
-            sim_printf ("CONNECT; addr err %d\n", ret);
+            sim_printf ("[FNP emulation: CONNECT; addr err %d]\n", ret);
           }
         else
           {
             struct sockaddr_in * p = (struct sockaddr_in *) & name;
-            sim_printf ("CONNECT %s\n", inet_ntoa (p -> sin_addr));
+            sim_printf ("[FNP emulation: CONNECT %s]\n", inet_ntoa (p -> sin_addr));
           }
 
         uvClientData * p = (uvClientData *) malloc (sizeof (uvClientData));
@@ -677,14 +684,14 @@ void fnpuvInit (int telnet_port)
 
     // Bind and listen
     struct sockaddr_in addr;
-sim_printf ("listening to %d\n", telnet_port);
+    sim_printf ("[FNP emulation: listening to %d]\n", telnet_port);
     uv_ip4_addr ("0.0.0.0", telnet_port, & addr);
     uv_tcp_bind (& du_server, (const struct sockaddr *) & addr, 0);
     int r = uv_listen ((uv_stream_t *) & du_server, DEFAULT_BACKLOG, 
                        on_new_connection);
     if (r)
      {
-        fprintf (stderr, "Listen error %s\n", uv_strerror (r));
+        sim_printf ("[FNP emulation: Listen error %s]\n", uv_strerror (r));
       }
     du_server_inited = true;
   }
@@ -750,12 +757,18 @@ static void do_readcb (uv_stream_t* stream,
 
 static void on_do_connect (uv_connect_t * server, int status)
   {
-    sim_printf ("dialout connect\n");
+    sim_printf ("[FNP emulation: dialout connect]\n");
     uvClientData * p = (uvClientData *) server->handle->data;
+    // If data is NULL, assume that the line has already been torn down.
+    if (! p)
+      {
+         sim_printf ("[FNP emulation note: on_do_connect called with data == NULL]\n");
+         return;
+      }
     struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
     if (status < 0)
       {
-        sim_printf ("Dial-out connection error %s\n", uv_strerror (status));
+        sim_printf ("[FNP emulation: Dial-out connection error %s]\n", uv_strerror (status));
         //sim_printf ("%p\n", p);
         //sim_printf ("%d.%d\n", p->fnpno, p->lineno);
         linep->acu_dial_failure = true;
@@ -781,7 +794,7 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
   {
     if (! loop)
       return;
-    sim_printf ("received dial_out %c.h%03d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", fnpno+'a', lineno, d1, d2, d3);
+    sim_printf ("[FNP emulation: received dial_out %c.h%03d %012"PRIo64" %012"PRIo64" %012"PRIo64"]\n", fnpno+'a', lineno, d1, d2, d3);
     struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
     uint d01 = (d1 >> 30) & 017;
     uint d02 = (d1 >> 24) & 017;
@@ -820,36 +833,41 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
     linep->is_tun = false;
     if (flags & 2)
       {
+        sim_printf ("FNP emulation: TUN\n");
         if (linep->tun_fd <= 0)
           {
             char a_name [IFNAMSIZ] = "dps8m";
             linep->tun_fd = tun_alloc (a_name);
             if (linep->tun_fd < 0)
               {
-                sim_printf ("dialout TUN tun_alloc returned %d errno %d\n", linep->tun_fd, errno);
+                sim_printf ("[FNP emulation: dialout TUN tun_alloc returned %d errno %d]\n", linep->tun_fd, errno);
                 return;
              }
             int flags = fcntl (linep->tun_fd, F_GETFL, 0);
             if (flags < 0)
               {
-                sim_printf ("dialout TUN F_GETFL returned < 0\n");
+                sim_printf ("[FNP emulation: dialout TUN F_GETFL returned < 0]\n");
                 return;
               }
             flags |= O_NONBLOCK;
             int ret = fcntl (linep->tun_fd, F_SETFL, flags);
             if (ret)
               {
-                sim_printf ("dialout TUN F_SETFL returned %d\n", ret);
+                sim_printf ("[FNP emulation: dialout TUN F_SETFL returned %d]\n", ret);
                 return;
               }
           }
           linep->is_tun = true;
+          linep->listen = true;
+          linep->accept_new_terminal = true;
+          linep->in_frame = false;
+
           return;
         }
 #endif
     char ipaddr [256];
     sprintf (ipaddr, "%d.%d.%d.%d", oct1, oct2, oct3, oct4);
-    printf ("calling %s:%d\n", ipaddr,port);
+    sim_printf ("calling %s:%d\n", ipaddr,port);
 
     struct sockaddr_in dest;
     uv_ip4_addr(ipaddr, (int) port, &dest);
@@ -913,7 +931,7 @@ void fnpuv_open_slave (uint fnpno, uint lineno)
   {
     if (! loop)
       return;
-    sim_printf ("fnpuv_open_slave %d.%d\n", fnpno, lineno);
+    sim_printf ("[FNP emulation: fnpuv_open_slave %d.%d]\n", fnpno, lineno);
     struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
 
     // Do we already have a listening port (ie not first time)?
@@ -943,12 +961,12 @@ void fnpuv_open_slave (uint fnpno, uint lineno)
     struct sockaddr_in addr;
     uv_ip4_addr ("0.0.0.0", linep->port, & addr);
     uv_tcp_bind (& linep->server, (const struct sockaddr *) & addr, 0);
-sim_printf ("listening on port %d\n", linep->port);
+    sim_printf ("[FNP emulation: listening on port %d]\n", linep->port);
     int r = uv_listen ((uv_stream_t *) & linep->server, DEFAULT_BACKLOG, 
                        on_new_connection);
     if (r)
      {
-        fprintf (stderr, "Listen error %s\n", uv_strerror (r));
+        sim_printf ("[FNP emulation: Listen error %s]\n", uv_strerror (r));
       }
 
 // It should be possible to run a peer-to-peer TCP instead of client server,
@@ -993,7 +1011,7 @@ static void processPacketInput (int fnpno, int lineno, unsigned char * buf, ssiz
     //uint lineno = p -> lineno;
     if (fnpno >= N_FNP_UNITS_MAX || lineno >= MAX_LINES)
       {
-        sim_printf ("bogus client data\n");
+        sim_printf ("[FNP emulation: processPacketInput bogus client data]\n");
         return;
       }
 //sim_printf ("assoc. %d.%d nread %ld <%*s>\n", fnpno, lineno, nread, (int) nread, buf);
@@ -1004,7 +1022,7 @@ static void processPacketInput (int fnpno, int lineno, unsigned char * buf, ssiz
     if (! fnpUnitData[fnpno].MState.accept_calls)
       {
         //fnpuv_start_writestr (client, "Multics is not accepting calls\r\n");
-        sim_printf ("TUN traffic, but Multics is not accepting calls\n");
+        sim_printf ("[FNP emulation: TUN traffic, but Multics is not accepting calls]\n");
         return;
       }
     struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
@@ -1040,15 +1058,120 @@ static void processPacketInput (int fnpno, int lineno, unsigned char * buf, ssiz
         linep->inSize = (uint) nread;
         linep->inUsed = 0;
       }
-
+sim_printf (" packet in buffer %u %02x %02x %02x %02x\n", linep->inSize, linep->inBuffer[0], linep->inBuffer[1], linep->inBuffer[2], linep->inBuffer[3]);
 done:;
   }
 
+// http://backreference.org/2010/03/26/tuntap-interface-tutorial/
+
+#if 0
+/**************************************************************************
+ * cwrite: write routine that checks for errors and exits if an error is  *
+ *         returned.                                                      *
+ **************************************************************************/
+
+static int cwrite (int fd, char *buf, int n)
+  {
+
+    int nwrite;
+
+    if ((nwrite = write (fd, buf, n)) < 0)
+      {
+        //perror ("Writing data");
+        //exit (1);
+        sim_printf ("cwrite returned %d\n", nwrite);
+        return 0;
+      }
+    return nwrite;
+  }
+#endif
+
+#if 0
+/**************************************************************************
+ * cread: read routine that checks for errors and exits if an error is    *
+ *        returned.                                                       *
+ **************************************************************************/
+
+static ssize_t cread (int fd, char *buf, size_t n)
+  {
+
+    ssize_t nread;
+
+    if ((nread = read (fd, buf, n)) < 0)
+      {
+        //perror("Reading data");
+        //exit(1);
+        sim_printf ("cread returned %ld\n", nread);
+      }
+    return nread;
+  }
+#endif
+
+
+#if 0
+/**************************************************************************
+ * read_n: ensures we read exactly n bytes, and puts them into "buf".     *
+ *         (unless EOF, of course)                                        *
+ **************************************************************************/
+
+static ssize_t read_n (int fd, void * buf, size_t n)
+  {
+
+    ssize_t nread;
+    size_t left = n;
+
+    while (left > 0)
+      {
+        if ((nread = read (fd, buf, left)) < 0)
+          {
+            if (errno != EAGAIN && errno != EINVAL)
+              sim_printf ("read_n read returned %ld %d\n", nread, errno);
+            return 0;
+          }
+
+        if (nread == 0)
+          return 0;
+
+        left -= (size_t) nread;
+        buf += nread;
+      }
+    return (ssize_t) n;
+  }
+#endif
+
 static void fnoTUNProcessLine (int fnpno, int lineno, struct t_line * linep)
   {
+
+// For now, don't process a frame until the previous one has been consumed.
+
+    // old data in the buffer ?
+    if (linep->inBuffer)
+      {
+        //sim_printf ("[FNP emulator: TUN buffer overrun; packet check stalled\n");
+        return;
+     }
+
 /* Note that "buffer" should be at least the MTU size of the interface, eg 1500 bytes */
     unsigned char buffer [1500 + 16];
-    ssize_t nread = read (linep->tun_fd, buffer, sizeof (buffer));
+
+#if 0
+// http://backreference.org/2010/03/26/tuntap-interface-tutorial/
+    uint16_t plength;
+    ssize_t nread;
+    // Read length 
+    nread = read_n (linep->tun_fd, & plength, sizeof (plength));
+    if (nread == 0)
+      {  // no data availible
+        return;
+      }
+    sim_printf ("len %u\n", plength);
+    // read packet
+    nread = read_n (linep->tun_fd, buffer, ntohs (plength));
+
+
+#else
+    // Save 3 bytes at the beginning of the buffer for command and length
+    ssize_t nread = read (linep->tun_fd, buffer + 3, sizeof (buffer) - 3);
     if (nread < 0)
       {
         //perror ("Reading from interface");
@@ -1056,84 +1179,94 @@ static void fnoTUNProcessLine (int fnpno, int lineno, struct t_line * linep)
         //exit (1);
         if (errno == EAGAIN)
           return;
-        printf ("%ld %d\n", nread, errno);
+        sim_printf ("%ld %d\n", nread, errno);
         return;
       }
+#endif
+
+    buffer [0] = 0x80; // Command 'data'
+    * (uint16_t *) (buffer + 1) = (uint16_t) nread; // packet length
+
+    //processPacketInput (fnpno, lineno, buffer, nread + 3);
 
 // To make debugging easier, return data as a hex string rather than binary.
 // When the stack interface is debugged, switch to binary.
     unsigned char xbufr [2 * (1500 + 16)];
     unsigned char bin2hex [16] = "0123456789ABCDEF";
 
-    for (uint i = 0; i > nread; i ++)
+    for (uint i = 0; i < nread; i ++)
       {
-        xbufr [i * 2 + 0] = bin2hex [(buffer [i] >> 4) & 0xf];
-        xbufr [i * 2 + 1] = bin2hex [(buffer [i] >> 0) & 0xf];
+        xbufr [i * 2 + 0] = bin2hex [(buffer [i + 3] >> 4) & 0xf];
+//sim_printf ("i %u xi %u b[] %u >> %u & %u xb %u\n", i, i*2+0, buffer [i + 3], buffer [i + 3] >> 4, (buffer [i + 3] >> 4) & 0xf, bin2hex [(buffer [i + 3] >> 4) & 0xf]);
+        xbufr [i * 2 + 1] = bin2hex [(buffer [i + 3] >> 0) & 0xf];
+//sim_printf ("i %u xi %u b[] %u >> %u & %u xb %u\n", i, i*2+1, buffer [i + 3], buffer [i + 3] >> 4, (buffer [i + 3] >> 4) & 0xf, bin2hex [(buffer [i + 3] >> 0) & 0xf]);
       }
-     xbufr [nread * 2] = 0;
-     processPacketInput (fnpno, lineno, xbufr, nread * 2 + 1);
+    xbufr [nread * 2 + 0] = '\r';
+    xbufr [nread * 2 + 1] = '\n';
+    xbufr [nread * 2 + 2] = 0;
+    processPacketInput (fnpno, lineno, xbufr, nread * 2 + 3);
 
 // Debugging
 // 4 bytes of metadata
 #define ip 4 
     /* Do whatever with the data */
-    printf("Read %ld bytes\n", nread);
-    printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
+    sim_printf("Read %ld bytes\n", nread);
+    sim_printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
       buffer [0], buffer [1], buffer [2], buffer [3], 
       buffer [4], buffer [5], buffer [6], buffer [7]);
-    printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
+    sim_printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
       buffer [8], buffer [9], buffer [10], buffer [11], 
       buffer [12], buffer [13], buffer [14], buffer [15]);
-    uint version =                            (buffer [ip + 0] >> 4) & 0xf;
+    //uint version =                            (buffer [ip + 0] >> 4) & 0xf;
     uint ihl =                                (buffer [ip + 0]) & 0xf;
     uint payload_offset = ip + ihl * 4;
-    uint tos =                                 buffer [ip + 1];
-    uint tl = ((uint)                 (buffer [ip + 2]) << 8) + 
-                                                       buffer [ip + 3];
-    uint id = ((uint)                 (buffer [ip + 4]) << 8) + 
-                                                       buffer [ip + 5];
+    //uint tos =                                 buffer [ip + 1];
+    //uint tl = ((uint)                 (buffer [ip + 2]) << 8) + 
+    //                                                   buffer [ip + 3];
+    //uint id = ((uint)                 (buffer [ip + 4]) << 8) + 
+    //                                                   buffer [ip + 5];
 
-    uint df =                                 (buffer [ip + 6] & 0x40) ? 1 : 0;
-    uint mf =                                 (buffer [ip + 6] & 0x20) ? 1 : 0;
-    uint fragment_offset = ((uint)    (buffer [ip + 6] & 0x1f) << 8) + 
-                                                       buffer [ip + 7];
-    uint ttl =                                 buffer [ip + 8];
+    //uint df =                                 (buffer [ip + 6] & 0x40) ? 1 : 0;
+    //uint mf =                                 (buffer [ip + 6] & 0x20) ? 1 : 0;
+    //uint fragment_offset = ((uint)    (buffer [ip + 6] & 0x1f) << 8) + 
+    //                                                   buffer [ip + 7];
+    //uint ttl =                                 buffer [ip + 8];
     uint protocol =                            buffer [ip + 9];
-    uint header_checksum =    (((uint) buffer [ip + 10]) << 8) + 
-                                                       buffer [ip + 11];
-    uint source_address =     (((uint) buffer [ip + 12]) << 24) + 
-                                      (((uint) buffer [ip + 13]) << 16) + 
-                                      (((uint) buffer [ip + 14]) << 8) + 
-                                                       buffer [ip + 15];
-    uint dest_address =       (((uint) buffer [ip + 16]) << 24) + 
-                                      (((uint) buffer [ip + 17]) << 16) + 
-                                      (((uint) buffer [ip + 18]) << 8) + 
-                                                       buffer [ip + 19];
+    //uint header_checksum =    (((uint) buffer [ip + 10]) << 8) + 
+    //                                                   buffer [ip + 11];
+    //uint source_address =     (((uint) buffer [ip + 12]) << 24) + 
+    //                                  (((uint) buffer [ip + 13]) << 16) + 
+    //                                  (((uint) buffer [ip + 14]) << 8) + 
+    //                                                   buffer [ip + 15];
+    //uint dest_address =       (((uint) buffer [ip + 16]) << 24) + 
+    //                                  (((uint) buffer [ip + 17]) << 16) + 
+    //                                  (((uint) buffer [ip + 18]) << 8) + 
+    //                                                   buffer [ip + 19];
     if (protocol == 1)
       {
         uint type = buffer [payload_offset + 0];
         if (type == 0x08)
           {
-            printf ("ICMP Echo Request %d.%d.%d.%d %d.%d.%d.%d\n", 
+            sim_printf ("ICMP Echo Request %d.%d.%d.%d %d.%d.%d.%d\n", 
               buffer [ip + 12], buffer [ip + 13], buffer [ip + 14], buffer [ip + 15],
               buffer [ip + 16], buffer [ip + 17], buffer [ip + 18], buffer [ip + 19]);
           }
         else
           {
-            printf ("ICMP 0x%02x\n", type);
-            printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
+            sim_printf ("ICMP 0x%02x\n", type);
+            sim_printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
               buffer [payload_offset + 0], buffer [payload_offset + 1], buffer [payload_offset + 2], buffer [payload_offset + 3], 
               buffer [payload_offset + 4], buffer [payload_offset + 5], buffer [payload_offset + 6], buffer [payload_offset + 7]);
           }
       }
     if (protocol == 0x11)
       {
-        printf ("UDP\n");
+        sim_printf ("UDP\n");
        
       }
     else
       {
-        printf ("protocol %02x\n", protocol);
+        sim_printf ("protocol %02x\n", protocol);
       }
   }
 
@@ -1149,4 +1282,21 @@ void fnpTUNProcessEvent (void)
           }
       }
   }
+
+void fnpuv_tun_write (struct t_line * linep)
+  {
+// frame is in frame [2..frameLen]
+// XXX blocking I/O
+    size_t count = (size_t) linep->frameLen;
+    ssize_t rc = write (linep->tun_fd, linep->frame + 2, count);
+    if (rc < 0)
+      {
+        sim_printf ("[FNP emulation: fnpuv_tun_write write(2) returned %ld\n", rc);
+      }
+    else if (rc != count)
+      {
+        sim_printf ("[FNP emulation: fnpuv_tun_write write(2) returned %ld, expected %ld\n", rc, count);
+      }
+  }
+
 #endif

@@ -103,7 +103,11 @@ typedef struct
 #endif
         uint send_output;
         bool accept_new_terminal;
+#ifdef DISC_DELAY
+        uint line_disconnected;
+#else
         bool line_disconnected;
+#endif
         bool ack_echnego_init;
         bool acu_dial_failure;
         bool wru_timeout;
@@ -140,6 +144,9 @@ typedef struct
         // TUN hook
         bool is_tun;
         int tun_fd;
+        bool in_frame;
+        uint8_t frame [2+1500];
+        uint frameLen;
 #endif
 
       } line [MAX_LINES];

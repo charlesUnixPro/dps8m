@@ -27,6 +27,7 @@
 
 #include "dps8.h"
 #include "dps8_sys.h"
+#include "dps8_scu.h"
 #include "dps8_cpu.h"
 #include "dps8_faults.h"
 #include "dps8_ins.h"
@@ -53,7 +54,16 @@ long double exp2l (long double e) {
 long double EAQToIEEElongdouble(void)
 {
     // mantissa
-    word72 Mant = ((word72)(cpu . rA & DMASK) << 36) | ((word72) cpu . rQ & DMASK);
+    word72 Mant = convertToWord72 (cpu.rA, cpu.rQ);
+#ifdef NEED_128
+
+    if (iszero_128 (Mant))
+        return 0;
+    
+    bool S = isnonzero_128 (and_128 (Mant, SIGN72)); // sign of mantissa
+    if (S)
+        Mant = and_128 (negate_128 (Mant), MASK71); // 71 bits (not 72!)
+#else
 
     if (Mant == 0)
         return 0;
@@ -61,20 +71,32 @@ long double EAQToIEEElongdouble(void)
     bool S = Mant & SIGN72; // sign of mantissa
     if (S)
         Mant = (-Mant) & MASK71; // 71 bits (not 72!)
-
+#endif
     long double m = 0;  // mantissa value;
     int e = SIGNEXT8_int (cpu . rE & MASK8); // make signed
 
+#ifdef NEED_128
+    if (S && iszero_128 (Mant))// denormalized -1.0*2^e
+        return -exp2l(e);
+#else
     if (S && Mant == 0) // denormalized -1.0*2^e
         return -exp2l(e);
+#endif
 
     long double v = 0.5;
     for(int n = 70 ; n >= 0 ; n -= 1) // this also normalizes the mantissa
     {
+#ifdef NEED_128
+        if (isnonzero_128 (and_128 (Mant, lshift_128 (construct_128 (0, 1), (unsigned int) n))))
+        {
+            m += v;
+        }
+#else
         if (Mant & ((word72)1 << n))
         {
             m += v;
         }
+#endif
         v /= 2.0;
     }
     
@@ -90,28 +112,48 @@ long double EAQToIEEElongdouble(void)
 double EAQToIEEEdouble(void)
 {
     // mantissa
-    word72 Mant = ((word72)(cpu . rA & DMASK) << 36) | ((word72) cpu . rQ & DMASK);
+    word72 Mant = convertToWord72 (cpu.rA, cpu.rQ);
 
+#ifdef NEED_128
+    if (iszero_128 (Mant))
+        return 0;
+    
+    bool S = isnonzero_128 (and_128 (Mant, SIGN72)); // sign of mantissa
+    if (S)
+        Mant = and_128 (negate_128 (Mant), MASK71); // 71 bits (not 72!)
+#else
     if (Mant == 0)
         return 0;
     
     bool S = Mant & SIGN72; // sign of mantissa
     if (S)
         Mant = (-Mant) & MASK71; // 71 bits (not 72!)
+#endif
 
     double m = 0;  // mantissa value
     int e = SIGNEXT8_int (cpu . rE & MASK8); // make signed
 
+#ifdef NEED_128
+    if (S && iszero_128 (Mant))// denormalized -1.0*2^e
+        return -exp2(e);
+#else
     if (S && Mant == 0)	// denormalized -1.0*2^e
         return -exp2(e);
-
+#endif
     double v = 0.5;
     for(int n = 70 ; n >= 0 ; n -= 1) // this also normalizes the mantissa
     {
+#ifdef NEED_128
+        if (isnonzero_128 (and_128 (Mant, lshift_128 (construct_128 (0, 1), (unsigned int) n))))
+        {
+            m += v;
+        }
+#else
         if (Mant & ((word72)1 << n))
         {
             m += v;
         }
+#endif
         v /= 2.0;
     }
     
@@ -310,7 +352,7 @@ static double float36ToIEEEdouble(word36 f36)
     double v = 0.5;
     for(int n = 26 ; n >= 0 ; n -= 1) // this also normalizes the mantissa
     {
-        if (Mant & ((word72)1 << n))
+        if (Mant & ((uint64)1 << n))
         {
             m += v;
         }   //else
@@ -380,9 +422,19 @@ float36 IEEEdoubleTofloat36(double f0)
  */
 
 
+//#define HEX_SIGN (SIGN72 | BIT71 | BIT70 | BIT69 | BIT68)
+//#define HEX_MSB  (         BIT71 | BIT70 | BIT69 | BIT68)
+#ifdef NEED_128
+#define HEX_SIGN construct_128 (0xF0, 0)
+#define HEX_MSB  consturct_128 (0x70, 0)
+#define HEX_NORM construct_128 (0x78, 0)
+#else
 #define HEX_SIGN (SIGN72 | BIT71 | BIT70 | BIT69)
 #define HEX_MSB  (         BIT71 | BIT70 | BIT69)
 #define HEX_NORM (         BIT71 | BIT70 | BIT69 | BIT68)
+#endif
+
+
 
 #ifdef DPS8M
 static inline bool isHex (void)
@@ -420,9 +472,14 @@ void ufa (bool sub)
 
     CPTUR (cptUseE);
     uint shift_amt = isHex() ? 4 : 1;
-    word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
+    word72 m1 = convertToWord72 (cpu.rA, cpu.rQ);
+#ifdef NEED_128
+    // 28-bit mantissa (incl sign)
+    word72 m2 = lshift_128 (construct_128 (0, (uint64_t) getbits36_28 (cpu.CY, 8)), 44u); // 28-bit mantissa (incl sign)
+#else
     // 28-bit mantissa (incl sign)
     word72 m2 = ((word72) getbits36_28 (cpu.CY, 8)) << 44; // 28-bit mantissa (incl sign)
+#endif
 
     int e1 = SIGNEXT8_int (cpu . rE & MASK8); 
     int e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
@@ -436,6 +493,20 @@ void ufa (bool sub)
        // asserts carry for -0.5079365*2^78-0.0
        // I assume zero subtrahend is handled in a special way.
 
+#ifdef NEED_128
+       if (iszero_128 (m2)) 
+           m2zero = 1;
+       if (iseq_128 (m2, SIGN72)) {  // -1.0 -> 0.5, increase exponent, ISOLTS-735 08i,j
+           m2 = rshift_128 (m2, shift_amt);
+           e2 += 1;
+       } else
+#ifdef NEED_128
+           m2 = and_128 (negate_128 (m2), MASK72);
+#else
+           m2 = (-m2) & MASK72;
+#endif
+    }
+#else
        if (m2 == 0) 
            m2zero = 1;
        if (m2 == SIGN72) {  // -1.0 -> 0.5, increase exponent, ISOLTS-735 08i,j
@@ -445,6 +516,7 @@ void ufa (bool sub)
            m2 = (-m2) & MASK72;
     }
 
+#endif
     int e3 = -1;
 
     // which exponent is smaller?
@@ -463,6 +535,23 @@ void ufa (bool sub)
     else if (e1 < e2)
     {
         shift_count = abs(e2 - e1) * (int) shift_amt;
+IF1 sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
+#ifdef NEED_128
+        bool sign = isnonzero_128 (and_128 (m1, SIGN72)); // mantissa negative?
+        for(int n = 0 ; n < shift_count ; n += 1)
+        {
+            last = m1.l & 1;
+            allones &= m1.l & 1;
+            notallzeros |= m1.l & 1;
+            m1 = rshift_128 (m1, 1);
+            if (sign)
+                m1 = or_128 (m1, SIGN72);
+        }
+        if (iseq_128 (m1, MASK72) && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+            m1 = construct_128 (0, 0);
+        m1 = and_128 (m1, MASK72);
+        e3 = e2;
+#else
         bool sign = m1 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
@@ -478,11 +567,29 @@ void ufa (bool sub)
             m1 = 0;
         m1 &= MASK72;
         e3 = e2;
+#endif // NEED_128
     }
     else
     {
         // e2 < e1;
         shift_count = abs(e1 - e2) * (int) shift_amt;
+#ifdef NEED_128
+        bool sign = isnonzero_128 (and_128 (m2, SIGN72)); // mantissa negative?
+        for(int n = 0 ; n < shift_count ; n += 1)
+        {
+            last = m2.l & 1;
+            allones &= m2.l & 1;
+            notallzeros |= m2.l & 1;
+            m2 = rshift_128 (m2, 1);
+            if (sign)
+                m2 = or_128 (m2, SIGN72);
+        }
+        if (iseq_128 (m2, MASK72) && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+            m2 = construct_128 (0, 0);
+        m2 = and_128 (m2, MASK72);
+        e3 = e1;
+#else
+IF1 sim_printf ("UFA e1 > e2; shift m2 %d right\n", shift_count);
         bool sign = m2 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
@@ -497,6 +604,7 @@ void ufa (bool sub)
           m2 = 0;
         m2 &= MASK72;
         e3 = e1;
+#endif // NEED_128
     }
     
     bool ovf;
@@ -510,6 +618,39 @@ void ufa (bool sub)
 
     if (ovf)
     {
+#ifdef NEED_128
+//        word72 signbit = m3 & sign_msk;
+//        m3 >>= shift_amt;
+//        m3 = (m3 & MASK71) | signbit;
+//        m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
+//        e3 += 1;
+        word72 s = and_128 (m3, SIGN72); // save the sign bit
+        if (isHex ())
+          {
+            m3 = rshift_128 (m3, shift_amt); // renormalize the mantissa
+            if (isnonzero_128 (s))
+              // Sign is set, number should be positive; clear the sign bit and the 3 MSBs
+              m3 = and_128 (m3, MASK68);
+            else
+              // Sign is clr, number should be negative; set the sign bit and the 3 MSBs
+              m3 = or_128 (m3, HEX_SIGN);
+          }
+        else
+          {
+            word72 signbit = and_128 (m3, SIGN72);
+            m3 = rshift_128 (m3, 1);
+            m3 = and_128 (m3, MASK71);
+            m3 = or_128 (m3, signbit);
+            m3 = xor_128 (m3, SIGN72); // C(AQ)0 is inverted to restore the sign
+          }
+        e3 += 1;
+#else // NEED_128
+IF1 sim_printf ("UFA correcting ovf %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
+//        word72 signbit = m3 & sign_msk;
+//        m3 >>= shift_amt;
+//        m3 = (m3 & MASK71) | signbit;
+//        m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
+//        e3 += 1;
         word72 s = m3 & SIGN72; // save the sign bit
         if (isHex ())
           {
@@ -529,10 +670,11 @@ void ufa (bool sub)
             m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
           }
         e3 += 1;
+IF1 sim_printf ("UFA now e3 %03o m3 now %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
+#endif // NEED_128
     }
 
-    cpu . rA = (m3 >> 36) & MASK36;
-    cpu . rQ = m3 & MASK36;
+    convertToWord36 (m3, & cpu.rA, & cpu.rQ);
     cpu . rE = e3 & 0377;
 
     SC_I_NEG (cpu.rA & SIGN36); // Do this here instead of in Add72b because
@@ -596,10 +738,48 @@ void fno (word8 * E, word36 * A, word36 * Q)
     uint shift_amt = isHex() ? 4 : 1;
     *A &= DMASK;
     *Q &= DMASK;
-    float72 m = ((word72)(*A) << 36) | (word72)(*Q);
+    float72 m = convertToWord72 (* A, * Q);
     if (TST_I_OFLOW)
     {
         CLR_I_OFLOW;
+#ifdef NEED_128
+        word72 s = and_128 (m, SIGN72); // save the sign bit
+        if (isHex ())
+          {
+            m = rshift_128 (m, shift_amt); // renormalize the mantissa
+            if (isnonzero_128 (s)) // sign of mantissa
+              // Sign is set, number should be positive; clear the sign bit and the 3 MSBs
+              m = and_128 (m, MASK68);
+            else
+              // Sign is clr, number should be negative; set the sign bit and the 3 MSBs
+              m = or_128 (m, HEX_SIGN);
+          }
+        else
+          {
+            m = rshift_128 (m, 1); // renormalize the mantissa
+            m = or_128 (m, SIGN72); // set the sign bit
+            m = xor_128 (m, s); // if the was 0, leave it 1; if it was 1, make it 0
+          }
+
+        // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
+        if (iszero_128 (m))
+        {
+            *E = 0200U; /*-128*/
+            SET_I_ZERO;
+        }
+        else
+        {
+            CLR_I_ZERO;
+            if (*E == 127)
+            {
+                SET_I_EOFL;
+                if (tstOVFfault ())
+                    dlyDoFault (FAULT_OFL, fst_zero, "fno exp overflow fault");
+            }
+            (*E) ++;
+            *E &= MASK8;
+        }
+#else
         word72 s = m & SIGN72; // save the sign bit
         if (isHex ())
           {
@@ -636,16 +816,19 @@ void fno (word8 * E, word36 * A, word36 * Q)
             (*E) ++;
             *E &= MASK8;
         }
-
-        *A = (m >> 36) & MASK36;
-        *Q = m & MASK36;
+#endif // NEED_128
+        convertToWord36 (m, A, Q);
         SC_I_NEG ((*A) & SIGN36);
 
         return;
     }
     
     // only normalize C(EAQ) if C(AQ) ≠ 0 and the overflow indicator is OFF
+#ifdef NEED_128
+    if (iszero_128 (m)) /// C(AQ) == 0.
+#else
     if (m == 0) // C(AQ) == 0.
+#endif
     {
         //*A = (m >> 36) & MASK36;
         //*Q = m & MASK36;
@@ -656,7 +839,11 @@ void fno (word8 * E, word36 * A, word36 * Q)
     }
 
     int e = SIGNEXT8_int ((*E) & MASK8);
+#ifdef NEED_128
+    bool s = isnonzero_128 (and_128 (m, SIGN72));
+#else
     bool s = (m & SIGN72) != (word72)0;    ///< save sign bit
+#endif
 
 // Normalized in Hex Mode: If sign is 0, bits 1-4 != 0; if sign is 1,
 // bits 1-4 != 017.
@@ -669,6 +856,20 @@ void fno (word8 * E, word36 * A, word36 * Q)
             // Termination guarantee: Zeros are being shifted into the right
 	  // end, so the loop will terminate when the first shifted
             // zero enters bits 1-4.
+#ifdef NEED_128
+            while (iseq_128 (and_128 (m, HEX_NORM), HEX_NORM))
+              {
+//IF1 sim_printf ("NEG %012"PRIo64" %012"PRIo64"\n", (word36)((m >> 36) & DMASK), (word36)(m & DMASK));
+//IF1 sim_printf ("msk %012"PRIo64" %012"PRIo64"\n", (word36)((((~m) & HEX_NORM) >> 36) & DMASK), (word36)(((~m) & HEX_NORM) & DMASK));
+//if (m == 0) // XXX: necessary??
+//    break;
+                m = lshift_128 (m, 4);
+                e -= 1;
+              }
+            m = and_128 (m, MASK71);
+            m = or_128 (m, SIGN72);
+#else
+IF1 sim_printf ("HEX NEG %012"PRIo64" %012"PRIo64"\n", (word36)((m >> 36) & DMASK), (word36)(m & DMASK));
             while ((m & HEX_NORM) == HEX_NORM) 
               {
 //if (m == 0) // XXX: necessary??
@@ -678,9 +879,23 @@ void fno (word8 * E, word36 * A, word36 * Q)
               }
             m &= MASK71;
             m |= SIGN72;
+#endif
           }
         else
           {
+#ifdef NEED_128
+            // Positive
+            // Until bits 1-4 != 0
+            // Termination guarantee: m is known to be non-zero; a non-zero
+            // bit will eventually be shifted into bits 1-4.
+            while (iszero_128 (and_128 (m, HEX_NORM)))
+              {
+                m = lshift_128 (m, 4);
+                e -= 1;
+              }
+            m = and_128 (m, MASK71);
+#else
+IF1 sim_printf ("HEX POS %012"PRIo64" %012"PRIo64"\n", (word36)((m >> 36) & DMASK), (word36)(m & DMASK));
             // Positive
             // Until bits 1-4 != 0
             // Termination guarantee: m is known to be non-zero; a non-zero
@@ -691,10 +906,25 @@ void fno (word8 * E, word36 * A, word36 * Q)
                 e -= 1;
               }
             m &= MASK71;
+#endif
           }
       }
     else
       {
+#ifdef NEED_128
+        while (s  == isnonzero_128 (and_128 (m, BIT71))) // until C(AQ)0 != C(AQ)1?
+        {
+            m = lshift_128 (m, 1);
+            e -= 1;
+            //if (m == 0) // XXX: necessary??
+            //    break;
+        }
+
+        m = and_128 (m, MASK71);
+        
+        if (s)
+          m = or_128 (m, SIGN72);
+#else
         while (s  == !! (m & BIT71)) // until C(AQ)0 != C(AQ)1?
         {
             m <<= 1;
@@ -707,8 +937,12 @@ void fno (word8 * E, word36 * A, word36 * Q)
         
         if (s)
           m |= SIGN72;
+#endif
       }
       
+#ifndef NEED_128
+IF1 sim_printf ("FNO NOW %012"PRIo64" %012"PRIo64"\n", (word36)((m >> 36) & DMASK), (word36)(m & DMASK));
+#endif
     if (e < -128)
     {
         SET_I_EUFL;
@@ -717,8 +951,7 @@ void fno (word8 * E, word36 * A, word36 * Q)
     }
 
     *E = (word8) e & MASK8;
-    *A = (m >> 36) & MASK36;
-    *Q = m & MASK36;
+    convertToWord36 (m, A, Q);
 
     // EAQ is normalized, so if A is 0, so is Q, and the check can be elided
     if (*A == 0)    // set to normalized 0
@@ -884,17 +1117,26 @@ void fneg (void)
 #else
     CPTUR (cptUseE);
     // Form the mantissa from AQ
-    word72 m = ((word72) (cpu.rA & MASK36) << 36) | (word72) (cpu.rQ & MASK36);
+
+    word72 m = convertToWord72 (cpu.rA, cpu.rQ);
 
     // If the mantissa is 4000...00 (least negative value, it is negable in
     // two's complement arithmetic. Divide it by 2, losing a bit of precision,
     // and increment the exponent.
+#ifdef NEED_128
+    if (iseq_128 (m, SIGN72))
+#else
     if (m == SIGN72)
+#endif
       {
         // Negation of 400..0 / 2 is 200..0; we can get there shifting; we know
         // that a zero will be shifted into the sign bit becuase fo the masking
         // in 'm='.
+#ifdef NEED_128
+        m = rshift_128 (m, 1);
+#else
         m >>= 1;
+#endif
         // Increment the exp, checking for overflow.
         if (cpu . rE == 127)
         {
@@ -908,10 +1150,13 @@ void fneg (void)
     else
       {
         // Do the negation
+#ifdef NEED_128
+        m = negate_128 (m);
+#else
         m = -m;
+#endif
       }
-    cpu.rA = (m >> 36) & MASK36;
-    cpu.rQ = m & MASK36;
+    convertToWord36 (m, & cpu.rA, & cpu.rQ);
 #endif
     fno (& cpu.rE, & cpu.rA, & cpu.rQ);  // normalize
 }
@@ -931,13 +1176,21 @@ void ufm (void)
     // Exp Undr: If exponent is less than -128, then ON
     
     CPTUR (cptUseE);
-    word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
+    word72 m1 = convertToWord72 (cpu.rA, cpu.rQ);
     int    e1 = SIGNEXT8_int (cpu . rE & MASK8);
 
+#ifdef NEED_128
+    word72 m2 = lshift_128 (construct_128 (0, (uint64_t) getbits36_28 (cpu.CY, 8)), 44u); // 28-bit mantissa (incl sign)
+#else
     word72 m2 = ((word72) getbits36_28 (cpu.CY, 8)) << 44; ///< 28-bit mantissa (incl sign)
+#endif
     int    e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
     
+#ifdef NEED_128
+    if (iszero_128 (m1) || iszero_128 (m2))
+#else
     if (m1 == 0 || m2 == 0)
+#endif
     {
         SET_I_ZERO;
         CLR_I_NEG;
@@ -970,27 +1223,47 @@ void ufm (void)
     // the leading 71 bits plus sign of which -> C(AQ).
 
     // shift the CY mantissa to get 98 bits precision
+#ifdef NEED_128
+    int128 t = SIGNEXT72_128(m2);
+    uint128 ut = rshift_128 (cast_128 (t), 44);
+    int128 m3 = multiply_s128 (SIGNEXT72_128(m1), cast_s128 (ut));
+sim_debug (DBG_TRACE, & cpu_dev, "m3 %016llx%016llx\n", m3.h, m3.l);
+#else
     int128 m3 = (SIGNEXT72_128(m1) * (SIGNEXT72_128(m2) >> 44));
+#endif
     // realign to 72bits
+#ifdef NEED_128
+    word72 m3a = and_128 (rshift_128 (cast_128 (m3), 98u - 71u), MASK72);
+sim_debug (DBG_TRACE, & cpu_dev, "m3a %016llx%016llx\n", m3a.h, m3a.l);
+#else
     word72 m3a = ((word72) m3 >> (98-71)) & MASK72;
+#endif
 
     // A normalization is performed only in the case of both factor mantissas being 100...0 
     // which is the twos complement approximation to the decimal value -1.0.
-    if ((m1 == SIGN72) && (m2 == SIGN72)) {
+#ifdef NEED_128
+    if (iseq_128 (m1, SIGN72) && iseq_128 (m2, SIGN72))
+#else
+    if ((m1 == SIGN72) && (m2 == SIGN72))
+#endif
+    {
         if (e3 == 127)
         {
           SET_I_EOFL;
           if (tstOVFfault ())
               dlyDoFault (FAULT_OFL, fst_zero, "ufm exp overflow fault");
         }
+#ifdef NEED_128
+        m3a = rshift_128 (m3a, 1);
+#else
         m3a >>= 1;
+#endif
         e3 += 1;
     }
 
-    cpu . rA = (m3a >> 36) & MASK36;
-    cpu . rQ = m3a & MASK36;
+    convertToWord36 (m3a, & cpu.rA, & cpu.rQ);
     cpu . rE = (word8) e3 & MASK8;
-
+sim_debug (DBG_TRACE, & cpu_dev, "fmp A %012"PRIo64" Q %012"PRIo64" E %03o\n", cpu.rA, cpu.rQ, cpu.rE);
     SC_I_NEG (cpu.rA & SIGN36);
 
     if (cpu.rA == 0 && cpu.rQ == 0)
@@ -1034,20 +1307,36 @@ static void fdvX(bool bInvert)
     
     if (!bInvert)
     {
-        m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
+        m1 = convertToWord72 (cpu.rA, cpu.rQ);
         e1 = SIGNEXT8_int (cpu . rE & MASK8);
 
+#ifdef NEED_128
+        m2 = lshift_128 (construct_128 (0, (uint64_t) getbits36_28 (cpu.CY, 8)), 44u); // 28-bit mantissa (incl sign)
+#else
         m2 = ((word72) getbits36_28 (cpu.CY, 8)) << 44; ///< 28-bit mantissa (incl sign)
+#endif
         e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
 
     } else { // invert
 
-        m2 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
+        m2 = convertToWord72 (cpu.rA, cpu.rQ);
         e2 = SIGNEXT8_int (cpu . rE & MASK8);
 
         // round divisor per RJ78
         // If AQ(28-71) is not equal to 0 and A(0) = 0, then 1 is added to AQ(27).
         // 0 -> AQ(28-71) unconditionally. AQ(0-27) is then used as the divisor mantissa. 
+#ifdef NEED_128
+        if ((iszero_128 (and_128 (m2, SIGN72))) &&
+            (isnonzero_128 (and_128 (m2, construct_128 (0, 0377777777777777LL))))) {
+            m2  = add_128 (m2, construct_128 (0, 0400000000000000LL));
+            // I surmise that the divisor is taken as unsigned 28 bits in this case
+            roundovf = 1;
+        }
+        m2 = and_128 (m2, lshift_128 (construct_128 (0, 0777777777400), 36));
+
+        m1 = lshift_128 (construct_128 (0, getbits36_28 (cpu.CY, 8)), 44); ///< 28-bit mantissa (incl sign)
+        e1 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
+#else
         if (!(m2 & SIGN72) && m2 & 0377777777777777LL) {
             m2 += 0400000000000000LL;
             // I surmise that the divisor is taken as unsigned 28 bits in this case
@@ -1057,9 +1346,14 @@ static void fdvX(bool bInvert)
 
         m1 = ((word72) getbits36_28 (cpu.CY, 8)) << 44; ///< 28-bit mantissa (incl sign)
         e1 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
+#endif
     }
 
+#ifdef NEED_128
+    if (iszero_128 (m1))
+#else
     if (m1 == 0)
+#endif
     {
         SET_I_ZERO;
         CLR_I_NEG;
@@ -1073,20 +1367,45 @@ static void fdvX(bool bInvert)
 
     // make everything positive, but save sign info for later....
     int sign = 1;
+#ifdef NEED_128
+    if (isnonzero_128 (and_128 (m1, SIGN72)))
+#else
     if (m1 & SIGN72)
+#endif
     {
         SET_I_NEG; // in case of divide fault
+#ifdef NEED_128
+        if (iseq_128 (m1, SIGN72))
+        {
+            m1 = rshift_128 (m1, shift_amt);
+            e1 += 1;
+        } else
+            m1 = and_128 (negate_128 (m1), MASK72);
+#else
         if (m1 == SIGN72)
         {
             m1 >>= shift_amt;
             e1 += 1;
         } else
             m1 = (~m1 + 1) & MASK72;
+#endif
         sign = -sign;
     } else {
         CLR_I_NEG; // in case of divide fault
     }
     
+#ifdef NEED_128
+    if ((isnonzero_128 (and_128 (m2, SIGN72))) && !roundovf)
+    {
+        if (iseq_128 (m2, SIGN72))
+        {
+            m2 = rshift_128 (m2, shift_amt);
+            e2 += 1;
+        } else
+            m2 = and_128 (negate_128 (m2), MASK72);
+        sign = -sign;
+    }
+#else
     if ((m2 & SIGN72) && !roundovf)
     {
         if (m2 == SIGN72)
@@ -1098,7 +1417,13 @@ static void fdvX(bool bInvert)
         sign = -sign;
     }
 
+#endif
+
+#ifdef NEED_128
+    if (iszero_128 (m2))
+#else
     if (m2 == 0)
+#endif
     {
         // NB: If C(Y)8,35 ==0 then the alignment loop will never exit! That's why it been moved before the alignment
 
@@ -1111,13 +1436,21 @@ static void fdvX(bool bInvert)
         // FDI: If the divisor mantissa C(AQ) is zero, the division does not take place.
         // Instead, a divide check fault occurs and all the registers remain unchanged.
         if (!bInvert) {
-            cpu . rA = (m1 >> 36) & MASK36;
-            cpu . rQ = m1 & MASK36;
+            convertToWord36 (m1, & cpu.rA, & cpu.rQ);
         }
 
         doFault(FAULT_DIV, fst_zero, "FDV: divide check fault");
     }
 
+#ifdef NEED_128
+    while (isge_128 (m1, m2)) // DH02 (equivalent but perhaps clearer description):
+                     // dividend exponent C(E) increased accordingly until | C(AQ)0,71 | < | C(Y)8,35 with zero fill |
+    // We have already taken the absolute value so just shift it
+    {
+        m1 = rshift_128 (m1, shift_amt);
+        e1 += 1;
+    }
+#else
     while (m1 >= m2) // DH02 (equivalent but perhaps clearer description):
                      // dividend exponent C(E) increased accordingly until | C(AQ)0,71 | < | C(Y)8,35 with zero fill |
     // We have already taken the absolute value so just shift it
@@ -1125,6 +1458,7 @@ static void fdvX(bool bInvert)
         m1 >>= shift_amt;
         e1 += 1;
     }
+#endif
 
     int e3 = e1 - e2;
 
@@ -1144,14 +1478,36 @@ static void fdvX(bool bInvert)
     // We need 35 bits quotient + sign. Divisor is at most 28 bits.
     // Do a 63(28+35) by 35 fractional divide
     // lo 44bits are always zero
+#ifdef NEED_128
+    uint32_t divisor = rshift_128 (m2, 44).l & MASK28;
+    word72 m3;
+    if (divisor > MASK16)
+      m3 = divide_128_32 (rshift_128 (m1, (44u-35u)), divisor, NULL);
+    else
+      m3 = divide_128_16 (rshift_128 (m1, (44u-35u)), (uint16_t) divisor, NULL);
+#else
     word72 m3 = (m1 >> (44-35)) / (m2 >> 44);
 
+#endif
+    
+#ifdef NEED_128
+    m3 = lshift_128 (m3, 36);
+    if (sign == -1)
+        m3 = and_128 (negate_128 (m3), MASK72);
+#else
     m3 <<= 36; // convert back to float
     if (sign == -1)
         m3 = (~m3 + 1) & MASK72;
 
+IF1 sim_printf ("FDV final e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
+#endif
+    
     cpu . rE = (word8) e3 & MASK8;
+#ifdef NEED_128
+    cpu.rA = rshift_128 (m3, 36u).l & MASK36;
+#else
     cpu . rA = (m3 >> 36) & MASK36;
+#endif
     cpu . rQ = 0;
     
     SC_I_ZERO (cpu . rA == 0);
@@ -1241,8 +1597,12 @@ void frd (void)
     cpu.ou.cycle |= ou_GOS;
 #endif
 
-    word72 m = ((word72) cpu.rA << 36) | (word72) cpu.rQ;
+    word72 m = convertToWord72 (cpu.rA, cpu.rQ);
+#ifdef NEED_128
+    if (iszero_128 (m))
+#else
     if (m == 0)
+#endif
       {
         cpu.rE = 0200U; /*-128*/
         SET_I_ZERO;
@@ -1258,11 +1618,19 @@ void frd (void)
     //word18 flags2 = 0;
     word1 carry = 0;
     // If C(AQ)0 = 0, then a carry is added at AQ71
+#ifdef NEED_128
+    if (iszero_128 (and_128 (m, SIGN72)))
+#else
     if ((m & SIGN72) == 0)
+#endif
       {
         carry = 1;
       }
+#ifdef NEED_128
+    m = Add72b (m, construct_128 (0, 0177777777777777LL), carry, I_OFLOW, & flags1, & ovf);
+#else
     m = Add72b (m, 0177777777777777LL, carry, I_OFLOW, & flags1, & ovf);
+#endif
 #endif
 
 #if 0 // according to AL39
@@ -1280,7 +1648,11 @@ void frd (void)
 #endif
 
     // 0 -> C(AQ)28,71  (per. RJ78)
+#ifdef NEED_128
+    m = and_128 (m, lshift_128 (construct_128 (0, 0777777777400), 36));
+#else
     m &= ((word72)0777777777400 << 36);
+#endif
 
     // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is
     // increased by 1.
@@ -1289,8 +1661,7 @@ void frd (void)
 
     bool savedovf = TST_I_OFLOW;
     SC_I_OFLOW(ovf);
-    cpu.rA = (m >> 36) & MASK36;
-    cpu.rQ = m & MASK36;
+    convertToWord36 (m, & cpu.rA, & cpu.rQ);
 
     fno (& cpu.rE, & cpu.rA, & cpu.rQ);
     SC_I_OFLOW(savedovf);
@@ -1314,8 +1685,12 @@ void fstr (word36 *Y)
     //Q &= DMASK;
     //E &= (int) MASK8;
    
-    float72 m = ((word72)A << 36) | (word72)Q;
+    float72 m = convertToWord72 (A, Q);
+#ifdef NEED_128
+    if (iszero_128 (m))
+#else
     if (m == 0)
+#endif
       {
         E = (word8)-128;
         SET_I_ZERO;
@@ -1330,14 +1705,27 @@ void fstr (word36 *Y)
     word18 flags1 = 0;
     word1 carry = 0;
     // If C(AQ)0 = 0, then a carry is added at AQ71
+#ifdef NEED_128
+    if (iszero_128 (and_128 (m, SIGN72)))
+#else
     if ((m & SIGN72) == 0)
+#endif
       {
         carry = 1;
       }
+#ifdef NEED_128
+    m = Add72b (m, construct_128 (0, 0177777777777777LL), carry, I_OFLOW, & flags1, & ovf);
+#else
     m = Add72b (m, 0177777777777777LL, carry, I_OFLOW, & flags1, & ovf);
+#endif
 
     // 0 -> C(AQ)28,71  (per. RJ78)
+#ifdef NEED_128
+    m = and_128 (m, lshift_128 (construct_128 (0, 0777777777400), 36));
+#else
     m &= ((word72)0777777777400 << 36);
+
+#endif
 
     // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is
     // increased by 1.
@@ -1346,9 +1734,7 @@ void fstr (word36 *Y)
 
     bool savedovf = TST_I_OFLOW;
     SC_I_OFLOW(ovf);
-    A = (m >> 36) & MASK36;
-    Q = m & MASK36;
-
+    convertToWord36 (m, & A, & Q);
     fno (& E, & A, & Q);
     SC_I_OFLOW(savedovf);
     
@@ -1373,11 +1759,19 @@ void fcmp(void)
     // The aligned mantissas are compared and the indicators set accordingly.
     
     CPTUR (cptUseE);
+#ifdef NEED_128
+    word72 m1= lshift_128 (construct_128 (0, cpu.rA & 0777777777400), 36);
+#else
     word72 m1 = ((word72)cpu.rA & 0777777777400LL) << 36;
+#endif
     int    e1 = SIGNEXT8_int (cpu.rE & MASK8);
     
     // 28-bit mantissa (incl sign)
+#ifdef NEED_128
+    word72 m2 = lshift_128 (construct_128 (0, getbits36_28 (cpu.CY, 8)), 44);
+#else
     word72 m2 = ((word72) getbits36_28 (cpu.CY, 8)) << 44;
+#endif
     int    e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
     
     //which exponent is smaller???
@@ -1399,17 +1793,37 @@ void fcmp(void)
         cpu.ou.cycle = ou_GOA;
 #endif
         shift_count = abs(e2 - e1) * (int) shift_amt;
-        bool s = m1 & SIGN72;   // mantissa negative?
+        // mantissa negative?
+#ifdef NEED_128
+        bool s = isnonzero_128 (and_128 (m1, SIGN72));
+#else
+        bool s = (m1 & SIGN72) != (word72)0;
+#endif
         for(int n = 0; n < shift_count; n += 1)
           {
+#ifdef NEED_128
+            notallzeros |= m1.l & 1;
+            m1 = rshift_128 (m1, 1);
+#else
             notallzeros |= m1 & 1;
             m1 >>= 1;
+#endif
             if (s)
+#ifdef NEED_128
+              m1 = or_128 (m1, SIGN72);
+#else
               m1 |= SIGN72;
+#endif
           }
+#ifdef NEED_128
+        if (iseq_128 (m1, MASK72) && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+            m1 = construct_128 (0, 0);
+        m1 = and_128 (m1, MASK72);
+#else // NEED_128
         if (m1 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
             m1 = 0;
         m1 &= MASK72;
+#endif // NEED_128
       }
     else
       {
@@ -1418,23 +1832,49 @@ void fcmp(void)
         cpu.ou.cycle = ou_GOA;
 #endif
         shift_count = abs(e1 - e2) * (int) shift_amt;
-        bool s = m2 & SIGN72;   ///< mantissa negative?
+        // mantissa negative?
+#ifdef NEED_128
+        bool s = isnonzero_128 (and_128 (m2, SIGN72));
+#else
+        bool s = (m2 & SIGN72) != (word72)0;
+#endif
         for(int n = 0 ; n < shift_count ; n += 1)
           {
+#ifdef NEED_128
+            notallzeros |= m2.l & 1;
+            m2 = rshift_128 (m2, 1);
+#else
             notallzeros |= m2 & 1;
             m2 >>= 1;
+#endif
             if (s)
+#ifdef NEED_128
+              m2 = or_128 (m2, SIGN72);
+#else
               m2 |= SIGN72;
+#endif
           }
+#ifdef NEED_128
+        if (iseq_128 (m2, MASK72) && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+          m2 = construct_128 (0, 0);
+        m2 = and_128 (m2, MASK72);
+        //e3 = e1;
+#else
         if (m2 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
           m2 = 0;
         m2 &= MASK72;
         //e3 = e1;
+#endif
       }
     
     // need to do algebraic comparisons of mantissae
+#ifdef NEED_128
+    SC_I_ZERO (iseq_128 (m1, m2));
+    SC_I_NEG (islt_s128 (SIGNEXT72_128(m1), SIGNEXT72_128(m2)));
+#else
     SC_I_ZERO (m1 == m2);
     SC_I_NEG ((int128)SIGNEXT72_128(m1) < (int128)SIGNEXT72_128(m2));
+#endif
   }
 
 /*!
@@ -1468,15 +1908,21 @@ void fcmg ()
     uint shift_amt = isHex() ? 4 : 1;
 #if 1
     // C(AQ)0,27
+#ifdef NEED_128
+    word72 m1= lshift_128 (construct_128 (0, cpu.rA & 0777777777400), 36);
+#else
     word72 m1 = ((word72)cpu.rA & 0777777777400LL) << 36;
+#endif
     int    e1 = SIGNEXT8_int (cpu.rE & MASK8);
-
 
      // C(Y)0,7
     // 28-bit mantissa (incl sign)
+#ifdef NEED_128
+    word72 m2 = lshift_128 (construct_128 (0, getbits36_28 (cpu.CY, 8)), 44);
+#else
     word72 m2 = ((word72) getbits36_28 (cpu.CY, 8)) << 44;
+#endif
     int    e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
-
 
     //int e3 = -1;
 
@@ -1498,18 +1944,37 @@ void fcmg ()
         cpu.ou.cycle = ou_GOA;
 #endif
         shift_count = abs(e2 - e1) * (int) shift_amt;
-        bool s = m1 & SIGN72;   // mantissa negative?
+#ifdef NEED_128
+        bool s = isnonzero_128 (and_128 (m1, SIGN72));
+#else
+        bool s = (m1 & SIGN72) != (word72)0;    ///< save sign bit
+#endif
         for(int n = 0 ; n < shift_count ; n += 1)
           {
+#ifdef NEED_128
+            notallzeros |= m1.l & 1;
+            m1 = rshift_128 (m1, 1);
+#else
             notallzeros |= m1 & 1;
             m1 >>= 1;
+#endif
             if (s)
+#ifdef NEED_128
+              m1 = or_128 (m1, SIGN72);
+#else
               m1 |= SIGN72;
+#endif
           }
 
+#ifdef NEED_128
+        if (iseq_128 (m1, MASK72) && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+            m1 = construct_128 (0, 0);
+        m1 = and_128 (m1, MASK72);
+#else
         if (m1 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
             m1 = 0;
         m1 &= MASK72;
+#endif
         //e3 = e2;
       }
     else
@@ -1519,21 +1984,58 @@ void fcmg ()
         cpu.ou.cycle = ou_GOA;
 #endif
         shift_count = abs(e1 - e2) * (int) shift_amt;
-        bool s = m2 & SIGN72;   // mantissa negative?
+#ifdef NEED_128
+        bool s = isnonzero_128 (and_128 (m2, SIGN72));
+#else
+        bool s = (m2 & SIGN72) != (word72)0;    ///< save sign bit
+#endif
         for(int n = 0 ; n < shift_count ; n += 1)
           {
+#ifdef NEED_128
+            notallzeros |= m2.l & 1;
+            m2 = rshift_128 (m2, 1);
+#else
             notallzeros |= m2 & 1;
             m2 >>= 1;
+#endif
             if (s)
+#ifdef NEED_128
+              m2 = or_128 (m2, SIGN72);
+#else
               m2 |= SIGN72;
+#endif
           }
+#ifdef NEED_128
+        if (iseq_128 (m2, MASK72) && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+            m2 = construct_128 (0, 0);
+        m2 = and_128 (m2, MASK72);
+#else
         if (m2 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
-          m2 = 0;
+            m2 = 0;
         m2 &= MASK72;
+#endif
         //e3 = e1;
     }
     
+#ifndef NEED_128
+IF1 sim_printf ("FCMG m1 %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+IF1 sim_printf ("FCMG m2 %012"PRIo64" %012"PRIo64"\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+#endif
+
+#ifdef NEED_128
+    SC_I_ZERO (iseq_128 (m1, m2));
+#else
     SC_I_ZERO (m1 == m2);
+#endif
+#ifdef NEED_128
+    int128 sm1 = SIGNEXT72_128 (m1);
+    if (islt_s128 (sm1, construct_s128 (0, 0)))
+      sm1 = negate_s128 (sm1);
+    int128 sm2 = SIGNEXT72_128 (m2);
+    if (islt_s128 (sm2, construct_s128 (0, 0)))
+      sm2 = negate_s128 (sm2);
+    SC_I_NEG (islt_s128 (sm1, sm2));
+#else
     int128 sm1 = SIGNEXT72_128 (m1);
     if (sm1 < 0)
       sm1 = - sm1;
@@ -1541,6 +2043,7 @@ void fcmg ()
     if (sm2 < 0)
       sm2 = - sm2;
     SC_I_NEG (sm1 < sm2);
+#endif
 #else
     int   e1 = SIGNEXT8_int (cpu . rE & MASK8);
     int   e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
@@ -1656,12 +2159,18 @@ void dufa (bool subtract)
 #endif
     uint shift_amt = isHex() ? 4 : 1;
 
-    word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
+    word72 m1 = convertToWord72 (cpu.rA, cpu.rQ);
     int e1 = SIGNEXT8_int (cpu . rE & MASK8); 
 
     // 64-bit mantissa (incl sign)
+#ifdef NEED_128
+    word72 m2 = lshift_128 (construct_128 (0, (uint64_t) getbits36_28 (cpu.Ypair[0], 8)), 44u); // 28-bit mantissa (incl sign)
+           //m2 = or_128 (m2, construct_128 (0, cpu.Ypair[1] << 8));
+           m2 = or_128 (m2, lshift_128 (construct_128 (0, cpu.Ypair[1]), 8u));
+#else
     word72 m2 = ((word72) getbits36_28 (cpu.Ypair[0], 8)) << 44; 
            m2 |= (word72) cpu.Ypair[1] << 8;
+#endif
     
     int e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
 
@@ -1669,6 +2178,15 @@ void dufa (bool subtract)
     int m2zero = 0;
     if (subtract) {
 
+#ifdef NEED_128
+       if (iszero_128 (m2)) 
+           m2zero = 1;
+       if (iseq_128 (m2, SIGN72)) {
+           m2 = rshift_128 (m2, shift_amt);
+           e2 += 1;
+       } else
+           m2 = and_128 (negate_128 (m2), MASK72);
+#else
        if (m2 == 0) 
            m2zero = 1;
        if (m2 == SIGN72) {
@@ -1676,6 +2194,7 @@ void dufa (bool subtract)
            e2 += 1;
        } else
            m2 = (-m2) & MASK72;
+#endif
     }
 
     int e3 = -1;
@@ -1699,17 +2218,37 @@ void dufa (bool subtract)
         cpu.ou.cycle |= ou_GOA;
 #endif
         shift_count = abs(e2 - e1) * (int) shift_amt;
-        bool s = m1 & SIGN72;   // mantissa negative?
+        // mantissa negative?
+#ifdef NEED_128
+        bool s = isnonzero_128 (and_128 (m1, SIGN72));
+#else
+        bool s = (m1 & SIGN72) != (word72)0;
+#endif
         for(int n = 0 ; n < shift_count ; n += 1)
           {
+#ifdef NEED_128
+            notallzeros |= m1.l & 1;
+            m1 = rshift_128 (m1, 1);
+#else
             notallzeros |= m1 & 1;
             m1 >>= 1;
+#endif
             if (s)
+#ifdef NEED_128
+              m1 = or_128 (m1, SIGN72);
+#else
               m1 |= SIGN72;
+#endif
           }
+#ifdef NEED_128
+        if (iseq_128 (m1, MASK72) && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+            m1 = construct_128 (0, 0);
+        m1 = and_128 (m1, MASK72);
+#else
         if (m1 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
             m1 = 0;
         m1 &= MASK72;
+#endif
         e3 = e2;
       }
     else
@@ -1719,17 +2258,37 @@ void dufa (bool subtract)
         cpu.ou.cycle |= ou_GOA;
 #endif
         shift_count = abs(e1 - e2) * (int) shift_amt;
-        bool s = m2 & SIGN72;   // mantissa negative?
+IF1 sim_printf ("DUFA e1 > e2; shift m2 %d right\n", shift_count);
+#ifdef NEED_128
+        bool s = isnonzero_128 (and_128 (m2, SIGN72));
+#else
+        bool s = (m2 & SIGN72) != (word72)0;    ///< save sign bit
+#endif
         for(int n = 0 ; n < shift_count ; n += 1)
           {
+#ifdef NEED_128
+            notallzeros |= m2.l & 1;
+            m2 = rshift_128 (m2, 1);
+#else
             notallzeros |= m2 & 1;
             m2 >>= 1;
+#endif
             if (s)
+#ifdef NEED_128
+              m2 = or_128 (m2, SIGN72);
+#else
               m2 |= SIGN72;
+#endif
           }
+#ifdef NEED_128
+        if (iseq_128 (m2, MASK72) && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+            m2 = construct_128 (0, 0);
+        m2 = and_128 (m2, MASK72);
+#else
         if (m2 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
           m2 = 0;
         m2 &= MASK72;
+#endif
         e3 = e1;
       }
     //sim_printf ("shift_count = %d\n", shift_count);
@@ -1739,12 +2298,34 @@ void dufa (bool subtract)
     word72 m3 = Add72b (m1, m2, 0, I_CARRY, & cpu.cu.IR, & ovf);
     if (m2zero)
         SET_I_CARRY;
+#ifndef NEED_128
+IF1 sim_printf ("DUFA m3 %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
+#endif
 
     if (ovf)
       {
-        word72 s = m3 & SIGN72; // save the sign bit
+#ifndef NEED_128
+IF1 sim_printf ("DUFA correcting ovf %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
+#endif
+//        word72 signbit = m3 & sign_msk;
+//        m3 >>= shift_amt;
+//        m3 = (m3 & MASK71) | signbit;
+//        m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
+//        e3 += 1;
+        // save the sign bit
+#ifdef NEED_128
+        bool s = isnonzero_128 (and_128 (m3, SIGN72));
         if (isHex ())
           {
+#ifdef NEED_128
+            m3 = rshift_128 (m3, shift_amt); // renormalize the mantissa
+            if (s)
+              // Sign is set, number should be positive; clear the sign bit and the 3 MSBs
+              m3 = and_128 (m3, MASK68);
+            else
+              // Sign is clr, number should be negative; set the sign bit and the 3 MSBs
+              m3 = or_128 (m3, HEX_SIGN);
+#else
             m3 >>= shift_amt; // renormalize the mantissa
             if (s)
               // Sign is set, number should be positive; clear the sign bit and the 3 MSBs
@@ -1752,19 +2333,35 @@ void dufa (bool subtract)
             else
               // Sign is clr, number should be negative; set the sign bit and the 3 MSBs
               m3 |=  HEX_SIGN;
+#endif
           }
         else
           {
+#ifdef NEED_128
+            word72 signbit = and_128 (m3, SIGN72);
+            m3 = rshift_128 (m3, 1); // renormalize the mantissa
+            m3 = or_128 (and_128 (m3, MASK71), signbit);
+            m3 = xor_128 (m3, SIGN72); // C(AQ)0 is inverted to restore the sign
+#else
             word72 signbit = m3 & SIGN72;
             m3 >>= 1;
             m3 = (m3 & MASK71) | signbit;
             m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
+#endif
           }
         e3 += 1;
+#else
+        word72 signbit = m3 & SIGN72;
+        m3 >>= 1;
+        m3 = (m3 & MASK71) | signbit;
+        m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
+        e3 += 1;
+IF1 sim_printf ("DUFA m3 now %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
+IF1 sim_printf ("DUFA e3 now %d\n", e3);
+#endif
       }
 
-    cpu.rA = (m3 >> 36) & MASK36;
-    cpu.rQ = m3 & MASK36;
+    convertToWord36 (m3, & cpu.rA, & cpu.rQ);
     cpu.rE = e3 & 0377;
 
     SC_I_NEG (cpu.rA & SIGN36); // Do this here instead of in Add72b because
@@ -1880,22 +2477,36 @@ void dufm (void)
 #ifdef L68
     cpu.ou.cycle |= ou_GOS;
 #endif
-    word72 m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ; 
+    word72 m1 = convertToWord72 (cpu.rA, cpu.rQ);
     int    e1 = SIGNEXT8_int (cpu . rE & MASK8);
     
+#ifndef NEED_128
     sim_debug (DBG_TRACE, & cpu_dev, "dufm e1 %d %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+#endif
      // 64-bit mantissa (incl sign)
-    word72 m2 = ((word72) getbits36_28 (cpu.Ypair[0], 8)) << 44;
-           m2 |= cpu.Ypair[1] << 8;
+#ifdef NEED_128
+    word72 m2 = lshift_128 (construct_128 (0, (uint64_t) getbits36_28 (cpu.Ypair[0], 8)), 44u); // 28-bit mantissa (incl sign)
+           //m2 = or_128 (m2, construct_128 (0, cpu.Ypair[1] << 8));
+           m2 = or_128 (m2, lshift_128 (construct_128 (0, cpu.Ypair[1]), 8u));
+#else
+    word72 m2 = ((word72) getbits36_28 (cpu.Ypair[0], 8)) << 44; 
+           m2 |= (word72) cpu.Ypair[1] << 8;
+#endif
     
     // 8-bit signed integer (incl sign)
     int    e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
 
+#ifndef NEED_128
     sim_debug (DBG_TRACE, & cpu_dev,
                "dufm e2 %d %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+#endif
 
     
+#ifdef NEED_128
+    if (iszero_128 (m1) || iszero_128 (m2))
+#else
     if (m1 == 0 || m2 == 0)
+#endif
       {
         SET_I_ZERO;
         CLR_I_NEG;
@@ -1907,6 +2518,11 @@ void dufm (void)
         return; // normalized 0
       }
     
+#ifndef NEED_128
+IF1 sim_printf ("DUFM e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+IF1 sim_printf ("DUFM e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+#endif
+
     int e3 = e1 + e2;
     
     if (e3 >  127)
@@ -1964,6 +2580,21 @@ void dufm (void)
     // fast signed multiplication algorithm without 2's complements
     // passes ISOLTS-745 08
 
+#ifdef NEED_128
+    // shift the CY mantissa
+    int128 m2s = rshift_s128 (SIGNEXT72_128(m2), 8);
+
+    // do a 128x64 signed multiplication
+    int128 m1l = and_s128 (cast_s128 (m1), construct_128 (0, MASK64));
+    int128 m1h = rshift_s128 (SIGNEXT72_128(m1), 64);
+    int128 m3h = multiply_s128 (m1h, m2s); // hi partial product
+    int128 m3l = multiply_s128 (m1l, m2s); // lo partial product
+
+    // realign to 72bits
+    m3l = rshift_s128 (m3l, 63);
+    m3h = lshift_s128 (m3h, 1); // m3h is hi by 64, align it for addition. The result is 135 bits so this cannot overflow.
+    word72 m3a = and_128 (add_128 (cast_128 (m3h), cast_128 (m3l)), MASK72);
+#else
     // shift the CY mantissa
     int128 m2s = SIGNEXT72_128(m2) >> 8;
 
@@ -1978,22 +2609,31 @@ void dufm (void)
     m3h <<= 1; // m3h is hi by 64, align it for addition. The result is 135 bits so this cannot overflow.
     word72 m3a = ((word72) (m3h+m3l)) & MASK72;
 #endif
+#endif
 
     // A normalization is performed only in the case of both factor mantissas being 100...0 
     // which is the twos complement approximation to the decimal value -1.0.
-    if ((m1 == SIGN72) && (m2 == SIGN72)) {
+#ifdef NEED_128
+    if (iseq_128 (m1, SIGN72) && iseq_128 (m2, SIGN72))
+#else
+    if ((m1 == SIGN72) && (m2 == SIGN72))
+#endif
+    {
         if (e3 == 127)
         {
           SET_I_EOFL;
           if (tstOVFfault ())
               dlyDoFault (FAULT_OFL, fst_zero, "dufm exp overflow fault");
         }
+#ifdef NEED_128
+        m3a = rshift_128 (m3a, 1);
+#else
         m3a >>= 1;
+#endif
         e3 += 1;
     }
 
-    cpu . rA = (m3a >> 36) & MASK36;
-    cpu . rQ = m3a & MASK36;
+    convertToWord36 (m3a, & cpu.rA, & cpu.rQ);
     cpu . rE = (word8) e3 & MASK8;
 
     SC_I_NEG (cpu.rA & SIGN36);
@@ -2015,6 +2655,12 @@ void dufm (void)
 // CANFAULT 
 static void dfdvX (bool bInvert)
   {
+#ifdef ISOLTS
+static int testno = 1;
+IF1 sim_printf ("DFDI testno %d\n", testno ++);
+IF1 sim_printf ("UFA E %03o A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
+#endif
+
     // C(EAQ) / C (Y) → C(EA)
     // C(Y) / C(EAQ) → C(EA) (Inverted)
     
@@ -2042,40 +2688,69 @@ static void dfdvX (bool bInvert)
 
     if (!bInvert)
       {
-        m1 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
+        m1 = convertToWord72 (cpu.rA, cpu.rQ);
         e1 = SIGNEXT8_int (cpu . rE & MASK8); 
 
         // 64-bit mantissa (incl sign)
+#ifdef NEED_128
+        m2 = lshift_128 (construct_128 (0, (uint64_t) getbits36_28 (cpu.Ypair[0], 8)), 44u); // 28-bit mantissa (incl sign)
+        //m2 = or_128 (m2, construct_128 (0, cpu.Ypair[1] << 8));
+        m2 = or_128 (m2, lshift_128 (construct_128 (0, cpu.Ypair[1]), 8u));
+#else
         m2 = ((word72) getbits36_28 (cpu.Ypair[0], 8)) << 44; 
         m2 |= (word72) cpu.Ypair[1] << 8;
+#endif
         
         e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
       }
     else
       { // invert
-        m2 = ((word72)cpu . rA << 36) | (word72)cpu . rQ;
+        m2 = convertToWord72 (cpu.rA, cpu.rQ);
         e2 = SIGNEXT8_int (cpu . rE & MASK8); 
 
         // round divisor per RJ78
         // If AQ(64-71) is not = 0 and A(0) = 0, a 1 is added to AQ(63). Zero is moved to
         // AQ(64-71), unconditionally. AQ(0-63) is then used as the divisor mantissa.
         // ISOLTS-745 10b
-        if (!(m2 & SIGN72) && m2 & 0377) {
+#ifdef NEED_128
+        if ((iszero_128 (and_128 (m2, SIGN72))) && m2.l & 0377)
+#else
+        if (!(m2 & SIGN72) && m2 & 0377)
+#endif
+        {
+#ifdef NEED_128
+            m2 = add_128 (m2, construct_128 (0, 0400));
+#else
             m2 += 0400;
+#endif
             // ISOLTS-745 10e asserts that an overflowing addition of 400 to 377777777777 7777777774xx does not shift the quotient (nor divisor)
             // I surmise that the divisor is taken as unsigned 64 bits in this case
             roundovf = 1;
         }
+#ifdef NEED_128
+        putbits72 (& m2, 64, 8, construct_128 (0, 0));
+#else
         putbits72 (& m2, 64, 8, 0);
+#endif
 
         // 64-bit mantissa (incl sign)
+#ifdef NEED_128
+        m1 = lshift_128 (construct_128 (0, (uint64_t) getbits36_28 (cpu.Ypair[0], 8)), 44u); // 28-bit mantissa (incl sign)
+        //m1 = or_128 (m1, construct_128 (0, cpu.Ypair[1] << 8));
+        m1 = or_128 (m1, lshift_128 (construct_128 (0, cpu.Ypair[1]), 8u));
+#else
         m1 = ((word72) getbits36_28 (cpu.Ypair[0], 8)) << 44; 
         m1 |= (word72) cpu.Ypair[1] << 8;
+#endif
         
         e1 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
       }
     
+#ifdef NEED_128
+    if (iszero_128 (m1))
+#else
     if (m1 == 0)
+#endif
       {
         SET_I_ZERO;
         CLR_I_NEG;
@@ -2089,6 +2764,32 @@ static void dfdvX (bool bInvert)
 
     // make everything positive, but save sign info for later....
     int sign = 1;
+#ifdef NEED_128
+    if (isnonzero_128 (and_128 (m1, SIGN72)))
+    {
+        SET_I_NEG; // in case of divide fault
+        if (iseq_128 (m1, SIGN72))
+        {
+            m1 = rshift_128 (m1, shift_amt);
+            e1 += 1;
+        } else
+            m1 = and_128 (negate_128 (m1), MASK72);
+        sign = -sign;
+    } else {
+        CLR_I_NEG; // in case of divide fault
+    }
+    
+    if ((isnonzero_128 (and_128 (m2, SIGN72))) && !roundovf)
+    {
+        if (iseq_128 (m2, SIGN72))
+        {
+            m2 = rshift_128 (m2, shift_amt);
+            e2 += 1;
+        } else
+            m2 = and_128 (negate_128 (m2), MASK72);
+        sign = -sign;
+    }
+#else
     if (m1 & SIGN72)
     {
         SET_I_NEG; // in case of divide fault
@@ -2113,9 +2814,15 @@ static void dfdvX (bool bInvert)
             m2 = (~m2 + 1) & MASK72;
         sign = -sign;
     }
-
+#endif
+    
+#ifdef NEED_128
+    if (iszero_128 (m2))
+#else
     if (m2 == 0)
+#endif
       {
+IF1 sim_printf ("DFDV m2==0\n");
         // NB: If C(Y-pair)8,71 == 0 then the alignment loop will never exit! That's why it been moved before the alignment
 
         SET_I_ZERO;
@@ -2127,23 +2834,31 @@ static void dfdvX (bool bInvert)
         // FDI: If the divisor mantissa C(AQ) is zero, the division does not take place.
         // Instead, a divide check fault occurs and all the registers remain unchanged.
         if (!bInvert) {
-            cpu . rA = (m1 >> 36) & MASK36;
-            cpu . rQ = m1 & MASK36;
+          convertToWord36 (m1, & cpu.rA, & cpu.rQ);
         }
          
+IF1 sim_printf ("rA %012"PRIo64" rQ %012"PRIo64"\n", cpu.rA, cpu.rQ);
         doFault (FAULT_DIV, fst_zero, "DFDV: divide check fault");
       }
     
 #ifdef L68
     cpu.ou.cycle |= ou_GOA;
 #endif
+#ifdef NEED_128
+    while (isge_128 (m1, m2))
+      {
+        m1 = rshift_128 (m1, shift_amt);
+        e1 += 1;
+      }
+#else
     while (m1 >= m2)
       {
         m1 >>= shift_amt;
         e1 += 1;
       }
-
+#endif
     int e3 = e1 - e2;
+IF1 sim_printf ("DFDV e3 %o\n", e3);
     if (e3 > 127)
       {
         SET_I_EOFL;
@@ -2164,19 +2879,28 @@ static void dfdvX (bool bInvert)
     // We need 63 bits quotient + sign. Divisor is at most 64 bits.
     // Do a 127 by 64 fractional divide
     // lo 8bits are always zero
+#ifdef NEED_128
+    word72 m3 = divide_128 (lshift_128 (m1, 63-8), rshift_128 (m2, 8), NULL);
+#else
     word72 m3 = ((uint128)m1 << (63-8)) / ((uint128)m2 >> 8);
-
+#endif
 #ifdef L68
     cpu.ou.cycle |= ou_GD2;
 #endif
 
+#ifdef NEED_128
+    m3 = lshift_128 (m3, 8);  // convert back to float
+    if (sign == -1)
+        m3 = and_128 (negate_128 (m3), MASK72);
+#else
     m3 <<= 8;  // convert back to float
     if (sign == -1)
         m3 = (~m3 + 1) & MASK72;
+#endif
 
+    convertToWord36 (m3, & cpu.rA, & cpu.rQ);
     cpu.rE = (word8) e3 & MASK8;
-    cpu.rA = (m3 >> 36) & MASK36;
-    cpu.rQ = m3 & MASK36;
+IF1 sim_printf ("rA %012"PRIo64" rQ %012"PRIo64" rE %o\n", cpu.rA, cpu.rQ, cpu.rE);
     
     SC_I_ZERO (cpu.rA == 0 && cpu . rQ == 0);
     SC_I_NEG (cpu.rA & SIGN36); 
@@ -2454,15 +3178,32 @@ sim_printf ("DVFa A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.r
 
     // dividend format:   . d(0) ...  d(69)
 
+#ifdef NEED_128
+    uint128 zFrac = lshift_128 (construct_128 (0, cpu.rA & MASK35), 35);
+    zFrac = or_128 (zFrac, construct_128 (0, (cpu.rQ >> 1) & MASK35));
+sim_debug (DBG_TRACE, & cpu_dev, "zfrac %016llx %016llx\n", zFrac.h, zFrac.l);
+#else
     uint128 zFrac = ((uint128) (cpu . rA & MASK35) << 35) | ((cpu . rQ >> 1) & MASK35);
+sim_debug (DBG_TRACE, & cpu_dev, "zfrac %016llx %016llx\n", (uint64) (zFrac>>64), (uint64) zFrac);
+#endif
     //zFrac <<= 1; -- Makes Multics unbootable.
 
     if (dividendNegative)
       {
+#ifdef NEED_128
+        zFrac = negate_128 (zFrac);
+#else
         zFrac = ~zFrac + 1;
+#endif
         sign = - sign;
       }
+#ifdef NEED_128
+    zFrac = and_128 (zFrac, MASK70);
+sim_debug (DBG_TRACE, & cpu_dev, "zfrac %016llx %016llx\n", zFrac.h, zFrac.l);
+#else
     zFrac &= MASK70;
+sim_debug (DBG_TRACE, & cpu_dev, "zfrac %016llx %016llx\n", (uint64) (zFrac>>64), (uint64) zFrac);
+#endif
 
     //char buf [128] = "";
     //print_int128 (zFrac, buf);
@@ -2473,13 +3214,28 @@ sim_printf ("DVFa A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.r
     // divisor format: . d(0) .... d(34) 0 0 0 .... 0 
     
     // divisor goes in the low half
-    uint128 dFrac = cpu.CY & MASK35;
+    uint128 dFrac = convertToWord72 (0, cpu.CY & MASK35);
+#ifdef NEED_128
+sim_debug (DBG_TRACE, & cpu_dev, "dfrac %016llx %016llx\n", dFrac.h, dFrac.l);
+#else
+sim_debug (DBG_TRACE, & cpu_dev, "dfrac %016llx %016llx\n", (uint64) (dFrac>>64), (uint64) dFrac);
+#endif
     if (divisorNegative)
       {
+#ifdef NEED_128
+        dFrac = negate_128 (dFrac);
+#else
         dFrac = ~dFrac + 1;
+#endif
         sign = - sign;
       }
+#ifdef NEED_128
+    dFrac = and_128 (dFrac, construct_128 (0, MASK35));
+sim_debug (DBG_TRACE, & cpu_dev, "dfrac %016llx %016llx\n", dFrac.h, dFrac.l);
+#else
     dFrac &= MASK35;
+sim_debug (DBG_TRACE, & cpu_dev, "dfrac %016llx %016llx\n", (uint64) (dFrac>>64), (uint64) dFrac);
+#endif
 
     //char buf2 [128] = "";
     //print_int128 (dFrac, buf2);
@@ -2487,7 +3243,11 @@ sim_printf ("DVFa A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.r
 
     //if (dFrac == 0 || zFrac >= dFrac)
     //if (dFrac == 0 || zFrac >= dFrac << 35)
+#ifdef NEED_128
+    if (iszero_128 (dFrac))
+#else
     if (dFrac == 0)
+#endif
       {
 // case 1: 400000000000 000000000000 000000000000 --> 400000000000 000000000000
 //         dFrac 000000000000 000000000000
@@ -2509,14 +3269,27 @@ sim_printf ("DVFa A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.r
 #ifdef L68
     cpu.ou.cycle |= ou_GD2;
 #endif
+#ifdef NEED_128
+    uint128 remainder;
+    uint128 quot = divide_128 (zFrac, dFrac, & remainder);
+sim_debug (DBG_TRACE, & cpu_dev, "remainder %016llx %016llx\n", remainder.h, remainder.l);
+sim_debug (DBG_TRACE, & cpu_dev, "quot %016llx %016llx\n", quot.h, quot.l);
+#else
     uint128 quot = zFrac / dFrac;
     uint128 remainder = zFrac % dFrac;
+#endif
+
+
 
     // I am surmising that the "If | dividend | >= | divisor |" is an
     // overflow prediction; implement it by checking that the calculated
     // quotient will fit in 35 bits.
 
+#ifdef NEED_128
+    if (isnonzero_128 (and_128 (quot, construct_128 (MASK36,  ~MASK35))))
+#else
     if (quot & ~MASK35)
+#endif
       {
 //
 // this got:
@@ -2563,13 +3336,26 @@ sim_printf ("DVFa A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.r
     //sim_debug (DBG_CAC, & cpu_dev, "remainder %s\n", buf3);
 
     if (sign == -1)
+#ifdef NEED_128
+      quot = negate_128 (quot);
+#else
       quot = ~quot + 1;
+#endif
 
     if (dividendNegative)
+#ifdef NEED_128
+      remainder = negate_128 (remainder);
+#else
       remainder = ~remainder + 1;
+#endif
 
+#ifdef NEED_128
+    cpu.rA = quot.l & MASK36;
+    cpu.rQ = remainder.l & MASK36;
+#else
     cpu . rA = quot & MASK36;
     cpu . rQ = remainder & MASK36;
+#endif
  
 #endif
 
@@ -2603,8 +3389,12 @@ void dfrd (void)
     // * If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
         
     CPTUR (cptUseE);
-    float72 m = ((word72) cpu.rA << 36) | (word72) cpu.rQ;
+    float72 m = convertToWord72 (cpu.rA, cpu.rQ);
+#ifdef NEED_128
+    if (iszero_128 (m))
+#else
     if (m == 0)
+#endif
       {
         cpu.rE = 0200U; /*-128*/
         SET_I_ZERO;
@@ -2618,14 +3408,27 @@ void dfrd (void)
     word18 flags1 = 0;
     word1 carry = 0;
     // If C(AQ)0 = 0, then a carry is added at AQ71
+#ifdef NEED_128
+    if (iszero_128 (and_128 (m, SIGN72)))
+#else
     if ((m & SIGN72) == 0)
+#endif
       {
         carry = 1;
       }
+#ifdef NEED_128
+    m = Add72b (m, construct_128 (0, 0177), carry, I_OFLOW, & flags1, & ovf);
+#else
     m = Add72b (m, 0177, carry, I_OFLOW, & flags1, & ovf);
+#endif
 
     // 0 -> C(AQ)64,71 
+#ifdef NEED_128
+    putbits72 (& m, 64, 8, construct_128 (0, 0));  // 64-71 => 0 per DH02
+#else
     putbits72 (& m, 64, 8, 0);  // 64-71 => 0 per DH02
+
+#endif
 
     // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is
     // increased by 1.
@@ -2634,8 +3437,7 @@ void dfrd (void)
 
     bool savedovf = TST_I_OFLOW;
     SC_I_OFLOW(ovf);
-    cpu.rA = (m >> 36) & MASK36;
-    cpu.rQ = m & MASK36;
+    convertToWord36 (m, & cpu.rA, & cpu.rQ);
 
     fno (& cpu.rE, & cpu.rA, & cpu.rQ);
     SC_I_OFLOW(savedovf);
@@ -2668,8 +3470,12 @@ void dfstr (word36 *Ypair)
     //A &= DMASK;
     //Q &= DMASK;
 
-    float72 m = ((word72)A << 36) | (word72)cpu . rQ;
+    float72 m = convertToWord72 (A, Q);
+#ifdef NEED_128
+    if (iszero_128 (m))
+#else
     if (m == 0)
+#endif
     {
         E = (word8)-128;
         SET_I_ZERO;
@@ -2687,13 +3493,27 @@ void dfstr (word36 *Ypair)
     word18 flags1 = 0;
     word1 carry = 0;
     // If C(AQ)0 = 0, then a carry is added at AQ71
+#ifdef NEED_128
+    if (iszero_128 (and_128 (m, SIGN72)))
+#else
     if ((m & SIGN72) == 0)
+#endif
       {
         carry = 1;
       }
+#ifdef NEED_128
+    m = Add72b (m, construct_128 (0, 0177), carry, I_OFLOW, & flags1, & ovf);
+#else
     m = Add72b (m, 0177, carry, I_OFLOW, & flags1, & ovf);
+#endif
+
     // 0 -> C(AQ)65,71  (per. RJ78)
+#ifdef NEED_128
+    putbits72 (& m, 64, 8, construct_128 (0, 0));  // 64-71 => 0 per DH02
+#else
     putbits72 (& m, 64, 8, 0);  // 64-71 => 0 per DH02
+
+#endif
 
     // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is
     // increased by 1.
@@ -2702,8 +3522,7 @@ void dfstr (word36 *Ypair)
 
     bool savedovf = TST_I_OFLOW;
     SC_I_OFLOW(ovf);
-    A = (m >> 36) & MASK36;
-    Q = m & MASK36;
+    convertToWord36 (m, & A, & Q);
 
     fno (& E, & A, & Q);
     SC_I_OFLOW(savedovf);
@@ -2777,12 +3596,18 @@ void dfcmp (void)
     // C(AQ)0,63
     CPTUR (cptUseE);
     uint shift_amt = isHex() ? 4 : 1;
-    word72 m1 = ((word72) (cpu . rA & MASK36) << 36) | ((cpu . rQ) & 0777777777400LL);
+    word72 m1 = convertToWord72 (cpu.rA, cpu.rQ & 0777777777400LL);
     int   e1 = SIGNEXT8_int (cpu . rE & MASK8);
 
     // C(Y-pair)8,71
+#ifdef NEED_128
+    word72 m2 = lshift_128 (construct_128 (0, getbits36_28 (cpu.Ypair[0], 8)), (36 + 8));
+    //m2 = or_128 (m2, construct_128 (0, cpu.Ypair[1] << 8));
+    m2 = or_128 (m2, lshift_128 (construct_128 (0, cpu.Ypair[1]), 8u));
+#else
     word72 m2 = (word72) getbits36_28 (cpu.Ypair[0], 8) << (36 + 8);  
     m2 |= cpu.Ypair[1] << 8;
+#endif
     int   e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
     
     //int e3 = -1;
@@ -2792,6 +3617,54 @@ void dfcmp (void)
     int shift_count = -1;
     word1 notallzeros = 0;
     
+#ifdef NEED_128
+    if (e1 == e2)
+    {
+        shift_count = 0;
+        //e3 = e1;
+    }
+    else if (e1 < e2)
+    {
+        shift_count = abs(e2 - e1) * (int) shift_amt;
+        bool s = isnonzero_128 (and_128 (m1, SIGN72));   ///< mantissa negative?
+        for(int n = 0 ; n < shift_count ; n += 1)
+        {
+            notallzeros |= m1.l & 1;
+            m1 = rshift_128 (m1, 1);
+            if (s)
+                m1 = or_128 (m1, SIGN72);
+        }
+        
+        if (iseq_128 (m1, MASK72) && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+            m1 = construct_128 (0, 0);
+        m1 = and_128 (m1, MASK72);
+        //e3 = e2;
+    }
+    else
+    {
+        // e2 < e1;
+        shift_count = abs(e1 - e2) * (int) shift_amt;
+        bool s = isnonzero_128 (and_128 (m2, SIGN72));   ///< mantissa negative?
+        for(int n = 0 ; n < shift_count ; n += 1)
+        {
+            notallzeros |= m2.l & 1;
+            m2 = rshift_128 (m2, 1);
+            if (s)
+                m2 = or_128 (m2, SIGN72);
+        }
+        if (iseq_128 (m2, MASK72) && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+          m2 = construct_128 (0, 0);
+        m2 = and_128 (m2, MASK72);
+        //e3 = e1;
+    }
+    
+//IF1 sim_printf ("DFCMP shifted e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
+//IF1 sim_printf ("DFCMP shifted e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
+    SC_I_ZERO (iseq_128 (m1, m2));
+    int128 sm1 = SIGNEXT72_128 (m1);
+    int128 sm2 = SIGNEXT72_128 (m2);
+    SC_I_NEG (islt_s128 (sm1, sm2));
+#else // NEED_128
     if (e1 == e2)
     {
         shift_count = 0;
@@ -2836,6 +3709,7 @@ void dfcmp (void)
     int128 sm1 = SIGNEXT72_128 (m1);
     int128 sm2 = SIGNEXT72_128 (m2);
     SC_I_NEG (sm1 < sm2);
+#endif // NEED_128
 #endif
 }
 
@@ -2862,13 +3736,19 @@ void dfcmg (void)
     CPTUR (cptUseE);
     uint shift_amt = isHex() ? 4 : 1;
     // C(AQ)0,63
-    word72 m1 = ((word72) (cpu.rA & MASK36) << 36) |
-                ((cpu.rQ) & 0777777777400LL);
+    word72 m1 = convertToWord72 (cpu.rA & MASK36, cpu.rQ & 0777777777400LL);
     int    e1 = SIGNEXT8_int (cpu.rE & MASK8);
 
     // C(Y-pair)8,71
+#ifdef NEED_128
+    //word72 m2 = construct_128 ((uint64_t) getbits36_28 (cpu.Ypair[0], 8) << 8, 0); // 28-bit mantissa (incl sign)
+    word72 m2 = lshift_128 (construct_128 (0, getbits36_28 (cpu.Ypair[0], 8)), (36 + 8));
+    //m2 = or_128 (m2, construct_128 (0, cpu.Ypair[1] << 8));
+    m2 = or_128 (m2, lshift_128 (construct_128 (0, cpu.Ypair[1]), 8u));
+#else
     word72 m2 = (word72) getbits36_28 (cpu.Ypair[0], 8) << (36 + 8);  
     m2 |= cpu.Ypair[1] << 8;
+#endif
     int    e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
     
     //int e3 = -1;
@@ -2891,6 +3771,20 @@ void dfcmg (void)
         cpu.ou.cycle = ou_GOA;
 #endif
         shift_count = abs(e2 - e1) * (int) shift_amt;
+#ifdef NEED_128
+        bool s = isnonzero_128 (and_128 (m1, SIGN72));   ///< mantissa negative?
+        for( int n = 0; n < shift_count; n += 1)
+          {
+            notallzeros |= m1.l & 1;
+            m1 = rshift_128 (m1, 1);
+            if (s)
+              m1 = or_128 (m1, SIGN72);
+          }
+        if (iseq_128 (m1, MASK72) && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+            m1 = construct_128 (0, 0);
+        m1 = and_128 (m1, MASK72);
+        //e3 = e2;
+#else
         bool s = m1 & SIGN72;   ///< mantissa negative?
         for( int n = 0; n < shift_count; n += 1)
           {
@@ -2903,11 +3797,26 @@ void dfcmg (void)
             m1 = 0;
         m1 &= MASK72;
         //e3 = e2;
+#endif
       }
     else
       {
         // e2 < e1;
         shift_count = abs(e1 - e2) * (int) shift_amt;
+#ifdef NEED_128
+        bool s = isnonzero_128 (and_128 (m2, SIGN72));   ///< mantissa negative?
+        for(int n = 0; n < shift_count; n += 1)
+          {
+            notallzeros |= m2.l & 1;
+            m2 = rshift_128 (m2, 1);
+            if (s)
+              m2 = or_128 (m2, SIGN72);
+          }
+        if (iseq_128 (m2, MASK72) && notallzeros == 1 && shift_count * (int) shift_amt > 71)
+          m2 = construct_128 (0, 0);
+        m2 = and_128 (m2, MASK72);
+        //e3 = e1;
+#else
         bool s = m2 & SIGN72;   ///< mantissa negative?
         for(int n = 0; n < shift_count; n += 1)
           {
@@ -2920,8 +3829,20 @@ void dfcmg (void)
           m2 = 0;
         m2 &= MASK72;
         //e3 = e1;
+#endif
       }
     
+#ifdef NEED_128
+    SC_I_ZERO (iseq_128 (m1, m2));
+    int128 sm1 = SIGNEXT72_128 (m1);
+    if (sm1.h < 0)
+      sm1 = negate_s128 (sm1);
+    int128 sm2 = SIGNEXT72_128 (m2);
+    if (sm2.h < 0)
+      sm2 = negate_s128 (sm2);
+
+    SC_I_NEG (islt_s128 (sm1, sm2));
+#else
     SC_I_ZERO (m1 == m2);
     int128 sm1 = SIGNEXT72_128 (m1);
     if (sm1 < 0)
@@ -2931,4 +3852,5 @@ void dfcmg (void)
       sm2 = - sm2;
 
     SC_I_NEG (sm1 < sm2);
+#endif
   }

@@ -33,12 +33,12 @@
 #include "dps8.h"
 #include "dps8_console.h"
 #include "dps8_sys.h"
+#include "dps8_scu.h"
 #include "dps8_cpu.h"
 #include "dps8_faults.h"
 #include "dps8_ins.h"
 #include "dps8_iom.h"
 #include "dps8_math.h"
-#include "dps8_scu.h"
 #include "dps8_mt.h"
 #include "dps8_disk.h"
 #include "dps8_utils.h"
@@ -110,7 +110,9 @@ static t_stat scraper (int32 arg, const char * buf);
 static CTAB dps8_cmds[] =
 {
     {"CABLE",    sys_cable,       0, "cable String a cable\n" , NULL, NULL},
+    {"UNCABLE",  sys_cable,       1, "uncable Unstring a cable\n" , NULL, NULL},
     {"CABLE_RIPOUT",    sys_cable_ripout,       0, "cable Unstring all cables\n" , NULL, NULL},
+    {"CABLE_SHOW",    sys_cable_show,       0, "cable Show cables\n" , NULL, NULL},
     {"DBGMMECNTDWN", dps_debug_mme_cntdwn, 0, "dbgmmecntdwn Enable debug after n MMEs\n", NULL, NULL},
     {"DBGSKIP", dps_debug_skip, 0, "dbgskip Skip first n TRACE debugs\n", NULL, NULL},
     {"DBGSTART", dps_debug_start, 0, "dbgstart Limit debugging to N > Cycle count\n", NULL, NULL},
@@ -120,6 +122,7 @@ static CTAB dps8_cmds[] =
     {"DBGRINGNO", dps_debug_ringno, 0, "dbgsegno Limit debugging to PRR == ringno\n", NULL, NULL},
     {"DBGBAR", dps_debug_bar, 1, "dbgbar Limit debugging to BAR mode\n", NULL, NULL},
     {"NODBGBAR", dps_debug_bar, 0, "dbgbar Limit debugging to BAR mode\n", NULL, NULL},
+    {"BT2", boot2, 0, "boot2: boot 2nd cpu\n", NULL, NULL},
     {"TEST", brkbrk, 0, "test: internal testing\n", NULL, NULL},
 // copied from scp.c
 #define SSH_ST          0                               /* set */
@@ -131,7 +134,14 @@ static CTAB dps8_cmds[] =
     {"WATCH", memWatch, 1, "watch: watch memory location\n", NULL, NULL},
     {"NOWATCH", memWatch, 0, "watch: watch memory location\n", NULL, NULL},
     {"AUTOINPUT", opconAutoinput, 0, "set console auto-input\n", NULL, NULL},
-    {"CLRAUTOINPUT", opconAutoinput, 1, "clear console auto-input\n", NULL, NULL},
+    {"AI", opconAutoinput, 0, "set console auto-input\n", NULL, NULL},
+    {"AUTOINPUT2", opconAutoinput, 1, "set console auto-input\n", NULL, NULL},
+    {"AI2", opconAutoinput, 1, "set console auto-input\n", NULL, NULL},
+    {"CLRAUTOINPUT", opconClearAutoinput, 0, "clear console auto-input\n", NULL, NULL},
+    {"CLRAUTOINPUT2", opconClearAutoinput, 1, "clear console auto-input\n", NULL, NULL},
+#ifdef LAUNCH
+    {"LAUNCH", launch, 0, "start subprocess\n", NULL, NULL},
+#endif
     
     {"SEARCHMEMORY", searchMemory, 0, "searchMemory: search memory for value\n", NULL, NULL},
 
@@ -153,6 +163,8 @@ static CTAB dps8_cmds[] =
     {"MOUNT", mountTape, 0, "Mount tape image and signal Mulitcs", NULL, NULL },
     {"CONSOLEPORT", consolePort, 0, "consolePort: set the Operator Console port number", NULL, NULL},
     {"CONSOLEPW", consolePW, 0, "consolePW: set the Operator Console port password", NULL, NULL},
+    {"CONSOLEPORT1", consolePort, 1, "consolePort: set the Operator Console port number", NULL, NULL},
+    {"CONSOLEPW1", consolePW, 1, "consolePW: set the Operator Console port password", NULL, NULL},
     { NULL, NULL, 0, NULL, NULL, NULL}
 };
 
@@ -580,9 +592,9 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set crdrdr nunits=1");
     doIniLine ("set crdpun nunits=1");
     doIniLine ("set prt nunits=17");
-#ifndef __MINGW64__
-    doIniLine ("set absi nunits=1");
+    //doIniLine ("set absi nunits=1");
 
+#ifndef __MINGW64__
     // ;Create card reader queue directory
     doIniLine ("! if [ ! -e /tmp/rdra ]; then mkdir /tmp/rdra; fi");
 #else
@@ -595,7 +607,7 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
 
 
 
-
+// CPU0
 
     doIniLine ("set cpu0 config=faultbase=Multics");
 
@@ -653,11 +665,12 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ; 0 = 8/70
     doIniLine ("set cpu0 config=speed=0");
 
-    doIniLine ("set cpu0 config=ptwam=enable");
-    doIniLine ("set cpu0 config=sdwam=enable");
+    doIniLine ("set cpu0 config=steady_clock=disable");
+    doIniLine ("set cpu0 config=disable_wam=disable");
     doIniLine ("set cpu0 config=tro_enable=enable");
 
 
+// CPU1
 
     doIniLine ("set cpu1 config=faultbase=Multics");
     doIniLine ("set cpu1 config=num=1");
@@ -695,11 +708,12 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set cpu1 config=speed=0");
 
     doIniLine ("set cpu1 config=steady_clock=disable");
-    doIniLine ("set cpu1 config=ptwam=enable");
-    doIniLine ("set cpu1 config=sdwam=enable");
+    doIniLine ("set cpu1 config=disable_wam=disable");
+    doIniLine ("set cpu1 config=disable_wam=disable");
     doIniLine ("set cpu1 config=tro_enable=enable");
 
 
+// CPU2
 
     doIniLine ("set cpu2 config=faultbase=Multics");
     doIniLine ("set cpu2 config=num=2");
@@ -736,11 +750,12 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set cpu2 config=mode=Multics");
     doIniLine ("set cpu2 config=speed=0");
 
-    doIniLine ("set cpu2 config=ptwam=enable");
-    doIniLine ("set cpu2 config=sdwam=enable");
+    doIniLine ("set cpu2 config=steady_clock=disable");
+    doIniLine ("set cpu2 config=disable_wam=disable");
     doIniLine ("set cpu2 config=tro_enable=enable");
 
 
+// CPU3
 
     doIniLine ("set cpu3 config=faultbase=Multics");
     doIniLine ("set cpu3 config=num=3");
@@ -777,11 +792,12 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set cpu3 config=mode=Multics");
     doIniLine ("set cpu3 config=speed=0");
 
-    doIniLine ("set cpu3 config=ptwam=enable");
-    doIniLine ("set cpu3 config=sdwam=enable");
+    doIniLine ("set cpu3 config=steady_clock=disable");
+    doIniLine ("set cpu3 config=disable_wam=disable");
     doIniLine ("set cpu3 config=tro_enable=enable");
 
 
+// CPU4
 
     doIniLine ("set cpu4 config=faultbase=Multics");
     doIniLine ("set cpu4 config=num=4");
@@ -818,11 +834,12 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set cpu4 config=mode=Multics");
     doIniLine ("set cpu4 config=speed=0");
 
-    doIniLine ("set cpu4 config=ptwam=enable");
-    doIniLine ("set cpu4 config=sdwam=enable");
+    doIniLine ("set cpu4 config=steady_clock=disable");
+    doIniLine ("set cpu4 config=disable_wam=disable");
     doIniLine ("set cpu4 config=tro_enable=enable");
 
 
+// CPU5
 
     doIniLine ("set cpu5 config=faultbase=Multics");
     doIniLine ("set cpu5 config=num=5");
@@ -859,11 +876,12 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set cpu5 config=mode=Multics");
     doIniLine ("set cpu5 config=speed=0");
 
-    doIniLine ("set cpu5 config=ptwam=enable");
-    doIniLine ("set cpu5 config=sdwam=enable");
+    doIniLine ("set cpu5 config=steady_clock=disable");
+    doIniLine ("set cpu5 config=disable_wam=disable");
     doIniLine ("set cpu5 config=tro_enable=enable");
 
 
+// CPU6
 
     doIniLine ("set cpu6 config=faultbase=Multics");
     doIniLine ("set cpu6 config=num=6");
@@ -900,11 +918,12 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set cpu6 config=mode=Multics");
     doIniLine ("set cpu6 config=speed=0");
 
-    doIniLine ("set cpu6 config=ptwam=enable");
-    doIniLine ("set cpu6 config=sdwam=enable");
+    doIniLine ("set cpu6 config=steady_clock=disable");
+    doIniLine ("set cpu6 config=disable_wam=disable");
     doIniLine ("set cpu6 config=tro_enable=enable");
 
 
+// CPU7
 
     doIniLine ("set cpu7 config=faultbase=Multics");
     doIniLine ("set cpu7 config=num=7");
@@ -941,12 +960,13 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set cpu7 config=mode=Multics");
     doIniLine ("set cpu7 config=speed=0");
 
-    doIniLine ("set cpu7 config=ptwam=enable");
-    doIniLine ("set cpu7 config=sdwam=enable");
+    doIniLine ("set cpu7 config=disable_wam=disable");
+    doIniLine ("set cpu7 config=tro_enable=enable");
     doIniLine ("set cpu7 config=tro_enable=enable");
 
 
 
+// IOM0
 
     doIniLine ("set iom0 config=iom_base=Multics");
     doIniLine ("set iom0 config=multiplex_base=0120");
@@ -1000,6 +1020,9 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set iom0 config=port=7");
     doIniLine ("set iom0   config=enable=0");
 
+
+// IOM1
+
     doIniLine ("set iom1 config=iom_base=Multics2");
     doIniLine ("set iom1 config=multiplex_base=0121");
     doIniLine ("set iom1 config=os=Multics");
@@ -1041,6 +1064,9 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ;show iom1 config
     // ;echo
 
+
+// SCU0
+
     doIniLine ("set scu0 config=mode=program");
     doIniLine ("set scu0 config=port0=enable");
     doIniLine ("set scu0 config=port1=enable");
@@ -1058,6 +1084,9 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set scu0 config=onl=014");
     doIniLine ("set scu0 config=int=0");
     doIniLine ("set scu0 config=lwr=0");
+
+
+// SCU1
 
     doIniLine ("set scu1 config=mode=program");
     doIniLine ("set scu1 config=port0=enable");
@@ -1077,6 +1106,9 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set scu1 config=int=0");
     doIniLine ("set scu1 config=lwr=0");
 
+
+// SCU2
+
     doIniLine ("set scu2 config=mode=program");
     doIniLine ("set scu2 config=port0=enable");
     doIniLine ("set scu2 config=port1=enable");
@@ -1094,6 +1126,9 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set scu2 config=onl=014");
     doIniLine ("set scu2 config=int=0");
     doIniLine ("set scu2 config=lwr=0");
+
+
+// SCU3
 
     doIniLine ("set scu3 config=mode=program");
     doIniLine ("set scu3 config=port0=enable");
@@ -1156,128 +1191,138 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ;cable ripout
 
     // ; Attach tape MPC to IOM 0, chan 012, dev_code 0
-    doIniLine ("cable tape,0,0,012,0");
+    doIniLine ("cable tape,a,0,012,0");
     doIniLine ("set tape0 device_name=mpca");
     // ; Attach TAPE unit 0 to IOM 0, chan 012, dev_code 1
-    doIniLine ("cable tape,1,0,012,1");
+    doIniLine ("cable tape,1,a,012,1");
     doIniLine ("set tape1 device_name=tapa_01");
-    doIniLine ("cable tape,2,0,012,2");
+    doIniLine ("cable tape,2,a,012,2");
     doIniLine ("set tape2 device_name=tapa_02");
-    doIniLine ("cable tape,3,0,012,3");
+    doIniLine ("cable tape,3,a,012,3");
     doIniLine ("set tape3 device_name=tapa_03");
-    doIniLine ("cable tape,4,0,012,4");
+    doIniLine ("cable tape,4,a,012,4");
     doIniLine ("set tape4 device_name=tapa_04");
-    doIniLine ("cable tape,5,0,012,5");
+    doIniLine ("cable tape,5,a,012,5");
     doIniLine ("set tape5 device_name=tapa_05");
-    doIniLine ("cable tape,6,0,012,6");
+    doIniLine ("cable tape,6,a,012,6");
     doIniLine ("set tape6 device_name=tapa_06");
-    doIniLine ("cable tape,7,0,012,7");
+    doIniLine ("cable tape,7,a,012,7");
     doIniLine ("set tape7 device_name=tapa_07");
-    doIniLine ("cable tape,8,0,012,8");
+    doIniLine ("cable tape,8,a,012,8");
     doIniLine ("set tape8 device_name=tapa_08");
-    doIniLine ("cable tape,9,0,012,9");
+    doIniLine ("cable tape,9,a,012,9");
     doIniLine ("set tape9 device_name=tapa_09");
-    doIniLine ("cable tape,10,0,012,10");
+    doIniLine ("cable tape,10,a,012,10");
     doIniLine ("set tape10 device_name=tapa_10");
-    doIniLine ("cable tape,11,0,012,11");
+    doIniLine ("cable tape,11,a,012,11");
     doIniLine ("set tape11 device_name=tapa_11");
-    doIniLine ("cable tape,12,0,012,12");
+    doIniLine ("cable tape,12,a,012,12");
     doIniLine ("set tape12 device_name=tapa_12");
-    doIniLine ("cable tape,13,0,012,13");
+    doIniLine ("cable tape,13,a,012,13");
     doIniLine ("set tape13 device_name=tapa_13");
-    doIniLine ("cable tape,14,0,012,14");
+    doIniLine ("cable tape,14,a,012,14");
     doIniLine ("set tape14 device_name=tapa_14");
-    doIniLine ("cable tape,15,0,012,15");
+    doIniLine ("cable tape,15,a,012,15");
     doIniLine ("set tape15 device_name=tapa_15");
-    doIniLine ("cable tape,16,0,012,16");
+    doIniLine ("cable tape,16,a,012,16");
     doIniLine ("set tape16 device_name=tapa_16");
 
+
+// DISK0 - DISK15
+
     // ; Attach DISK unit 0 to IOM 0, chan 013, dev_code 0");
-    doIniLine ("cable disk,0,0,013,0");
+    doIniLine ("cable disk,0,a,013,0");
     // ; Attach DISK unit 1 to IOM 0, chan 013, dev_code 1");
-    doIniLine ("cable disk,1,0,013,1");
+    doIniLine ("cable disk,1,a,013,1");
     // ; Attach DISK unit 2 to IOM 0, chan 013, dev_code 2");
-    doIniLine ("cable disk,2,0,013,2");
+    doIniLine ("cable disk,2,a,013,2");
     // ; Attach DISK unit 3 to IOM 0, chan 013, dev_code 3");
-    doIniLine ("cable disk,3,0,013,3");
+    doIniLine ("cable disk,3,a,013,3");
     // ; Attach DISK unit 4 to IOM 0, chan 013, dev_code 4");
-    doIniLine ("cable disk,4,0,013,4");
+    doIniLine ("cable disk,4,a,013,4");
     // ; Attach DISK unit 5 to IOM 0, chan 013, dev_code 5");
-    doIniLine ("cable disk,5,0,013,5");
+    doIniLine ("cable disk,5,a,013,5");
     // ; Attach DISK unit 6 to IOM 0, chan 013, dev_code 6");
-    doIniLine ("cable disk,6,0,013,6");
+    doIniLine ("cable disk,6,a,013,6");
     // ; Attach DISK unit 7 to IOM 0, chan 013, dev_code 7");
-    doIniLine ("cable disk,7,0,013,7");
+    doIniLine ("cable disk,7,a,013,7");
     // ; Attach DISK unit 8 to IOM 0, chan 013, dev_code 8");
-    doIniLine ("cable disk,8,0,013,8");
+    doIniLine ("cable disk,8,a,013,8");
     // ; Attach DISK unit 9 to IOM 0, chan 013, dev_code 9");
-    doIniLine ("cable disk,9,0,013,9");
+    doIniLine ("cable disk,9,a,013,9");
     // ; Attach DISK unit 10 to IOM 0, chan 013, dev_code 10");
-    doIniLine ("cable disk,10,0,013,10");
+    doIniLine ("cable disk,10,a,013,10");
     // ; Attach DISK unit 11 to IOM 0, chan 013, dev_code 11");
-    doIniLine ("cable disk,11,0,013,11");
+    doIniLine ("cable disk,11,a,013,11");
     // ; Attach DISK unit 12 to IOM 0, chan 013, dev_code 12");
-    doIniLine ("cable disk,12,0,013,12");
+    doIniLine ("cable disk,12,a,013,12");
     // ; Attach DISK unit 13 to IOM 0, chan 013, dev_code 13");
-    doIniLine ("cable disk,13,0,013,13");
+    doIniLine ("cable disk,13,a,013,13");
     // ; Attach DISK unit 14 to IOM 0, chan 013, dev_code 14");
-    doIniLine ("cable disk,14,0,013,14");
+    doIniLine ("cable disk,14,a,013,14");
     // ; Attach DISK unit 15 to IOM 0, chan 013, dev_code 15");
-    doIniLine ("cable disk,15,0,013,15");
+    doIniLine ("cable disk,15,a,013,15");
+
+
+// OPCON0
 
     // ; Attach OPCON unit 0 to IOM A, chan 036, dev_code 0
-    doIniLine ("cable opcon,0,0,036,0");
+    doIniLine ("cable opcon,0,a,036,0");
 
-    // ;;;
-    // ;;; FNP
-    // ;;;
+
+// FNP0 - FNP7
 
     // ; Attach FNP unit 3 (d) to IOM A, chan 020, dev_code 0
-    doIniLine ("cable fnp,3,0,020,0");
+    doIniLine ("cable fnp,3,a,020,0");
 
     // ; Attach FNP unit 0 (a) to IOM A, chan 021, dev_code 0
-    doIniLine ("cable fnp,0,0,021,0");
+    doIniLine ("cable fnp,0,a,021,0");
 
     // ; Attach FNP unit 1 (b) to IOM A, chan 022, dev_code 0
-    doIniLine ("cable fnp,1,0,022,0");
+    doIniLine ("cable fnp,1,a,022,0");
 
     // ; Attach FNP unit 2 (c) to IOM A, chan 023, dev_code 0
-    doIniLine ("cable fnp,2,0,023,0");
+    doIniLine ("cable fnp,2,a,023,0");
 
     // ; Attach FNP unit 4 (e) to IOM A, chan 024, dev_code 0
-    doIniLine ("cable fnp,4,0,024,0");
+    doIniLine ("cable fnp,4,a,024,0");
 
     // ; Attach FNP unit 5 (f) to IOM A, chan 025, dev_code 0
-    doIniLine ("cable fnp,5,0,025,0");
+    doIniLine ("cable fnp,5,a,025,0");
 
     // ; Attach FNP unit 6 (g) to IOM A, chan 026, dev_code 0
-    doIniLine ("cable fnp,6,0,026,0");
+    doIniLine ("cable fnp,6,a,026,0");
 
     // ; Attach FNP unit 7 (h) to IOM A, chan 027, dev_code 0
-    doIniLine ("cable fnp,7,0,027,0");
+    doIniLine ("cable fnp,7,a,027,0");
 
-    // ;;;
-    // ;;; MPC
-    // ;;;
+
+// URP0 RDR0
 
     // ; Attach MPC unit 0 to IOM 0, char 015, dev_code 0
-    doIniLine ("cable urp,0,0,015, 0");
+    doIniLine ("cable urp,0,a,015, 0");
     doIniLine ("set urp0 device_name=urpa");
 
     // ; Attach CRDRDR unit 0 to IOM 0, chan 015, dev_code 1
-    doIniLine ("cable crdrdr,0,0,015,1");
+    doIniLine ("cable crdrdr,0,a,015,1");
     doIniLine ("set crdrdr0 device_name=rdra");
 
+
+// URP1 PUN0
+
     // ; Attach MPC unit 1 to IOM 0, char 016, dev_code 0
-    doIniLine ("cable urp,1,0,016, 0");
+    doIniLine ("cable urp,1,a,016, 0");
     doIniLine ("set urp1 device_name=urpb");
 
     // ; Attach CRDPUN unit 0 to IOM 0, chan 016, dev_code 1
-    doIniLine ("cable crdpun,0,0,016,1");
+    doIniLine ("cable crdpun,0,a,016,1");
     doIniLine ("set crdpun0 device_name=puna");
 
+
+// URP2 PRT0-PRT16
+
     // ; Attach MPC unit 2 to IOM 0, char 017, dev_code 0
-    doIniLine ("cable urp,2,0,017,0");
+    doIniLine ("cable urp,2,a,017,0");
     doIniLine ("set urp2 device_name=urpc");
 
     // ; Attach PRT unit 0 to IOM 0, chan 017, dev_code 1
@@ -1349,38 +1394,40 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set prt16 device_name=prtq");
 
 
-    // ; Attach ABSI unit 0 to IOM 0, chan 032, dev_code 0
-    doIniLine ("cable absi,0,0,032,0");
+// ABSI0
 
+    // ; Attach ABSI unit 0 to IOM 0, chan 032, dev_code 0
+    //doIniLine ("cable absi,0,0,032,0");
+
+
+// IOM0
 
     // ; Attach IOM unit 0 port A (0) to SCU unit 0, port 0
-    doIniLine ("cable iom,0,0,0,0");
+    doIniLine ("cable iom,a,0,0,0");
 
     // ; Attach IOM unit 0 port B (1) to SCU unit 1, port 0
-    doIniLine ("cable iom,0,1,1,0");
+    doIniLine ("cable iom,a,1,1,0");
 
     // ; Attach IOM unit 0 port C (2) to SCU unit 2, port 0
-    doIniLine ("cable iom,0,2,2,0");
+    doIniLine ("cable iom,a,2,2,0");
 
     // ; Attach IOM unit 0 port D (3) to SCU unit 3, port 0
-    doIniLine ("cable iom,0,3,3,0");
+    doIniLine ("cable iom,a,3,3,0");
 
     // ; Attach IOM unit 1 port A (0) to SCU unit 0, port 1
-    doIniLine ("cable iom,1,0,0,1");
+    doIniLine ("cable iom,b,0,0,1");
 
     // ; Attach IOM unit 1 port B (1) to SCU unit 1, port 1
-    doIniLine ("cable iom,1,1,1,1");
+    doIniLine ("cable iom,b,1,1,1");
 
     // ; Attach IOM unit 1 port C (2) to SCU unit 2, port 1
-    doIniLine ("cable iom,1,2,2,1");
+    doIniLine ("cable iom,b,2,2,1");
 
     // ; Attach IOM unit 1 port D (3) to SCU unit 3, port 1
-    doIniLine ("cable iom,1,3,3,1");
+    doIniLine ("cable iom,b,3,3,1");
 
 
-    // ;;;
-    // ;;; SCU 0 --> CPUs
-    // ;;;
+// SCU0
 
     // ; Attach SCU unit 0 port 7 to CPU unit A (0), port 0
     doIniLine ("cable scu,0,7,0,0");
@@ -1394,9 +1441,8 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ; Attach SCU unit 0 port 4 to CPU unit D (3), port 0
     doIniLine ("cable scu,0,4,3,0");
 
-    // ;;;
-    // ;;; SCU 1 --> CPUs
-    // ;;;
+
+// SCU1
 
     // ; Attach SCU unit 1 port 7 to CPU unit A (0), port 1
     doIniLine ("cable scu,1,7,0,1");
@@ -1411,9 +1457,7 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("cable scu,1,4,3,1");
 
 
-    // ;;;
-    // ;;; SCU 2 --> CPUs
-    // ;;;
+// SCU2
 
     // ; Attach SCU unit 2 port 7 to CPU unit A (0), port 2
     doIniLine ("cable scu,2,7,0,2");
@@ -1427,9 +1471,8 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ; Attach SCU unit 2 port 4 to CPU unit D (3), port 2
     doIniLine ("cable scu,2,4,3,2");
 
-    // ;;;
-    // ;;; SCU 3 --> CPUs
-    // ;;;
+
+// SCU3
 
     // ; Attach SCU unit 3 port 7 to CPU unit A (0), port 3
     doIniLine ("cable scu,3,7,0,3");
@@ -1446,10 +1489,37 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ;cable show
     // ;cable verify
 
+    doIniLine ("set cpu1 config=dis_enable=enable");
+    doIniLine ("set cpu1 config=steady_clock=disable");
+    doIniLine ("set cpu1 config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu1 config=disable_wam=disable");
+    doIniLine ("set cpu1 config=tro_enable=enable");
+    doIniLine ("set cpu1 config=y2k=disable");
 
-#if 0
-    doIniLine ("fnpload Devices.txt");
-#endif
+    doIniLine ("set cpu0 reset");
+    doIniLine ("set cpu1 reset");
+    doIniLine ("set cpu2 reset");
+    doIniLine ("set cpu3 reset");
+    doIniLine ("set cpu4 reset");
+    doIniLine ("set cpu5 reset");
+    doIniLine ("set cpu6 reset");
+    doIniLine ("set cpu7 reset");
+    doIniLine ("set scu0 reset");
+    doIniLine ("set scu1 reset");
+    doIniLine ("set scu2 reset");
+    doIniLine ("set scu3 reset");
+    doIniLine ("set scu4 reset");
+    doIniLine ("set scu5 reset");
+    doIniLine ("set scu6 reset");
+    doIniLine ("set scu7 reset");
+    doIniLine ("set iom0 reset");
+    doIniLine ("set iom1 reset");
+
+// Generic
+
+    doIniLine ("set sys config=activate_time=8");
+    doIniLine ("set sys config=terminate_time=8");
+
     doIniLine ("fnpserverport 6180");
 
     return SCPE_OK;
