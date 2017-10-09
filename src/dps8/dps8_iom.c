@@ -2806,6 +2806,8 @@ static t_stat bootSvc (UNIT * unitp)
     //scu_reset (NULL);
     for (int port_num = 0; port_num < N_SCU_PORTS; port_num ++)
       {
+        if (! cables->cablesFromScus[iomUnitIdx][port_num].inuse)
+          continue;
         int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][port_num].scuUnitIdx;
         scuUnitReset (scuUnitIdx);
       }
