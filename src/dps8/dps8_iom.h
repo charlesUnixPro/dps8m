@@ -238,6 +238,5 @@ void iom_core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char *
 void iom_core_write (word24 addr, word36 data, UNUSED const char * ctx);
 void iom_core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx);
 #endif
-t_stat boot2 (UNUSED int32 arg, UNUSED const char * buf);
 t_stat iomUnitResetIdx (uint iomUnitIdx);
 

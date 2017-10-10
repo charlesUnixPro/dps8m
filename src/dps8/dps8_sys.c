@@ -122,7 +122,6 @@ static CTAB dps8_cmds[] =
     {"DBGRINGNO", dps_debug_ringno, 0, "dbgsegno Limit debugging to PRR == ringno\n", NULL, NULL},
     {"DBGBAR", dps_debug_bar, 1, "dbgbar Limit debugging to BAR mode\n", NULL, NULL},
     {"NODBGBAR", dps_debug_bar, 0, "dbgbar Limit debugging to BAR mode\n", NULL, NULL},
-    {"BT2", boot2, 0, "boot2: boot 2nd cpu\n", NULL, NULL},
     {"TEST", brkbrk, 0, "test: internal testing\n", NULL, NULL},
 // copied from scp.c
 #define SSH_ST          0                               /* set */
@@ -1489,13 +1488,6 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ;cable show
     // ;cable verify
 
-    doIniLine ("set cpu1 config=dis_enable=enable");
-    doIniLine ("set cpu1 config=steady_clock=disable");
-    doIniLine ("set cpu1 config=halt_on_unimplemented=disable");
-    doIniLine ("set cpu1 config=disable_wam=disable");
-    doIniLine ("set cpu1 config=tro_enable=enable");
-    doIniLine ("set cpu1 config=y2k=disable");
-
     doIniLine ("set cpu0 reset");
     doIniLine ("set cpu1 reset");
     doIniLine ("set cpu2 reset");
@@ -1508,17 +1500,11 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set scu1 reset");
     doIniLine ("set scu2 reset");
     doIniLine ("set scu3 reset");
-    doIniLine ("set scu4 reset");
-    doIniLine ("set scu5 reset");
-    doIniLine ("set scu6 reset");
-    doIniLine ("set scu7 reset");
     doIniLine ("set iom0 reset");
     doIniLine ("set iom1 reset");
 
 // Generic
 
-    doIniLine ("set sys config=activate_time=8");
-    doIniLine ("set sys config=terminate_time=8");
 
     doIniLine ("fnpserverport 6180");
 

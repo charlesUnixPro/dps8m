@@ -2936,21 +2936,6 @@ static t_stat bootSvc (UNIT * unitp)
     return SCPE_OK;
   }
 
-t_stat boot2 (UNUSED int32 arg, UNUSED const char * buf)
-  {
-#ifdef ROUND_ROBIN
-    uint cpuUnitIdx = 1U;
-    uint save = setCPUnum ((uint) cpuUnitIdx);
-if (cpuUnitIdx && ! cpu.isRunning)
- sim_printf ("starting CPU %c early\n", cpuUnitIdx + 'A');
-    cpu.isRunning = true;
-                    setCPUnum (save);
-    //bootSvc (& bootChannelUnit [1]);
-    iomBoot ((int) cpuUnitIdx, & iom_dev);
-#endif
-    return SCPE_OK;
-  }
-
 #ifdef PANEL
 void doBoot (void)
   {

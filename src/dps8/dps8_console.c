@@ -856,7 +856,8 @@ sim_printf ("uncomfortable with this\n");
                     //sim_printf ("attn!\n");
                     if (! csp->once_per_boot)
                       {
-                        sim_activate (& attn_unit[devUnitIdx], 4000000); // 4M ~= 1 sec
+                        //sim_activate (& attn_unit[devUnitIdx], 4000000); // 4M ~= 1 sec
+                        sim_activate (& attn_unit[devUnitIdx], 1000); // ~= 1 sec
                         csp->once_per_boot = true;
                       }
                   }
@@ -871,7 +872,8 @@ sim_printf ("uncomfortable with this\n");
                     //sim_printf ("attn!\n");
                     if (! csp->once_per_boot)
                       {
-                        sim_activate (& attn_unit[devUnitIdx], 4000000); // 4M ~= 1 sec
+                        //sim_activate (& attn_unit[devUnitIdx], 4000000); // 4M ~= 1 sec
+                        sim_activate (& attn_unit[devUnitIdx], 1000); // ~= 1 sec
                         csp->once_per_boot = true;
                       }
                   }

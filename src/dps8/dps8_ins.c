@@ -7436,17 +7436,18 @@ elapsedtime ();
                 sim_printf ("BCE DIS causes CPU halt\n");
                 sim_debug (DBG_MSG, & cpu_dev, "BCE DIS causes CPU halt\n");
                 longjmp (cpu.jmpMain, JMP_STOP);
+                //cpu.isRunning = false;
+                //return CONT_DIS;
               }
 
-#ifdef ROUND_ROBIN
           if (cpu.PPR.PSR == 034 && cpu.PPR.IC == 03535)
               {
-                sim_printf ("[%lld] sys_trouble$die  DIS causes CPU halt\n", sim_timell ());
-                sim_debug (DBG_MSG, & cpu_dev, "BCE DIS causes CPU halt\n");
-                //longjmp (cpu.jmpMain, JMP_STOP);
-                cpu.isRunning = false;
+                sim_printf ("[%lld] sys_trouble$die  DIS causes CPU %d halt\n", sim_timell (), currentRunningCpuIdx);
+                sim_debug (DBG_MSG, & cpu_dev, "sys_trouble$die  DIS causes CPU halt\n");
+                longjmp (cpu.jmpMain, JMP_STOP);
+                //cpu.isRunning = false;
+                //return CONT_DIS;
               }
-#endif
 
           sim_debug (DBG_TRACEEXT, & cpu_dev, "entered DIS_cycle\n");
           //sim_printf ("entered DIS_cycle\n");

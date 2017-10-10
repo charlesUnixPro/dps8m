@@ -107,11 +107,7 @@ static MTAB cpu_mod[] = {
 // IAC -- reset CPU, clear Memory
 
     {
-#ifdef ROUND_ROBIN
       MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
-#else
-      MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
-#endif
       0,            /* match */
       "RESET",     /* print string */
       "RESET",         /* match string */
@@ -121,11 +117,7 @@ static MTAB cpu_mod[] = {
       NULL // help
     },
     {
-#ifdef ROUND_ROBIN
       MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
-#else
-      MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
-#endif
       0,            /* match */
       "INITIALIZE",     /* print string */
       "INITIALIZE",         /* match string */
@@ -155,11 +147,7 @@ static MTAB cpu_mod[] = {
       NULL // help
     },
     {
-#ifdef ROUND_ROBIN
       MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
-#else
-      MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
-#endif
       0,            /* match */
       "IAC",     /* print string */
       "IAC",         /* match string */
@@ -670,7 +658,7 @@ void cpu_init (void)
 
 static void cpuResetUnitIdx (UNUSED uint cpun, bool clearMem)
 {
-    setCPUnum (cpun);
+    uint save = setCPUnum (cpun);
     if (clearMem)
       {
 #ifdef SCUMEM
@@ -733,9 +721,7 @@ static void cpuResetUnitIdx (UNUSED uint cpun, bool clearMem)
     setup_scbank_map ();
 
     tidy_cu ();
-#ifdef ROUND_ROBIN
     setCPUnum (save);
-#endif
 }
 
 static void cpuReset (void)
