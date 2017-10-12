@@ -901,6 +901,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
     absiProcessEvent ();
 #endif
 
+#ifndef TR_WORK
 // Update the TR
 
 // The Timer register runs at 512Khz; in 1/100 of a second it
@@ -919,8 +920,9 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
 #if ISOLTS
     cpu.shadowTR = cpu.rTR;
 #endif
+#endif // TR_WORK
   }
-#endif
+#endif // NO_EV_POLL
 
 
     
@@ -2666,6 +2668,9 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
         traceInstruction (0);
       }
     *data = M[addr] & DMASK;
+#ifdef TR_WORK
+    cpu.rTR -= 2;
+#endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read  %08o %012"PRIo64" (%s)\n",
                 addr, * data, ctx);
@@ -2711,6 +2716,9 @@ int core_write(word24 addr, word36 data, const char * ctx) {
         sim_printf ("WATCH [%"PRId64"] write  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
+#ifdef TR_WORK
+    cpu.rTR -= 2;
+#endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write %08o %012"PRIo64" (%s)\n",
                 addr, data, ctx);
@@ -2791,6 +2799,9 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012"PRIo64" (%s)\n",
                 addr, * odd, ctx);
+#ifdef TR_WORK
+    cpu.rTR -= 2;
+#endif
     PNL (trackport (addr, * odd));
     return 0;
 }
@@ -2863,7 +2874,10 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
         sim_printf ("WATCH [%"PRId64"] write2 %08o %012"PRIo64" (%s)\n", sim_timell (), addr, odd, ctx);
         traceInstruction (0);
       }
-    M[addr] = odd;
+    M[addr] = odd & DMASK;
+#ifdef TR_WORK
+    cpu.rTR -= 2;
+#endif
     PNL (trackport (addr, odd));
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write2 %08o %012"PRIo64" (%s)\n",

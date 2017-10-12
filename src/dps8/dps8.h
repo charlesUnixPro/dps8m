@@ -154,6 +154,9 @@
 // Instruction profiler
 // #define MATRIX
 
+// Run TR on work done, not wall clock.
+
+#define TR_WORK
 
 // Fix glibc incompatibility with new simh code.
 
