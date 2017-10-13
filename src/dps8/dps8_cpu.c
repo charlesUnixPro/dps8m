@@ -913,7 +913,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
       {
         //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09"PRIo64"\n", rTR, MASK27);
         if (cpu.switches.tro_enable)
-        setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
+        setG7fault ((uint) cpu_unit_num, FAULT_TRO, (_fault_subtype) {.bits=0});
       }
     cpu.rTR -= 5120;
     cpu.rTR &= MASK27;
@@ -1006,6 +1006,9 @@ static void cpun_reset2 (UNUSED uint cpun)
     cpu.rTR = 0;
 #if ISOLTS
     cpu.shadowTR = 0;
+#endif
+#ifdef TR_WORK
+    cpu.rTRlsb = 0;
 #endif
  
     set_addr_mode(ABSOLUTE_mode);
@@ -1483,7 +1486,7 @@ static void panelProcessEvent (void)
           }
          else // EXECUTE FAULT
           {
-            setG7fault (currentRunningCPUnum, FAULT_EXF, (_fault_subtype) {.bits=0});
+            setG7fault ((uint) cpu_unit_num, FAULT_EXF, (_fault_subtype) {.bits=0});
           }
       }
   }
@@ -1714,12 +1717,34 @@ setCPU:;
               {
                 //sim_debug (DBG_TRACE, & cpu_dev, "rTR %09o %09"PRIo64"\n", rTR, MASK27);
                 if (cpu.switches.tro_enable)
-                  setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
+                  setG7fault ((uint) cpu_unit_num, FAULT_TRO, (_fault_subtype) {.bits=0});
               }
           }
 #endif
 
-        sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
+#ifdef TR_WORK
+
+// Check for TR underflow. The TR is stored in a uint32_t, but is 27 bits wide.
+// The TR update code decrements the TR; if it passes through 0, the high bits
+// will be set.
+
+// If we assume a 1 MIPS reference platform, the TR would be decremented every
+// two instructions (1/2 MHz)
+
+#define TR_RATE 2
+
+        cpu.rTR -= cpu.rTRlsb / TR_RATE;
+        cpu.rTRlsb %= TR_RATE;
+        
+        if (cpu.rTR & ~MASK27)
+          {
+            cpu.rTR &= MASK27;
+            //sim_debug (DBG_TRACE, & cpu_dev, "rTR zero %09o\n", cpu.rTR);
+            if (cpu.switches.tro_enable)
+            setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
+          }
+#endif
+        sim_debug (DBG_CYCLE, & cpu_dev, "Cycle is %s\n",
                    cycleStr (cpu.cycle));
 
 #ifdef PANEL
@@ -2093,7 +2118,9 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                   cpu.wasInhibited = true;
 
                 t_stat ret = executeInstruction ();
-
+#ifdef TR_WORK_EXEC
+    cpu.rTRlsb ++;
+#endif
                 CPT (cpt1U, 23); // execution complete
                 if (ret > 0)
                   {
@@ -2668,8 +2695,8 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
         traceInstruction (0);
       }
     *data = M[addr] & DMASK;
-#ifdef TR_WORK
-    cpu.rTR -= 2;
+#ifdef TR_WORK_MEM
+    cpu.rTRlsb ++;
 #endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read  %08o %012"PRIo64" (%s)\n",
@@ -2716,8 +2743,8 @@ int core_write(word24 addr, word36 data, const char * ctx) {
         sim_printf ("WATCH [%"PRId64"] write  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
         traceInstruction (0);
       }
-#ifdef TR_WORK
-    cpu.rTR -= 2;
+#ifdef TR_WORK_MEM
+    cpu.rTRlsb ++;
 #endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write %08o %012"PRIo64" (%s)\n",
@@ -2799,8 +2826,8 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012"PRIo64" (%s)\n",
                 addr, * odd, ctx);
-#ifdef TR_WORK
-    cpu.rTR -= 2;
+#ifdef TR_WORK_MEM
+    cpu.rTRlsb ++;
 #endif
     PNL (trackport (addr, * odd));
     return 0;
@@ -2875,8 +2902,8 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
         traceInstruction (0);
       }
     M[addr] = odd & DMASK;
-#ifdef TR_WORK
-    cpu.rTR -= 2;
+#ifdef TR_WORK_MEM
+    cpu.rTRlsb ++;
 #endif
     PNL (trackport (addr, odd));
     sim_debug (DBG_CORE, & cpu_dev,

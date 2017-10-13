@@ -158,6 +158,12 @@
 
 #define TR_WORK
 
+// Define one of these; tied to memory access (MEM) or to instruction 
+// execution (EXEC)
+
+//#define TR_WORK_MEM
+#define TR_WORK_EXEC
+
 // Fix glibc incompatibility with new simh code.
 
 #if __WORDSIZE == 64
