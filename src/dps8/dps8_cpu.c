@@ -1115,6 +1115,9 @@ static void cpuResetUnitIdx (UNUSED uint cpun, bool clearMem)
     cpu.shadowTR = 0;
     cpu.rTRlsb = 0;
 #endif
+#ifdef TR_WORK
+    cpu.rTRlsb = 0;
+#endif
  
     set_addr_mode(ABSOLUTE_mode);
     SET_I_NBAR;
@@ -1794,6 +1797,28 @@ setCPU:;
 #endif
 #endif
 
+#ifdef TR_WORK
+
+// Check for TR underflow. The TR is stored in a uint32_t, but is 27 bits wide.
+// The TR update code decrements the TR; if it passes through 0, the high bits
+// will be set.
+
+// If we assume a 1 MIPS reference platform, the TR would be decremented every
+// two instructions (1/2 MHz)
+
+#define TR_RATE 2
+
+        cpu.rTR -= cpu.rTRlsb / TR_RATE;
+        cpu.rTRlsb %= TR_RATE;
+        
+        if (cpu.rTR & ~MASK27)
+          {
+            cpu.rTR &= MASK27;
+            //sim_debug (DBG_TRACE, & cpu_dev, "rTR zero %09o\n", cpu.rTR);
+            if (cpu.switches.tro_enable)
+            setG7fault (currentRunningCpuIdx, FAULT_TRO, (_fault_subtype) {.bits=0});
+          }
+#endif
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle is %s\n",
                    cycleStr (cpu.cycle));
 
@@ -2069,7 +2094,9 @@ elapsedtime ();
                     //sim_debug (DBG_CAC, & cpu_dev, "fault exec %012"PRIo64"\n", cpu.cu.IWB);
                  }
                 t_stat ret = executeInstruction ();
-
+#ifdef TR_WORK_EXEC
+    cpu.rTRlsb ++;
+#endif
                 CPT (cpt1U, 23); // execution complete
 
                 addCUhist ();
@@ -2667,8 +2694,8 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
       }
     *data = M[addr] & DMASK;
 #endif
-#ifdef TR_WORK
-    cpu.rTR -= 2;
+#ifdef TR_WORK_MEM
+    cpu.rTRlsb ++;
 #endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read  %08o %012"PRIo64" (%s)\n",
@@ -2726,8 +2753,8 @@ int core_write(word24 addr, word36 data, const char * ctx) {
         traceInstruction (0);
       }
 #endif
-#ifdef TR_WORK
-    cpu.rTR -= 2;
+#ifdef TR_WORK_MEM
+    cpu.rTRlsb ++;
 #endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write %08o %012"PRIo64" (%s)\n",
@@ -2832,8 +2859,8 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
                "core_read2 %08o %012"PRIo64" (%s)\n",
                 addr, * odd, ctx);
 #endif
-#ifdef TR_WORK
-    cpu.rTR -= 2;
+#ifdef TR_WORK_MEM
+    cpu.rTRlsb ++;
 #endif
     PNL (trackport (addr, * odd));
     return 0;
@@ -2924,8 +2951,8 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
       }
     M[addr] = odd & DMASK;
 #endif
-#ifdef TR_WORK
-    cpu.rTR -= 2;
+#ifdef TR_WORK_MEM
+    cpu.rTRlsb ++;
 #endif
     PNL (trackport (addr, odd));
     sim_debug (DBG_CORE, & cpu_dev,
