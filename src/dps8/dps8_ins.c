@@ -6447,7 +6447,7 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
           CPTUR (cptUseTR);
           cpu.rTR = (cpu.CY >> 9) & MASK27;
 #ifdef TR_WORK
-          cpu.rTRlsb = 0;
+          cpu.rTRticks = 0;
 #endif
 #if ISOLTS
           cpu.shadowTR = cpu.rTR;

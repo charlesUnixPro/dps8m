@@ -1760,7 +1760,7 @@ typedef struct
     word36 scu_data[8];    // For SCU instruction
 #ifndef EVPOLL
 #ifdef TR_WORK
-    uint rTRlsb;
+    uint rTRticks;
 #endif
 #ifdef ISOLTS
     uint rTRlsb;
@@ -1890,7 +1890,7 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
 #endif
     *data = M[addr] & DMASK;
 #ifdef TR_WORK_MEM
-    cpu.rTRlsb ++;
+    cpu.tTRticks ++;
 #endif
     PNL (trackport (addr, * data);)
     return 0;
@@ -1925,7 +1925,7 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
 #endif
     M[addr] = data & DMASK;
 #ifdef TR_WORK_MEM
-    cpu.rTRlsb ++;
+    cpu.tTRticks ++;
 #endif
     PNL (trackport (addr, data);)
     return 0;
@@ -1963,7 +1963,7 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED con
     PNL (trackport (addr - 1, * even);)
     *odd = M[addr] & DMASK;
 #ifdef TR_WORK_MEM
-    cpu.rTRlsb ++;
+    cpu.tTRticks ++;
 #endif
     PNL (trackport (addr, * odd);)
     return 0;
@@ -2000,7 +2000,7 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED cons
     M[addr] = odd;
     PNL (trackport (addr, odd);)
 #ifdef TR_WORK_MEM
-    cpu.rTRlsb ++;
+    cpu.tTRticks ++;
 #endif
     return 0;
   }
@@ -2015,7 +2015,7 @@ static inline void core_readN (word24 addr, word36 *data, uint n, UNUSED const c
     for (uint i = 0; i < n; i ++)
       core_read (addr + i, data + i, ctx);
 #ifdef TR_WORK_MEM
-    cpu.rTRlsb += n / 2; // Not n because pairs would have been read
+    cpu.tTRticks += n / 2; // Not n because pairs would have been read
 #endif
   }
 static inline void core_writeN (word24 addr, word36 *data, uint n, UNUSED const char * ctx)
