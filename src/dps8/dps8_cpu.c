@@ -1116,7 +1116,8 @@ static void cpuResetUnitIdx (UNUSED uint cpun, bool clearMem)
     cpu.rTRlsb = 0;
 #endif
 #ifdef TR_WORK
-    cpu.rTRlsb = 0;
+    cpu.rTR = MASK27;
+    cpu.rTRticks = 0;
 #endif
  
     set_addr_mode(ABSOLUTE_mode);
@@ -1806,11 +1807,18 @@ setCPU:;
 // If we assume a 1 MIPS reference platform, the TR would be decremented every
 // two instructions (1/2 MHz)
 
+#if 0
+        cpu.rTR -= cpu.rTRticks * 100;
+        cpu.rTRticks = 0;
+#else
 #define TR_RATE 2
 
-        cpu.rTR -= cpu.rTRlsb / TR_RATE;
-        cpu.rTRlsb %= TR_RATE;
+        cpu.rTR -= cpu.rTRticks / TR_RATE;
+        cpu.rTRticks %= TR_RATE;
         
+#endif
+
+
         if (cpu.rTR & ~MASK27)
           {
             cpu.rTR &= MASK27;
@@ -1997,6 +2005,40 @@ elapsedtime ();
                       }
                   }
 
+
+// Multics executes a CPU connect instruction (which should eventually cause a
+// connect fault) while interrupts are inhibited and an IOM interrupt is
+// pending. Multics then executes a DIS instruction (Delay Until Interrupt
+// Set). This should cause the processor to "sleep" until an interrupt is
+// signaled. The DIS instruction sees that an interrupt is pending, sets
+// cpu.interrupt_flag to signal that the CPU to service the interrupt and
+// resumes the CPU.
+//
+// The CPU state machine sets up to fetch the next instruction. If checks to
+// see if this instruction should check for interrupts or faults according to
+// the complex rules (interrupts inhibited, even address, not RPT or XEC,
+// etc.); it this case, the test fails as the next instruction is at an odd
+// address. If the test had passed, the cpu.interrupt_flag would be set or
+// cleared depending on the pending interrupt state data, AND the cpu.g7_flag
+// would be set or cleared depending on the faults pending data (in this case,
+// the connect fault).
+//
+// Because the flags were not updated, after the test, cpu.interrupt_flag is
+// set (since the DIS instruction set it) and cpu.g7_flag is not set.
+//
+// Next, the CPU sees the that cpu.interrupt flag is set, and starts the
+// interrupt cycle despite the fact that a higher priority g7 fault is pending.
+
+
+// To fix this, check (or recheck) g7 if an interrupt is going to be faulted.
+// Either DIS set interrupt_flag and FETCH_cycle didn't so g7 needs to be
+// checked, or FETCH_cycle did check it when it set interrupt_flag in which
+// case it is being rechecked here. It is [locally] idempotent and light
+// weight, so this should be okay.
+
+                if (cpu.interrupt_flag)
+                  cpu.g7_flag = noCheckTR ? bG7PendingNoTRO () : bG7Pending ();
+
                 if (cpu.g7_flag)
                   {
                       cpu.g7_flag = false;
@@ -2095,7 +2137,7 @@ elapsedtime ();
                  }
                 t_stat ret = executeInstruction ();
 #ifdef TR_WORK_EXEC
-    cpu.rTRlsb ++;
+    cpu.rTRticks ++;
 #endif
                 CPT (cpt1U, 23); // execution complete
 
@@ -2228,8 +2270,11 @@ elapsedtime ();
                     // 512000 is 1 second
                     // 512000/100 -> 5120  is .01 second
          
+#ifdef TR_WORK
+                    cpu.rTRticks = 0;
+#endif
                     // Would we have underflowed while sleeping?
-                    if (cpu.rTR <= 5120)
+                    if ((cpu.rTR & ~ MASK27) || cpu.rTR <= 5120)
                       {
                         //sim_debug (DBG_TRACE, & cpu_dev, "rTR zero %09o\n", cpu.rTR);
                         if (cpu.switches.tro_enable)
@@ -2695,7 +2740,7 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
     *data = M[addr] & DMASK;
 #endif
 #ifdef TR_WORK_MEM
-    cpu.rTRlsb ++;
+    cpu.rTRticks ++;
 #endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read  %08o %012"PRIo64" (%s)\n",
@@ -2754,7 +2799,7 @@ int core_write(word24 addr, word36 data, const char * ctx) {
       }
 #endif
 #ifdef TR_WORK_MEM
-    cpu.rTRlsb ++;
+    cpu.rTRticks ++;
 #endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write %08o %012"PRIo64" (%s)\n",
@@ -2860,7 +2905,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
                 addr, * odd, ctx);
 #endif
 #ifdef TR_WORK_MEM
-    cpu.rTRlsb ++;
+    cpu.rTRticks ++;
 #endif
     PNL (trackport (addr, * odd));
     return 0;
@@ -2952,7 +2997,7 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     M[addr] = odd & DMASK;
 #endif
 #ifdef TR_WORK_MEM
-    cpu.rTRlsb ++;
+    cpu.rTRticks ++;
 #endif
     PNL (trackport (addr, odd));
     sim_debug (DBG_CORE, & cpu_dev,
