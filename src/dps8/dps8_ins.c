@@ -6311,6 +6311,9 @@ static t_stat DoBasicInstruction (void)
         case 0637:  // ldt
           CPTUR (cptUseTR);
           cpu.rTR = (cpu.CY >> 9) & MASK27;
+#ifdef TR_WORK
+          cpu.rTRticks = 0;
+#endif
 #if ISOLTS
           cpu.shadowTR = cpu.rTR;
           cpu.rTRlsb = 0;
