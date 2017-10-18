@@ -16,6 +16,9 @@ t_stat Read (word18 addr, word36 *dat, _processor_cycle_type cyctyp);
 t_stat Read2 (word18 addr, word36 *dat, _processor_cycle_type cyctyp);
 t_stat Write (word18 addr, word36 dat, _processor_cycle_type cyctyp);
 t_stat Write2 (word18 address, word36 * data, _processor_cycle_type cyctyp);
+#ifdef CWO
+t_stat Write1 (word18 address, word36 data, bool isAR);
+#endif
 t_stat Write8 (word18 address, word36 * data, bool isAR);
 t_stat Write16 (word18 address, word36 * data);
 t_stat Write32 (word18 address, word36 * data);

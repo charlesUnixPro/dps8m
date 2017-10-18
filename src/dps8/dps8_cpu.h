@@ -565,6 +565,9 @@ typedef struct EISaddr
 #define paragraphMask 077777770
 #define paragraphOffsetMask 07
     word36 cachedParagraph [paragraphSz];
+#ifdef CWO
+    bool wordDirty [paragraphSz];
+#endif
     word18 cachedAddr;
 
 } EISaddr;
@@ -2058,7 +2061,6 @@ static inline void core_writeN (word24 addr, word36 *data, uint n, UNUSED const 
     for (uint i = 0; i < n; i ++)
       {
         core_write (addr + i, data [i], ctx);
-        HDBGMWrite (addr + i, * (data + i));
       }
   }
 

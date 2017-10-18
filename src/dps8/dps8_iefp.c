@@ -558,6 +558,73 @@ B29:
     return SCPE_UNK;
   }
 
+#ifdef CWO
+t_stat Write1 (word18 address, word36 data, bool isAR)
+  {
+    cpu.TPR.CA = cpu.iefpFinalAddress = address;
+    bool isBAR = get_bar_mode ();
+    if (isAR || cpu.cu.TSN_VALID [0] || get_went_appending ())
+      goto B29;
+    switch (get_addr_mode ())
+      {
+        case ABSOLUTE_mode:
+          {
+            if (isBAR)
+             {
+                cpu.iefpFinalAddress = getBARaddress (address);
+                setAPUStatus (apuStatus_FABS); // XXX maybe...
+                fauxDoAppendCycle (APU_DATA_STORE);
+                core_write (cpu.iefpFinalAddress, data, __func__);
+                sim_debug (DBG_FINAL, & cpu_dev,
+                           "Write1(Actual) Write:      bar address=%08o "
+                           "writeData=%012"PRIo64"\n", 
+                           address, data);
+                HDBGMWrite (cpu.iefpFinalAddress, data);
+                return SCPE_OK;
+              }
+            else
+              {
+                setAPUStatus (apuStatus_FABS);
+                fauxDoAppendCycle (APU_DATA_STORE);
+                core_write (address, data, __func__);
+                sim_debug (DBG_FINAL, & cpu_dev,
+                           "Write1(Actual) Write:      abs address=%08o "
+                           "writeData=%012"PRIo64"\n",
+                           address, data);
+                HDBGMWrite (address, data);
+                return SCPE_OK;
+              }
+          }
+
+        case APPEND_mode:
+          {
+B29:
+            if (isBAR)
+              {
+                cpu.TPR.CA = getBARaddress (address);
+                cpu.iefpFinalAddress = doAppendCycle (APU_DATA_STORE, & data, 1);
+                sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev,
+                           "Write8(Actual) Write: bar iefpFinalAddress="
+                           "%08o writeData=%012"PRIo64"\n",
+                           cpu.iefpFinalAddress, data);
+                HDBGMWrite (cpu.iefpFinalAddress, data);
+                return SCPE_OK;
+              }
+            else
+              {
+                cpu.iefpFinalAddress = doAppendCycle (APU_DATA_STORE, & data, 1);
+                sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev,
+                           "Write(Actual) Write: iefpFinalAddress=%08o "
+                           "writeData=%012"PRIo64"\n",
+                           cpu.iefpFinalAddress, data);
+                HDBGMWrite (cpu.iefpFinalAddress, data);
+                return SCPE_OK;
+              }
+          }
+      }
+    return SCPE_UNK;
+  }
+#endif
 
 t_stat Write8 (word18 address, word36 * data, bool isAR)
   {
@@ -603,7 +670,7 @@ t_stat Write8 (word18 address, word36 * data, bool isAR)
                   {
                     for (uint i = 0; i < 8; i ++)
                       sim_debug (DBG_FINAL, & cpu_dev,
-                                 "Write(Actual) Write:      abs address=%08o "
+                                 "Write8(Actual) Write:      abs address=%08o "
                                  "writeData=%012"PRIo64"\n",
                                   address + i, data [i]);
                   }
@@ -644,7 +711,7 @@ B29:
                   {
                     for (uint i = 0; i < 8; i ++)
                       sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev,
-                                 "Write(Actual) Write: iefpFinalAddress=%08o "
+                                 "Write8(Actual) Write: iefpFinalAddress=%08o "
                                  "writeData=%012"PRIo64"\n",
                                  cpu.iefpFinalAddress + i, data [i]);
                   }
