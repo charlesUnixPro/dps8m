@@ -2362,6 +2362,7 @@ L:; // Transfer or instruction fetch
           cpu.PR[n].SNR = cpu.PPR.PSR;
         cpu.PR[n].WORDNO = (cpu.PPR.IC + 1) & MASK18;
         SET_PR_BITNO (n, 0);
+        HDBGRegPR (n);
       }
 
     if (thisCycle == INSTRUCTION_FETCH &&
@@ -2385,6 +2386,14 @@ L:; // Transfer or instruction fetch
         cpu.PR[5].RNR =
         cpu.PR[6].RNR =
         cpu.PR[7].RNR = cpu.TPR.TRR;
+        HDBGRegPR (0);
+        HDBGRegPR (1);
+        HDBGRegPR (2);
+        HDBGRegPR (3);
+        HDBGRegPR (4);
+        HDBGRegPR (5);
+        HDBGRegPR (6);
+        HDBGRegPR (7);
       }
     goto KL;
 
@@ -2439,6 +2448,7 @@ N: // CALL6
     cpu.PR[7].WORDNO = 0;
     // 000000 -> C(PR7.BITNO)
     SET_PR_BITNO (7, 0);
+    HDBGRegPR (7);
     // C(TPR.TRR) -> C(PPR.PRR)
     cpu.PPR.PRR = cpu.TPR.TRR;
     // C(TPR.TSR) -> C(PPR.PSR)

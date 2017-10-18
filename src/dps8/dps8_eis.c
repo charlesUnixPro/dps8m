@@ -2007,6 +2007,7 @@ void a4bd (void)
 //sim_printf ("a4bd char4no %d.\n", char4no);
 
     SET_AR_CHAR_BITNO (ARn, (word2) (char4no / 2), (char4no % 2) ? 5 : 0);
+    HDBGRegAR (ARn);
 //if (currentRunningCpuIdx)
 //sim_printf ("a4bd CHAR %o %d.\n", cpu.AR[ARn].CHAR, cpu.AR[ARn].CHAR);
 //if (currentRunningCpuIdx)
@@ -2056,6 +2057,7 @@ void s4bd (void)
 //    cpu.AR [ARn].BITNO = tab [bitno];
     // SET_PR_BITNO (ARn, bitFromCnt[bitno % 8]);
     SET_AR_CHAR_BITNO (ARn, bitFromCnt[bitno % 8] / 9, bitFromCnt[bitno % 8] % 9);
+    HDBGRegAR (ARn);
   }
 
 void axbd (uint sz)
@@ -2135,6 +2137,7 @@ IF1 sim_printf ("axbd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
     cpu.AR [ARn].WORDNO = (word18) (sum / 36) & AMASK;
     //SET_PR_BITNO (ARn, sum % 36);
     SET_AR_CHAR_BITNO (ARn, (sum % 36) / 9, sum % 9);
+    HDBGRegAR (ARn);
 IF1 sim_printf ("axbd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
   }
 
@@ -2195,6 +2198,7 @@ void abd (void)
                                     r % 9);
           }
       }
+    HDBGRegAR (ARn);
  
 //if (currentRunningCpuIdx)
 //sim_printf ("abd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.AR[ARn].CHAR, cpu.AR[ARn].BITNO, cpu.AR[ARn].BITNO);
@@ -2336,6 +2340,7 @@ sim_printf ("abd sum 0%o %d.\n", sum, sum);
     //SET_PR_BITNO (ARn, sum % 36);
     SET_AR_CHAR_BITNO (ARn, (sum % 36) / 9, sum % 9);
 #endif
+    HDBGRegAR (ARn);
 
     // Fails boot
     //uint bitno = sum % 36;
@@ -2397,6 +2402,7 @@ IF1 sim_printf ("awd augend 0%o addend 0%o sum 0%o\n", augend, addend, sum);
 
     cpu.AR[ARn].WORDNO = (word18) sum & AMASK;
     SET_AR_CHAR_BITNO (ARn, 0, 0);
+    HDBGRegAR (ARn);
 
 IF1 sim_printf ("awd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.PAR[ARn].AR_CHAR, cpu.PAR[ARn].AR_BITNO, cpu.PAR[ARn].AR_BITNO);
 
@@ -2451,6 +2457,7 @@ IF1 sim_printf ("A 0\n");
                                     (- (r % 9)) & MASK4);
           }
       }
+    HDBGRegAR (ARn);
  
 //IF1 sim_printf ("sbd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.AR[ARn].CHAR, cpu.AR[ARn].BITNO, cpu.AR[ARn].BITNO);
 IF1 sim_printf ("sbd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
@@ -2505,6 +2512,7 @@ IF1 sim_printf ("swd minued 0%o subtractend 0%o difference 0%o\n", minued, subtr
     cpu.AR [ARn].WORDNO = (word18) difference & AMASK;
     //SET_PR_BITNO (ARn, 0);
     SET_AR_CHAR_BITNO (ARn, 0, 0);
+    HDBGRegAR (ARn);
 
 //IF1 sim_printf ("swd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.PAR[ARn].CHAR, cpu.PAR[ARn].BITNO, cpu.PAR[ARn].BITNO);
 IF1 sim_printf ("swd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn), GET_AR_BITNO (ARn));
@@ -2563,6 +2571,7 @@ void s9bd (void)
           //}
       }
     //cpu.AR[ARn].BITNO = 0;
+    HDBGRegAR (ARn);
  
 //if (currentRunningCpuIdx)
 //sim_printf ("s9bd WORDNO 0%o %d. CHAR %o BITNO 0%o %d.\n", cpu.AR[ARn].WORDNO, cpu.AR[ARn].WORDNO, cpu.AR[ARn].CHAR, cpu.AR[ARn].BITNO, cpu.AR[ARn].BITNO);
@@ -3026,6 +3035,7 @@ void asxbd (uint sz, bool sub)
 //IF1 sim_printf ("asxbd sum BITNO %d %o\n", bitno, bitno);
           }
       }
+    HDBGRegAR (ARn);
 
 //IF1 sim_printf ("asxbd WORDNO %06o CHAR 0%o BITNO 0%o\n", cpu.AR[ARn].WORDNO, GET_AR_CHAR (ARn), GET_AR_BITNO (ARn));
 //IF1 if (sz == 6)

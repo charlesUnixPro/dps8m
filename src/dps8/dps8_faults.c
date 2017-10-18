@@ -30,9 +30,6 @@
 #include "dps8_append.h"
 #include "dps8_ins.h"
 #include "dps8_utils.h"
-#ifdef HDBG
-#include "hdbg.h"
-#endif
 #ifndef QUIET_UNUSED
 static uint64 FR;
 #endif

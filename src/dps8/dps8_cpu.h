@@ -12,6 +12,8 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
+#include "hdbg.h"
+
 // simh only explicitly supports a single cpu
 
 #define N_CPU_UNITS 1 // Default
@@ -2046,12 +2048,18 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx);
 static inline void core_readN (word24 addr, word36 *data, uint n, UNUSED const char * ctx)
   {
     for (uint i = 0; i < n; i ++)
-      core_read (addr + i, data + i, ctx);
+      {
+        core_read (addr + i, data + i, ctx);
+        HDBGMRead (addr + i, * (data + i));
+      }
   }
 static inline void core_writeN (word24 addr, word36 *data, uint n, UNUSED const char * ctx)
   {
     for (uint i = 0; i < n; i ++)
-      core_write (addr + i, data [i], ctx);
+      {
+        core_write (addr + i, data [i], ctx);
+        HDBGMWrite (addr + i, * (data + i));
+      }
   }
 
 int is_priv_mode (void);

@@ -284,6 +284,7 @@ void IEEElongdoubleToEAQ(long double f0)
     if (f0 == 0)
     {
         cpu . rA = 0;
+        HDBGRegA ();
         cpu . rQ = 0;
         cpu . rE = 0200U; /*-128*/
         return;
@@ -325,6 +326,7 @@ void IEEElongdoubleToEAQ(long double f0)
     
     cpu . rE = exp & MASK8;
     cpu . rA = (result >> 36) & MASK36;
+    HDBGRegA ();
     cpu . rQ = result & MASK36;
 }
 #endif
@@ -757,6 +759,7 @@ IF1 sim_printf ("UFA now e3 %03o m3 now %012"PRIo64" %012"PRIo64"\n", e3, (word3
     }
 
     convertToWord36 (m3, & cpu.rA, & cpu.rQ);
+    HDBGRegA ();
     cpu . rE = e3 & 0377;
 
     SC_I_NEG (cpu.rA & SIGN36); // Do this here instead of in Add72b because
@@ -1305,6 +1308,7 @@ void fneg (void)
     convertToWord36 (m, & cpu.rA, & cpu.rQ);
 #endif
     fno (& cpu.rE, & cpu.rA, & cpu.rQ);  // normalize
+    HDBGRegA ();
 }
 
 /*!
@@ -1343,6 +1347,7 @@ void ufm (void)
         
         cpu . rE = 0200U; /*-128*/
         cpu . rA = 0;
+        HDBGRegA ();
         cpu . rQ = 0;
         
         return; // normalized 0
@@ -1417,6 +1422,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "m3a %016lx%016lx\n", (uint64_t) (m3a>>64), (ui
     }
 
     convertToWord36 (m3a, & cpu.rA, & cpu.rQ);
+    HDBGRegA ();
     cpu . rE = (word8) e3 & MASK8;
 sim_debug (DBG_TRACE, & cpu_dev, "fmp A %012"PRIo64" Q %012"PRIo64" E %03o\n", cpu.rA, cpu.rQ, cpu.rE);
     SC_I_NEG (cpu.rA & SIGN36);
@@ -1517,6 +1523,7 @@ static void fdvX(bool bInvert)
         
         cpu . rE = 0200U; /*-128*/
         cpu . rA = 0;
+        HDBGRegA ();
         cpu . rQ = 0;
         
         return; // normalized 0
@@ -1617,6 +1624,7 @@ IF1 sim_printf ("FDV abs e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (
         // Instead, a divide check fault occurs and all the registers remain unchanged.
         if (!bInvert) {
             convertToWord36 (m1, & cpu.rA, & cpu.rQ);
+            HDBGRegA ();
         }
 
         doFault(FAULT_DIV, fst_zero, "FDV: divide check fault");
@@ -1701,6 +1709,7 @@ IF1 sim_printf ("FDV final e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36
 #else
     cpu . rA = (m3 >> 36) & MASK36;
 #endif
+    HDBGRegA ();
     cpu . rQ = 0;
     
     SC_I_ZERO (cpu . rA == 0);
@@ -1865,6 +1874,7 @@ IF1 sim_printf ("FRD E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, (word36) (
     convertToWord36 (m, & cpu.rA, & cpu.rQ);
 
     fno (& cpu.rE, & cpu.rA, & cpu.rQ);
+    HDBGRegA ();
     SC_I_OFLOW(savedovf);
 IF1 sim_printf ("FRD normalized E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ);
 
@@ -2709,6 +2719,7 @@ IF1 sim_printf ("DUFA e3 now %d\n", e3);
       }
 
     convertToWord36 (m3, & cpu.rA, & cpu.rQ);
+    HDBGRegA ();
     cpu.rE = e3 & 0377;
 
     SC_I_NEG (cpu.rA & SIGN36); // Do this here instead of in Add72b because
@@ -2860,6 +2871,7 @@ void dufm (void)
         
         cpu . rE = 0200U; /*-128*/
         cpu . rA = 0;
+        HDBGRegA ();
         cpu . rQ = 0;
         
         return; // normalized 0
@@ -2988,6 +3000,7 @@ IF1 sim_printf ("DUFM aligned e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (wor
     }
 
     convertToWord36 (m3a, & cpu.rA, & cpu.rQ);
+    HDBGRegA ();
     cpu . rE = (word8) e3 & MASK8;
 
     SC_I_NEG (cpu.rA & SIGN36);
@@ -3113,6 +3126,7 @@ IF1 sim_printf ("UFA E %03o A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu
         
         cpu.rE = 0200U; /*-128*/
         cpu.rA = 0;
+        HDBGRegA ();
         cpu.rQ = 0;
         
         return;	// normalized 0 
@@ -3222,6 +3236,7 @@ IF1 sim_printf ("DFDV m2==0\n");
         // Instead, a divide check fault occurs and all the registers remain unchanged.
         if (!bInvert) {
           convertToWord36 (m1, & cpu.rA, & cpu.rQ);
+          HDBGRegA ();
         }
          
 IF1 sim_printf ("rA %012"PRIo64" rQ %012"PRIo64"\n", cpu.rA, cpu.rQ);
@@ -3310,6 +3325,7 @@ IF1 sim_printf ("DFDV final e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word3
 #endif
 
     convertToWord36 (m3, & cpu.rA, & cpu.rQ);
+    HDBGRegA ();
     cpu.rE = (word8) e3 & MASK8;
 IF1 sim_printf ("rA %012"PRIo64" rQ %012"PRIo64" rE %o\n", cpu.rA, cpu.rQ, cpu.rE);
     
@@ -3554,6 +3570,7 @@ IF1 sim_printf ("DVFb A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, c
         doFault(FAULT_DIV, fst_zero, "DVF: divide check fault");
       }
     cpu . rA = quot & MASK36;
+    HDBGRegA ();
     cpu . rQ = remainder & MASK36;
  
 #endif
@@ -3755,6 +3772,7 @@ IF1 sim_printf ("incr. A\n");
             cpu.rQ = (cpu.rQ + 1) & MASK36;
           }
 #endif
+        HDBGRegA ();
         //cpu . rA = (zFrac >> 35) & MASK35;
         //cpu . rQ = (word36) ((zFrac & MASK35) << 1);
 // ISOLTS 730 expects the right to be zero and the sign
@@ -3799,6 +3817,7 @@ IF1 sim_printf ("rem  %012"PRIo64" %012"PRIo64"\n", (word36) (remainder >> 36) &
     cpu . rA = quot & MASK36;
     cpu . rQ = remainder & MASK36;
 #endif
+    HDBGRegA ();
  
 #endif
 
@@ -3885,6 +3904,7 @@ IF1 sim_printf ("DFRD E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, (word36) 
     convertToWord36 (m, & cpu.rA, & cpu.rQ);
 
     fno (& cpu.rE, & cpu.rA, & cpu.rQ);
+    HDBGRegA ();
     SC_I_OFLOW(savedovf);
 IF1 sim_printf ("DFRD normalized E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ);
   }

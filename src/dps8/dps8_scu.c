@@ -1524,6 +1524,7 @@ gotit:;
             uint64 clk = getSCUclock (scuUnitIdx);
             cpu . rQ =  clk & 0777777777777;     // lower 36-bits of clock
             cpu . rA = (clk >> 36) & 0177777;    // upper 16-bits of clock
+            HDBGRegA ();
           }
         break;
 

@@ -55,7 +55,6 @@
 #include "dps8_cable.h"
 #include "dps8_absi.h"
 #include "utlist.h"
-#include "hdbg.h"
 
 #ifdef PANEL
 #include "panelScraper.h"

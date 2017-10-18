@@ -43,9 +43,6 @@
 #ifdef M_SHARED
 #include "shm.h"
 #endif
-#ifdef HDBG
-#include "hdbg.h"
-#endif
 #include "dps8_opcodetable.h"
 
 #include "sim_defs.h"

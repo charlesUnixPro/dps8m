@@ -25,7 +25,7 @@
 #include "dps8_faults.h"
 #include "dps8_cpu.h"
 
-enum hevtType { hevtEmpty = 0, hevtTrace, hevtMRead, hevtMWrite, hevtIWBUpdate, hevtRegs, hevtFault };
+enum hevtType { hevtEmpty = 0, hevtTrace, hevtMRead, hevtMWrite, hevtIWBUpdate, hevtRegs, hevtFault, hevtReg, hevtPAReg };
 
 struct hevt
   {
@@ -54,6 +54,18 @@ struct hevt
             _fault_subtype subFault;
             char faultMsg [64];
           } fault;
+
+        struct
+          {
+            enum hregs_t type;
+            word36 data;
+          } reg;
+
+        struct
+          {
+            enum hregs_t type;
+            struct _par data;
+          } par;
       };
   };
 
@@ -148,6 +160,37 @@ if (currentRunningCpuIdx == 0)
     hevtPtr = (hevtPtr + 1) % hdbgSize; 
   }
 
+void hdbgReg (enum hregs_t type, word36 data)
+  {
+    if (! hevents)
+      return;
+#ifdef ISOLTS
+if (currentRunningCpuIdx == 0)
+  return;
+#endif
+    hevents[hevtPtr].type = hevtReg;
+    hevents[hevtPtr].time = sim_timell ();
+    hevents[hevtPtr].reg.type = type;
+    hevents[hevtPtr].reg.data = data;
+    hevtPtr = (hevtPtr + 1) % hdbgSize; 
+  }
+
+
+void hdbgPAReg (enum hregs_t type, struct _par * data)
+  {
+    if (! hevents)
+      return;
+#ifdef ISOLTS
+if (currentRunningCpuIdx == 0)
+  return;
+#endif
+    hevents[hevtPtr].type = hevtPAReg;
+    hevents[hevtPtr].time = sim_timell ();
+    hevents[hevtPtr].par.type = type;
+    hevents[hevtPtr].par.data =  * data;
+    hevtPtr = (hevtPtr + 1) % hdbgSize; 
+  }
+
 static FILE * hdbgOut = NULL;
 
 static void printMRead (struct hevt * p)
@@ -191,6 +234,52 @@ static void printFault (struct hevt * p)
                 p -> fault.faultMsg);
   }
 
+static char * regNames [] =
+  {
+    "A ",
+    "Q ",
+    "X0", "X1", "X2", "X3", "X4", "X5", "X6", "X7",
+    "AR0", "AR1", "AR2", "AR3", "AR4", "AR5", "AR6", "AR7",
+    "PR0", "PR1", "PR2", "PR3", "PR4", "PR5", "PR6", "PR7"
+  };
+
+static void printReg (struct hevt * p)
+  {
+    if (p->reg.type >= hreg_X0 && p->reg.type <= hreg_X7)
+      fprintf (hdbgOut, "DBG(%"PRId64")> CPU REG: %s %06"PRIo64"\n",
+                  p->time, 
+                  regNames[p->reg.type],
+                  p->reg.data);
+    else
+      fprintf (hdbgOut, "DBG(%"PRId64")> CPU REG: %s %012"PRIo64"\n",
+                  p->time, 
+                  regNames[p->reg.type],
+                  p->reg.data);
+  }
+
+static void printPAReg (struct hevt * p)
+  {
+    if (p->reg.type >= hreg_PR0 && p->reg.type <= hreg_PR7)
+      fprintf (hdbgOut, "DBG(%"PRId64")> CPU REG: %s "
+               "%05o:%06o BIT %2o RNR %o\n",
+               p->time, 
+               regNames[p->reg.type],
+               p->par.data.SNR,
+               p->par.data.WORDNO,
+               p->par.data.PR_BITNO,
+               p->par.data.RNR);
+    else
+      fprintf (hdbgOut, "DBG(%"PRId64")> CPU REG: %s "
+               "%05o:%06o CHAR %o BIT %2o RNR %o\n",
+               p->time, 
+               regNames[p->reg.type],
+               p->par.data.SNR,
+               p->par.data.WORDNO,
+               p->par.data.AR_CHAR,
+               p->par.data.AR_BITNO,
+               p->par.data.RNR);
+  }
+
 void hdbgPrint (void)
   {
     if (! hevents)
@@ -228,6 +317,14 @@ void hdbgPrint (void)
                 
             case hevtFault:
               printFault (evtp);
+              break;
+                
+            case hevtReg:
+              printReg (evtp);
+              break;
+                
+            case hevtPAReg:
+              printPAReg (evtp);
               break;
                 
             default:

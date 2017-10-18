@@ -39,9 +39,6 @@
 #include "dps8_iefp.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
-#ifdef HDBG
-#include "hdbg.h"
-#endif
 
 // Forward declarations
 
@@ -1979,6 +1976,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "b29, ci->address %o\n", ci->address);
                 // a:RJ78/rpd5
                 cpu.TPR.CA = (cpu.rX[Xn] + offset) & AMASK;
                 cpu.rX[Xn] = cpu.TPR.CA;
+                HDBGRegX (Xn);
                 sim_debug (DBG_TRACE, & cpu_dev,
                            "rpt/rd/rl repeat first; X%d now %06o\n",
                            Xn, cpu.rX[Xn]);
@@ -2393,6 +2391,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 uint Xn = (uint) getbits36_3 (cpu.cu.IWB, 36 - 3);
                 cpu.TPR.CA = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
                 cpu.rX[Xn] = cpu.TPR.CA;
+                HDBGRegX (Xn);
                 sim_debug (DBG_TRACE, & cpu_dev,
                            "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX[Xn]);
               }
@@ -2408,6 +2407,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 uint Xn = (uint) getbits36_3 (cpu.cu.IWB, 36 - 3);
                 cpu.TPR.CA = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
                 cpu.rX[Xn] = cpu.TPR.CA;
+                HDBGRegX (Xn);
                 sim_debug (DBG_TRACE, & cpu_dev,
                            "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX[Xn]);
               }
@@ -2419,6 +2419,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 uint Xn = (uint) getbits36_3 (cpu.cu.IRODD, 36 - 3);
                 cpu.TPR.CA = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
                 cpu.rX[Xn] = cpu.TPR.CA;
+                HDBGRegX (Xn);
                 sim_debug (DBG_TRACE, & cpu_dev,
                            "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX[Xn]);
               }
@@ -2481,6 +2482,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
             x -= 1;
             x &= MASK8;
             putbits18 (& cpu.rX[0], 0, 8, x);
+            HDBGRegX (0);
 
             //sim_debug (DBG_TRACE, & cpu_dev, "x %03o rX[0] %06o\n", x, rX[0]);
 
@@ -2581,6 +2583,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 //word18 lnk = GETHI36 (cpu.CY);
                 //cpu.CY &= MASK18;
                 cpu.rX[Xn] = cpu.lnk;
+                HDBGRegX (Xn);
                 //putbits36 (& cpu.cu.IWB,  0, 18, lnk);
 #else
                 uint Xn = (uint) getbits36_3 (cpu.cu.IWB, 36 - 3);
@@ -2776,7 +2779,7 @@ static t_stat DoBasicInstruction (void)
         case 0635:  // eaa
           cpu.rA = 0;
           SETHI (cpu.rA, cpu.TPR.CA);
-
+          HDBGRegA ();
           SC_I_ZERO (cpu.TPR.CA == 0);
           SC_I_NEG (cpu.TPR.CA & SIGN18);
 
@@ -2785,6 +2788,7 @@ static t_stat DoBasicInstruction (void)
         case 0636:  // eaq
           cpu.rQ = 0;
           SETHI (cpu.rQ, cpu.TPR.CA);
+          HDBGRegQ ();
 
           SC_I_ZERO (cpu.TPR.CA == 0);
           SC_I_NEG (cpu.TPR.CA & SIGN18);
@@ -2802,6 +2806,7 @@ static t_stat DoBasicInstruction (void)
           {
             uint32 n = opcode & 07;  // get n
             cpu.rX[n] = cpu.TPR.CA;
+            HDBGRegX (n);
 
             SC_I_ZERO (cpu.TPR.CA == 0);
             SC_I_NEG (cpu.TPR.CA & SIGN18);
@@ -2813,6 +2818,7 @@ static t_stat DoBasicInstruction (void)
           {
             bool ovf;
             cpu.rA = compl36 (cpu.CY, & cpu.cu.IR, & ovf);
+            HDBGRegA ();
             overflow (ovf, false, "lca overflow fault");
           }
           break;
@@ -2821,6 +2827,7 @@ static t_stat DoBasicInstruction (void)
           {
             bool ovf;
             cpu.rQ = compl36 (cpu.CY, & cpu.cu.IR, & ovf);
+            HDBGRegQ ();
             overflow (ovf, false, "lcq overflow fault");
           }
           break;
@@ -2837,6 +2844,7 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             uint32 n = opcode & 07;  // get n
             cpu.rX[n] = compl18 (GETHI (cpu.CY), & cpu.cu.IR, & ovf);
+            HDBGRegX (n);
             overflow (ovf, false, "lcxn overflow fault");
           }
           break;
@@ -2853,7 +2861,9 @@ static t_stat DoBasicInstruction (void)
             if (cpu.Ypair[0] == 0400000000000LL && cpu.Ypair[1] == 0)
               {
                 cpu.rA = cpu.Ypair[0];
+                HDBGRegA ();
                 cpu.rQ = cpu.Ypair[1];
+                HDBGRegQ ();
                 SET_I_NEG;
                 CLR_I_ZERO;
                 overflow (true, false, "lcaq overflow fault");
@@ -2861,7 +2871,9 @@ static t_stat DoBasicInstruction (void)
             else if (cpu.Ypair[0] == 0 && cpu.Ypair[1] == 0)
               {
                 cpu.rA = 0;
+                HDBGRegA ();
                 cpu.rQ = 0;
+                HDBGRegQ ();
 
                 SET_I_ZERO;
                 CLR_I_NEG;
@@ -2875,6 +2887,8 @@ static t_stat DoBasicInstruction (void)
                 tmp72 = ~tmp72 + 1;
 #endif
                 convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
+                HDBGRegA ();
+                HDBGRegQ ();
 
                 SC_I_ZERO (cpu.rA == 0 && cpu.rQ == 0);
                 SC_I_NEG (cpu.rA & SIGN36);
@@ -2884,12 +2898,14 @@ static t_stat DoBasicInstruction (void)
 
         case 0235:  // lda
           cpu.rA = cpu.CY;
+          HDBGRegA ();
           SC_I_ZERO (cpu.rA == 0);
           SC_I_NEG (cpu.rA & SIGN36);
           break;
 
         case 0034: // ldac
           cpu.rA = cpu.CY;
+          HDBGRegA ();
           SC_I_ZERO (cpu.rA == 0);
           SC_I_NEG (cpu.rA & SIGN36);
           cpu.CY = 0;
@@ -2897,7 +2913,9 @@ static t_stat DoBasicInstruction (void)
 
         case 0237:  // ldaq
           cpu.rA = cpu.Ypair[0];
+          HDBGRegA ();
           cpu.rQ = cpu.Ypair[1];
+          HDBGRegQ ();
           SC_I_ZERO (cpu.rA == 0 && cpu.rQ == 0)
           SC_I_NEG (cpu.rA & SIGN36);
           break;
@@ -2979,12 +2997,14 @@ static t_stat DoBasicInstruction (void)
 
         case 0236:  // ldq
           cpu.rQ = cpu.CY;
+          HDBGRegQ ();
           SC_I_ZERO (cpu.rQ == 0);
           SC_I_NEG (cpu.rQ & SIGN36);
           break;
 
         case 0032: // ldqc
           cpu.rQ = cpu.CY;
+          HDBGRegQ ();
           SC_I_ZERO (cpu.rQ == 0);
           SC_I_NEG (cpu.rQ & SIGN36);
           cpu.CY = 0;
@@ -3001,6 +3021,7 @@ static t_stat DoBasicInstruction (void)
           {
             uint32 n = opcode & 07;  // get n
             cpu.rX[n] = GETHI (cpu.CY);
+            HDBGRegX (n);
             SC_I_ZERO (cpu.rX[n] == 0);
             SC_I_NEG (cpu.rX[n] & SIGN18);
           }
@@ -3013,27 +3034,37 @@ static t_stat DoBasicInstruction (void)
           cpu.ou.eac = 0;
 #endif
           cpu.rX[0] = GETHI (cpu.Yblock8[0]);
+          HDBGRegX (0);
           cpu.rX[1] = GETLO (cpu.Yblock8[0]);
+          HDBGRegX (1);
 #ifdef L68
           cpu.ou.eac ++;
 #endif
           cpu.rX[2] = GETHI (cpu.Yblock8[1]);
+          HDBGRegX (2);
           cpu.rX[3] = GETLO (cpu.Yblock8[1]);
+          HDBGRegX (3);
 #ifdef L68
           cpu.ou.eac ++;
 #endif
           cpu.rX[4] = GETHI (cpu.Yblock8[2]);
+          HDBGRegX (4);
           cpu.rX[5] = GETLO (cpu.Yblock8[2]);
+          HDBGRegX (5);
 #ifdef L68
           cpu.ou.eac ++;
 #endif
           cpu.rX[6] = GETHI (cpu.Yblock8[3]);
+          HDBGRegX (6);
           cpu.rX[7] = GETLO (cpu.Yblock8[3]);
+          HDBGRegX (7);
 #ifdef L68
           cpu.ou.eac = 0;
 #endif
           cpu.rA = cpu.Yblock8[4];
+          HDBGRegA ();
           cpu.rQ = cpu.Yblock8[5];
+          HDBGRegQ ();
           cpu.rE = (GETHI (cpu.Yblock8[6]) >> 10) & 0377;   // need checking
           break;
 
@@ -3048,6 +3079,7 @@ static t_stat DoBasicInstruction (void)
           {
             uint32 n = opcode & 07;  // get n
             cpu.rX[n] = GETLO (cpu.CY);
+            HDBGRegX (n);
             SC_I_ZERO (cpu.rX[n] == 0);
             SC_I_NEG (cpu.rX[n] & SIGN18);
           }
@@ -3085,13 +3117,16 @@ static t_stat DoBasicInstruction (void)
           cpu.ou.eac = 0;
 #endif
           cpu.Yblock8[4] = cpu.rA;
+          HDBGRegA ();
           cpu.Yblock8[5] = cpu.rQ;
+          HDBGRegQ ();
           cpu.Yblock8[6] = ((word36)(cpu.rE & MASK8)) << 28;
           cpu.Yblock8[7] = ((cpu.rTR & MASK27) << 9) | (cpu.rRALR & 07);
           break;
 
         case 0755:  // sta
           cpu.CY = cpu.rA;
+          HDBGRegA ();
           break;
 
         case 0354:  // stac
@@ -3235,6 +3270,7 @@ static t_stat DoBasicInstruction (void)
 
         case 0756: // stq
           cpu.CY = cpu.rQ;
+          HDBGRegQ ();
           break;
 
         case 0454:  // stt
@@ -3292,6 +3328,7 @@ static t_stat DoBasicInstruction (void)
                       cpu.rA |= 1;
               }
               cpu.rA &= DMASK;    // keep to 36-bits
+              HDBGRegA ();
 
               SC_I_ZERO (cpu.rA == 0);
               SC_I_NEG (cpu.rA & SIGN36);
@@ -3312,6 +3349,7 @@ static t_stat DoBasicInstruction (void)
                   SET_I_CARRY;
               }
             cpu.rA &= DMASK;    // keep to 36-bits
+            HDBGRegA ();
 
             SC_I_ZERO (cpu.rA == 0);
             SC_I_NEG (cpu.rA & SIGN36);
@@ -3327,6 +3365,7 @@ static t_stat DoBasicInstruction (void)
 
             cpu.rA >>= tmp36;
             cpu.rA &= DMASK;    // keep to 36-bits
+            HDBGRegA ();
 
             SC_I_ZERO (cpu.rA == 0);
             SC_I_NEG (cpu.rA & SIGN36);
@@ -3349,6 +3388,7 @@ static t_stat DoBasicInstruction (void)
                     cpu.rA |= SIGN36;
               }
             cpu.rA &= DMASK;    // keep to 36-bits
+            HDBGRegA ();
 
             SC_I_ZERO (cpu.rA == 0);
             SC_I_NEG (cpu.rA & SIGN36);
@@ -3378,7 +3418,9 @@ static t_stat DoBasicInstruction (void)
               }
 
             cpu.rA &= DMASK;    // keep to 36-bits
+            HDBGRegA ();
             cpu.rQ &= DMASK;
+            HDBGRegQ ();
 
             SC_I_ZERO (cpu.rA == 0 && cpu.rQ == 0);
             SC_I_NEG (cpu.rA & SIGN36);
@@ -3409,7 +3451,9 @@ static t_stat DoBasicInstruction (void)
               }
 
             cpu.rA &= DMASK;    // keep to 36-bits
+            HDBGRegA ();
             cpu.rQ &= DMASK;
+            HDBGRegQ ();
 
             SC_I_ZERO (cpu.rA == 0 && cpu.rQ == 0);
             SC_I_NEG (cpu.rA & SIGN36);
@@ -3434,7 +3478,9 @@ static t_stat DoBasicInstruction (void)
                   cpu.rQ |= SIGN36;
               }
             cpu.rA &= DMASK;    // keep to 36-bits
+            HDBGRegA ();
             cpu.rQ &= DMASK;
+            HDBGRegQ ();
 
             SC_I_ZERO (cpu.rA == 0 && cpu.rQ == 0);
             SC_I_NEG (cpu.rA & SIGN36);
@@ -3464,7 +3510,9 @@ static t_stat DoBasicInstruction (void)
                   cpu.rQ |= SIGN36;
               }
             cpu.rA &= DMASK;    // keep to 36-bits (probably ain't necessary)
+            HDBGRegA ();
             cpu.rQ &= DMASK;
+            HDBGRegQ ();
 
             SC_I_ZERO (cpu.rA == 0 && cpu.rQ == 0);
             SC_I_NEG (cpu.rA & SIGN36);
@@ -3484,6 +3532,7 @@ static t_stat DoBasicInstruction (void)
                   cpu.rQ |= 1;
               }
             cpu.rQ &= DMASK;    // keep to 36-bits
+            HDBGRegQ ();
 
             SC_I_ZERO (cpu.rQ == 0);
             SC_I_NEG (cpu.rQ & SIGN36);
@@ -3505,6 +3554,7 @@ static t_stat DoBasicInstruction (void)
                   SET_I_CARRY;
               }
             cpu.rQ &= DMASK;    // keep to 36-bits
+            HDBGRegQ ();
 
             SC_I_ZERO (cpu.rQ == 0);
             SC_I_NEG (cpu.rQ & SIGN36);
@@ -3520,6 +3570,7 @@ static t_stat DoBasicInstruction (void)
             cpu.rQ &= DMASK;    // Make sure the shifted in bits are 0
             cpu.rQ >>= tmp36;
             cpu.rQ &= DMASK;    // keep to 36-bits
+            HDBGRegQ ();
 
             SC_I_ZERO (cpu.rQ == 0);
             SC_I_NEG (cpu.rQ & SIGN36);
@@ -3542,6 +3593,7 @@ static t_stat DoBasicInstruction (void)
                   cpu.rQ |= SIGN36;
               }
             cpu.rQ &= DMASK;    // keep to 36-bits
+            HDBGRegQ ();
 
             SC_I_ZERO (cpu.rQ == 0);
             SC_I_NEG (cpu.rQ & SIGN36);
@@ -3566,6 +3618,7 @@ static t_stat DoBasicInstruction (void)
 #endif
             bool ovf;
             cpu.rA = Add36b (cpu.rA, cpu.CY, 0, I_ZNOC, & cpu.cu.IR, & ovf);
+            HDBGRegA ();
             overflow (ovf, false, "ada overflow fault");
           }
           break;
@@ -3581,6 +3634,8 @@ static t_stat DoBasicInstruction (void)
             tmp72 = Add72b (convertToWord72 (cpu.rA, cpu.rQ), tmp72, 0,
                             I_ZNOC, & cpu.cu.IR, & ovf);
             convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
+            HDBGRegA ();
+            HDBGRegQ ();
             overflow (ovf, false, "adaq overflow fault");
           }
           break;
@@ -3597,6 +3652,8 @@ static t_stat DoBasicInstruction (void)
                             I_ZNOC,
                             & cpu.cu.IR, & ovf);
             convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
+            HDBGRegA ();
+            HDBGRegQ ();
             overflow (ovf, false, "adl overflow fault");
           }
           break;
@@ -3617,6 +3674,8 @@ static t_stat DoBasicInstruction (void)
             tmp72 = Add72b (convertToWord72 (cpu.rA, cpu.rQ), tmp72, 0,
                             I_ZNC, & cpu.cu.IR, & ovf);
             convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
+            HDBGRegA ();
+            HDBGRegQ ();
           }
           break;
 
@@ -3632,6 +3691,7 @@ static t_stat DoBasicInstruction (void)
 
             bool ovf;
             cpu.rA = Add36b (cpu.rA, cpu.CY, 0, I_ZNC, & cpu.cu.IR, & ovf);
+            HDBGRegA ();
           }
           break;
 
@@ -3647,6 +3707,7 @@ static t_stat DoBasicInstruction (void)
 #endif
             bool ovf;
             cpu.rQ = Add36b (cpu.rQ, cpu.CY, 0, I_ZNC, & cpu.cu.IR, & ovf);
+            HDBGRegQ ();
           }
           break;
 
@@ -3666,6 +3727,7 @@ static t_stat DoBasicInstruction (void)
             uint32 n = opcode & 07;  // get n
             cpu.rX[n] = Add18b (cpu.rX[n], GETHI (cpu.CY), 0, I_ZNC,
                              & cpu.cu.IR, & ovf);
+            HDBGRegX (n);
           }
           break;
 
@@ -3677,6 +3739,7 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             cpu.rQ = Add36b (cpu.rQ, cpu.CY, 0, I_ZNOC,
                                  & cpu.cu.IR, & ovf);
+            HDBGRegQ ();
             overflow (ovf, false, "adq overflow fault");
           }
           break;
@@ -3698,6 +3761,7 @@ static t_stat DoBasicInstruction (void)
             cpu.rX[n] = Add18b (cpu.rX[n], GETHI (cpu.CY), 0,
                                  I_ZNOC,
                                  & cpu.cu.IR, & ovf);
+            HDBGRegX (n);
             overflow (ovf, false, "adxn overflow fault");
           }
           break;
@@ -3726,6 +3790,7 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             cpu.CY = Add36b (cpu.rA, cpu.CY, 0, I_ZNOC,
                              & cpu.cu.IR, & ovf);
+            HDBGRegA ();
             overflow (ovf, true, "asa overflow fault");
           }
           break;
@@ -3776,6 +3841,7 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             cpu.rA = Add36b (cpu.rA, cpu.CY, TST_I_CARRY ? 1 : 0,
                                  I_ZNOC, & cpu.cu.IR, & ovf);
+            HDBGRegA ();
             overflow (ovf, false, "awca overflow fault");
           }
           break;
@@ -3791,6 +3857,7 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             cpu.rQ = Add36b (cpu.rQ, cpu.CY, TST_I_CARRY ? 1 : 0,
                              I_ZNOC, & cpu.cu.IR, & ovf);
+            HDBGRegQ ();
             overflow (ovf, false, "awcq overflow fault");
           }
           break;
@@ -3806,6 +3873,7 @@ static t_stat DoBasicInstruction (void)
 #endif
             bool ovf;
             cpu.rA = Sub36b (cpu.rA, cpu.CY, 1, I_ZNOC, & cpu.cu.IR, & ovf);
+            HDBGRegA ();
             overflow (ovf, false, "sba overflow fault");
           }
           break;
@@ -3822,6 +3890,8 @@ static t_stat DoBasicInstruction (void)
                             I_ZNOC, & cpu.cu.IR,
                             & ovf);
             convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
+            HDBGRegA ();
+            HDBGRegQ ();
             overflow (ovf, false, "sbaq overflow fault");
           }
           break;
@@ -3835,6 +3905,7 @@ static t_stat DoBasicInstruction (void)
 #endif
             bool ovf;
             cpu.rA = Sub36b (cpu.rA, cpu.CY, 1, I_ZNC, & cpu.cu.IR, & ovf);
+            HDBGRegA ();
           }
           break;
 
@@ -3855,6 +3926,8 @@ static t_stat DoBasicInstruction (void)
             tmp72 = Sub72b (convertToWord72 (cpu.rA, cpu.rQ), tmp72, 1,
                             I_ZNC, & cpu.cu.IR, & ovf);
             convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
+            HDBGRegA ();
+            HDBGRegQ ();
           }
           break;
 
@@ -3866,6 +3939,7 @@ static t_stat DoBasicInstruction (void)
 #endif
             bool ovf;
             cpu.rQ = Sub36b (cpu.rQ, cpu.CY, 1, I_ZNC, & cpu.cu.IR, & ovf);
+            HDBGRegQ ();
           }
           break;
 
@@ -3888,6 +3962,7 @@ static t_stat DoBasicInstruction (void)
             uint32 n = opcode & 07;  // get n
             cpu.rX[n] = Sub18b (cpu.rX[n], GETHI (cpu.CY), 1,
                              I_ZNC, & cpu.cu.IR, & ovf);
+            HDBGRegX (n);
           }
           break;
 
@@ -3899,6 +3974,7 @@ static t_stat DoBasicInstruction (void)
 #endif
             bool ovf;
             cpu.rQ = Sub36b (cpu.rQ, cpu.CY, 1, I_ZNOC, & cpu.cu.IR, & ovf);
+            HDBGRegQ ();
             overflow (ovf, false, "sbq overflow fault");
           }
           break;
@@ -3922,6 +3998,7 @@ static t_stat DoBasicInstruction (void)
             uint32 n = opcode & 07;  // get n
             cpu.rX[n] = Sub18b (cpu.rX[n], GETHI (cpu.CY), 1,
                                  I_ZNOC, & cpu.cu.IR, & ovf);
+            HDBGRegX (n);
             overflow (ovf, false, "sbxn overflow fault");
           }
           break;
@@ -3988,6 +4065,7 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             cpu.rA = Sub36b (cpu.rA, cpu.CY, TST_I_CARRY ? 1 : 0,
                              I_ZNOC, & cpu.cu.IR, & ovf);
+            HDBGRegA ();
             overflow (ovf, false, "swca overflow fault");
           }
           break;
@@ -4003,6 +4081,7 @@ static t_stat DoBasicInstruction (void)
             bool ovf;
             cpu.rQ = Sub36b (cpu.rQ, cpu.CY, TST_I_CARRY ? 1 : 0,
                                  I_ZNOC, & cpu.cu.IR, & ovf);
+            HDBGRegQ ();
             overflow (ovf, false, "swcq overflow fault");
           }
           break;
@@ -4045,6 +4124,8 @@ static t_stat DoBasicInstruction (void)
               }
 
             convertToWord36 (tmp72, &cpu.rA, &cpu.rQ);
+            HDBGRegA ();
+            HDBGRegQ ();
             SC_I_ZERO (cpu.rA == 0 && cpu.rQ == 0);
             SC_I_NEG (cpu.rA & SIGN36);
           }
@@ -4070,6 +4151,8 @@ static t_stat DoBasicInstruction (void)
 
             convertToWord36 ((word72)prod, &cpu.rA, &cpu.rQ);
 #endif
+            HDBGRegA ();
+            HDBGRegQ ();
 
             SC_I_ZERO (cpu.rA == 0 && cpu.rQ == 0);
             SC_I_NEG (cpu.rA & SIGN36);
@@ -4108,13 +4191,17 @@ static t_stat DoBasicInstruction (void)
 // case 2  000000000000 000000000000 --> 400000000000
               //cpu.rA = 0;  // works for case 1
               cpu.rA = (cpu.rQ & SIGN36) ? 0 : SIGN36; // works for case 1,2
+              HDBGRegA ();
 
               // no division takes place
               SC_I_ZERO (cpu.CY == 0);
               SC_I_NEG (cpu.rQ & SIGN36);
 
               if (cpu.rQ & SIGN36)
-                cpu.rQ = (- cpu.rQ) & MASK36;
+                {
+                  cpu.rQ = (- cpu.rQ) & MASK36;
+                  HDBGRegQ ();
+                }
 
               dlyDoFault (FAULT_DIV,
                           fst_ill_op,
@@ -4189,7 +4276,9 @@ static t_stat DoBasicInstruction (void)
                 }
 
               cpu.rA = (word36) remainder & DMASK;
+              HDBGRegA ();
               cpu.rQ = (word36) quotient & DMASK;
+              HDBGRegQ ();
 
 #ifdef DIV_TRACE
               sim_debug (DBG_CAC, & cpu_dev, "rA (rem)  %012"PRIo64"\n", cpu.rA);
@@ -4239,6 +4328,7 @@ static t_stat DoBasicInstruction (void)
           cpu.rA = -cpu.rA;
 
           cpu.rA &= DMASK;    // keep to 36-bits
+          HDBGRegA ();
 
           SC_I_ZERO (cpu.rA == 0);
           SC_I_NEG (cpu.rA & SIGN36);
@@ -4272,6 +4362,8 @@ static t_stat DoBasicInstruction (void)
 #endif
 
             convertToWord36 (tmp72, &cpu.rA, &cpu.rQ);
+            HDBGRegA ();
+            HDBGRegQ ();
           }
           break;
 
@@ -4417,6 +4509,7 @@ static t_stat DoBasicInstruction (void)
           // C(A)i & C(Y)i -> C(A)i for i = (0, 1, ..., 35)
           cpu.rA = cpu.rA & cpu.CY;
           cpu.rA &= DMASK;
+          HDBGRegA ();
           SC_I_ZERO (cpu.rA == 0);
           SC_I_NEG (cpu.rA & SIGN36);
           break;
@@ -4440,6 +4533,8 @@ static t_stat DoBasicInstruction (void)
               SC_I_NEG (trAQ & SIGN72);
 #endif
               convertToWord36 (trAQ, &cpu.rA, &cpu.rQ);
+              HDBGRegA ();
+              HDBGRegQ ();
           }
           break;
 
@@ -4447,6 +4542,7 @@ static t_stat DoBasicInstruction (void)
           // C(Q)i & C(Y)i -> C(Q)i for i = (0, 1, ..., 35)
           cpu.rQ = cpu.rQ & cpu.CY;
           cpu.rQ &= DMASK;
+          HDBGRegQ ();
 
           SC_I_ZERO (cpu.rQ == 0);
           SC_I_NEG (cpu.rQ & SIGN36);
@@ -4457,6 +4553,7 @@ static t_stat DoBasicInstruction (void)
           {
             cpu.CY = cpu.rA & cpu.CY;
             cpu.CY &= DMASK;
+            HDBGRegA ();
 
             SC_I_ZERO (cpu.CY == 0);
             SC_I_NEG (cpu.CY & SIGN36);
@@ -4511,6 +4608,7 @@ static t_stat DoBasicInstruction (void)
               uint32 n = opcode & 07;  // get n
               cpu.rX[n] &= GETHI (cpu.CY);
               cpu.rX[n] &= MASK18;
+              HDBGRegX (n);
 
               SC_I_ZERO (cpu.rX[n] == 0);
               SC_I_NEG (cpu.rX[n] & SIGN18);
@@ -4523,6 +4621,7 @@ static t_stat DoBasicInstruction (void)
           // C(A)i | C(Y)i -> C(A)i for i = (0, 1, ..., 35)
           cpu.rA = cpu.rA | cpu.CY;
           cpu.rA &= DMASK;
+          HDBGRegA ();
 
           SC_I_ZERO (cpu.rA == 0);
           SC_I_NEG (cpu.rA & SIGN36);
@@ -4547,6 +4646,8 @@ static t_stat DoBasicInstruction (void)
               SC_I_NEG (trAQ & SIGN72);
 #endif
               convertToWord36 (trAQ, &cpu.rA, &cpu.rQ);
+              HDBGRegA ();
+              HDBGRegQ ();
           }
           break;
 
@@ -4554,6 +4655,7 @@ static t_stat DoBasicInstruction (void)
           // C(Q)i | C(Y)i -> C(Q)i for i = (0, 1, ..., 35)
           cpu.rQ = cpu.rQ | cpu.CY;
           cpu.rQ &= DMASK;
+          HDBGRegQ ();
 
           SC_I_ZERO (cpu.rQ == 0);
           SC_I_NEG (cpu.rQ & SIGN36);
@@ -4616,6 +4718,7 @@ static t_stat DoBasicInstruction (void)
               uint32 n = opcode & 07;  // get n
               cpu.rX[n] |= GETHI (cpu.CY);
               cpu.rX[n] &= MASK18;
+              HDBGRegX (n);
 
               SC_I_ZERO (cpu.rX[n] == 0);
               SC_I_NEG (cpu.rX[n] & SIGN18);
@@ -4628,6 +4731,7 @@ static t_stat DoBasicInstruction (void)
           // C(A)i XOR C(Y)i -> C(A)i for i = (0, 1, ..., 35)
           cpu.rA = cpu.rA ^ cpu.CY;
           cpu.rA &= DMASK;
+          HDBGRegA ();
 
           SC_I_ZERO (cpu.rA == 0);
           SC_I_NEG (cpu.rA & SIGN36);
@@ -4654,6 +4758,8 @@ static t_stat DoBasicInstruction (void)
 #endif
 
             convertToWord36 (trAQ, &cpu.rA, &cpu.rQ);
+            HDBGRegA ();
+            HDBGRegQ ();
           }
           break;
 
@@ -4661,6 +4767,7 @@ static t_stat DoBasicInstruction (void)
           // C(Q)i XOR C(Y)i -> C(Q)i for i = (0, 1, ..., 35)
           cpu.rQ = cpu.rQ ^ cpu.CY;
           cpu.rQ &= DMASK;
+          HDBGRegQ ();
           SC_I_ZERO (cpu.rQ == 0);
           SC_I_NEG (cpu.rQ & SIGN36);
           break;
@@ -4723,6 +4830,7 @@ static t_stat DoBasicInstruction (void)
             uint32 n = opcode & 07;  // get n
             cpu.rX[n] ^= GETHI (cpu.CY);
             cpu.rX[n] &= MASK18;
+            HDBGRegX (n);
 
             SC_I_ZERO (cpu.rX[n] == 0);
             SC_I_NEG (cpu.rX[n] & SIGN18);
@@ -4878,8 +4986,10 @@ static t_stat DoBasicInstruction (void)
 
           cpu.rA = (cpu.Ypair[0] & FLOAT36MASK) << 8;
           cpu.rA |= (cpu.Ypair[1] >> 28) & MASK8;
+          HDBGRegA ();
 
           cpu.rQ = (cpu.Ypair[1] & FLOAT36MASK) << 8;
+          HDBGRegQ ();
 
           SC_I_ZERO (cpu.rA == 0 && cpu.rQ == 0);
           SC_I_NEG (cpu.rA & SIGN36);
@@ -4896,7 +5006,9 @@ static t_stat DoBasicInstruction (void)
           cpu.CY &= DMASK;
           cpu.rE = (cpu.CY >> 28) & 0377;
           cpu.rA = (cpu.CY & FLOAT36MASK) << 8;
+          HDBGRegA ();
           cpu.rQ = 0;
+          HDBGRegQ ();
 
           SC_I_ZERO (cpu.rA == 0 && cpu.rQ == 0);
           SC_I_NEG (cpu.rA & SIGN36);
@@ -4967,6 +5079,8 @@ static t_stat DoBasicInstruction (void)
           CPTUR (cptUseE);
           dufa (false);
           fno (&cpu.rE, &cpu.rA, &cpu.rQ);
+          HDBGRegA ();
+          HDBGRegQ ();
           break;
 
         case 0437:  // dufa
@@ -4981,6 +5095,8 @@ static t_stat DoBasicInstruction (void)
           CPTUR (cptUseE);
           ufa (false);
           fno (&cpu.rE, &cpu.rA, &cpu.rQ);
+          HDBGRegA ();
+          HDBGRegQ ();
 
           break;
 
@@ -5000,6 +5116,8 @@ static t_stat DoBasicInstruction (void)
           CPTUR (cptUseE);
           dufa (true);
           fno (&cpu.rE, &cpu.rA, &cpu.rQ);
+          HDBGRegA ();
+          HDBGRegQ ();
           break;
 
         case 0537:  // dufs
@@ -5012,6 +5130,8 @@ static t_stat DoBasicInstruction (void)
           CPTUR (cptUseE);
           ufa (true);
           fno (&cpu.rE, &cpu.rA, &cpu.rQ);
+          HDBGRegA ();
+          HDBGRegQ ();
 
           break;
 
@@ -5029,6 +5149,8 @@ static t_stat DoBasicInstruction (void)
           CPTUR (cptUseE);
           dufm ();
           fno (&cpu.rE, &cpu.rA, &cpu.rQ);
+          HDBGRegA ();
+          HDBGRegQ ();
           break;
 
         case 0423:  // dufm
@@ -5043,6 +5165,8 @@ static t_stat DoBasicInstruction (void)
           CPTUR (cptUseE);
           ufm ();
           fno (&cpu.rE, &cpu.rA, &cpu.rQ);
+          HDBGRegA ();
+          HDBGRegQ ();
 
           break;
 
@@ -5101,6 +5225,8 @@ static t_stat DoBasicInstruction (void)
 
           CPTUR (cptUseE);
           fno (& cpu.rE, & cpu.rA, & cpu.rQ);
+          HDBGRegA ();
+          HDBGRegQ ();
           break;
 
         /// Floating-Point Round
@@ -5449,6 +5575,7 @@ static t_stat DoBasicInstruction (void)
             word18 ret = (cpu.PPR.IC + 1) & MASK18;
             ReadTraOp ();
             cpu.rX[opcode & 07] = ret;
+            HDBGRegX (opcode & 07);
           }
           return CONT_TRA;
 
@@ -5484,21 +5611,25 @@ static t_stat DoBasicInstruction (void)
           // C(TPR.CA) -> C(PRn.SNR)
           CPTUR (cptUsePRn + 0);
           cpu.PR[0].SNR = cpu.TPR.CA & MASK15;
+          HDBGRegPR (0);
           break;
         case 0313:  // easp2
           // C(TPR.CA) -> C(PRn.SNR)
           CPTUR (cptUsePRn + 2);
           cpu.PR[2].SNR = cpu.TPR.CA & MASK15;
+          HDBGRegPR (2);
           break;
         case 0331:  // easp4
           // C(TPR.CA) -> C(PRn.SNR)
           CPTUR (cptUsePRn + 4);
           cpu.PR[4].SNR = cpu.TPR.CA & MASK15;
+          HDBGRegPR (4);
           break;
         case 0333:  // easp6
           // C(TPR.CA) -> C(PRn.SNR)
           CPTUR (cptUsePRn + 6);
           cpu.PR[6].SNR = cpu.TPR.CA & MASK15;
+          HDBGRegPR (6);
           break;
 
         case 0310:  // eawp0
@@ -5508,6 +5639,7 @@ static t_stat DoBasicInstruction (void)
           CPTUR (cptUsePRn + 0);
           cpu.PR[0].WORDNO = cpu.TPR.CA;
           SET_PR_BITNO (0, cpu.TPR.TBR);
+          HDBGRegPR (0);
           break;
         case 0312:  // eawp2
           // For n = 0, 1, ..., or 7 as determined by operation code
@@ -5516,6 +5648,7 @@ static t_stat DoBasicInstruction (void)
           CPTUR (cptUsePRn + 2);
           cpu.PR[2].WORDNO = cpu.TPR.CA;
           SET_PR_BITNO (2, cpu.TPR.TBR);
+          HDBGRegPR (2);
           break;
         case 0330:  // eawp4
           // For n = 0, 1, ..., or 7 as determined by operation code
@@ -5524,6 +5657,7 @@ static t_stat DoBasicInstruction (void)
           CPTUR (cptUsePRn + 4);
           cpu.PR[4].WORDNO = cpu.TPR.CA;
           SET_PR_BITNO (4, cpu.TPR.TBR);
+          HDBGRegPR (4);
           break;
         case 0332:  // eawp6
           // For n = 0, 1, ..., or 7 as determined by operation code
@@ -5532,6 +5666,7 @@ static t_stat DoBasicInstruction (void)
           CPTUR (cptUsePRn + 6);
           cpu.PR[6].WORDNO = cpu.TPR.CA;
           SET_PR_BITNO (6, cpu.TPR.TBR);
+          HDBGRegPR (6);
           break;
 
         case 0351:  // epbp1
@@ -5545,6 +5680,7 @@ static t_stat DoBasicInstruction (void)
           cpu.PR[1].SNR = cpu.TPR.TSR;
           cpu.PR[1].WORDNO = 0;
           SET_PR_BITNO (1, 0);
+          HDBGRegPR (1);
           break;
         case 0353:  // epbp3
           // For n = 0, 1, ..., or 7 as determined by operation code
@@ -5557,6 +5693,7 @@ static t_stat DoBasicInstruction (void)
           cpu.PR[3].SNR = cpu.TPR.TSR;
           cpu.PR[3].WORDNO = 0;
           SET_PR_BITNO (3, 0);
+          HDBGRegPR (3);
           break;
         case 0371:  // epbp5
           // For n = 0, 1, ..., or 7 as determined by operation code
@@ -5569,6 +5706,7 @@ static t_stat DoBasicInstruction (void)
           cpu.PR[5].SNR = cpu.TPR.TSR;
           cpu.PR[5].WORDNO = 0;
           SET_PR_BITNO (5, 0);
+          HDBGRegPR (5);
           break;
         case 0373:  // epbp7
           // For n = 0, 1, ..., or 7 as determined by operation code
@@ -5581,6 +5719,7 @@ static t_stat DoBasicInstruction (void)
           cpu.PR[7].SNR = cpu.TPR.TSR;
           cpu.PR[7].WORDNO = 0;
           SET_PR_BITNO (7, 0);
+          HDBGRegPR (7);
           break;
 
         case 0350:  // epp0
@@ -5594,6 +5733,7 @@ static t_stat DoBasicInstruction (void)
           cpu.PR[0].SNR = cpu.TPR.TSR;
           cpu.PR[0].WORDNO = cpu.TPR.CA;
           SET_PR_BITNO (0, cpu.TPR.TBR);
+          HDBGRegPR (0);
           break;
         case 0352:  // epp2
           // For n = 0, 1, ..., or 7 as determined by operation code
@@ -5606,6 +5746,7 @@ static t_stat DoBasicInstruction (void)
           cpu.PR[2].SNR = cpu.TPR.TSR;
           cpu.PR[2].WORDNO = cpu.TPR.CA;
           SET_PR_BITNO (2, cpu.TPR.TBR);
+          HDBGRegPR (2);
           break;
         case 0370:  // epp4
           // For n = 0, 1, ..., or 7 as determined by operation code
@@ -5618,6 +5759,7 @@ static t_stat DoBasicInstruction (void)
           cpu.PR[4].SNR = cpu.TPR.TSR;
           cpu.PR[4].WORDNO = cpu.TPR.CA;
           SET_PR_BITNO (4, cpu.TPR.TBR);
+          HDBGRegPR (4);
           break;
         case 0372:  // epp6
           // For n = 0, 1, ..., or 7 as determined by operation code
@@ -5630,6 +5772,7 @@ static t_stat DoBasicInstruction (void)
           cpu.PR[6].SNR = cpu.TPR.TSR;
           cpu.PR[6].WORDNO = cpu.TPR.CA;
           SET_PR_BITNO (6, cpu.TPR.TBR);
+          HDBGRegPR (6);
           break;
 
         case 0173:  // lpri
@@ -5666,6 +5809,7 @@ static t_stat DoBasicInstruction (void)
               if (bitno == 077)
                 bitno = 037;
               SET_PR_BITNO (n, bitno);
+              HDBGRegPR (n);
             }
 
           break;
@@ -5743,6 +5887,7 @@ static t_stat DoBasicInstruction (void)
                          "PR[n].BITNO 0%o, PR[n].SNR 0%o, PR[n].WORDNO %o\n",
                          n, cpu.CY, cpu.PR[n].RNR, GET_PR_BITNO (n),
                          cpu.PR[n].SNR, cpu.PR[n].WORDNO);
+              HDBGRegPR (n);
           }
           break;
 
@@ -5962,6 +6107,7 @@ static t_stat DoBasicInstruction (void)
               cpu.PR[n].WORDNO += GETHI (cpu.CY);
               cpu.PR[n].WORDNO &= MASK18;
               SET_PR_BITNO (n, 0);
+              HDBGRegPR (n);
           }
           break;
 
@@ -5978,6 +6124,7 @@ static t_stat DoBasicInstruction (void)
               cpu.PR[n].WORDNO += GETHI (cpu.CY);
               cpu.PR[n].WORDNO &= MASK18;
               SET_PR_BITNO (n, 0);
+              HDBGRegPR (n);
           }
           break;
 
@@ -5995,9 +6142,11 @@ static t_stat DoBasicInstruction (void)
 
           cpu.rA = cpu.TPR.TRR & MASK3;
           cpu.rA |= (word36) (cpu.TPR.TSR & MASK15) << 18;
+          HDBGRegA ();
 
           cpu.rQ = cpu.TPR.TBR & MASK6;
           cpu.rQ |= (word36) (cpu.TPR.CA & MASK18) << 18;
+          HDBGRegQ ();
 
           SC_I_ZERO (cpu.rA == 0 && cpu.rQ == 0);
 
@@ -6035,6 +6184,8 @@ static t_stat DoBasicInstruction (void)
 
             t_stat rc = scu_rscr ((uint) scuUnitIdx, currentRunningCpuIdx,
                                   040, & cpu.rA, & cpu.rQ);
+            HDBGRegA ();
+            HDBGRegQ ();
             if (rc > 0)
               return rc;
 #ifndef SPEED
@@ -6189,7 +6340,10 @@ static t_stat DoBasicInstruction (void)
             // a:AL39/rpd1
             word1 c = (i->address >> 7) & 1;
             if (c)
-              cpu.rX[0] = i->address;    // Entire 18 bits
+              {
+                cpu.rX[0] = i->address;    // Entire 18 bits
+                HDBGRegX (0);
+              }
             cpu.cu.rd = 1;
             cpu.cu.repeat_first = 1;
           }
@@ -6200,7 +6354,10 @@ static t_stat DoBasicInstruction (void)
             uint c = (i->address >> 7) & 1;
             cpu.cu.delta = i->tag;
             if (c)
-              cpu.rX[0] = i->address;    // Entire 18 bits
+              {
+                cpu.rX[0] = i->address;    // Entire 18 bits
+                HDBGRegX (0);
+              }
             cpu.cu.rl = 1;
             cpu.cu.repeat_first = 1;
           }
@@ -6211,7 +6368,10 @@ static t_stat DoBasicInstruction (void)
             uint c = (i->address >> 7) & 1;
             cpu.cu.delta = i->tag;
             if (c)
-              cpu.rX[0] = i->address;    // Entire 18 bits
+              {
+                cpu.rX[0] = i->address;    // Entire 18 bits
+                HDBGRegX (0);
+              }
             cpu.cu.rpt = 1;
             cpu.cu.repeat_first = 1;
           }
@@ -6261,8 +6421,10 @@ static t_stat DoBasicInstruction (void)
 
             //cpu.rQ &= (word36) ~017;     // 4-bit quotient -> C(Q)32,35  lo6 bits already zeroed out
             cpu.rQ |= (tmp36q & 017);
+            HDBGRegQ ();
 
             cpu.rA = tmp36r & DMASK;    // remainder -> C(A)
+            HDBGRegA ();
 
 //IF1 sim_printf("BCD final A %012"PRIo64" Q %012"PRIo64"\n", cpu.rA & MASK36, cpu.rQ & MASK36); 
 
@@ -6286,6 +6448,7 @@ static t_stat DoBasicInstruction (void)
             }
             
             cpu.rA = tmp;
+            HDBGRegA ();
             
             SC_I_ZERO (cpu.rA == 0);  // If C(A) = 0, then ON;
                                       // otherwise OFF
@@ -6879,6 +7042,8 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
             t_stat rc = scu_rmcm ((uint) scuUnitIdx,
                                   currentRunningCpuIdx,
                                   & cpu.rA, & cpu.rQ);
+            HDBGRegA ();
+            HDBGRegQ ();
             if (rc)
               return rc;
             SC_I_ZERO (cpu.rA == 0);
@@ -6963,6 +7128,8 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
             t_stat rc = scu_rscr ((uint) scuUnitIdx, currentRunningCpuIdx,
                                   cpu.iefpFinalAddress & MASK15,
                                   & cpu.rA, & cpu.rQ);
+            HDBGRegA ();
+            HDBGRegQ ();
             if (rc)
               return rc;
           }
@@ -7424,6 +7591,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                            fst_ill_mod,
                            "Illegal register select value");
               }
+            HDBGRegA ();
             SC_I_ZERO (cpu.rA == 0);
             SC_I_NEG (cpu.rA & SIGN36);
           }
@@ -7605,6 +7773,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
             if (rc)
               return rc;
             cpu.rA = result;
+            HDBGRegA ();
             SC_I_ZERO (cpu.rA == 0);
             SC_I_NEG (cpu.rA & SIGN36);
           }
@@ -7829,21 +7998,25 @@ static t_stat DoEISInstruction (void)
             // C(TPR.CA) -> C(PRn.SNR)
             CPTUR (cptUsePRn + 1);
             cpu.PR[1].SNR = cpu.TPR.CA & MASK15;
+            HDBGRegPR (1);
             break;
         case 0312:  // easp3
             // C(TPR.CA) -> C(PRn.SNR)
             CPTUR (cptUsePRn + 3);
             cpu.PR[3].SNR = cpu.TPR.CA & MASK15;
+            HDBGRegPR (3);
             break;
         case 0330:  // easp5
             // C(TPR.CA) -> C(PRn.SNR)
             CPTUR (cptUsePRn + 5);
             cpu.PR[5].SNR = cpu.TPR.CA & MASK15;
+            HDBGRegPR (5);
             break;
         case 0332:  // easp7
             // C(TPR.CA) -> C(PRn.SNR)
             CPTUR (cptUsePRn + 7);
             cpu.PR[7].SNR = cpu.TPR.CA & MASK15;
+            HDBGRegPR (7);
             break;
 
         case 0311:  // eawp1
@@ -7853,6 +8026,7 @@ static t_stat DoEISInstruction (void)
             CPTUR (cptUsePRn + 1);
             cpu.PR[1].WORDNO = cpu.TPR.CA;
             SET_PR_BITNO (1, cpu.TPR.TBR);
+            HDBGRegPR (1);
             break;
         case 0313:  // eawp3
             // For n = 0, 1, ..., or 7 as determined by operation code
@@ -7861,6 +8035,7 @@ static t_stat DoEISInstruction (void)
             CPTUR (cptUsePRn + 3);
             cpu.PR[3].WORDNO = cpu.TPR.CA;
             SET_PR_BITNO (3, cpu.TPR.TBR);
+            HDBGRegPR (3);
             break;
         case 0331:  // eawp5
             // For n = 0, 1, ..., or 7 as determined by operation code
@@ -7869,6 +8044,7 @@ static t_stat DoEISInstruction (void)
             CPTUR (cptUsePRn + 5);
             cpu.PR[5].WORDNO = cpu.TPR.CA;
             SET_PR_BITNO (5, cpu.TPR.TBR);
+            HDBGRegPR (5);
             break;
         case 0333:  // eawp7
             // For n = 0, 1, ..., or 7 as determined by operation code
@@ -7877,6 +8053,7 @@ static t_stat DoEISInstruction (void)
             CPTUR (cptUsePRn + 7);
             cpu.PR[7].WORDNO = cpu.TPR.CA;
             SET_PR_BITNO (7, cpu.TPR.TBR);
+            HDBGRegPR (7);
             break;
         case 0350:  // epbp0
             // For n = 0, 1, ..., or 7 as determined by operation code
@@ -7888,6 +8065,7 @@ static t_stat DoEISInstruction (void)
             cpu.PR[0].SNR = cpu.TPR.TSR;
             cpu.PR[0].WORDNO = 0;
             SET_PR_BITNO (0, 0);
+            HDBGRegPR (0);
             break;
         case 0352:  // epbp2
             // For n = 0, 1, ..., or 7 as determined by operation code
@@ -7900,6 +8078,7 @@ static t_stat DoEISInstruction (void)
             cpu.PR[2].SNR = cpu.TPR.TSR;
             cpu.PR[2].WORDNO = 0;
             SET_PR_BITNO (2, 0);
+            HDBGRegPR (2);
             break;
         case 0370:  // epbp4
             // For n = 0, 1, ..., or 7 as determined by operation code
@@ -7912,6 +8091,7 @@ static t_stat DoEISInstruction (void)
             cpu.PR[4].SNR = cpu.TPR.TSR;
             cpu.PR[4].WORDNO = 0;
             SET_PR_BITNO (4, 0);
+            HDBGRegPR (4);
             break;
         case 0372:  // epbp6
             // For n = 0, 1, ..., or 7 as determined by operation code
@@ -7924,6 +8104,7 @@ static t_stat DoEISInstruction (void)
             cpu.PR[6].SNR = cpu.TPR.TSR;
             cpu.PR[6].WORDNO = 0;
             SET_PR_BITNO (6, 0);
+            HDBGRegPR (6);
             break;
 
         case 0351:  // epp1
@@ -7937,6 +8118,7 @@ static t_stat DoEISInstruction (void)
             cpu.PR[1].SNR = cpu.TPR.TSR;
             cpu.PR[1].WORDNO = cpu.TPR.CA;
             SET_PR_BITNO (1, cpu.TPR.TBR);
+            HDBGRegPR (1);
             break;
         case 0353:  // epp3
             // For n = 0, 1, ..., or 7 as determined by operation code
@@ -7949,6 +8131,7 @@ static t_stat DoEISInstruction (void)
             cpu.PR[3].SNR = cpu.TPR.TSR;
             cpu.PR[3].WORDNO = cpu.TPR.CA;
             SET_PR_BITNO (3, cpu.TPR.TBR);
+            HDBGRegPR (3);
             break;
         case 0371:  // epp5
             // For n = 0, 1, ..., or 7 as determined by operation code
@@ -7961,6 +8144,7 @@ static t_stat DoEISInstruction (void)
             cpu.PR[5].SNR = cpu.TPR.TSR;
             cpu.PR[5].WORDNO = cpu.TPR.CA;
             SET_PR_BITNO (5, cpu.TPR.TBR);
+            HDBGRegPR (5);
             break;
         case 0373:  // epp7
             // For n = 0, 1, ..., or 7 as determined by operation code
@@ -7973,6 +8157,7 @@ static t_stat DoEISInstruction (void)
             cpu.PR[7].SNR = cpu.TPR.TSR;
             cpu.PR[7].WORDNO = cpu.TPR.CA;
             SET_PR_BITNO (7, cpu.TPR.TBR);
+            HDBGRegPR (7);
             break;
 
         /// Pointer Register Data Movement Store
@@ -8540,8 +8725,10 @@ elapsedtime ();
                   // fault occurs.
                   cpu.AR[n].WORDNO = 0;
                   SET_AR_CHAR_BITNO (n, 0, 0);
+                  HDBGRegAR (n);
                   doFault (FAULT_IPR, fst_ill_proc, "aarn TA = 3");
               }
+            HDBGRegAR (n);
           }
           break;
 
@@ -8564,6 +8751,7 @@ elapsedtime ();
 // AL-38 implies CHAR/BITNO, but ISOLTS requires PR.BITNO.
             SET_AR_CHAR_BITNO (n,  getbits36_2 (cpu.CY, 18),
                                getbits36_4 (cpu.CY, 20));
+            HDBGRegAR (n);
           }
           break;
 
@@ -8577,6 +8765,7 @@ elapsedtime ();
               cpu.AR[n].WORDNO = getbits36_18 (tmp36, 0);
               SET_AR_CHAR_BITNO (n,  getbits36_2 (tmp36, 18),
                                  getbits36_4 (tmp36, 20));
+              HDBGRegAR (n);
             }
           break;
 
@@ -8652,6 +8841,7 @@ elapsedtime ();
                   SET_AR_CHAR_BITNO (n, (word2) CN, 0);
                   break;
               }
+            HDBGRegAR (n);
           }
           break;
 
