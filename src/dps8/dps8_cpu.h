@@ -2112,4 +2112,5 @@ void addHist (uint hset, word36 w0, word36 w1);
 uint getCPUnum (void);
 void addHistForce (uint hset, word36 w0, word36 w1);
 uint getCPUnum (void);
+word18 getBARaddress(word18 addr);
 
