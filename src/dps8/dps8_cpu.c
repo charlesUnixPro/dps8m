@@ -1553,6 +1553,7 @@ elapsedtime ();
                 if (cpu.g7_flag)
                   {
                       cpu.g7_flag = false;
+                      cpu.interrupt_flag = false;
                       doG7Fault (!noCheckTR);
                   }
                 if (cpu.interrupt_flag)
