@@ -1970,6 +1970,10 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
 // This event is to be distinguished from a Connect Input/Output Channel (cioc)
 // instruction encountered in the program sequence.
 
+                // interrupts inhibited.
+                bool noCheckTR = (get_addr_mode () == ABSOLUTE_mode) || 
+                                  is_priv_mode ()  ||
+                                  GET_I (cpu.cu.IWB);
                 if ((! cpu.wasInhibited) &&
                     (cpu.PPR.IC % 2) == 0 &&
                     (! cpu.wasXfer) &&
@@ -1980,10 +1984,6 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                     cpu.interrupt_flag = sample_interrupts ();
                     //cpu.g7_flag = bG7Pending ();
                     // Don't check timer runout if in absolute mode, privledged, or
-                    // interrupts inhibited.
-                    bool noCheckTR = (get_addr_mode () == ABSOLUTE_mode) || 
-                                      is_priv_mode ()  ||
-                                      GET_I (cpu.cu.IWB);
                     cpu.g7_flag = noCheckTR ? bG7PendingNoTRO () : bG7Pending ();
                   }
 
@@ -2031,6 +2031,8 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                 if (cpu.g7_flag)
                   {
                     cpu.g7_flag = false;
+                    cpu.interrupt_flag = false;
+                    sim_debug (DBG_CYCLE, & cpu_dev, "call doG7Fault (%d)\n", !noCheckTR);
                     doG7Fault ();
                   }
                 if (cpu.interrupt_flag)
@@ -3069,7 +3071,7 @@ void decodeInstruction (word36 inst, DCDstruct * p)
  
 int is_priv_mode(void)
   {
-sim_debug (DBG_TRACE, & cpu_dev, "is_priv_mode P %u get_addr_mode %d get_bar_mode %d IR %06o\n", cpu.PPR.P, get_addr_mode (), get_bar_mode (), cpu.cu.IR);
+//sim_debug (DBG_TRACE, & cpu_dev, "is_priv_mode P %u get_addr_mode %d get_bar_mode %d IR %06o\n", cpu.PPR.P, get_addr_mode (), get_bar_mode (), cpu.cu.IR);
     if (TST_I_NBAR && cpu.PPR.P)
       return 1;
     
