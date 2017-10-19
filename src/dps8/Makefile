@@ -112,7 +112,6 @@ endif
 C_SRCS += ./dps8_addrmods.c 
 C_SRCS += ./dps8_append.c
 C_SRCS += ./dps8_cable.c
-#C_SRCS += ./dps8_clk.c
 C_SRCS += ./dps8_console.c
 C_SRCS += ./dps8_cpu.c
 C_SRCS += ./dps8_crdpun.c
@@ -154,7 +153,6 @@ endif
 H_SRCS += dps8_addrmods.h
 H_SRCS += dps8_append.h
 H_SRCS += dps8_cable.h
-H_SRCS += dps8_clk.h
 H_SRCS += dps8_console.h
 H_SRCS += dps8_cpu.h
 H_SRCS += dps8_crdpun.h
