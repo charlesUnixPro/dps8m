@@ -17,7 +17,6 @@
 #
 
 SIMHx = ../simh-master
-#SIMHx = ../simhv40-beta
 
 INSTALL_ROOT ?= /usr/local/
 INSTALL_BIN ?= $(INSTALL_ROOT)/bin
@@ -41,6 +40,11 @@ endif
 
 ifeq ($(OS),Windows_NT)
 CROSS=MINGW64
+endif
+
+ifdef THREADZ
+CLAGS += -pthread +DTHREADZ
+LIBS += -lpthread
 endif
 
 ifndef LIBUV
@@ -326,7 +330,6 @@ tapes: 88534.tap 88631.tap 88632.tap 88633.tap 88634.tap 88635.tap 88636.tap 990
 
 clean:
 	@echo CLEAN
-	#(cd ../simhv40-beta; $(MAKE) clean)
 	@$(MAKE) -C $(SIMHx) -f Makefile clean
 	#(cd ../decNumber; $(MAKE) clean)
 	@$(MAKE) -C ../decNumber clean
