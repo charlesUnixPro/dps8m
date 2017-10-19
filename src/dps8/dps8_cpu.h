@@ -1773,6 +1773,9 @@ typedef struct
         word3  PRR;
         word18 IC;
       } cu_data;            // For STCD instruction
+#ifdef TR_WORK
+    uint rTRticks;
+#endif
 #ifdef ISOLTS
     uint rTRlsb;
 #endif
@@ -1916,6 +1919,9 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
 #else
     *data = M[addr] & DMASK;
 #endif
+#ifdef TR_WORK_MEM
+    cpu.rTRticks ++;
+#endif
     PNL (trackport (addr, * data);)
     return 0;
   }
@@ -1954,6 +1960,9 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
     scu [scuUnitIdx].M[offset] = data & DMASK;
 #else
     M[addr] = data & DMASK;
+#endif
+#ifdef TR_WORK_MEM
+    cpu.rTRticks ++;
 #endif
     PNL (trackport (addr, data);)
     return 0;
@@ -1997,8 +2006,11 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED con
     *even = M[addr++] & DMASK;
     PNL (trackport (addr - 1, * even);)
     *odd = M[addr] & DMASK;
-    PNL (trackport (addr, * odd);)
 #endif
+#ifdef TR_WORK_MEM
+    cpu.rTRticks ++;
+#endif
+    PNL (trackport (addr, * odd);)
     return 0;
   }
 static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
@@ -2040,6 +2052,9 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED cons
     M[addr] = odd;
     PNL (trackport (addr, odd);)
 #endif
+#ifdef TR_WORK_MEM
+    cpu.rTRticks ++;
+#endif
     return 0;
   }
 #else
@@ -2055,6 +2070,9 @@ static inline void core_readN (word24 addr, word36 *data, uint n, UNUSED const c
         core_read (addr + i, data + i, ctx);
         HDBGMRead (addr + i, * (data + i));
       }
+#ifdef TR_WORK_MEM
+    cpu.rTRticks += (n+1) / 2; // Not n because pairs would have been read
+#endif
   }
 static inline void core_writeN (word24 addr, word36 *data, uint n, UNUSED const char * ctx)
   {
@@ -2062,6 +2080,9 @@ static inline void core_writeN (word24 addr, word36 *data, uint n, UNUSED const 
       {
         core_write (addr + i, data [i], ctx);
       }
+#ifdef TR_WORK_MEM
+    cpu.rTRticks += (n+1) / 2; // Not n because pairs would have been read
+#endif
   }
 
 int is_priv_mode (void);

@@ -968,6 +968,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
     absiProcessEvent ();
 #endif
 
+#ifndef TR_WORK
 // Update the TR
 
 // The Timer register runs at 512Khz; in 1/100 of a second it
@@ -987,8 +988,9 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
     cpu.shadowTR = cpu.rTR;
     cpu.rTRlsb = 0;
 #endif
+#endif // TR_WORK
   }
-#endif
+#endif // NO_EV_POLL
 
 
     
@@ -1108,6 +1110,10 @@ static void cpuResetUnitIdx (UNUSED uint cpun, bool clearMem)
 #if ISOLTS
     cpu.shadowTR = 0;
     cpu.rTRlsb = 0;
+#endif
+#ifdef TR_WORK
+    cpu.rTR = MASK27;
+    cpu.rTRticks = 0;
 #endif
  
     set_addr_mode(ABSOLUTE_mode);
@@ -1788,6 +1794,36 @@ setCPU:;
 #endif
 #endif
 
+#ifdef TR_WORK
+
+// Check for TR underflow. The TR is stored in a uint32_t, but is 27 bits wide.
+// The TR update code decrements the TR; if it passes through 0, the high bits
+// will be set.
+
+// If we assume a 1 MIPS reference platform, the TR would be decremented every
+// two instructions (1/2 MHz)
+
+#if 0
+        cpu.rTR -= cpu.rTRticks * 100;
+        //cpu.rTR -= cpu.rTRticks * 50;
+        cpu.rTRticks = 0;
+#else
+#define TR_RATE 2
+
+        cpu.rTR -= cpu.rTRticks / TR_RATE;
+        cpu.rTRticks %= TR_RATE;
+
+#endif
+
+
+        if (cpu.rTR & ~MASK27)
+          {
+            cpu.rTR &= MASK27;
+            //sim_debug (DBG_TRACE, & cpu_dev, "rTR zero %09o\n", cpu.rTR);
+            if (cpu.switches.tro_enable)
+            setG7fault (currentRunningCpuIdx, FAULT_TRO, (_fault_subtype) {.bits=0});
+          }
+#endif
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle is %s\n",
                    cycleStr (cpu.cycle));
 
@@ -1966,9 +2002,45 @@ elapsedtime ();
                       }
                   }
 
+
+// Multics executes a CPU connect instruction (which should eventually cause a
+// connect fault) while interrupts are inhibited and an IOM interrupt is
+// pending. Multics then executes a DIS instruction (Delay Until Interrupt
+// Set). This should cause the processor to "sleep" until an interrupt is
+// signaled. The DIS instruction sees that an interrupt is pending, sets
+// cpu.interrupt_flag to signal that the CPU to service the interrupt and
+// resumes the CPU.
+//
+// The CPU state machine sets up to fetch the next instruction. If checks to
+// see if this instruction should check for interrupts or faults according to
+// the complex rules (interrupts inhibited, even address, not RPT or XEC,
+// etc.); it this case, the test fails as the next instruction is at an odd
+// address. If the test had passed, the cpu.interrupt_flag would be set or
+// cleared depending on the pending interrupt state data, AND the cpu.g7_flag
+// would be set or cleared depending on the faults pending data (in this case,
+// the connect fault).
+//
+// Because the flags were not updated, after the test, cpu.interrupt_flag is
+// set (since the DIS instruction set it) and cpu.g7_flag is not set.
+//
+// Next, the CPU sees the that cpu.interrupt flag is set, and starts the
+// interrupt cycle despite the fact that a higher priority g7 fault is pending.
+
+
+// To fix this, check (or recheck) g7 if an interrupt is going to be faulted.
+// Either DIS set interrupt_flag and FETCH_cycle didn't so g7 needs to be
+// checked, or FETCH_cycle did check it when it set interrupt_flag in which
+// case it is being rechecked here. It is [locally] idempotent and light
+// weight, so this should be okay.
+
+                if (cpu.interrupt_flag)
+                  cpu.g7_flag = noCheckTR ? bG7PendingNoTRO () : bG7Pending ();
+
                 if (cpu.g7_flag)
                   {
                       cpu.g7_flag = false;
+                      cpu.interrupt_flag = false;
+                      sim_debug (DBG_CYCLE, & cpu_dev, "call doG7Fault (%d)\n", !noCheckTR);
                       doG7Fault (!noCheckTR);
                   }
                 if (cpu.interrupt_flag)
@@ -2063,7 +2135,9 @@ elapsedtime ();
                     //sim_debug (DBG_CAC, & cpu_dev, "fault exec %012"PRIo64"\n", cpu.cu.IWB);
                  }
                 t_stat ret = executeInstruction ();
-
+#ifdef TR_WORK_EXEC
+               cpu.rTRticks ++;
+#endif
                 CPT (cpt1U, 23); // execution complete
 
                 addCUhist ();
@@ -2195,8 +2269,11 @@ elapsedtime ();
                     // 512000 is 1 second
                     // 512000/100 -> 5120  is .01 second
          
+#ifdef TR_WORK
+                    cpu.rTRticks = 0;
+#endif
                     // Would we have underflowed while sleeping?
-                    if (cpu.rTR <= 5120)
+                    if ((cpu.rTR & ~ MASK27) || cpu.rTR <= 5120)
                       {
                         //sim_debug (DBG_TRACE, & cpu_dev, "rTR zero %09o\n", cpu.rTR);
                         if (cpu.switches.tro_enable)
@@ -2645,7 +2722,7 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
     *data = scu [scuUnitIdx].M[offset] & DMASK;
     if (watchBits [addr])
       {
-        sim_printf ("WATCH [%"PRId64"] read   %08o %012"PRIo64" (%s)\n", sim_timell (), addr, *data, ctx);
+        sim_printf ("WATCH [%"PRId64"] %05o:%06o read   %08o %012"PRIo64" (%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr, *data, ctx);
       }
 #else
     if (M[addr] & MEM_UNINITIALIZED)
@@ -2656,10 +2733,13 @@ int32 core_read(word24 addr, word36 *data, const char * ctx)
     //if (watchBits [addr] && M[addr]==0)
       {
         //sim_debug (0, & cpu_dev, "read   %08o %012"PRIo64" (%s)\n",addr, M [addr], ctx);
-        sim_printf ("WATCH [%"PRId64"] read   %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
+        sim_printf ("WATCH [%"PRId64"] %05o:%06o read   %08o %012"PRIo64" (%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr, M [addr], ctx);
         traceInstruction (0);
       }
     *data = M[addr] & DMASK;
+#endif
+#ifdef TR_WORK_MEM
+    cpu.rTRticks ++;
 #endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read  %08o %012"PRIo64" (%s)\n",
@@ -2705,7 +2785,7 @@ int core_write(word24 addr, word36 data, const char * ctx) {
     scu [scuUnitIdx].M[offset] = data & DMASK;
     if (watchBits [addr])
       {
-        sim_printf ("WATCH [%"PRId64"] write  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, data & DMASK, ctx);
+        sim_printf ("WATCH [%"PRId64"] %05o:%06o write   %08o %012"PRIo64" (%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr, data & DMASK, ctx);
       }
 #else
     M[addr] = data & DMASK;
@@ -2713,9 +2793,12 @@ int core_write(word24 addr, word36 data, const char * ctx) {
     //if (watchBits [addr] && M[addr]==0)
       {
         //sim_debug (0, & cpu_dev, "write  %08o %012"PRIo64" (%s)\n",addr, M [addr], ctx);
-        sim_printf ("WATCH [%"PRId64"] write  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
+        sim_printf ("WATCH [%"PRId64"] %05o:%06o write  %08o %012"PRIo64" (%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr, M [addr], ctx);
         traceInstruction (0);
       }
+#endif
+#ifdef TR_WORK_MEM
+    cpu.rTRticks ++;
 #endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write %08o %012"PRIo64" (%s)\n",
@@ -2769,7 +2852,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     *even = scu [scuUnitIdx].M[offset++] & DMASK;
     if (watchBits [addr])
       {
-        sim_printf ("WATCH [%"PRId64"] read2  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, *even, ctx);
+        sim_printf ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" (%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr, *even, ctx);
       }
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012"PRIo64" (%s)\n",
@@ -2777,7 +2860,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     *odd = scu [scuUnitIdx].M[offset] & DMASK;
     if (watchBits [addr+1])
       {
-        sim_printf ("WATCH [%"PRId64"] read2  %08o %012"PRIo64" (%s)\n", sim_timell (), addr+1, * odd, ctx);
+        sim_printf ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" (%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr+1, * odd, ctx);
       }
 
     sim_debug (DBG_CORE, & cpu_dev,
@@ -2792,7 +2875,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     //if (watchBits [addr] && M[addr]==0)
       {
         //sim_debug (0, & cpu_dev, "read2  %08o %012"PRIo64" (%s)\n",addr, M [addr], ctx);
-        sim_printf ("WATCH [%"PRId64"] read2  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
+        sim_printf ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" (%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr, M [addr], ctx);
         traceInstruction (0);
       }
     *even = M[addr++] & DMASK;
@@ -2811,7 +2894,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     //if (watchBits [addr] && M[addr]==0)
       {
         //sim_debug (0, & cpu_dev, "read2  %08o %012"PRIo64" (%s)\n",addr, M [addr], ctx);
-        sim_printf ("WATCH [%"PRId64"] read2  %08o %012"PRIo64" (%s)\n", sim_timell (), addr, M [addr], ctx);
+        sim_printf ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" (%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr, M [addr], ctx);
         traceInstruction (0);
       }
 
@@ -2819,6 +2902,9 @@ int core_read2(word24 addr, word36 *even, word36 *odd, const char * ctx) {
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012"PRIo64" (%s)\n",
                 addr, * odd, ctx);
+#endif
+#ifdef TR_WORK_MEM
+    cpu.rTRticks ++;
 #endif
     PNL (trackport (addr, * odd));
     return 0;
@@ -2876,19 +2962,19 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     scu [scuUnitIdx].M[offset++] = even & DMASK;
     if (watchBits [addr])
       {
-        sim_printf ("WATCH [%"PRId64"] write2 %08o %012"PRIo64" (%s)\n", sim_timell (), addr, even, ctx);
+        sim_printf ("WATCH [%"PRId64"] %05o:%06o write2 %08o %012"PRIo64" (%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr, even, ctx);
       }
     scu [scuUnitIdx].M[offset] = odd & DMASK;
     if (watchBits [addr+1])
       {
-        sim_printf ("WATCH [%"PRId64"] write2 %08o %012"PRIo64" (%s)\n", sim_timell (), addr+1, odd, ctx);
+        sim_printf ("WATCH [%"PRId64"] %05o:%06o write2 %08o %012"PRIo64" (%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr+1, odd, ctx);
       }
 #else
     if (watchBits [addr])
     //if (watchBits [addr] && even==0)
       {
         //sim_debug (0, & cpu_dev, "write2 %08o %012"PRIo64" (%s)\n",addr, even, ctx);
-        sim_printf ("WATCH [%"PRId64"] write2 %08o %012"PRIo64" (%s)\n", sim_timell (), addr, even, ctx);
+        sim_printf ("WATCH [%"PRId64"] %05o:%06o write2 %08o %012"PRIo64" (%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr, even, ctx);
         traceInstruction (0);
       }
     M[addr++] = even & DMASK;
@@ -2904,10 +2990,13 @@ int core_write2(word24 addr, word36 even, word36 odd, const char * ctx) {
     //if (watchBits [addr] && odd==0)
       {
         //sim_debug (0, & cpu_dev, "write2 %08o %012"PRIo64" (%s)\n",addr, odd, ctx);
-        sim_printf ("WATCH [%"PRId64"] write2 %08o %012"PRIo64" (%s)\n", sim_timell (), addr, odd, ctx);
+        sim_printf ("WATCH [%"PRId64"] %05o:%06o write2 %08o %012"PRIo64" (%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr, odd, ctx);
         traceInstruction (0);
       }
     M[addr] = odd & DMASK;
+#endif
+#ifdef TR_WORK_MEM
+    cpu.rTRticks ++;
 #endif
     PNL (trackport (addr, odd));
     sim_debug (DBG_CORE, & cpu_dev,
@@ -3030,7 +3119,7 @@ void decodeInstruction (word36 inst, DCDstruct * p)
  
 int is_priv_mode(void)
   {
-sim_debug (DBG_TRACE, & cpu_dev, "is_priv_mode P %u get_addr_mode %d get_bar_mode %d IR %06o\n", cpu.PPR.P, get_addr_mode (), get_bar_mode (), cpu.cu.IR);
+//sim_debug (DBG_TRACE, & cpu_dev, "is_priv_mode P %u get_addr_mode %d get_bar_mode %d IR %06o\n", cpu.PPR.P, get_addr_mode (), get_bar_mode (), cpu.cu.IR);
     
 // Back when it was ABS/APP/BAR, this test was right; now that
 // it is ABS/APP,BAR/NBAR, check bar mode.

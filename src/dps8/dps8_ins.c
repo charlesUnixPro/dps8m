@@ -1836,6 +1836,15 @@ restart_1:
 /// executeInstruction: simh hooks
 ///
 
+#if 1
+#ifndef SPEED
+    traceInstruction (DBG_TRACE);
+#ifdef HDBG
+    hdbgTrace ();
+#endif // HDBG
+#endif // SPEED
+#else
+// The DIS instruction used to reexecute ifself and fill the trace log...
 #ifndef SPEED
     // Don't trace Multics idle loop
     if (cpu.PPR.PSR != 061 || cpu.PPR.IC != 0307)
@@ -1844,9 +1853,10 @@ restart_1:
         traceInstruction (DBG_TRACE);
 #ifdef HDBG
         hdbgTrace ();
-#endif
+#endif // HDBG
       }
-#endif
+#endif // SPEED
+#endif // else ! 1
 
 ///
 /// executeInstruction: Initialize misc.
@@ -6675,6 +6685,9 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
         case 0637:  // ldt
           CPTUR (cptUseTR);
           cpu.rTR = (cpu.CY >> 9) & MASK27;
+#ifdef TR_WORK
+          cpu.rTRticks = 0;
+#endif
 #if ISOLTS
           cpu.shadowTR = cpu.rTR;
           cpu.rTRlsb = 0;

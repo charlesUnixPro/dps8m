@@ -172,6 +172,15 @@ typedef struct { int64_t h; uint64_t l; } __int128_t;
 // Instruction profiler
 // #define MATRIX
 
+// Run TR on work done, not wall clock.
+
+#define TR_WORK
+
+// Define one of these; tied to memory access (MEM) or to instruction 
+// execution (EXEC)
+
+//#define TR_WORK_MEM
+#define TR_WORK_EXEC
 
 // Fix glibc incompatibility with new simh code.
 
