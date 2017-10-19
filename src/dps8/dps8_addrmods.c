@@ -93,11 +93,8 @@ static word18 getCr (word4 Tdes)
     return 0;
   }
 
-// Warning: returns ptr to static buffer.
-
-static char * opDescSTR (void)
+static char * opDescSTR (char * temp)
   {
-    static char temp [256];
     DCDstruct * i = & cpu.currentInstruction;
 
     strcpy (temp, "");
@@ -383,9 +380,10 @@ void updateIWB (word18 addr, word6 tag)
 
 t_stat doComputedAddressFormation (void)
   {
+    char buf [256];
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(Entry): operType:%s TPR.CA=%06o\n",
-                __func__, opDescSTR (), cpu.TPR.CA);
+                __func__, opDescSTR (buf), cpu.TPR.CA);
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(Entry): CT_HOLD %o\n",
                 __func__, cpu.cu.CT_HOLD);
@@ -433,7 +431,7 @@ startCA:;
       }
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(startCA): TAG=%02o(%s) Tm=%o Td=%o\n",
-               __func__, cpu.rTAG, getModString (cpu.rTAG), Tm, Td);
+               __func__, cpu.rTAG, getModString (buf, cpu.rTAG), Tm, Td);
 
     switch (Tm)
       {
@@ -712,7 +710,7 @@ startCA:;
                    "IR_MOD1: cpu.itxPair[0]=%012"PRIo64
                    " TPR.CA=%06o Tm=%o Td=%02o (%s)\n",
                    cpu.itxPair[0], cpu.TPR.CA, Tm, Td,
-                   getModString (GET_TAG (cpu.itxPair[0])));
+                   getModString (buf, GET_TAG (cpu.itxPair[0])));
 
         switch (Tm)
           {

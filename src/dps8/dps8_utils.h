@@ -36,9 +36,9 @@ int cfgparse (const char * tag, const char * cptr, config_list_t * clist, config
 void cfgparse_done (config_state_t * state);
 
 struct opCode *getIWBInfo(DCDstruct *i);
-char * dumpFlags(word18 flags);
-char *disAssemble(word36 instruction);
-char *getModString(word6 tag);
+char * dumpFlags(char * buffer, word18 flags);
+char *disAssemble(char * result, word36 instruction);
+char *getModString(char * msg, word6 tag);
 word72 convertToWord72(word36 even, word36 odd);
 void convertToWord36(word72 src, word36 *even, word36 *odd);
 

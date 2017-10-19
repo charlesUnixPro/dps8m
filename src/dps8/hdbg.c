@@ -209,19 +209,20 @@ static void printMWrite (struct hevt * p)
 
 static void printTrace (struct hevt * p)
   {
+    char buf [256];
     if (p -> trace . addrMode == ABSOLUTE_mode)
       {
         fprintf (hdbgOut, "DBG(%"PRId64")> CPU TRACE: %06o %o %012"PRIo64" (%s)\n",
                     p -> time, 
                     p -> trace . ic, p -> trace . ring,
-                    p -> trace . inst, disAssemble (p -> trace . inst));
+                    p -> trace . inst, disAssemble (buf, p -> trace . inst));
       }
     else
       {
         fprintf (hdbgOut, "DBG(%"PRId64")> CPU TRACE: %05o:%06o %o %012"PRIo64" (%s)\n",
                     p -> time, p -> trace . segno,
                     p -> trace . ic, p -> trace . ring,
-                    p -> trace . inst, disAssemble (p -> trace . inst));
+                    p -> trace . inst, disAssemble (buf, p -> trace . inst));
       }
   }
 

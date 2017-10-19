@@ -86,12 +86,13 @@ void elapsedtime (void)
 // CANFAULT
 static void writeOperands (void)
 {
+    char buf [256];
     CPT (cpt2U, 0); // write operands
     DCDstruct * i = & cpu.currentInstruction;
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "writeOperands (%s):mne=%s flags=%x\n",
-               disAssemble (IWB_IRODD), i->info->mne, i->info->flags);
+               disAssemble (buf, IWB_IRODD), i->info->mne, i->info->flags);
 
     PNL (cpu.prepare_state |= ps_RAW);
 
@@ -258,12 +259,13 @@ static void writeOperands (void)
 // CANFAULT
 static void readOperands (void)
 {
+    char buf [256];
     CPT (cpt2U, 3); // read operands
     DCDstruct * i = & cpu.currentInstruction;
 
     sim_debug (DBG_ADDRMOD, &cpu_dev,
                "readOperands (%s):mne=%s flags=%x\n",
-               disAssemble (cpu.cu.IWB), i->info->mne, i->info->flags);
+               disAssemble (buf, cpu.cu.IWB), i->info->mne, i->info->flags);
     sim_debug (DBG_ADDRMOD, &cpu_dev,
               "readOperands a %d address %08o\n", i->b29, cpu.TPR.CA);
 
@@ -1203,6 +1205,7 @@ void fetchInstruction (word18 addr)
 
 void traceInstruction (uint flag)
   {
+    char buf [256];
     if (! flag) goto force;
     if_sim_debug (flag, &cpu_dev)
       {
@@ -1254,7 +1257,7 @@ force:;
                   cpu.BAR.BASE,
                   cpu.PPR.IC,
                   IWB_IRODD,
-                  disAssemble (IWB_IRODD),
+                  disAssemble (buf, IWB_IRODD),
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
@@ -1268,7 +1271,7 @@ force:;
                   cpu.BAR.BASE,
                   cpu.PPR.IC,
                   IWB_IRODD,
-                  disAssemble (IWB_IRODD),
+                  disAssemble (buf, IWB_IRODD),
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
@@ -1287,7 +1290,7 @@ force:;
                   currentRunningCpuIdx,
                   cpu.PPR.IC,
                   IWB_IRODD,
-                  disAssemble (IWB_IRODD),
+                  disAssemble (buf, IWB_IRODD),
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
@@ -1300,7 +1303,7 @@ force:;
                   "%06o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
                   cpu.PPR.IC,
                   IWB_IRODD,
-                  disAssemble (IWB_IRODD),
+                  disAssemble (buf, IWB_IRODD),
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
@@ -1325,7 +1328,7 @@ force:;
                   cpu.PPR.IC,
                   cpu.PPR.PRR,
                   IWB_IRODD,
-                  disAssemble (IWB_IRODD),
+                  disAssemble (buf, IWB_IRODD),
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
@@ -1340,7 +1343,7 @@ force:;
                   cpu.PPR.IC,
                   cpu.PPR.PRR,
                   IWB_IRODD,
-                  disAssemble (IWB_IRODD),
+                  disAssemble (buf, IWB_IRODD),
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
@@ -1360,7 +1363,7 @@ force:;
                   cpu.PPR.IC,
                   cpu.PPR.PRR,
                   IWB_IRODD,
-                  disAssemble (IWB_IRODD),
+                  disAssemble (buf, IWB_IRODD),
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
@@ -1375,7 +1378,7 @@ force:;
                   cpu.PPR.IC,
                   cpu.PPR.PRR,
                   IWB_IRODD,
-                  disAssemble (IWB_IRODD),
+                  disAssemble (buf, IWB_IRODD),
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
@@ -2606,9 +2609,10 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
 
     if_sim_debug (DBG_REGDUMP, & cpu_dev)
     {
+        char buf [256];
         sim_debug (DBG_REGDUMPAQI, &cpu_dev,
                    "A=%012"PRIo64" Q=%012"PRIo64" IR:%s\n",
-                   cpu.rA, cpu.rQ, dumpFlags (cpu.cu.IR));
+                   cpu.rA, cpu.rQ, dumpFlags (buf, cpu.cu.IR));
 
 #ifndef __MINGW64__
         sim_debug (DBG_REGDUMPFLT, &cpu_dev,

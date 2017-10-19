@@ -1813,9 +1813,9 @@ t_stat fprint_sym (FILE * ofile, UNUSED t_addr  addr, t_value *val,
     if (uptr == &cpu_dev . units [0])
     {
         word36 word1 = *val;
-        
+        char buf [256];
         // get base syntax
-        char *d = disAssemble(word1);
+        char *d = disAssemble(buf, word1);
         
         fprintf(ofile, "%s", d);
         
