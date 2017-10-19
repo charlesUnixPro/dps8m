@@ -417,7 +417,7 @@ void do_text ()
 
     char buffer [8192];
     //char ASA;
-    char c;
+    int c;
     int black;
     int i, ic;
 
@@ -447,7 +447,7 @@ void do_text ()
           }
         // add the character to the buffer
         if (i < 8190)
-          buffer [i ++] = c;
+          buffer [i ++] = (char) c;
         continue;
        
 printline:
