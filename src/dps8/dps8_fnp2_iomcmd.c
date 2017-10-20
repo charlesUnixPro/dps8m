@@ -45,7 +45,7 @@ static inline void fnp_core_read_n (word24 addr, word36 *data, uint n, UNUSED co
     if (! havelock)
       lock_mem ();
     for (uint i = 0; i < n; i ++)
-      data [i] = M [addr + 1] & DMASK;
+      data [i] = M [addr + i] & DMASK;
     if (! havelock)
       unlock_mem ();
   }
