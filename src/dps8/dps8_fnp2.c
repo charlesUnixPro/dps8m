@@ -190,27 +190,6 @@ static int telnet_port = 6180;
 
 struct fnpUnitData fnpUnitData [N_FNP_UNITS_MAX];
 
-#ifndef SCUMEM
-static inline void fnp_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
-  {
-#ifdef SCUMEM
-    iom_core_read (addr, data, ctx);
-#else
-    * data = M [addr] & DMASK;
-#endif
-  }
-
-static inline void fnp_core_write (word24 addr, word36 data, UNUSED const char * ctx)
-  {
-#ifdef SCUMEM
-    iom_core_write (addr, data, ctx);
-#else
-    M [addr] = data & DMASK;
-#endif
-  }
-#endif
-
-
 //
 // The FNP communicates with Multics with in-memory mailboxes
 //
