@@ -68,7 +68,6 @@ struct dps8faults
     const char *fault_name;
     int         fault_priority;
     int         fault_group;
-    bool        fault_pending;        // when true fault is pending and waiting to be processed
 };
 typedef struct dps8faults dps8faults;
 
