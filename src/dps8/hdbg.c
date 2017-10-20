@@ -102,7 +102,7 @@ if (currentRunningCpuIdx == 0)
   return;
 #endif
     hevents [hevtPtr] . type = hevtTrace;
-    hevents [hevtPtr] . time = sim_timell ();
+    hevents [hevtPtr] . time = cpu.cycleCnt;
     hevents [hevtPtr] . trace . addrMode = get_addr_mode ();
     hevents [hevtPtr] . trace . segno = cpu . PPR.PSR;
     hevents [hevtPtr] . trace . ic = cpu . PPR.IC;
@@ -120,7 +120,7 @@ if (currentRunningCpuIdx == 0)
   return;
 #endif
     hevents [hevtPtr] . type = hevtMRead;
-    hevents [hevtPtr] . time = sim_timell ();
+    hevents [hevtPtr] . time = cpu.cycleCnt;
     hevents [hevtPtr] . memref . addr = addr;
     hevents [hevtPtr] . memref . data = data;
     hevtPtr = (hevtPtr + 1) % hdbgSize; 
@@ -135,7 +135,7 @@ if (currentRunningCpuIdx == 0)
   return;
 #endif
     hevents [hevtPtr] . type = hevtMWrite;
-    hevents [hevtPtr] . time = sim_timell ();
+    hevents [hevtPtr] . time = cpu.cycleCnt;
     hevents [hevtPtr] . memref . addr = addr;
     hevents [hevtPtr] . memref . data = data;
     hevtPtr = (hevtPtr + 1) % hdbgSize; 
@@ -152,7 +152,7 @@ if (currentRunningCpuIdx == 0)
   return;
 #endif
     hevents [hevtPtr] . type = hevtFault;
-    hevents [hevtPtr] . time = sim_timell ();
+    hevents [hevtPtr] . time = cpu.cycleCnt;
     hevents [hevtPtr] . fault . faultNumber = faultNumber;
     hevents [hevtPtr] . fault . subFault = subFault;
     strncpy (hevents [hevtPtr] . fault . faultMsg, faultMsg, 63);
@@ -169,7 +169,7 @@ if (currentRunningCpuIdx == 0)
   return;
 #endif
     hevents[hevtPtr].type = hevtReg;
-    hevents[hevtPtr].time = sim_timell ();
+    hevents[hevtPtr].time = cpu.cycleCnt;
     hevents[hevtPtr].reg.type = type;
     hevents[hevtPtr].reg.data = data;
     hevtPtr = (hevtPtr + 1) % hdbgSize; 
@@ -185,7 +185,7 @@ if (currentRunningCpuIdx == 0)
   return;
 #endif
     hevents[hevtPtr].type = hevtPAReg;
-    hevents[hevtPtr].time = sim_timell ();
+    hevents[hevtPtr].time = cpu.cycleCnt;
     hevents[hevtPtr].par.type = type;
     hevents[hevtPtr].par.data =  * data;
     hevtPtr = (hevtPtr + 1) % hdbgSize; 

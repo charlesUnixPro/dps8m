@@ -588,7 +588,7 @@ static void scu2words (word36 *words)
     // words[7]
 
     words[7] = cpu.cu.IRODD;
-//sim_printf ("scu2words %lld %012llo\n", sim_timell (), words [6]);
+//sim_printf ("scu2words %lld %012llo\n", cpu.cycleCnt, words [6]);
   }
 
 
@@ -2550,7 +2550,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
 /// executeInstruction: simh hooks
 ///
 
-    sys_stats.total_cycles += 1; // bump cycle counter
+    cpu.instrCnt ++;
 
     if_sim_debug (DBG_REGDUMP, & cpu_dev)
     {
@@ -7752,8 +7752,8 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
             {
               sim_printf ("DIS@0%06o with no interrupts pending and"
                           " no events in queue\n", cpu.PPR.IC);
-              sim_printf ("\nsimCycles = %"PRId64"\n", sim_timell ());
-              sim_printf ("\ncpuCycles = %"PRId64"\n", sys_stats.total_cycles);
+              sim_printf ("\nCycles = %"PRId64"\n", cpu.cycleCnt);
+              sim_printf ("\nInstructions = %"PRId64"\n", cpu.cycleCnt);
               longjmp (cpu.jmpMain, JMP_STOP);
             }
 
@@ -7768,7 +7768,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 #ifdef ROUND_ROBIN
           if (cpu.PPR.PSR == 034 && cpu.PPR.IC == 03535)
               {
-                sim_printf ("[%lld] sys_trouble$die  DIS causes CPU halt\n", sim_timell ());
+                sim_printf ("[%lld] sys_trouble$die  DIS causes CPU halt\n", cpu.cycleCnt);
                 sim_debug (DBG_MSG, & cpu_dev, "BCE DIS causes CPU halt\n");
                 //longjmp (cpu.jmpMain, JMP_STOP);
                 cpu.isRunning = false;
@@ -7827,7 +7827,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
           else
             {
               sim_debug (DBG_TRACEEXT, & cpu_dev, "DIS refetches\n");
-              sys_stats.total_cycles ++;
+              cpu.instrCnt ++;
               //longjmp (cpu.jmpMain, JMP_REFETCH);
 #ifdef ROUND_ROBIN
 #ifdef ISOLTS

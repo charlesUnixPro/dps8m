@@ -829,7 +829,7 @@ static uint64 getSCUclock (uint scuUnitIdx)
         // The is a bit of code that is waiting for 5000 ms; this
         // fools into going faster
 #ifdef NEED_128
-        uint128 big = construct_128 (0, sys_stats.total_cycles);
+        uint128 big = construct_128 (0, cpu.instrCnt);
         // Sync up the clock and the TR; see wiki page "CAC 08-Oct-2014"
         //big *= 4u;
         big = lshift_128 (big, 2);
@@ -842,7 +842,7 @@ static uint64 getSCUclock (uint scuUnitIdx)
         days = multiply_128 (days, construct_128 (0, 60 * 60 * 24));
         big = add_128 (big, days);
 #else
-        __uint128_t big = sys_stats . total_cycles;
+        __uint128_t big = cpu.instrCnt;
         // Sync up the clock and the TR; see wiki page "CAC 08-Oct-2014"
         big *= 4u;
         //big /= 100u;

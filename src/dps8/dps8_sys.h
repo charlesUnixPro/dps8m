@@ -33,24 +33,9 @@ typedef struct {
     bool warn_uninit; // Warn when reading uninitialized memory
 } sysinfo_t;
 
-// Statistics
-typedef struct {
-    struct {
-        uint nexec;
-        uint nmsec; // FIXME: WARNING: if 32 bits, only good for ~47 days :-)
-    } instr[1024];
-    uint64 total_cycles;      // Used for statistics and for simulated clock
-    uint64 total_faults [N_FAULTS];
-    uint64 total_instr;
-    uint64 total_msec;
-    uint n_instr;       // Reset to zero on each call to sim_instr()
-} stats_t;
-
-
 #ifndef SCUMEM
 extern word36 *M;
 #endif
-extern stats_t sys_stats;
 extern sysinfo_t sys_opts;
 extern uint64 sim_deb_start;
 extern uint64 sim_deb_stop;

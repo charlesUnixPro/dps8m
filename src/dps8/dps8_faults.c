@@ -401,7 +401,7 @@ else if (faultNumber == FAULT_ACV)
 
     cpu.faultNumber = faultNumber;
     cpu.subFault = subFault;
-    sys_stats.total_faults [faultNumber] ++;
+    cpu.faultCnt [faultNumber] ++;
 
     // "The occurrence of a fault or interrupt sets the cache-to-register mode bit to OFF." a:AL39/cmr1
     CPTUR (cptUseCMR);
@@ -654,8 +654,8 @@ sim_debug (DBG_FAULT, & cpu_dev, "cycle %u ndes %u fn %u v %u\n", cpu.cycle, cpu
                                      // break this logic
               {
                 sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", cpu . PPR.IC);
-                sim_printf("\nsimCycles = %"PRId64"\n", sim_timell ());
-                sim_printf("\ncpuCycles = %"PRId64"\n", sys_stats . total_cycles);
+                sim_printf("\nCycles = %"PRId64"\n", cpu.cycleCnt);
+                sim_printf("\nInstructions = %"PRId64"\n", cpu.instrCnt);
                 //stop_reason = STOP_FLT_CASCADE;
                 longjmp (cpu.jmpMain, JMP_STOP);
               }
@@ -676,7 +676,7 @@ sim_debug (DBG_FAULT, & cpu_dev, "cycle %u ndes %u fn %u v %u\n", cpu.cycle, cpu
     // If doInstruction faults, the instruction cycle counter doesn't get 
     // bumped.
     if (cpu . cycle == EXEC_cycle)
-      sys_stats . total_cycles += 1; // bump cycle counter
+      cpu.instrCnt ++;
 
     cpu . cycle = FAULT_cycle;
     sim_debug (DBG_CYCLE, & cpu_dev, "Setting cycle to FAULT_cycle\n");
@@ -793,8 +793,8 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
                                      // break this logic
               {
                 sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", cpu.PPR.IC);
-                sim_printf("\nsimCycles = %"PRId64"\n", sim_timell ());
-                sim_printf("\ncpuCycles = %"PRId64"\n", sys_stats.total_cycles);
+                sim_printf("\nCycles = %"PRId64"\n", cpu.cycleCnt);
+                sim_printf("\nInstructions = %"PRId64"\n", cpu.instrCnt);
                 //stop_reason = STOP_FLT_CASCADE;
                 longjmp (cpu.jmpMain, JMP_STOP);
               }
@@ -814,7 +814,7 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
     // If doInstruction faults, the instruction cycle counter doesn't get 
     // bumped.
     if (cpu . cycle == EXEC_cycle)
-      sys_stats.total_cycles += 1; // bump cycle counter
+      cpu.instrCnt ++;
 
     cpu.is_FFV = true;
     cpu.cycle = FAULT_cycle;
@@ -886,7 +886,7 @@ void clearTROFault (void)
 
 void doG7Fault (bool allowTR)
   {
-    // sim_printf ("doG7fault %08o [%"PRId64"]\n", cpu . g7Faults, sim_timell ());
+    // sim_printf ("doG7fault %08o [%"PRId64"]\n", cpu . g7Faults, cpu.cycleCnt);
     // if (cpu . g7Faults)
       // {
         // sim_debug (DBG_FAULT, & cpu_dev, "doG7Fault %08o\n", cpu . g7Faults);

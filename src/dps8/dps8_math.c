@@ -3356,7 +3356,7 @@ void dfdi (void)
 void dvf (void)
 {
 //#ifdef DBGCAC
-//sim_printf ("DVF %"PRId64" %06o:%06o\n", sim_timell (), PPR.PSR, PPR.IC);
+//sim_printf ("DVF %"PRId64" %06o:%06o\n", cpu.cycleCnt, PPR.PSR, PPR.IC);
 //#endif
     // C(AQ) / (Y)
     //  fractional quotient → C(A)
@@ -3382,7 +3382,7 @@ void dvf (void)
 //HWR--    word72 m1 = SIGNEXT36_72((cpu . rA << 36) | (cpu . rQ & 0777777777776LLU));
 //HWR--    word72 m2 = SIGNEXT36_72(cpu.CY);
 //HWR--
-//HWR--//sim_debug (DBG_CAC, & cpu_dev, "[%"PRId64"]\n", sim_timell ());
+//HWR--//sim_debug (DBG_CAC, & cpu_dev, "[%"PRId64"]\n", cpu.cycleCnt);
 //HWR--//sim_debug (DBG_CAC, & cpu_dev, "m1 "); print_int128 (m1); sim_printf ("\n");
 //HWR--//sim_debug (DBG_CAC, & cpu_dev, "-----------------\n");
 //HWR--//sim_debug (DBG_CAC, & cpu_dev, "m2 "); print_int128 (m2); sim_printf ("\n");
@@ -3578,7 +3578,7 @@ IF1 sim_printf ("DVFb A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, c
 // MM code
 #ifdef DVF_CAC
 
-//sim_debug (DBG_CAC, & cpu_dev, "dvf [%"PRId64"]\n", sim_timell ());
+//sim_debug (DBG_CAC, & cpu_dev, "dvf [%"PRId64"]\n", cpu.cycleCnt);
 //sim_debug (DBG_CAC, & cpu_dev, "rA %llu\n", cpu . rA);
 //sim_debug (DBG_CAC, & cpu_dev, "rQ %llu\n", cpu . rQ);
 //sim_debug (DBG_CAC, & cpu_dev, "CY %llu\n", cpu.CY);

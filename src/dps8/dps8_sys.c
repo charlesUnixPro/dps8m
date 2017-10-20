@@ -86,8 +86,6 @@ static pid_t dps8m_sid; // Session id
 
 static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
 
-stats_t sys_stats;
-
 static t_stat dps_debug_mme_cntdwn (UNUSED int32 arg, const char * buf);
 static t_stat dps_debug_skip (int32 arg, const char * buf);
 static t_stat dps_debug_start (int32 arg, const char * buf);

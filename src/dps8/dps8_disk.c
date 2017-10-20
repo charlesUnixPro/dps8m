@@ -324,7 +324,7 @@ static int diskSeek512 (uint iomUnitIdx, uint chan)
     uint devUnitIdx = d -> devUnitIdx;
     struct disk_state * disk_statep = & disk_states [devUnitIdx];
     sim_debug (DBG_NOTIFY, & disk_dev, "Seek512 %d\n", devUnitIdx);
-//sim_printf ("disk seek512 [%"PRId64"]\n", sim_timell ());
+//sim_printf ("disk seek512 [%"PRId64"]\n", cpu.cycleCnt);
     disk_statep -> io_mode = seek512_mode;
 
 // Process DDCW
@@ -789,7 +789,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
 
             sim_debug (DBG_NOTIFY, & disk_dev, "Write %d\n", devUnitIdx);
             disk_statep -> io_mode = write_mode;
-//sim_printf ("disk write [%"PRId64"]\n", sim_timell ());
+//sim_printf ("disk write [%"PRId64"]\n", cpu.cycleCnt);
             p -> stati = 04000;
           }
 //exit(1);
@@ -798,7 +798,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
 #if 0
         case 034: // CMD 34 SEEK
           {
-//sim_printf ("disk seek [%"PRId64"]\n", sim_timell ());
+//sim_printf ("disk seek [%"PRId64"]\n", cpu.cycleCnt);
             sim_debug (DBG_NOTIFY, & disk_dev, "Seek %d\n", devUnitIdx);
             disk_statep -> io_mode = seek_mode;
           }

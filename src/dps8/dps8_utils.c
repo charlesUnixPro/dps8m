@@ -2188,12 +2188,6 @@ void print_int128 (int128 n, char * p)
   }
 #endif
 
-// Return simh's gtime as a long long.
-uint64 sim_timell (void)
-  {
-    return (uint64) sim_gtime ();
-  }
-
 #ifdef THREADZ
 // https://gist.github.com/diabloneo/9619917
 

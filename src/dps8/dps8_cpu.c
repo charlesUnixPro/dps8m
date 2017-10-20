@@ -652,10 +652,10 @@ void cpu_init (void)
     sim_brk_types = sim_brk_dflt = SWMASK ('E');
     // TODO: reset *all* other structures to zero
     
-    memset (& sys_stats, 0, sizeof (sys_stats));
-    sys_stats.total_cycles = 0;
+    cpu.instrCnt = 0;
+    cpu.cycleCnt = 0;
     for (int i = 0; i < N_FAULTS; i ++)
-      sys_stats.total_faults [i] = 0;
+      cpu.faultCnt [i] = 0;
     
     
 #ifdef MATRIX
@@ -940,7 +940,7 @@ t_stat simh_hooks (void)
                       SWMASK ('E')))  /* breakpoint? */
       return STOP_BKPT; /* stop simulation */
 #ifndef SPEED
-    if (sim_deb_break && sim_timell () >= sim_deb_break)
+    if (sim_deb_break && cpu.cycleCnt >= sim_deb_break)
       return STOP_BKPT; /* stop simulation */
 #endif
 
@@ -1174,6 +1174,8 @@ setCPU:;
           {
             break;
           }
+
+        cpu.cycleCnt ++;
 
 #ifndef NO_EV_POLL
 // The event poll is consuming 40% of the CPU according to pprof.
@@ -1913,13 +1915,13 @@ leave:
 #ifdef HDBG
     hdbgPrint ();
 #endif
-    sim_printf ("\nsimCycles = %"PRId64"\n", sim_timell ());
-    sim_printf ("\ncpuCycles = %"PRId64"\n", sys_stats.total_cycles);
+    sim_printf("\ncycles = %llu\n", cpu.cycleCnt);
+    sim_printf("\ninstructions = %llu\n", cpu.instrCnt);
     for (int i = 0; i < N_FAULTS; i ++)
       {
-        if (sys_stats.total_faults [i])
-          sim_printf ("%s faults = %"PRId64"\n",
-                      faultNames [i], sys_stats.total_faults [i]);
+        if (cpu.faultCnt [i])
+          sim_printf ("%s faults = %ld\n",
+                      faultNames [i], cpu.faultCnt [i]);
       }
     
 #ifdef M_SHARED
@@ -2986,7 +2988,7 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
     if (watchBits [addr])
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o read   %08o %012"PRIo64" "
-                    "(%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr,
+                    "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr,
                     * data, ctx);
       }
 #else
@@ -3001,7 +3003,7 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o read   %08o %012"PRIo64" "
                     "(%s)\n",
-                    sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr, M [addr],
+                    cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr, M [addr],
                     ctx);
         traceInstruction (0);
       }
@@ -3056,7 +3058,7 @@ int core_write (word24 addr, word36 data, const char * ctx)
     if (watchBits [addr])
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o write   %08o %012"PRIo64" "
-                    "(%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr, 
+                    "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr, 
                     data & DMASK, ctx);
       }
 #else
@@ -3064,7 +3066,7 @@ int core_write (word24 addr, word36 data, const char * ctx)
     if (watchBits [addr])
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o write  %08o %012"PRIo64" "
-                    "(%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr, 
+                    "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr, 
                     M [addr], ctx);
         traceInstruction (0);
       }
@@ -3128,7 +3130,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
     if (watchBits [addr])
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" "
-                    "(%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr,
+                    "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr,
                     * even, ctx);
       }
     sim_debug (DBG_CORE, & cpu_dev,
@@ -3138,7 +3140,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
     if (watchBits [addr+1])
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" "
-                    "(%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr+1,
+                    "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr+1,
                     * odd, ctx);
       }
 
@@ -3156,7 +3158,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
     if (watchBits [addr])
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" "
-                    "(%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr, 
+                    "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr, 
                     M [addr], ctx);
         traceInstruction (0);
       }
@@ -3178,7 +3180,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
     if (watchBits [addr])
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" "
-                    "(%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr,
+                    "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr,
                     M [addr], ctx);
         traceInstruction (0);
       }
@@ -3242,21 +3244,21 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
     if (watchBits [addr])
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o write2 %08o %012"PRIo64" "
-                    "(%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr,
+                    "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr,
                     even, ctx);
       }
     scu [scuUnitIdx].M[offset] = odd & DMASK;
     if (watchBits [addr+1])
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o write2 %08o %012"PRIo64" "
-                    "(%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr+1,
+                    "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr+1,
                     odd, ctx);
       }
 #else
     if (watchBits [addr])
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o write2 %08o %012"PRIo64" "
-                    "(%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr,
+                    "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr,
                     even, ctx);
         traceInstruction (0);
       }
@@ -3272,7 +3274,7 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
     if (watchBits [addr])
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o write2 %08o %012"PRIo64" "
-                    "(%s)\n", sim_timell (), cpu.PPR.PSR, cpu.PPR.IC, addr,
+                    "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr,
                     odd, ctx);
         traceInstruction (0);
       }
