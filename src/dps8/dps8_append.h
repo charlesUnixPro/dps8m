@@ -1,5 +1,5 @@
 /*
- Copyright 2013-2016 by Charles Anthony
+ Copyright 2013-2017 by Charles Anthony
 
  All rights reserved.
 
@@ -38,55 +38,56 @@
 // main memory access to update page status bits (PTW.U and PTW.M) in a PTW.
 // The cycles are defined in Table 5-1.
 
-enum _appendingUnit_cycle_type {
-    apuCycle_APPUNKNOWN = 0,    // unknown
-    
-    apuCycle_FIAP,       // Fetch instruction
-
-    apuCycle_FANP,       // Final address nonpaged.
-                // Generates the 24-bit absolute main memory address and 
-                // initiates a main memory access to an unpaged segment for 
-                // operands, indirect words, or instructions.
-
-    apuCycle_FAP,        // Final address paged
-                // Generates the 24-bit absolute main memory address and 
-                // initiates a main memory access to a paged segment for 
-                // operands, indirect words, or instructions.
-
-    apuCycle_NSDW,       // Nonpaged SDW Fetch
-                // Fetches an SDW from an unpaged descriptor segment.
-
-    apuCycle_PSDW,       // Paged SDW Fetch
-                // Fetches an SDW from a paged descriptor segment.
-
-    apuCycle_PTWfetch,   // PTW fetch
-                // Fetches a PTW from a page table other than a descriptor 
-                // segment page table and sets the page accessed bit (PTW.U).
-
-    apuCycle_PTW2,       // Prepage PTW fetch
-                // Fetches the next PTW from a page table other than a 
-                // descriptor segment page table during hardware prepaging for 
-                // certain uninterruptible EIS instructions. This cycle does 
-                // not load the next PTW into the appending unit. It merely 
-                // assures that the PTW is not faulted (PTW.F = 1) and that 
-                // the target page will be in main memory when and if needed 
-                // by the instruction.
-
-    apuCycle_DSPTW,      // Descriptor segment PTW fetch
-                // Fetches a PTW from a descriptor segment page table.
-
-    apuCycle_MDSPTW,     // Modify DSPTW
-                // Sets the page accessed bit (PTW.U) in the PTW for a page 
-                // in a descriptor segment page table. This cycle always 
-                // immediately follows a DSPTW cycle.
-
-    apuCycle_MPTW        // Modify PTW
-                // Sets the page modified bit (PTW.M) in the PTW for a page 
-                // in other than a descriptor segment page table.
-};
+// enum _appendingUnit_cycle_type {
+//     apuCycle_APPUNKNOWN = 0,    // unknown
+//     
+//     apuCycle_FIAP,       // Fetch instruction
+// 
+//     apuCycle_FANP,       // Final address nonpaged.
+//               // Generates the 24-bit absolute main memory address and 
+//               // initiates a main memory access to an unpaged segment for 
+//               // operands, indirect words, or instructions.
+// 
+//     apuCycle_FAP,        // Final address paged
+//               // Generates the 24-bit absolute main memory address and 
+//               // initiates a main memory access to a paged segment for 
+//               // operands, indirect words, or instructions.
+// 
+//     apuCycle_NSDW,       // Nonpaged SDW Fetch
+//               // Fetches an SDW from an unpaged descriptor segment.
+// 
+//     apuCycle_PSDW,       // Paged SDW Fetch
+//               // Fetches an SDW from a paged descriptor segment.
+// 
+//     apuCycle_PTWfetch,   // PTW fetch
+//               // Fetches a PTW from a page table other than a descriptor 
+//               // segment page table and sets the page accessed bit (PTW.U).
+// 
+//     apuCycle_PTW2,       // Prepage PTW fetch
+//               // Fetches the next PTW from a page table other than a 
+//               // descriptor segment page table during hardware prepaging for 
+//               // certain uninterruptible EIS instructions. This cycle does 
+//               // not load the next PTW into the appending unit. It merely 
+//               // assures that the PTW is not faulted (PTW.F = 1) and that 
+//               // the target page will be in main memory when and if needed 
+//               // by the instruction.
+// 
+//     apuCycle_DSPTW,      // Descriptor segment PTW fetch
+//              // Fetches a PTW from a descriptor segment page table.
+// 
+//     apuCycle_MDSPTW,     // Modify DSPTW
+//              // Sets the page accessed bit (PTW.U) in the PTW for a page 
+//              // in a descriptor segment page table. This cycle always 
+//              // immediately follows a DSPTW cycle.
+// 
+//     apuCycle_MPTW        // Modify PTW
+//              // Sets the page modified bit (PTW.M) in the PTW for a page 
+//              // in other than a descriptor segment page table.
+// };
 
 // These bits are aligned to match the CU word 0 APU status bit positions.
 // This produces some oddness in the scu save/restore code.
+
 typedef enum apuStatusBits
   {
     apuStatus_PI_AP  = 1u << (35 - 24), //  -AP Instruction fetch append cycle
