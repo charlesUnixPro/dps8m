@@ -112,9 +112,6 @@ void setAPUStatus (apuStatusBits status);
 
 void doPtrReg (void);        ///< used by EIS stuff
 t_stat dumpSDWAM (void);
-void fauxDoAppendCycle (_processor_cycle_type thisCycle);
-//word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle, 
-                      //word36 * data, uint nWords);
 word24 doAppendCycle (_processor_cycle_type thisCycle, 
                       word36 * data, uint nWords);
 void do_ldbr (word36 * Ypair);
@@ -125,5 +122,8 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
                       char * * msg);
 _sdw0 * getSDW (word15 segno);
 
-
+static inline void fauxDoAppendCycle (_processor_cycle_type thisCycle)
+  {
+    cpu.apu.lastCycle = thisCycle;
+  }
 

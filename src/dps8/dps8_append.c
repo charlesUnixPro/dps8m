@@ -1287,10 +1287,6 @@ static char *strPCT (_processor_cycle_type t)
 //
 
 // CANFAULT
-void fauxDoAppendCycle (_processor_cycle_type thisCycle)
-  {
-    cpu.apu.lastCycle = thisCycle;
-  }
 
 word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data,
                       uint nWords)
