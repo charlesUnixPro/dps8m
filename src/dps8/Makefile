@@ -149,6 +149,9 @@ endif
 ifneq ($(CROSS),MINGW64)
 C_SRCS += ./udplib.c
 endif
+ifeq ($(THREADZ),1)
+C_SRCS += ./threadz.c
+endif
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
@@ -200,6 +203,9 @@ endif
 H_SRCS += utarray.h
 H_SRCS += uthash.h
 H_SRCS += utlist.h
+ifeq ($(THREADZ),1)
+H_SRCS += ./threadz.h
+endif
 
 
 
