@@ -11,6 +11,12 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
+#ifdef THREADZ
+extern __thread uint thisIOMnum;
+extern __thread uint thisChnNum;
+extern __thread bool thisIOMHaveLock;
+#endif
+
 //typedef enum 
   //{
     //cm_LPW_init_state, // No TDCWs encountered; state is:
@@ -216,6 +222,10 @@ void iom_init (void);
 int send_marker_interrupt (uint iomUnitIdx, int chan);
 #ifdef PANEL
 void doBoot (void);
+#endif
+#ifdef THREADZ
+void * iomThreadMain (void * arg);
+void * chnThreadMain (void * arg);
 #endif
 #ifdef SCUMEM
 int queryIomScbankMap (uint iomUnitIdx, word24 addr, word24 * offset);

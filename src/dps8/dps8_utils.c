@@ -2194,3 +2194,51 @@ uint64 sim_timell (void)
     return (uint64) sim_gtime ();
   }
 
+// https://gist.github.com/diabloneo/9619917
+
+void timespec_diff(struct timespec * start, struct timespec * stop,
+                   struct timespec * result)
+{
+    if ((stop->tv_nsec - start->tv_nsec) < 0) {
+        result->tv_sec = stop->tv_sec - start->tv_sec - 1;
+        result->tv_nsec = stop->tv_nsec - start->tv_nsec + 1000000000;
+    } else {
+        result->tv_sec = stop->tv_sec - start->tv_sec;
+        result->tv_nsec = stop->tv_nsec - start->tv_nsec;
+    }
+
+    return;
+}
+
+// Calculate current TR value
+
+void currentTR (word27 * trunits, bool * ovf)
+  {
+    struct timespec now, delta;
+    clock_gettime (CLOCK_BOOTTIME, & now);
+    timespec_diff (& cpu.rTRTime, & now, & delta);
+    if (delta.tv_sec > 263)
+      {
+        // The elapsed time is manifestly larger then the TR range
+        * trunits = (~0llu) & MASK27;
+        * ovf = true;
+        return;
+      }
+    // difference in nSecs
+    unsigned long dns = (unsigned long) delta.tv_sec * 1000000000 + 
+                        (unsigned long) delta.tv_nsec;
+    // in Timer ticks
+    unsigned long ticks = dns / 1953 /* 1953.125 */;
+
+    // Runout?
+    if (ticks >= cpu.rTR)
+      {
+        * trunits = (~0llu) & MASK27;
+        * ovf = true;
+        return;
+      }
+    * trunits = (cpu.rTR - ticks) & MASK27;
+    //sim_printf ("time left %f\n", (float) (* trunits) / 5120000);
+    * ovf = false;
+  }
+

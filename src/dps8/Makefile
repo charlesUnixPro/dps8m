@@ -42,8 +42,8 @@ ifeq ($(OS),Windows_NT)
 CROSS=MINGW64
 endif
 
-ifdef THREADZ
-CLAGS += -pthread +DTHREADZ
+ifeq ($(THREADZ),1)
+CFLAGS += -pthread -DTHREADZ
 LIBS += -lpthread
 endif
 

@@ -13,7 +13,6 @@
 
 #include "threadz.h"
 
-
 //
 // Resource locks
 //

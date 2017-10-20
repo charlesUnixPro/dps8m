@@ -223,6 +223,9 @@
 #include "dps8_cable.h"
 #include "dps8_console.h"
 #include "dps8_fnp2.h"
+#ifdef THREADZ
+#include "threadz.h"
+#endif
 
 #define ASSUME_CPU_0 0
 
@@ -237,6 +240,11 @@
 
 #define IOM_UNIT_IDX(uptr) ((uptr) - iomUnit)
 
+#ifdef THREADZ
+__thread uint thisIOMnum;
+__thread uint thisChnNum;
+__thread bool thisIOMHaveLock;
+#endif
 
 #ifdef SCUMEM
 void iom_core_read (uint iomUnitIdx, word24 addr, word36 *data, UNUSED const char * ctx)
@@ -2519,6 +2527,56 @@ void iom_interrupt (uint scuUnitIdx, uint iomUnitIdx)
     // XXX doConnectChan return value ignored
   }
  
+#ifdef THREADZ
+void * chnThreadMain (void * arg)
+  {     
+    uint myid = (uint) * (int *) arg;
+    thisIOMnum = (uint) myid / MAX_CHANNELS;
+    thisChnNum = (uint) myid % MAX_CHANNELS;
+          
+// Set CPU context to allow sim_debug to work
+
+    setCPUnum (0);
+
+    sim_printf("IOM %c Channel %u thread created\n", thisIOMnum + 'a', thisChnNum);
+
+    setSignals ();
+    while (1)
+      {
+//sim_printf("IOM %c Channel %u thread waiting\n", thisIOMnum + 'a', thisChnNum);
+        chnConnectWait ();
+//sim_printf("IOM %c Channel %u thread running\n", thisIOMnum + 'a', thisChnNum);
+        doPayloadChan (thisIOMnum, thisChnNum);
+        chnConnectDone ();
+      }
+  }
+
+void * iomThreadMain (void * arg)
+  {     
+    int myid = * (int *) arg;
+    thisIOMnum = (uint) myid;
+          
+// Set CPU context to allow sim_debug to work
+
+    setCPUnum (0);
+
+    sim_printf("IOM %c thread created\n", 'a' + myid);
+
+    setSignals ();
+    while (1)
+      {
+//sim_printf("IOM %c thread waiting\n", 'a' + myid);
+        iomInterruptWait ();
+//sim_printf("IOM %c thread running\n", 'a' + myid);
+        int ret = doConnectChan (thisIOMnum);
+
+        sim_debug (DBG_DEBUG, & iom_dev,
+                   "%s: IOM %c finished; doConnectChan returned %d.\n",
+                   __func__, 'A' + myid, ret);
+        iomInterruptDone ();
+      }
+  }
+#endif
 
 //
 // iomReset ()

@@ -1551,6 +1551,9 @@ typedef struct
   {
     jmp_buf jmpMain; // This is the entry to the CPU state machine
     cycles_t cycle;
+    unsigned long long cycleCnt;
+    unsigned long long instrCnt;
+    unsigned long faultCnt [N_FAULTS];
 
     // The following are all from the control unit history register:
 
@@ -1589,6 +1592,10 @@ typedef struct
 
     word18   rX [8]; // index
     word27   rTR;    // timer [map: TR, 9 0's]
+#ifdef THREADZ
+    struct timespec rTRTime; // time when rTR was set
+    uint     rTRsample;
+#endif
     word24   rY;     // address operand
     word6    rTAG;   // instruction tag
     word3    rRALR;  // ring alarm [3b] [map: 33 0's, RALR]
@@ -1818,6 +1825,11 @@ typedef struct
 #ifdef ISOLTS
     uint shadowTR;
 #endif
+#ifdef THREADZ
+    // Set if this thread has set memlock
+    bool havelock; // Vetinari 
+bool have_tst_lock;
+#endif
   } cpu_state_t;
 
 #ifdef M_SHARED
@@ -1825,14 +1837,23 @@ extern cpu_state_t * cpus;
 #else
 extern cpu_state_t cpus [N_CPU_UNITS_MAX];
 #endif
+
+#ifdef THREADZ
+extern __thread cpu_state_t * restrict cpup;
+#else
 extern cpu_state_t * restrict cpup;
+#endif
 #define cpu (* cpup)
 
 uint setCPUnum (uint cpuNum);
+#ifdef THREADZ
+extern __thread uint currentRunningCpuIdx;
+#else
 #ifdef ROUND_ROBIN
 extern uint currentRunningCpuIdx;
 #else
 #define currentRunningCpuIdx 0
+#endif
 #endif
 
 // Support code to access ARn.BITNO, ARn.CHAR, PRn.BITNO
@@ -2131,4 +2152,7 @@ uint getCPUnum (void);
 void addHistForce (uint hset, word36 w0, word36 w1);
 uint getCPUnum (void);
 word18 getBARaddress(word18 addr);
-
+#ifdef THREADZ
+t_stat threadz_sim_instr (void);
+void * cpuThreadMain (void * arg);
+#endif
