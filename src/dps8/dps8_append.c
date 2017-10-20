@@ -648,7 +648,8 @@ static void fetchNSDW (word15 segno)
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
       addAPUhist (0 /* No fetch no paged bit */);
 #endif
-    DBGAPP ("fetchNSDW (2):SDW0=%s\n", strSDW0 (& cpu.SDW0));
+    char buf [256];
+    DBGAPP ("fetchNSDW (2):SDW0=%s\n", strSDW0 (buf, & cpu.SDW0));
   }
 
 #ifdef WAM

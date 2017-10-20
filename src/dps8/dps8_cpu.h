@@ -2105,8 +2105,7 @@ t_stat dpsCmd_Segments (int32 arg, const char *buf);
 t_stat memWatch (int32 arg, const char * buf);
 //_sdw0 *fetchSDW (word15 segno);
 _sdw *fetchSDW (word15 segno);
-//char *strSDW0 (_sdw0 *SDW);
-char *strSDW0 (_sdw *SDW);
+char *strSDW0 (char * buf, _sdw *SDW);
 #ifdef SCUMEM
 int lookup_cpu_mem_map (word24 addr, word24 * offset);
 #else

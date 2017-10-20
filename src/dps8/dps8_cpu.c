@@ -413,37 +413,36 @@ _sdw0 *fetchSDW (word15 segno)
     return SDW;
   }
 
-static char * strDSBR (void)
+static char * strDSBR (char * buf)
   {
-    static char buff [256];
-    sprintf (buff, "DSBR: ADDR=%06o BND=%05o U=%o STACK=%04o", cpu.DSBR.ADDR, cpu.DSBR.BND, cpu.DSBR.U, cpu.DSBR.STACK);
-    return buff;
+    sprintf (buf, "DSBR: ADDR=%06o BND=%05o U=%o STACK=%04o", cpu.DSBR.ADDR, cpu.DSBR.BND, cpu.DSBR.U, cpu.DSBR.STACK);
+    return buf;
   }
 
 static void printDSBR (void)
   {
-    sim_printf ("%s\n", strDSBR ());
+    char buf [256];
+    sim_printf ("%s\n", strDSBR (buf));
   }
 
 
-char * strSDW0 (_sdw0 * SDW)
+char * strSDW0 (char * buf, _sdw0 * SDW)
   {
-    static char buff [256];
-    
     //if (SDW->ADDR == 0 && SDW->BOUND == 0) // need a better test
     //if (! SDW -> DF) 
     //  sprintf (buff, "*** Uninitialized ***");
     //else
-      sprintf (buff, "ADDR=%06o R1=%o R2=%o R3=%o F=%o FC=%o BOUND=%o R=%o E=%o W=%o P=%o U=%o G=%o C=%o EB=%o",
+      sprintf (buf, "ADDR=%06o R1=%o R2=%o R3=%o F=%o FC=%o BOUND=%o R=%o E=%o W=%o P=%o U=%o G=%o C=%o EB=%o",
                SDW -> ADDR, SDW -> R1, SDW -> R2, SDW -> R3, SDW -> DF,
                SDW -> FC, SDW -> BOUND, SDW -> R, SDW -> E, SDW -> W,
                SDW -> P, SDW -> U, SDW -> G, SDW -> C, SDW -> EB);
-    return buff;
+    return buf;
  }
 
 static void printSDW0 (_sdw0 *SDW)
   {
-    sim_printf ("%s\n", strSDW0 (SDW));
+    char buf [256];
+    sim_printf ("%s\n", strSDW0 (buf, SDW));
   }
 
 static t_stat dpsCmd_DumpSegmentTable()
