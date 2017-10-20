@@ -363,7 +363,6 @@ static inline void l_putbits36_18 (word36 volatile * x, uint p, word18 val)
       unlock_mem ();
 }
 
-#define vol volatile
 #else
 #define l_putbits36_1 putbits36_1
 #define l_putbits36_3 putbits36_3
@@ -371,7 +370,6 @@ static inline void l_putbits36_18 (word36 volatile * x, uint p, word18 val)
 #define l_putbits36_9 putbits36_9
 #define l_putbits36_12 putbits36_12
 #define l_putbits36_18 putbits36_18
-#define vol
 #endif
 
 

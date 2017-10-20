@@ -1,6 +1,6 @@
 /*
  Copyright 2012-2016 by Harry Reed
- Copyright 2013-2016 by Charles Anthony
+ Copyright 2013-2017 by Charles Anthony
  Copyright 2016 by Jean-Michel Merliot
 
  All rights reserved.
@@ -60,7 +60,6 @@ typedef struct { int64_t h; uint64_t l; } __int128_t;
 #define construct_s128(h, l) ((int128) { (h), (l) })
 
 #endif
-//#include "dps8_math128.h"
 
 // Quiet compiler unused warnings
 #define QUIET_UNUSED
@@ -87,7 +86,7 @@ typedef struct { int64_t h; uint64_t l; } __int128_t;
 
 #ifdef TESTING
 #else
-// Enable speed over debuggibility
+// Enable speed over debugibility
 #define SPEED
 #endif
 
@@ -182,6 +181,15 @@ typedef struct { int64_t h; uint64_t l; } __int128_t;
 //#define TR_WORK_MEM
 #define TR_WORK_EXEC
 
+// Multi-threading may require 'volatile' in some place; make it easy
+// to support both configurations
+
+#ifdef THREADZ
+#define vol volatile
+#else
+#define vol
+#endif
+
 // Fix glibc incompatibility with new simh code.
 
 #if __WORDSIZE == 64
@@ -267,7 +275,6 @@ typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 
 #define SETBIT(dst, bitno)      ((dst) | (1LLU << (bitno)))
 #define CLRBIT(dst, bitno)      ((dst) & ~(1LLU << (bitno)))
-//#define TSTBIT(dst, bitno)      ((dst) &  (1LLU << (bitno)))
 #define TSTBIT(dst, bitno)      (((dst) &  (1LLU << (bitno))) ? 1: 0)
 
 /////
@@ -290,7 +297,7 @@ enum _processor_cycle_type {
 typedef enum _processor_cycle_type _processor_cycle_type;
 
 #ifndef EIS_PTR4
-//! some breakpoint stuff ...
+// some breakpoint stuff ...
 enum eMemoryAccessType {
     UnknownMAT       = 0,
     OperandRead,
