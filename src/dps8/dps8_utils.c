@@ -87,13 +87,6 @@ struct opCode *getIWBInfo(DCDstruct *i)
     else
         p = &EISopcodes[i->opcode];
     
-#ifndef QUIET_UNUSED
-    if (p->mne == 0)
-    {
-        int r = 1;
-    }
-#endif
-    
     return p->mne ? p : &UnImp;
 }
 
@@ -942,32 +935,6 @@ void copyBytes(int posn, word36 src, word36 *dst)
 }
 
 
-#ifndef QUIET_UNUSED
-word9 getByte(int posn, word36 src)
-{
-    // XXX what's wrong with the macro????
-    // XXX NB different parameter order
-//    word36 mask = 0;
-    
-//    switch (posn)
-//    {
-//        case 0: // byte 0 - (bits 0-8)
-//            mask |= 0777000000000LL;
-//            break;
-//        case 1: // byte 1 - (bits 9-17)
-//            mask |= 0000777000000LL;
-//            break;
-//        case 2: // byte 2 - (bits 18-26)
-//            mask |= 0000000777000LL;
-//            break;
-//        case 3: // byte 3 - (bits 27-35)
-//            mask |= 0000000000777LL;
-//            break;
-//    }
-    word9 byteVal = (word9) (src >> (9 * (3 - posn))) & 0777;   ///< get byte bits
-    return byteVal;
-}
-#endif
 
 void copyChars(int posn, word36 src, word36 *dst)
 {
@@ -1025,7 +992,6 @@ void putByte(word36 *dst, word9 data, int posn)
 //            offset = 0;
 //            break;
 //    }
-    //*dst = bitfieldInsert36(*dst, (word36)data, offset, 9);
     putbits36_9 (dst, (uint) posn * 9, data);
 }
 
@@ -1055,21 +1021,12 @@ void putChar(word36 *dst, word6 data, int posn)
 //            offset = 0;
 //            break;
 //    }
-    //*dst = bitfieldInsert36(*dst, (word36)data, offset, 6);
     putbits36_6 (dst, (uint) posn * 6, data);
 }
 
 word72 convertToWord72(word36 even, word36 odd)
 {
 #ifdef NEED_128
-//sim_debug (DBG_TRACE, & cpu_dev, "even %016llx\n", even);
-//sim_debug (DBG_TRACE, & cpu_dev, "construct even %016llx %016llx\n", construct_128 (0, even).h, construct_128 (0, even).l);
-//sim_debug (DBG_TRACE, & cpu_dev, "shift even %016llx %016llx\n", lshift_128 (construct_128 (0, even), 36).h, lshift_128 (construct_128 (0, even), 36).l);
-//sim_debug (DBG_TRACE, & cpu_dev, "odd %016llx\n", odd);
-//sim_debug (DBG_TRACE, & cpu_dev, "construct odd %016llx %016llx\n", construct_128 (0, odd).h, construct_128 (0, odd).l);
-//sim_debug (DBG_TRACE, & cpu_dev, "or %016llx %016llx\n",
-    //or_128 (lshift_128 (construct_128 (0, even), 36), construct_128 (0, odd)).h,
-    //or_128 (lshift_128 (construct_128 (0, even), 36), construct_128 (0, odd)).l);
     return or_128 (lshift_128 (construct_128 (0, even), 36), construct_128 (0, odd));
 #else
     return ((word72)even << 36) | (word72)odd;
@@ -1223,27 +1180,6 @@ void cmp72(word72 op1, word72 op2, word18 *flags)
     CPT (cpt2L, 27); // cmp72
    // The case of op1 == 400000000000000000000000 and op2 == 0 falls through
    // this code.
-#if 0
-    if (!(op1 & SIGN72) && (op2 & SIGN72) && (op1 > op2))
-        CLRF(*flags, I_ZERO | I_NEG | I_CARRY);
-    else if ((op1 & SIGN72) == (op2 & SIGN72) && (op1 > op2))
-    {
-        SETF(*flags, I_CARRY);
-        CLRF(*flags, I_ZERO | I_NEG);
-    } else if (((op1 & SIGN72) == (op2 & SIGN72)) && (op1 == op2))
-    {
-        SETF(*flags, I_ZERO | I_CARRY);
-        CLRF(*flags, I_NEG);
-    } else if (((op1 & SIGN72) == (op2 & SIGN72)) && (op1 < op2))
-    {
-        SETF(*flags, I_NEG);
-        CLRF(*flags, I_ZERO | I_CARRY);
-    } else if (((op1 & SIGN72) && !(op2 & SIGN72)) && (op1 < op2))
-    {
-        SETF(*flags, I_CARRY | I_NEG);
-        CLRF(*flags, I_ZERO);
-    }
-#else
 #ifdef L68
     cpu.ou.cycle |= ou_GOS;
 #endif
@@ -1309,9 +1245,6 @@ sim_debug (DBG_TRACE, & cpu_dev, "op2s %016lx%016lx\n", (uint64_t) (op2s>>64), (
         CLRF (* flags, I_ZERO);
         SETF (* flags, I_NEG);
       }
-
-
-#endif
 }
 
 /*
@@ -1597,316 +1530,6 @@ stripquotes(char *s)
     if (s[nLast] == '"')
         s[nLast] = ' ';
     return trim(s);
-}
-
-#if 0
-/*!
- a - Bitfield to insert bits into.
- b - Bit pattern to insert.
- c - Bit offset number.
- d = Number of bits to insert.
- 
- Description
- 
- Returns the result of inserting bits B at offset C of length D in the bitfield A.
- */
-word72 bitfieldInsert72(word72 a, word72 b, int c, int d)
-{
-    word72 mask = ~((word72)-1 << d) << c;
-    mask = ~mask;
-    a &= mask;
-    return a | (b << c);
-}
-#endif
-
-#if 0
-/*!
- a - Bitfield to insert bits into.
- b - Bit pattern to insert.
- c - Bit offset number.
- d = Number of bits to insert.
- 
- Description
- 
- Returns the result of inserting bits B at offset C of length D in the bitfield A.
- 
- XXX: c & d should've been expressed in dps8 big-endian rather than little-endian numbering. Oh, well.
- 
- */
-word36 bitfieldInsert36(word36 a, word36 b, int c, int d)
-{
-    word36 mask = ~(0xffffffffffffffffLL << d) << c;
-    mask = ~mask;
-    a &= mask;
-    return a | (b << c);
-}
-#endif
-
-#if 0
-/*!
-a - Bitfield to insert bits into.
-b - Bit pattern to insert.
-c - Bit offset number.
-d = Number of bits to insert.
- 
- Description
- 
- Returns the result of inserting bits B at offset C of length D in the bitfield A.
-*/
-int bitfieldInsert(int a, int b, int c, int d)
-{
-    uint32 mask = ~(0xffffffff << d) << c;
-    mask = ~mask;
-    a &= mask;
-    return a | (b << c);
-}
-#endif
-
-#if 0
-/*!
- a -  Bitfield to extract bits from.
- b -  Bit offset number. Bit offsets start at 0.
- c - Number of bits to extract.
- 
- Description
- 
- Returns bits from offset b of length c in the bitfield a.
- */
-int bitfieldExtract(int a, int b, int c)
-{
-    int mask = ~((int)0xffffffff << c);
-    if (b > 0)
-        return (a >> b) & mask; // original pseudocode had b-1
-    else
-        return a & mask;
-}
-#endif
-
-#if 0
-/*!
- a -  Bitfield to extract bits from.
- b -  Bit offset number. Bit offsets start at 0.
- c - Number of bits to extract.
- 
- Description
- 
- Returns bits from offset b of length c in the bitfield a.
- NB: This would've been much easier to use of I changed, 'c', the bit offset to reflect the dps8s 36bit word!! Oh, well.
-
- */
-word36 bitfieldExtract36(word36 a, int b, int c)
-{
-    word36 mask = ~(0xffffffffffffffffLL  << c);
-    //printf("mask=%012"PRIo64"\n", mask);
-    if (b > 0)
-        return (a >> b) & mask; // original pseudocode had b-1
-    else
-        return a & mask;
-}
-#endif
-
-#if 0
-word72 bitfieldExtract72(word72 a, int b, int c)
-{
-    word72 mask = ~((word72)-1 << c);
-    if (b > 0)
-        return (a >> b) & mask; // original pseudocode had b-1
-    else
-        return a & mask;
-}
-#endif
-
-#ifndef QUIET_UNUSED
-/*!
- @param[in] x Bitfield to count bits in.
- 
- \brief Returns the count of set bits (value of 1) in the bitfield x.
- */
-int bitCount(int x)
-{
-    int i;
-    int res = 0;
-    for(i = 0; i < 32; i++) {
-        uint32 mask = 1 << i;
-        if (x & (int) mask)
-            res ++;
-    }
-    return res;
-}
-#endif 
-
-#ifndef QUIET_UNUSED
-/*!
- @param[in] x Bitfield to find LSB in.
- 
- \brief Returns the bit number of the least significant bit (value of 1) in the bitfield x. If no bits have the value 1 then -1 is returned.
- */
-int findLSB(int x)
-{
-    int i;
-    int mask;
-    int res = -1;
-    for(i = 0; i < 32; i++) {
-        mask = 1 << i;
-        if (x & mask) {
-            res = i;
-            break;
-        }
-    }
-    return res;
-}
-#endif
-
-
-#ifndef QUIET_UNUSED
-/*!
- @param[in] x  Bitfield to find MSB in.
- 
- \brief Returns the bit number of the most significant bit (value of 1) in the bitfield x. If the number is negative then the position of the first zero bit is returned. If no bits have the value 1 (or 0 in the negative case) then -1 is returned.
-
- from http://http.developer.nvidia.com/Cg/findMSB.html
-
- NB: the above site provides buggy "pseudocode". >sheesh<
- 
- */
-int findMSB(int x)
-{
-    int i;
-    int mask;
-    int res = -1;
-    if (x < 0) x = ~x;
-    for(i = 0; i < 32; i++) {
-        mask = (int) 0x80000000 >> i;
-        if (x & mask) {
-            res = 31 - i;
-            break;
-        }
-    }
-    return res;
-}
-#endif
-
-#ifndef QUIET_UNUSED
-/*!
- @param[in] x Bitfield to reverse.
- 
- \brief Returns the reverse of the bitfield x.
- */
-int bitfieldReverse(int x)
-{
-    int res = 0;
-    int i, shift, mask;
-    
-    for(i = 0; i < 32; i++) {
-        mask = 1 << i;
-        shift = 32 - 2*i - 1;
-        mask &= x;
-        mask = (shift > 0) ? mask << shift : mask >> -shift;
-        res |= mask;
-    }
-    
-    return res;
-}
-#endif
-
-
-#if 0
-/*
- * getbits36()
- *
- * Extract a range of bits from a 36-bit word.
- */
-
-word36 getbits36(word36 x, uint i, uint n) {
-    // bit 35 is right end, bit zero is 36th from the right
-    int shift = 35-(int)i-(int)n+1;
-    if (shift < 0 || shift > 35) {
-        sim_printf ("getbits36: bad args (%012"PRIo64",i=%d,n=%d)\n", x, i, n);
-        return 0;
-    } else
-        return (x >> (unsigned) shift) & ~ (~0U << n);
-}
-
-// ============================================================================
-
-/*
- * setbits36()
- *
- * Set a range of bits in a 36-bit word -- Returned value is x with n bits
- * starting at p set to the n lowest bits of val
- */
-
-word36 setbits36(word36 x, uint p, uint n, word36 val)
-{
-    int shift = 36 - (int) p - (int) n;
-    if (shift < 0 || shift > 35) {
-        sim_printf ("setbits36: bad args (%012"PRIo64",pos=%d,n=%d)\n", x, p, n);
-        return 0;
-    }
-    word36 mask = ~ (~0U<<n);  // n low bits on
-    mask <<= (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
-    // caller may provide val that is too big, e.g., a word with all bits
-    // set to one, so we mask val
-    word36 result = (x & ~ mask) | ((val&MASKBITS(n)) << (36 - p - n));
-    return result;
-}
-
-
-// ============================================================================
-
-/*
- * putbits36()
- *
- * Set a range of bits in a 36-bit word -- Sets the bits in the argument,
- * starting at p set to the n lowest bits of val
- */
-
-void putbits36 (word36 * x, uint p, uint n, word36 val)
-  {
-    int shift = 36 - (int) p - (int) n;
-    if (shift < 0 || shift > 35)
-      {
-        sim_printf ("putbits36: bad args (%012"PRIo64",pos=%d,n=%d)\n", * x, p, n);
-        return;
-      }
-    word36 mask = ~ (~0U << n);  // n low bits on
-    mask <<= (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
-    // caller may provide val that is too big, e.g., a word with all bits
-    // set to one, so we mask val
-    * x = (* x & ~mask) | ((val & MASKBITS (n)) << (36 - p - n));
-    return;
-  }
-#endif
-
-/*
- * bin2text()
- *
- * Display as bit string.
- * WARNING: returns pointer of two alternating static buffers
- *
- */
-
-#include <ctype.h>
-
-char *bin2text(uint64 word, int n)
-{
-    // WARNING: static buffer
-    static char str1[65];
-    static char str2[65];
-    static char *str = NULL;
-    if (str == NULL)
-        str = str1;
-    else if (str == str1)
-        str = str2;
-    else
-        str = str1;
-    str[n] = 0;
-    int i;
-    for (i = 0; i < n; ++ i) {
-        str[n-i-1] = ((word % 2) == 1) ? '1' : '0';
-        word >>= 1;
-    }
-    return str;
 }
 
 #include <ctype.h>
@@ -2450,144 +2073,6 @@ void put36 (word36 val, uint8 * bits, uint woffset)
     // mask shouldn't be neccessary but is robust
   }
 
-#ifndef QUIET_UNUSED
-//
-//   extr9
-//     extract the word9 at coffset
-//
-//   | 012345678 | 012345678 |012345678 | 012345678 | 012345678 | 012345678 | 012345678 | 012345678 |
-//     0       1          2         3          4          5          6          7          8
-//     012345670   123456701  234567012   345670123   456701234   567012345   670123456   701234567  
-//
-
-word9 extr9 (uint8 * bits, uint coffset)
-  {
-    uint charNum = coffset % 8;
-    uint dwoffset = coffset / 8;
-    uint8 * p = bits + dwoffset * 9;
-
-    word9 w;
-    switch (charNum)
-      {
-        case 0:
-          w = ((((word9) p [0]) << 1) & 0776) | ((((word9) p [1]) >> 7) & 0001);
-          break;
-        case 1:
-          w = ((((word9) p [1]) << 2) & 0774) | ((((word9) p [2]) >> 6) & 0003);
-          break;
-        case 2:
-          w = ((((word9) p [2]) << 3) & 0770) | ((((word9) p [3]) >> 5) & 0007);
-          break;
-        case 3:
-          w = ((((word9) p [3]) << 4) & 0760) | ((((word9) p [4]) >> 4) & 0017);
-          break;
-        case 4:
-          w = ((((word9) p [4]) << 5) & 0740) | ((((word9) p [5]) >> 3) & 0037);
-          break;
-        case 5:
-          w = ((((word9) p [5]) << 6) & 0700) | ((((word9) p [6]) >> 2) & 0077);
-          break;
-        case 6:
-          w = ((((word9) p [6]) << 7) & 0600) | ((((word9) p [7]) >> 1) & 0177);
-          break;
-        case 7:
-          w = ((((word9) p [7]) << 8) & 0400) | ((((word9) p [8]) >> 0) & 0377);
-          break;
-      }
-    // mask shouldn't be neccessary but is robust
-    return w & 0777U;
-  }
-#endif
-
-#ifndef QUIET_UNUSED
-//
-//   extr18
-//     extract the word18 at coffset
-//
-//   |           11111111 |           11111111 |           11111111 |           11111111 |
-//   | 012345678901234567 | 012345678901234567 | 012345678901234567 | 012345678901234567 |
-//
-//     0       1       2          3       4          5       6          7       8
-//     012345670123456701   234567012345670123   456701234567012345   670123456701234567  
-//
-//     000000001111111122   222222333333334444   444455555555666666   667777777788888888
-//
-//       0  0  0  0  0  0     0  0  0  0  0  0     0  0  0  0  0  0     0  0  0  0  0  0
-//       7  7  6  0  0  0     7  7  0  0  0  0     7  4  0  0  0  0     6  0  0  0  0  0
-//       0  0  1  7  7  4     0  0  7  7  6  0     0  3  7  7  0  0     1  7  7  4  0  0
-//       0  0  0  0  0  3     0  0  0  0  1  7     0  0  0  0  7  7     0  0  0  3  7  7
-
-word18 extr18 (uint8 * bits, uint boffset)
-  {
-    uint byteNum = boffset % 4;
-    uint dwoffset = boffset / 4;
-    uint8 * p = bits + dwoffset * 18;
-
-    word18 w;
-    switch (byteNum)
-      {
-        case 0:
-          w = ((((word18) p [0]) << 10) & 0776000) | ((((word18) p [1]) << 2) & 0001774) | ((((word18) p [2]) >> 6) & 0000003);
-          break;
-        case 1:
-          w = ((((word18) p [2]) << 12) & 0770000) | ((((word18) p [3]) << 4) & 0007760) | ((((word18) p [4]) >> 4) & 0000017);
-          break;
-        case 2:
-          w = ((((word18) p [4]) << 14) & 0740000) | ((((word18) p [5]) << 6) & 0037700) | ((((word18) p [6]) >> 2) & 0000077);
-          break;
-        case 3:
-          w = ((((word18) p [6]) << 16) & 0600000) | ((((word18) p [7]) << 8) & 0177400) | ((((word18) p [8]) >> 0) & 0000377);
-          break;
-      }
-    // mask shouldn't be neccessary but is robust
-    return w & 0777777U;
-  }
-#endif
-
-//
-//  getbit
-//     Get a single bit. offset can be bigger when word size
-//
-
-uint8 getbit (void * bits, int offset)
-  {
-    unsigned int offsetInWord = (uint) offset % 36;
-    unsigned int revOffsetInWord = 35 - offsetInWord;
-    unsigned int offsetToStartOfWord = (uint) offset - offsetInWord;
-    unsigned int revOffset = offsetToStartOfWord + revOffsetInWord;
-
-    uint8 * p = (uint8 *) bits;
-    unsigned int byte_offset = revOffset / 8;
-    unsigned int bit_offset = revOffset % 8;
-    // flip the byte back
-    bit_offset = 7 - bit_offset;
-
-    uint8 byte = p [byte_offset];
-    byte >>= bit_offset;
-    byte &= 1;
-    //printf ("offset %d, byte_offset %d, bit_offset %d, byte %x, bit %x\n", offset, byte_offset, bit_offset, p [byte_offset], byte);
-    return byte;
-  }
-
-#ifndef QUIET_UNUSED
-//
-// extr
-//    Get a string of bits (up to 64)
-//
-
-uint64 extr (void * bits, int offset, int nbits)
-  {
-    uint64 n = 0;
-    int i;
-    for (i = nbits - 1; i >= 0; i --)
-      {
-        n <<= 1;
-        n |= getbit (bits, i + offset);
-        //printf ("%012lo\n", n);
-      }
-    return n;
-  }
-#endif
 
 int extractASCII36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 *wordp)
   {

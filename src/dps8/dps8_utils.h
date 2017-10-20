@@ -48,9 +48,6 @@ word18 compl18(word18 op1, word18 *flags, bool * ovf);
 void copyBytes(int posn, word36 src, word36 *dst);
 void copyChars(int posn, word36 src, word36 *dst);
 
-#ifndef QUIET_UNUSED
-word9 getByte(int posn, word36 src);
-#endif
 void putByte(word36 *dst, word9 data, int posn);
 void putChar(word36 *dst, word6 data, int posn);
 
@@ -67,14 +64,6 @@ char *trim(char *s);
 char *ltrim(char *s);
 char *rtrim(char *s);
 
-//word36 bitfieldInsert36(word36 a, word36 b, int c, int d);
-//word72 bitfieldInsert72(word72 a, word72 b, int c, int d);
-//word36 bitfieldExtract36(word36 a, int b, int c);
-//word72 bitfieldExtract72(word72 a, int b, int c);
-
-//int bitfieldInsert(int a, int b, int c, int d);
-//int bitfieldExtract(int a, int b, int c);
-char *bin2text(uint64 word, int n);
 void sim_printf( const char * format, ... )    // not really simh, by my impl
 #ifdef __GNUC__
   __attribute__ ((format (printf, 1, 2)))
@@ -873,12 +862,6 @@ static inline void clrmask (word36 * v, word36 mask)
 
 char * strdupesc (const char * str);
 word36 extr36 (uint8 * bits, uint woffset);
-#ifndef QUIET_UNUSED
-word9 extr9 (uint8 * bits, uint coffset);
-word18 extr18 (uint8 * bits, uint coffset);
-uint64 extr (void * bits, int offset, int nbits);
-#endif
-uint8 getbit (void * bits, int offset);
 void put36 (word36 val, uint8 * bits, uint woffset);
 int extractASCII36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 *wordp);
 int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, uint64 *wordp);
