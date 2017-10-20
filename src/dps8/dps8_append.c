@@ -1200,7 +1200,6 @@ static char *strPCT (_processor_cycle_type t)
         case OPERAND_READ : return "OPERAND_READ";
         case INDIRECT_WORD_FETCH: return "INDIRECT_WORD_FETCH";
         case RTCD_OPERAND_FETCH: return "RTCD_OPERAND_FETCH";
-        //case SEQUENTIAL_INSTRUCTION_FETCH: return "SEQUENTIAL_INSTRUCTION_FETCH";
         case INSTRUCTION_FETCH: return "INSTRUCTION_FETCH";
         case APU_DATA_READ: return "APU_DATA_READ";
         case APU_DATA_STORE: return "APU_DATA_STORE";
@@ -1474,7 +1473,8 @@ A:;
         
         if (! cpu.PTW0.DF)
          {
-          doFault (FAULT_DF0 + cpu.PTW0.FC, fst_zero, "doAppendCycle(A): PTW0.F == 0");
+          doFault (FAULT_DF0 + cpu.PTW0.FC, fst_zero, 
+                   "doAppendCycle(A): PTW0.F == 0");
          }
         
         if (! cpu.PTW0.U)
@@ -1518,7 +1518,8 @@ A:;
             fetchDSPTW (cpu.TPR.TSR);
             
             if (! cpu.PTW0.DF)
-              doFault (FAULT_DF0 + cpu.PTW0.FC, fst_zero, "doAppendCycle(A): PTW0.F == 0");
+              doFault (FAULT_DF0 + cpu.PTW0.FC, fst_zero,
+                       "doAppendCycle(A): PTW0.F == 0");
             
             if (! cpu.PTW0.U)
               modifyDSPTW (cpu.TPR.TSR);
@@ -1560,13 +1561,14 @@ A:;
 
     DBGAPP ("doAppendCycle(B)\n");
     
-    //C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)?
+    //C(SDW.R1) <= C(SDW.R2) <= C(SDW .R3)?
     if (! (cpu.SDW->R1 <= cpu.SDW->R2 && cpu.SDW->R2 <= cpu.SDW->R3))
       {
         // Set fault ACV0 = IRO
         cpu.acvFaults |= ACV0;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
-        FMSG (acvFaultsMsg = "acvFaults(B) C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)";)
+        FMSG (acvFaultsMsg = "acvFaults(B) C(SDW.R1) <= C(SDW.R2) <= "
+                              "C(SDW .R3)";)
       }
 
     // Was last cycle an rtcd operand fetch?
@@ -1807,7 +1809,8 @@ E1:
             // Set fault ACV10 = BOC
             cpu.acvFaults |= ACV10;
             PNL (L68_ (cpu.apu.state |= apu_FLT;))
-            FMSG (acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > C(PPR.PRR) && C(PPR.PRR) < SDW.R2";)
+            FMSG (acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > C(PPR.PRR) && "
+                  "C(PPR.PRR) < SDW.R2";)
           }
       }
 
@@ -1936,7 +1939,8 @@ G:;
     loadPTWAM (cpu.SDW->POINTER, cpu.TPR.CA, true);
 
 #else
-    if (nomatch || ! fetchPTWfromPTWAM (cpu.SDW->POINTER, cpu.TPR.CA))  //TPR.CA))
+    if (nomatch ||
+        ! fetchPTWfromPTWAM (cpu.SDW->POINTER, cpu.TPR.CA))  //TPR.CA))
       {
         fetchPTW (cpu.SDW, cpu.TPR.CA);
         if (! cpu.PTW0.DF)
