@@ -2194,6 +2194,7 @@ uint64 sim_timell (void)
     return (uint64) sim_gtime ();
   }
 
+#ifdef THREADZ
 // https://gist.github.com/diabloneo/9619917
 
 void timespec_diff(struct timespec * start, struct timespec * stop,
@@ -2241,4 +2242,4 @@ void currentTR (word27 * trunits, bool * ovf)
     //sim_printf ("time left %f\n", (float) (* trunits) / 5120000);
     * ovf = false;
   }
-
+#endif
