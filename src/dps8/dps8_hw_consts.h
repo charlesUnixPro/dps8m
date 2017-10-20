@@ -70,6 +70,7 @@ enum { MAX_CHANNELS = 64 };
 enum { N_IOM_PORTS = 8 };
 // The number of devices that a dev_code can address (6 bit number)
 enum { N_DEV_CODES = 64 };
+enum { IOM_CONNECT_CHAN = 2 };
 
 /////////////////////////////////////
 //
