@@ -419,7 +419,7 @@ static t_stat mt_reset (DEVICE * dptr)
     for (int i = 0; i < (int) dptr -> numunits; i ++)
       {
         sim_tape_reset (& mt_unit [i]);
-        sim_cancel (& mt_unit [i]);
+        //sim_cancel (& mt_unit [i]);
       }
     return SCPE_OK;
   }

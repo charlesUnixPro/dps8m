@@ -194,11 +194,13 @@ void prt_init (void)
 
 static t_stat prt_reset (DEVICE * dptr)
   {
+#if 0
     for (uint i = 0; i < dptr -> numunits; i ++)
       {
         // sim_prt_reset (& prt_unit [i]);
-        sim_cancel (& prt_unit [i]);
+        // sim_cancel (& prt_unit [i]);
       }
+#endif
     return SCPE_OK;
   }
 

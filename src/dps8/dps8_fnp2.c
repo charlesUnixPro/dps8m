@@ -410,10 +410,12 @@ void fnpInit(void)
 
 static t_stat fnpReset (DEVICE * dptr)
   {
+#if 0
     for (int i = 0; i < (int) dptr -> numunits; i ++)
       {
-        sim_cancel (& fnp_unit [i]);
+        //sim_cancel (& fnp_unit [i]);
       }
+#endif
     return SCPE_OK;
   }
 

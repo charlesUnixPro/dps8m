@@ -306,11 +306,13 @@ void disk_init (void)
 
 static t_stat disk_reset (DEVICE * dptr)
   {
+#if 0
     for (uint i = 0; i < dptr -> numunits; i ++)
       {
         // sim_disk_reset (& disk_unit [i]);
-        sim_cancel (& disk_unit [i]);
+        // sim_cancel (& disk_unit [i]);
       }
+#endif
     return SCPE_OK;
   }
 
