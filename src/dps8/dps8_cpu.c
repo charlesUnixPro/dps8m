@@ -347,13 +347,6 @@ _sdw0 *fetchSDW (word15 segno)
     return SDW;
   }
 
-static char * strDSBR (char * buf)
-  {
-    sprintf (buf, "DSBR: ADDR=%06o BND=%05o U=%o STACK=%04o",
-             cpu.DSBR.ADDR, cpu.DSBR.BND, cpu.DSBR.U, cpu.DSBR.STACK);
-    return buf;
-  }
-
 
 char * strSDW0 (char * buf, _sdw0 * SDW)
   {
