@@ -289,9 +289,8 @@ static uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const de
 
 
 
-static unsigned char *getBCD(decNumber *a)
+static unsigned char *getBCD(uint8_t bcd [256], decNumber *a)
 {
-    static uint8_t bcd[256];
     memset(bcd, 0, sizeof(bcd));
     int scale;
     
@@ -300,8 +299,6 @@ static unsigned char *getBCD(decNumber *a)
         bcd[i] += '0';
     
     return (unsigned char *) bcd;
-    
-    
 }
 
 
@@ -316,6 +313,7 @@ static const char *CTN[] = {"CTN9", "CTN4"};
 
 char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf, bool R, bool *OVR, bool *TRUNC)
 {
+    uint8_t bcd [256];
 #if 1
    /*
      * this is for mp3d ISOLTS error (and perhaps others)
@@ -433,7 +431,7 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "\nformatDecimal: adjLen=%d SF=%d S=%s TN=%s\n", adjLen, sf, CS[s], CTN[tn]);
     sim_debug (DBG_TRACEEXT, & cpu_dev,
-               "formatDecimal: %s  r->digits=%d  r->exponent=%d\n", getBCD(r), r->digits, r->exponent);
+               "formatDecimal: %s  r->digits=%d  r->exponent=%d\n", getBCD (bcd, r), r->digits, r->exponent);
     
     if (adjLen < 1)
     {
@@ -476,10 +474,10 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
         {
             decNumberFromInt32(&_sf, sf);
             sim_debug (DBG_TRACEEXT, & cpu_dev,
-                       "formatDecimal(s != CSFL a): %s r->digits=%d r->exponent=%d\n", getBCD(r), r->digits, r->exponent);
+                       "formatDecimal(s != CSFL a): %s r->digits=%d r->exponent=%d\n", getBCD (bcd, r), r->digits, r->exponent);
             r2 = decNumberRescale(&_r2, r, &_sf, set);
             sim_debug (DBG_TRACEEXT, & cpu_dev,
-                       "formatDecimal(s != CSFL b): %s r2->digits=%d r2->exponent=%d\n", getBCD(r2), r2->digits, r2->exponent);
+                       "formatDecimal(s != CSFL b): %s r2->digits=%d r2->exponent=%d\n", getBCD (bcd, r2), r2->digits, r2->exponent);
         }
         else
             //*r2 = *r;
@@ -716,7 +714,7 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
 } 
 #endif
 
-char *formatDecimal(decContext *set, decNumber *r, int nout, int s, int sf, bool R, bool *OVR, bool *TRUNC)
+char *formatDecimal (uint8_t * out, decContext *set, decNumber *r, int nout, int s, int sf, bool R, bool *OVR, bool *TRUNC)
 {
     decNumber _sf;
     decNumber _r2;
@@ -797,7 +795,6 @@ char *formatDecimal(decContext *set, decNumber *r, int nout, int s, int sf, bool
 
     // write out the digits
     // note that even CSFL is aligned right - ISOLTS-810 05d
-    static uint8_t out[256];
     uint8_t tmp[256];
     //int scale;
     //decBCDFromNumber(out, nout, &scale, r);
