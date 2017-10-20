@@ -16,6 +16,9 @@ typedef enum devType
      DEVT_NONE = 0, DEVT_TAPE, DEVT_CON, DEVT_DISK, 
      DEVT_MPC, DEVT_DN355, DEVT_CRDRDR, DEVT_CRDPUN, DEVT_PRT, DEVT_URP, DEVT_ABSI
   } devType;
+#ifdef THREADZ
+extern char * devTypeStrs [/* devType */];
+#endif
 
 typedef enum chanType { chanTypeCPI, chanTypePSI, chanTypeDirect } chanType;
 

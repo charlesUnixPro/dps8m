@@ -35,6 +35,14 @@
 #endif
 struct cables_t * cables = NULL;
 
+#ifdef THREADZ
+char * devTypeStrs [/* devType */] =
+  {
+    "none", "tape", "console", "disk", "mpc", 
+    "dn355", "card reader","card punch", "printer", "urp"
+  };
+#endif
+
 //
 // cable_to_iom and cable_to_scu are the "other end handlers"; they are
 // only called indirectly to secure the other end of the cable.
