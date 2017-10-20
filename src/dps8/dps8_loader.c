@@ -1769,7 +1769,6 @@ static t_stat dpsCmd_InitUnpagedSegmentTable ()
 #ifdef WAM
 static t_stat dpsCmd_InitSDWAM ()
   {
-#ifdef ROUND_ROBIN
     uint save = currentRunningCpuIdx;
     for (uint i = 0; i < N_CPU_UNITS_MAX; i ++)
       {
@@ -1777,9 +1776,6 @@ static t_stat dpsCmd_InitSDWAM ()
         memset (cpu.SDWAM, 0, sizeof (cpu.SDWAM));
       }
     setCPUnum (save);
-#else
-    memset (cpu.SDWAM, 0, sizeof (cpu.SDWAM));
-#endif
     
     if (! sim_quiet)
       sim_printf ("zero-initialized SDWAM\n");

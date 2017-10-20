@@ -510,9 +510,13 @@ static void getSerialNumber (void)
       {
         char buffer [81] = "";
         fgets (buffer, sizeof (buffer), fp);
-#ifdef ROUND_ROBIN
         uint cpun, sn;
-        if (sscanf (buffer, "sn%u: %u", & cpun, & sn) == 2)
+        if (sscanf (buffer, "sn: %u", & cpu.switches.serno) == 1)
+          {
+            sim_printf ("Serial number is %u\n", cpu.switches.serno);
+            havesn = true;
+          }
+        else if (sscanf (buffer, "sn%u: %u", & cpun, & sn) == 2)
           {
             if (cpun < N_CPU_UNITS_MAX)
               {
@@ -524,13 +528,6 @@ static void getSerialNumber (void)
                 havesn = true;
               }
           }
-#else
-        if (sscanf (buffer, "sn: %u", & cpu.switches.serno) == 1)
-          {
-            sim_printf ("Serial number is %u\n", cpu.switches.serno);
-            havesn = true;
-          }
-#endif
       }
     if (! havesn)
       {
@@ -639,13 +636,8 @@ void cpu_init (void)
 
     setCPUnum (0);
 
-#ifdef ROUND_ROBIN
     memset (cpus, 0, sizeof (cpu_state_t) * N_CPU_UNITS_MAX);
     cpus [0].switches.FLT_BASE = 2; // Some of the UnitTests assume this
-#else
-    memset (& cpu, 0, sizeof (cpu));
-    cpu.switches.FLT_BASE = 2; // Some of the UnitTests assume this
-#endif
     cpu_init_array ();
 
     getSerialNumber ();
@@ -677,9 +669,7 @@ void cpu_init (void)
 
 static void cpuResetUnitIdx (UNUSED uint cpun, bool clearMem)
   {
-#ifdef ROUND_ROBIN
     uint save = setCPUnum (cpun);
-#endif
     if (clearMem)
       {
 #ifdef SCUMEM
@@ -745,9 +735,7 @@ static void cpuResetUnitIdx (UNUSED uint cpun, bool clearMem)
     setup_scbank_map ();
 
     tidy_cu ();
-#ifdef ROUND_ROBIN
     setCPUnum (save);
-#endif
   }
 
 static void cpuReset (void)
@@ -757,9 +745,7 @@ static void cpuReset (void)
         cpuResetUnitIdx (i, true);
       }
 
-#ifdef ROUND_ROBIN
     setCPUnum (0);
-#endif
 
     sim_debug (DBG_INFO, & cpu_dev, "CPU reset: Running\n");
 
@@ -3640,9 +3626,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
         return SCPE_ARG;
       }
 
-#ifdef ROUND_ROBIN
     uint save = setCPUnum ((uint) unit_num);
-#endif
 
     sim_printf ("CPU unit number %ld\n", unit_num);
 
@@ -3693,9 +3677,7 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     sim_printf ("Disable cache:            %01o(8)\n",
                 cpu.switches.disable_cache);
 
-#ifdef ROUND_ROBIN
     setCPUnum (save);
-#endif
 
     return SCPE_OK;
   }
@@ -3918,9 +3900,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value,
         return SCPE_ARG;
       }
 
-#ifdef ROUND_ROBIN
     uint save = setCPUnum ((uint) cpu_unit_num);
-#endif
 
     static int port_num = 0;
 
@@ -3996,9 +3976,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value,
       } // process statements
     cfgparse_done (& cfg_state);
 
-#ifdef ROUND_ROBIN
     setCPUnum (save);
-#endif
 
     return SCPE_OK;
   }

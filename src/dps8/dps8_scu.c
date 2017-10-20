@@ -1592,8 +1592,6 @@ gotit:;
     return SCPE_OK;
   }
 
-//#define RCFDBG
-
 int scu_cioc (uint cpuUnitIdx, uint scuUnitIdx, uint scu_port_num, 
               uint expander_command, uint sub_mask)
   {
@@ -1602,13 +1600,6 @@ int scu_cioc (uint cpuUnitIdx, uint scuUnitIdx, uint scu_port_num,
                "unit %o port %o exp %o mask %03o\n", 
                cpuUnitIdx, scuUnitIdx, scu_port_num,
               expander_command, sub_mask);
-#ifdef RCFDBG
-if (scuUnitIdx || (scu_port_num != 0 /* && scu_port_num != 7*/))
-   sim_printf ("scu_cioc: Connect from %o sent to "
-               "unit %o port %o exp %o mask %03o\n", 
-               cpuUnitIdx, scuUnitIdx, scu_port_num, 
-               expander_command, sub_mask);
-#endif
 
     struct ports * portp = & scu [scuUnitIdx] . ports [scu_port_num];
 
@@ -1629,17 +1620,6 @@ if (scuUnitIdx || (scu_port_num != 0 /* && scu_port_num != 7*/))
             portp->subport_enables [i] = !! (sub_mask & (0200u >> i));
           }
 
-#ifdef RCFDBG
-{
-int cnt = 0;
-sim_printf ("enb");
-for (uint i = 0; i < N_SCU_SUBPORTS; i++)
-if (portp->subport_enables[i]) 
-{ sim_printf (" %o (%o)", i, 
-   cables->cablesFromCpus[scuUnitIdx][scu_port_num][i].cpuUnitIdx); cnt ++;}
-  sim_printf (" [%d]\n", cnt);
-}
-#endif
         return 0;
       }
 
@@ -1662,9 +1642,6 @@ if (portp->subport_enables[i])
             val = -1;
           }
         portp->xipmaskval = val;
-#ifdef RCFDBG
-sim_printf ("port %u xipmaskval %d\n", scu_port_num, portp->xipmaskval);
-#endif
         return 0;
       }
 
@@ -1700,10 +1677,6 @@ sim_printf ("port %u xipmaskval %d\n", scu_port_num, portp->xipmaskval);
       }
     else if (portp -> type == ADEV_CPU)
       {
-#ifdef RCFDBG
-//sim_printf ("scu_cioc: Connect from %o sent to unit %o port %o exp %o mask %03o\n", 
-             //cpuUnitIdx, scuUnitIdx, scu_port_num, expander_command, sub_mask);
-#endif
 
 #if 1
 // by subport_enables
@@ -1722,10 +1695,6 @@ sim_printf ("port %u xipmaskval %d\n", scu_port_num, portp->xipmaskval);
 //sim_printf ("is_exp %u xipmaskval %o\n", portp->is_exp, portp->xipmaskval);
                         continue;
                       }
-#ifdef RCFDBG
-if (cpuUnitIdx != 0 || cpuUnitIdx != 0)
-sim_printf ("cpu %o interrupts cpu %d on %d.%d\n", cpuUnitIdx, cpuUnitIdx, scu_port_num, sn);
-#endif
                     setG7fault ((uint) cpuUnitIdx, FAULT_CON, fst_zero);
                   }
               }
@@ -1740,10 +1709,6 @@ sim_printf ("cpu %o interrupts cpu %d on %d.%d\n", cpuUnitIdx, cpuUnitIdx, scu_p
 //sim_printf ("is_exp %u xipmaskval %o\n", portp->is_exp, portp->xipmaskval);
                 return 1;
               }
-#ifdef RCFDBG
-if (cpuUnitIdx != 0 || cpuUnitIdx != 0)
-sim_printf ("cpu %o interrupts cpu %d on %d\n", cpuUnitIdx, cpuUnitIdx, scu_port_num);
-#endif
             setG7fault ((uint) cpuUnitIdx, FAULT_CON, fst_zero);
           }
 #else
@@ -1764,10 +1729,6 @@ sim_printf ("scu_cioc: Connect from %o sent to unit %o port %o exp %o mask %03o\
 sim_printf ("is_exp %u xipmaskval %o\n", portp->is_exp, portp->xipmaskval);
             return 1;
           }
-#ifdef RCFDBG
-if (cpuUnitIdx != 0 || cpuUnitIdx != 0)
-sim_printf ("cpu %o interrupts cpu %d\n", cpuUnitIdx, cpuUnitIdx);
-#endif
         setG7fault (cpuUnitIdx, FAULT_CON, (_fault_subtype) {.bits=0});
 #endif
         return 0;
@@ -1814,14 +1775,10 @@ int scu_set_interrupt (uint scuUnitIdx, uint inum)
 static void deliverInterrupts (uint scuUnitIdx)
   {
     sim_debug (DBG_DEBUG, & scu_dev, "deliverInterrupts %o\n", scuUnitIdx);
-#ifdef ROUND_ROBIN
     for (uint cpun = 0; cpun < cpu_dev.numunits; cpun ++)
       {
         cpus[cpun].events.XIP[scuUnitIdx] = false;
       }
-#else
-    cpu . events . XIP [scuUnitIdx] = false;
-#endif
 
     for (uint inum = 0; inum < N_CELL_INTERRUPTS; inum ++)
       {
@@ -1859,49 +1816,16 @@ static void deliverInterrupts (uint scuUnitIdx)
                   }
                 else
                   {
-#ifdef ROUND_ROBIN
                     uint save = setCPUnum ((uint) cpuUnitIdx);
 //if (cpuUnitIdx && ! cpu.isRunning) sim_printf ("starting CPU %c\n", cpuUnitIdx + 'A');
+#ifdef ROUND_ROBIN
                     cpu.isRunning = true;
+#endif
                     cpu.events.XIP[scuUnitIdx] = true;
                     setCPUnum (save);
-#else
-                    cpu.events.XIP[scuUnitIdx] = true;
-#endif
 sim_debug (DBG_DEBUG, & scu_dev, "interrupt set for CPU %d SCU %d\n", cpuUnitIdx, scuUnitIdx);
                     sim_debug (DBG_INTR, & scu_dev,
                                "XIP set for SCU %d\n", scuUnitIdx);
-#ifdef RCFDBG
-if (cpuUnitIdx || scuUnitIdx) sim_printf ("interrupt set for CPU %d SCU %d\n", cpuUnitIdx, scuUnitIdx);
-#ifdef ROUND_ROBIN
-                    int cpuUnitIdx = -1;
-                    if (scu[scuUnitIdx].ports[port].is_exp)
-                      {
-                        cpuUnitIdx = cables->cablesFromCpus
-                          [scuUnitIdx]
-                            [port]
-                              [scu
-                                [scuUnitIdx].ports[port].xipmaskval]
-                                .cpuUnitIdx;
-                      }
-                    else
-                      {
-                        cpuUnitIdx = cables->cablesFromCpus[scuUnitIdx][port][0].cpuUnitIdx;
-                      }
-                    if (cpuUnitIdx < 0 || cpuUnitIdx >= (int) cpu_dev . numunits)
-                      {
-                        sim_warn ("bad cpuUnitIdx %u\n", cpuUnitIdx);
-                      }
-                    else
-                      {
-                        uint save = setCPUnum ((uint) cpuUnitIdx);
-if (cpuUnitIdx && ! cpu.isRunning)
- sim_printf ("starting CPU %c\n", cpuUnitIdx + 'A');
-                        cpu.isRunning = true;
-                        setCPUnum (save);
-                      }
-#endif
-#endif
                   }
               }
           }

@@ -1249,7 +1249,6 @@ force:;
           {
             if (isBAR)
               {
-#ifdef ROUND_ROBIN
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                   "%05o|%06o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
@@ -1265,25 +1264,9 @@ force:;
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
-#else
-                sim_debug (flag, &cpu_dev,
-                  "%05o|%06o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
-                  cpu.BAR.BASE,
-                  cpu.PPR.IC,
-                  IWB_IRODD,
-                  disAssemble (buf, IWB_IRODD),
-                  cpu.currentInstruction.address,
-                  cpu.currentInstruction.opcode,
-                  cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.b29,
-                  cpu.currentInstruction.i,
-                  GET_TM (cpu.currentInstruction.tag) >> 4,
-                  GET_TD (cpu.currentInstruction.tag) & 017);
-#endif
               }
             else
               {
-#ifdef ROUND_ROBIN
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                   "%06o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
@@ -1298,27 +1281,12 @@ force:;
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
-#else
-                sim_debug (flag, &cpu_dev,
-                  "%06o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
-                  cpu.PPR.IC,
-                  IWB_IRODD,
-                  disAssemble (buf, IWB_IRODD),
-                  cpu.currentInstruction.address,
-                  cpu.currentInstruction.opcode,
-                  cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.b29,
-                  cpu.currentInstruction.i,
-                  GET_TM (cpu.currentInstruction.tag) >> 4,
-                  GET_TD (cpu.currentInstruction.tag) & 017);
-#endif
               }
           }
         else if (get_addr_mode () == APPEND_mode)
           {
             if (isBAR)
               {
-#ifdef ROUND_ROBIN
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                  "%05o:%06o|%06o %o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
@@ -1335,26 +1303,9 @@ force:;
                   cpu.currentInstruction.b29, cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
-#else
-                sim_debug (flag, &cpu_dev,
-                 "%05o:%06o|%06o %o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
-                  cpu.PPR.PSR,
-                  cpu.BAR.BASE,
-                  cpu.PPR.IC,
-                  cpu.PPR.PRR,
-                  IWB_IRODD,
-                  disAssemble (buf, IWB_IRODD),
-                  cpu.currentInstruction.address,
-                  cpu.currentInstruction.opcode,
-                  cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.b29, cpu.currentInstruction.i,
-                  GET_TM (cpu.currentInstruction.tag) >> 4,
-                  GET_TD (cpu.currentInstruction.tag) & 017);
-#endif
               }
             else
               {
-#ifdef ROUND_ROBIN
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                   "%05o:%06o %o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
@@ -1371,22 +1322,6 @@ force:;
                   cpu.currentInstruction.i,
                   GET_TM (cpu.currentInstruction.tag) >> 4,
                   GET_TD (cpu.currentInstruction.tag) & 017);
-#else
-                sim_debug (flag, &cpu_dev,
-                  "%05o:%06o %o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
-                  cpu.PPR.PSR,
-                  cpu.PPR.IC,
-                  cpu.PPR.PRR,
-                  IWB_IRODD,
-                  disAssemble (buf, IWB_IRODD),
-                  cpu.currentInstruction.address,
-                  cpu.currentInstruction.opcode,
-                  cpu.currentInstruction.opcodeX,
-                  cpu.currentInstruction.b29,
-                  cpu.currentInstruction.i,
-                  GET_TM (cpu.currentInstruction.tag) >> 4,
-                  GET_TD (cpu.currentInstruction.tag) & 017);
-#endif
               }
           }
       }
