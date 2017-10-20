@@ -110,6 +110,22 @@ extern DEVICE scu_dev;
 #define CONT_DIS    -2  // instruction was a DIS 
 #define CONT_XEC    -3  // instruction was a XEC or XED 
 
+//
+// mask entry flags
+//  MTAB_XTD extended entry
+//  MTAB_VDV valid for devices
+//  MTAB_VUN valid for units
+//  MTAB_VALO takes a value (optional)
+//  MTAB_VALR takes a value (required)
+//  MTAB_NMO valid only in named SHOW
+//  MTAB_NC do not convert option value to upper case
+//  MTAB_SHP SHOW parameter takes optional value 
+ 
+// Requires a value, DEV and DEVn both work.
+#define MTAB_unit_value     MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR
+// Requires a value, DEV only.
+#define MTAB_dev_value     MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR
+
 extern uint32 sim_brk_summ, sim_brk_types, sim_brk_dflt;
 extern FILE *sim_deb;
 void _sim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...)
