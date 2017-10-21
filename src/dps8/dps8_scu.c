@@ -551,6 +551,9 @@
 #include "dps8_utils.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
+#ifdef THREADZ
+#include "threadz.h"
+#endif
 
 static t_stat scu_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat scu_set_nunits (UNIT * uptr, int32 value, const char * cptr, 
@@ -815,9 +818,16 @@ t_stat scu_reset (UNUSED DEVICE * dptr)
 
 // ============================================================================
 
+#ifdef THREADZ
+static pthread_mutex_t clock_lock = PTHREAD_MUTEX_INITIALIZER;
+#endif
+
 // The SCU clock is 52 bits long; fits in t_uint64
 static uint64 getSCUclock (uint scuUnitIdx)
   {
+#ifdef THREADZ
+    pthread_mutex_lock (& clock_lock);
+#endif
 
 // The emulator supports two clock models: steady and real
 // In steady mode the time of day is coupled to the instruction clock,
@@ -883,7 +893,7 @@ static uint64 getSCUclock (uint scuUnitIdx)
             MulticsuSecs = scu [scuUnitIdx] . lastTime + 1;
           }
         scu [scuUnitIdx] . lastTime = MulticsuSecs;
-        return scu [scuUnitIdx] . lastTime;
+        goto done;
       }
 
     // The calendar clock consists of a 52-bit register which counts
@@ -971,6 +981,11 @@ static uint64 getSCUclock (uint scuUnitIdx)
     if (scu [scuUnitIdx] . lastTime >= MulticsuSecs)
         MulticsuSecs = scu [scuUnitIdx] . lastTime + 1;
     scu [scuUnitIdx] . lastTime = MulticsuSecs;
+
+done:
+#ifdef THREADZ
+    pthread_mutex_unlock (& clock_lock);
+#endif
 
     return scu [scuUnitIdx] . lastTime;
 
@@ -1647,6 +1662,11 @@ int scu_cioc (uint cpuUnitIdx, uint scuUnitIdx, uint scu_port_num,
 
     if (portp -> type == ADEV_IOM)
       {
+        int iomUnitIdx = portp->devIdx;
+#ifdef THREADZ
+        iom_interrupt (scuUnitIdx, (uint) iomUnitIdx);
+        return 0;
+#else // ! THREADZ
         int iomUnitIdx = portp -> devIdx;
         if (sys_opts . iom_times . connect < 0)
           {
@@ -1674,6 +1694,7 @@ int scu_cioc (uint cpuUnitIdx, uint scuUnitIdx, uint scu_port_num,
               }
             return 0;
           }
+#endif // ! THREADZ
       }
     else if (portp -> type == ADEV_CPU)
       {
@@ -1816,6 +1837,14 @@ static void deliverInterrupts (uint scuUnitIdx)
                   }
                 else
                   {
+#ifdef THREADZ
+                    cpus[cpuUnitIdx].events.XIP[scuUnitIdx] = true;
+                    setCPURun ((uint) cpuUnitIdx, true);
+                    wakeCPU ((uint) cpuUnitIdx);
+                    sim_debug (DBG_DEBUG, & scu_dev,
+                               "interrupt set for CPU %d SCU %d\n",
+                               cpuUnitIdx, scuUnitIdx);
+#else // ! THREADZ
                     uint save = setCPUnum ((uint) cpuUnitIdx);
 //if (cpuUnitIdx && ! cpu.isRunning) sim_printf ("starting CPU %c\n", cpuUnitIdx + 'A');
 #ifdef ROUND_ROBIN
@@ -1826,6 +1855,7 @@ static void deliverInterrupts (uint scuUnitIdx)
 sim_debug (DBG_DEBUG, & scu_dev, "interrupt set for CPU %d SCU %d\n", cpuUnitIdx, scuUnitIdx);
                     sim_debug (DBG_INTR, & scu_dev,
                                "XIP set for SCU %d\n", scuUnitIdx);
+#endif // ! THREADZ
                   }
               }
           }

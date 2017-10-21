@@ -1771,15 +1771,6 @@ restart_1:
 /// executeInstruction: simh hooks
 ///
 
-#if 1
-#ifndef SPEED
-    traceInstruction (DBG_TRACE);
-#ifdef HDBG
-    hdbgTrace ();
-#endif // HDBG
-#endif // SPEED
-#else
-// The DIS instruction used to reexecute ifself and fill the trace log...
 #ifndef SPEED
     // Don't trace Multics idle loop
     if (cpu.PPR.PSR != 061 || cpu.PPR.IC != 0307)
@@ -1791,7 +1782,6 @@ restart_1:
 #endif // HDBG
       }
 #endif // SPEED
-#endif // else ! 1
 
 ///
 /// executeInstruction: Initialize misc.
@@ -7825,8 +7815,6 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
           else
             {
               sim_debug (DBG_TRACEEXT, & cpu_dev, "DIS refetches\n");
-              cpu.instrCnt ++;
-              //longjmp (cpu.jmpMain, JMP_REFETCH);
 #ifdef ROUND_ROBIN
 #ifdef ISOLTS
               if (currentRunningCpuIdx)

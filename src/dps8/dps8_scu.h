@@ -16,10 +16,10 @@ enum active_dev { ADEV_NONE, ADEV_CPU, ADEV_IOM };
 
 typedef struct
   {
-    uint port_enable [N_SCU_PORTS];  // enable/disable
+    vol uint port_enable [N_SCU_PORTS];  // enable/disable
 
     // Mask registers A and B, each with 32 interrupt bits.
-    word32 exec_intr_mask [N_ASSIGNMENTS];
+    vol word32 exec_intr_mask [N_ASSIGNMENTS];
 
     // Mask assignment.
     // 2 mask registers, A and B, each 32 bits wide.
@@ -32,10 +32,10 @@ typedef struct
     // Mask A, B is set to Off or 0-7.
     // mask_enable [A|B] says that mask A or B is not off
     // if (mask_enable) then mask_assignment is a port number
-    uint mask_enable [N_ASSIGNMENTS]; // enable/disable
-    uint mask_assignment [N_ASSIGNMENTS]; // assigned port number
+    vol uint mask_enable [N_ASSIGNMENTS]; // enable/disable
+    vol uint mask_assignment [N_ASSIGNMENTS]; // assigned port number
 
-    uint cells [N_CELL_INTERRUPTS];
+    vol uint cells [N_CELL_INTERRUPTS];
 
     uint lower_store_size; // In K words, power of 2; 32 - 4096
     uint cyclic; // 7 bits
@@ -61,10 +61,10 @@ typedef struct
         // which port on the connected device?
         // if is_exp is false, then only [0] is used.
         // if true, one connection for each sub-port; -1 if not connected
-        int dev_port [N_SCU_SUBPORTS];
-        bool subport_enables [N_SCU_SUBPORTS]; 
-        bool xipmask [N_SCU_SUBPORTS]; 
-        int xipmaskval;
+        vol int dev_port [N_SCU_SUBPORTS];
+        vol bool subport_enables [N_SCU_SUBPORTS]; 
+        vol bool xipmask [N_SCU_SUBPORTS]; 
+        vol int xipmaskval;
     } ports[N_SCU_PORTS];
 
     // system controller mode regsister    

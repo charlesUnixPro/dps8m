@@ -84,8 +84,11 @@ void (*sim_vm_init) (void) = & dps8_init;    //CustomCmds;
 static pid_t dps8m_sid; // Session id
 #endif
 
-static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
+#ifdef PANEL
+void panelScraper (void);
+#endif
 
+static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
 static t_stat dps_debug_mme_cntdwn (UNUSED int32 arg, const char * buf);
 static t_stat dps_debug_skip (int32 arg, const char * buf);
 static t_stat dps_debug_start (int32 arg, const char * buf);
@@ -122,6 +125,7 @@ static t_stat smfx1entry (int32 arg, const char * buf);
 #endif
 static t_stat searchMemory (UNUSED int32 arg, const char * buf);
 static t_stat bootSkip (int32 UNUSED arg, const char * UNUSED buf);
+static t_stat setDbgCPUMask (int32 UNUSED arg, const char * UNUSED buf);
 
 #ifdef PANEL
 static t_stat scraper (int32 arg, const char * buf);
@@ -205,6 +209,7 @@ static CTAB dps8_cmds[] =
     {"SKIPBOOT", bootSkip, 0, "skip forward on boot tape", NULL, NULL},
     {"DEFAULT_BASE_SYSTEM", defaultBaseSystem, 0, "Set configuration to defaults", NULL, NULL},
     {"FNPSTART", fnpStart, 0, "Force early FNP initialization", NULL, NULL},
+    {"DBGCPUMASK", setDbgCPUMask, 0, "Set per CPU debug enable", NULL, NULL},
 #ifdef PANEL
     {"SCRAPER", scraper, 0, "Control scraper", NULL, NULL},
 #endif
@@ -233,7 +238,7 @@ static void usr1SignalHandler (UNUSED int sig)
   {
     sim_printf ("USR1 signal caught; pressing the EXF button\n");
     // Assume the bootload CPU
-    setG7fault (0, FAULT_EXF, fst_zero);
+    setG7fault (ASSUME0, FAULT_EXF, fst_zero);
     return;
   }
 #endif
@@ -315,6 +320,7 @@ uint64 sim_deb_ringno = NO_SUCH_RINGNO;
 uint64 sim_deb_skip_limit = 0;
 uint64 sim_deb_skip_cnt = 0;
 uint64 sim_deb_mme_cntdwn = 0;
+uint dbgCPUMask = 0377; // default all 8 on
 
 bool sim_deb_bar = false;
 
@@ -4506,6 +4512,20 @@ static t_stat bootSkip (int32 UNUSED arg, const char * UNUSED buf)
   {
     uint32 skipped;
     return sim_tape_sprecsf (& mt_unit [0], 1, & skipped);
+  }
+  
+static t_stat setDbgCPUMask (int32 UNUSED arg, const char * UNUSED buf)
+  {
+    uint msk;
+    int cnt = sscanf (buf, "%u", & msk);
+    if (cnt != 1)
+      {
+        sim_printf ("Huh?\n");
+        return SCPE_ARG;
+      }
+    sim_printf ("mask set to %u\n", msk);
+    dbgCPUMask = msk;
+    return SCPE_OK;
   }
   
 #ifdef PANEL

@@ -555,7 +555,7 @@ IF1 sim_printf ("UFA e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 
     int shift_count = -1;
     word1 allones = 1;
     word1 notallzeros = 0;
-    word1 last = 0;
+    //word1 last = 0;
     if (e1 == e2)
     {
         shift_count = 0;
@@ -573,7 +573,7 @@ IF1 sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
         bool sign = isnonzero_128 (and_128 (m1, SIGN72)); // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
-            last = m1.l & 1;
+            //last = m1.l & 1;
             allones &= m1.l & 1;
             notallzeros |= m1.l & 1;
             m1 = rshift_128 (m1, 1);
@@ -593,7 +593,7 @@ IF1 sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
         bool sign = m1 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
-            last = m1 & 1;
+            //last = m1 & 1;
             allones &= m1 & 1;
             notallzeros |= m1 & 1;
             m1 >>= 1;
@@ -626,7 +626,7 @@ IF1 sim_printf ("UFA m1 now %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36) & 
         bool sign = isnonzero_128 (and_128 (m2, SIGN72)); // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
-            last = m2.l & 1;
+            //last = m2.l & 1;
             allones &= m2.l & 1;
             notallzeros |= m2.l & 1;
             m2 = rshift_128 (m2, 1);
@@ -647,7 +647,7 @@ IF1 sim_printf ("UFA e1 > e2; shift m2 %d right\n", shift_count);
         bool sign = m2 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
-            last = m2 & 1;
+            //last = m2 & 1;
             allones &= m2 & 1;
             notallzeros |= m2 & 1;
             m2 >>= 1;
@@ -668,9 +668,6 @@ IF1 sim_printf ("UFA m2 now %012"PRIo64" %012"PRIo64"\n", (word36) (m2 >> 36) & 
 #endif // NEED_128
     }
     
-#ifndef HEX_MODE
-IF1 sim_printf ("UFA last %d allones %d notallzeros %d\n", last, allones, notallzeros);
-#endif
 IF1 sim_printf ("UFA e3 %d\n", e3);
 
     bool ovf;

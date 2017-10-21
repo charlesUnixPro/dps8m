@@ -1108,7 +1108,9 @@ t_stat sim_instr (void)
   }
 #endif
 
+#ifndef THREADZ
 static uint fastQueueSubsample = 0;
+#endif
 
 //
 // Okay, lets treat this as a state machine
@@ -1265,7 +1267,6 @@ setCPU:;
           {
             break;
           }
-#endif // ! THREADZ
 
 // The event poll is consuming 40% of the CPU according to pprof.
 // We only want to process at 100Hz; yet we are testing at ~1MHz.
@@ -1280,6 +1281,7 @@ setCPU:;
             PNL (panelProcessEvent ());
           }
         cpu.cycleCnt ++;
+#endif // ! THREADZ
 
 #ifdef THREADZ
         // If we faulted somewhere with the memory lock set, clear it.
@@ -1292,23 +1294,6 @@ setCPU:;
         // wait on run/switch
         cpuRunningWait ();
 
-// Update TR
-
-        // Check every 1024 cycles (Est 12M cps, 24 cycles is 1 timer tick,
-        // approx. 50 ticks).
-
-        if (++cpu.rTRsample > 1024)
-          {
-            cpu.rTRsample = 0;
-            word27 trunits;
-            bool ovf;
-            currentTR (& trunits, & ovf);
-            if (ovf)
-              {
-                //clock_gettime (CLOCK_BOOTTIME, & cpu.rTRTime);
-                setG7fault (currentRunningCpuIdx, FAULT_TRO, fst_zero);
-              }
-         }
 #endif // THREADZ
 
         int con_unit_idx = check_attn_key ();
@@ -1776,11 +1761,11 @@ setCPU:;
                     // in uSec;
                     usleep (10000);
 
+#ifndef THREADZ
                     // Trigger I/O polling
                     uv_run (ev_poll_loop, UV_RUN_NOWAIT);
                     fastQueueSubsample = 0;
 
-#ifndef THREADZ
                     sim_interval = 0;
 #endif
                     // Timer register runs at 512 KHz

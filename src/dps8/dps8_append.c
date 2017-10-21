@@ -381,7 +381,9 @@ static void fetchDSPTW (word15 segno)
       }
     setAPUStatus (apuStatus_DSPTW);
 
+#ifndef SPEED
     word24 y1 = (2u * segno) % 1024u;
+#endif
     word24 x1 = (2u * segno) / 1024u; // floor
 
     PNL (cpu.lastPTWOffset = segno;)
@@ -648,8 +650,10 @@ static void fetchNSDW (word15 segno)
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
       addAPUhist (0 /* No fetch no paged bit */);
 #endif
+#ifndef SPEED
     char buf [256];
     DBGAPP ("fetchNSDW (2):SDW0=%s\n", strSDW0 (buf, & cpu.SDW0));
+#endif
   }
 
 #ifdef WAM
@@ -924,7 +928,9 @@ static void fetchPTW (_sdw *sdw, word18 offset)
     PNL (L68_ (cpu.apu.state |= apu_FPTW;))
     setAPUStatus (apuStatus_PTW);
 
+#ifndef SPEED
     word24 y2 = offset % 1024;
+#endif
     word24 x2 = (offset) / 1024; // floor
     
     word36 PTWx2;
@@ -1098,7 +1104,9 @@ static void doPTW2 (_sdw *sdw, word18 offset)
     PNL (L68_ (cpu.apu.state |= apu_FPTW2;))
     setAPUStatus (apuStatus_PTW2);
 
+#ifndef SPEED
     word24 y2 = offset % 1024;
+#endif
     word24 x2 = (offset) / 1024; // floor
     
     word36 PTWx2n;

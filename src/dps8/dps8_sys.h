@@ -49,6 +49,7 @@ extern uint64 sim_deb_mme_cntdwn;
 extern uint64 sim_deb_skip_cnt;
 extern bool sim_deb_bar;
 extern DEVICE *sim_devices[];
+extern uint dbgCPUMask;
 
 char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
 void listSource (char * compname, word18 offset, uint dflag);
