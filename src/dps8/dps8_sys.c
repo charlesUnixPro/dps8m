@@ -3422,8 +3422,8 @@ sim_printf ("XXX fix fnpserverport 6180\n");
     // ; Disconnect everything...
     doIniLine ("cable_ripout");
 
-    doIniLine ("set cpu nunits=8");
-    doIniLine ("set iom nunits=2");
+    doIniLine ("set cpu nunits=7");
+    doIniLine ("set iom nunits=1");
     // ; 16 drives plus the controller
     doIniLine ("set tape nunits=17");
     // ; 16 drives; no controller
@@ -3444,12 +3444,15 @@ sim_printf ("XXX fix fnpserverport 6180\n");
     doIniLine ("! mkdir %TEMP%\\rdra");
 #endif
 
-    doIniLine ("set cpu config=faultbase=Multics");
 
-    doIniLine ("set cpu config=num=0");
+// CPU0
+
+    doIniLine ("set cpu0 config=faultbase=Multics");
+
+    doIniLine ("set cpu0 config=num=0");
     // ; As per GB61-01 Operators Guide, App. A
     // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
-    doIniLine ("set cpu config=data=024000717200");
+    doIniLine ("set cpu0 config=data=024000717200");
 
     // ; enable ports 0 and 1 (scu connections)
     // ; portconfig: ABCD
@@ -3467,524 +3470,512 @@ sim_printf ("XXX fix fnpserverport 6180\n");
     // ;              6 - 2M
     // ;              7 - 4M  
 
-    doIniLine ("set cpu config=port=A");
-    doIniLine ("set cpu   config=assignment=0");
-    doIniLine ("set cpu   config=interlace=0");
-    doIniLine ("set cpu   config=enable=1");
-    doIniLine ("set cpu   config=init_enable=1");
-    doIniLine ("set cpu   config=store_size=4M");
+    doIniLine ("set cpu0 config=port=A");
+    doIniLine ("set cpu0   config=assignment=0");
+    doIniLine ("set cpu0   config=interlace=0");
+    doIniLine ("set cpu0   config=enable=1");
+    doIniLine ("set cpu0   config=init_enable=1");
+    doIniLine ("set cpu0   config=store_size=4M");
  
-    doIniLine ("set cpu config=port=B");
-    doIniLine ("set cpu   config=assignment=1");
-    doIniLine ("set cpu   config=interlace=0");
-    doIniLine ("set cpu   config=enable=1");
-    doIniLine ("set cpu   config=init_enable=1");
-    doIniLine ("set cpu   config=store_size=4M");
+    doIniLine ("set cpu0 config=port=B");
+    doIniLine ("set cpu0   config=assignment=1");
+    doIniLine ("set cpu0   config=interlace=0");
+    doIniLine ("set cpu0   config=enable=1");
+    doIniLine ("set cpu0   config=init_enable=1");
+    doIniLine ("set cpu0   config=store_size=4M");
 
-    doIniLine ("set cpu config=port=C");
-    doIniLine ("set cpu   config=assignment=2");
-    doIniLine ("set cpu   config=interlace=0");
-    doIniLine ("set cpu   config=enable=1");
-    doIniLine ("set cpu   config=init_enable=1");
-    doIniLine ("set cpu   config=store_size=4M");
+    doIniLine ("set cpu0 config=port=C");
+    doIniLine ("set cpu0   config=assignment=2");
+    doIniLine ("set cpu0   config=interlace=0");
+    doIniLine ("set cpu0   config=enable=1");
+    doIniLine ("set cpu0   config=init_enable=1");
+    doIniLine ("set cpu0   config=store_size=4M");
 
-    doIniLine ("set cpu config=port=D");
-    doIniLine ("set cpu   config=assignment=3");
-    doIniLine ("set cpu   config=interlace=0");
-    doIniLine ("set cpu   config=enable=1");
-    doIniLine ("set cpu   config=init_enable=1");
-    doIniLine ("set cpu   config=store_size=4M");
+    doIniLine ("set cpu0 config=port=D");
+    doIniLine ("set cpu0   config=assignment=3");
+    doIniLine ("set cpu0   config=interlace=0");
+    doIniLine ("set cpu0   config=enable=1");
+    doIniLine ("set cpu0   config=init_enable=1");
+    doIniLine ("set cpu0   config=store_size=4M");
 
     // ; 0 = GCOS 1 = VMS
-    doIniLine ("set cpu config=mode=Multics");
+    doIniLine ("set cpu0 config=mode=Multics");
     // ; 0 = 8/70
-    doIniLine ("set cpu config=speed=0");
+    doIniLine ("set cpu0 config=speed=0");
 
-    // ;echo
-    // ;show cpu config
-    // ;echo
+    doIniLine ("set cpu0 config=dis_enable=enable");
+    doIniLine ("set cpu0 config=steady_clock=disable");
+    doIniLine ("set cpu0 config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu0 config=disable_wam=disable");
+    doIniLine ("set cpu0 config=tro_enable=enable");
+    doIniLine ("set cpu0 config=y2k=disable");
 
-    // ;;;---set cpu0 config=faultbase=Multics
-    // ;;;---
-    // ;;;---set cpu0 config=num=0
-    // ;;;---; As per GB61-01 Operators Guide, App. A
-    // ;;;---; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
-    // ;;;---set cpu0 config=data=024000717200
-    // ;;;---
-    // ;;;---; enable ports 0 and 1 (scu connections)
-    // ;;;---; portconfig: ABCD
-    // ;;;---;   each is 3 bits addr assignment
-    // ;;;---;           1 bit enabled 
-    // ;;;---;           1 bit sysinit enabled
-    // ;;;---;           1 bit interlace enabled (interlace?)
-    // ;;;---;           3 bit memory size
-    // ;;;---;              0 - 32K
-    // ;;;---;              1 - 64K
-    // ;;;---;              2 - 128K
-    // ;;;---;              3 - 256K
-    // ;;;---;              4 - 512K
-    // ;;;---;              5 - 1M
-    // ;;;---;              6 - 2M
-    // ;;;---;              7 - 4M  
-    // ;;;---
-    // ;;;---set cpu0 config=port=A
-    // ;;;---set cpu0   config=assignment=0
-    // ;;;---set cpu0   config=interlace=0
-    // ;;;---set cpu0   config=enable=1
-    // ;;;---set cpu0   config=init_enable=1
-    // ;;;---set cpu0   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu0 config=port=B
-    // ;;;---set cpu0   config=assignment=1
-    // ;;;---set cpu0   config=interlace=0
-    // ;;;---set cpu0   config=enable=1
-    // ;;;---set cpu0   config=init_enable=1
-    // ;;;---set cpu0   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu0 config=port=C
-    // ;;;---set cpu0   config=assignment=2
-    // ;;;---set cpu0   config=interlace=0
-    // ;;;---set cpu0   config=enable=1
-    // ;;;---set cpu0   config=init_enable=1
-    // ;;;---set cpu0   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu0 config=port=D
-    // ;;;---set cpu0   config=assignment=3
-    // ;;;---set cpu0   config=interlace=0
-    // ;;;---set cpu0   config=enable=1
-    // ;;;---set cpu0   config=init_enable=1
-    // ;;;---set cpu0   config=store_size=4M
-    // ;;;---
-    // ;;;---; 0 = GCOS 1 = VMS
-    // ;;;---set cpu0 config=mode=Multics
-    // ;;;---; 0 = 8/70
-    // ;;;---set cpu0 config=speed=0
-    // ;;;---
-    // ;;;---;echo
-    // ;;;---;show cpu0 config
-    // ;;;---;echo
-    // ;;;---
-    // ;;;---
-    // ;;;---set cpu1 config=faultbase=Multics
-    // ;;;---
-    // ;;;---set cpu1 config=num=1
-    // ;;;---; As per GB61-01 Operators Guide, App. A
-    // ;;;---; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
-    // ;;;---set cpu1 config=data=024000717200
-    // ;;;---
-    // ;;;---; enable ports 0 and 1 (scu connections)
-    // ;;;---; portconfig: ABCD
-    // ;;;---;   each is 3 bits addr assignment
-    // ;;;---;           1 bit enabled 
-    // ;;;---;           1 bit sysinit enabled
-    // ;;;---;           1 bit interlace enabled (interlace?)
-    // ;;;---;           3 bit memory size
-    // ;;;---;              0 - 32K
-    // ;;;---;              1 - 64K
-    // ;;;---;              2 - 128K
-    // ;;;---;              3 - 256K
-    // ;;;---;              4 - 512K
-    // ;;;---;              5 - 1M
-    // ;;;---;              6 - 2M
-    // ;;;---;              7 - 4M  
-    // ;;;---
-    // ;;;---set cpu1 config=port=A
-    // ;;;---set cpu1   config=assignment=0
-    // ;;;---set cpu1   config=interlace=0
-    // ;;;---set cpu1   config=enable=1
-    // ;;;---set cpu1   config=init_enable=1
-    // ;;;---set cpu1   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu1 config=port=B
-    // ;;;---set cpu1   config=assignment=1
-    // ;;;---set cpu1   config=interlace=0
-    // ;;;---set cpu1   config=enable=1
-    // ;;;---set cpu1   config=init_enable=1
-    // ;;;---set cpu1   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu1 config=port=C
-    // ;;;---set cpu1   config=assignment=2
-    // ;;;---set cpu1   config=interlace=0
-    // ;;;---set cpu1   config=enable=1
-    // ;;;---set cpu1   config=init_enable=1
-    // ;;;---set cpu1   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu1 config=port=D
-    // ;;;---set cpu1   config=assignment=3
-    // ;;;---set cpu1   config=interlace=0
-    // ;;;---set cpu1   config=enable=1
-    // ;;;---set cpu1   config=init_enable=1
-    // ;;;---set cpu1   config=store_size=4M
-    // ;;;---
-    // ;;;---; 0 = GCOS 1 = VMS
-    // ;;;---set cpu1 config=mode=Multics
-    // ;;;---; 0 = 8/70
-    // ;;;---set cpu1 config=speed=0
-    // ;;;---
-    // ;;;---;echo
-    // ;;;---;show cpu1 config
-    // ;;;---;echo
-    // ;;;---
-    // ;;;---set cpu2 config=faultbase=Multics
-    // ;;;---
-    // ;;;---set cpu2 config=num=2
-    // ;;;---; As per GB61-01 Operators Guide, App. A
-    // ;;;---; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
-    // ;;;---set cpu2 config=data=024000717200
-    // ;;;---
-    // ;;;---; enable ports 0 and 1 (scu connections)
-    // ;;;---; portconfig: ABCD
-    // ;;;---;   each is 3 bits addr assignment
-    // ;;;---;           1 bit enabled 
-    // ;;;---;           1 bit sysinit enabled
-    // ;;;---;           1 bit interlace enabled (interlace?)
-    // ;;;---;           3 bit memory size
-    // ;;;---;              0 - 32K
-    // ;;;---;              1 - 64K
-    // ;;;---;              2 - 128K
-    // ;;;---;              3 - 256K
-    // ;;;---;              4 - 512K
-    // ;;;---;              5 - 1M
-    // ;;;---;              6 - 2M
-    // ;;;---;              7 - 4M  
-    // ;;;---
-    // ;;;---set cpu2 config=port=A
-    // ;;;---set cpu2   config=assignment=0
-    // ;;;---set cpu2   config=interlace=0
-    // ;;;---set cpu2   config=enable=1
-    // ;;;---set cpu2   config=init_enable=1
-    // ;;;---set cpu2   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu2 config=port=B
-    // ;;;---set cpu2   config=assignment=1
-    // ;;;---set cpu2   config=interlace=0
-    // ;;;---set cpu2   config=enable=1
-    // ;;;---set cpu2   config=init_enable=1
-    // ;;;---set cpu2   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu2 config=port=C
-    // ;;;---set cpu2   config=assignment=2
-    // ;;;---set cpu2   config=interlace=0
-    // ;;;---set cpu2   config=enable=1
-    // ;;;---set cpu2   config=init_enable=1
-    // ;;;---set cpu2   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu2 config=port=D
-    // ;;;---set cpu2   config=assignment=3
-    // ;;;---set cpu2   config=interlace=0
-    // ;;;---set cpu2   config=enable=1
-    // ;;;---set cpu2   config=init_enable=1
-    // ;;;---set cpu2   config=store_size=4M
-    // ;;;---
-    // ;;;---; 0 = GCOS 1 = VMS
-    // ;;;---set cpu2 config=mode=Multics
-    // ;;;---; 0 = 8/70
-    // ;;;---set cpu2 config=speed=0
-    // ;;;---
-    // ;;;---;echo
-    // ;;;---;show cpu2 config
-    // ;;;---;echo
-    // ;;;---
-    // ;;;---set cpu3 config=faultbase=Multics
-    // ;;;---
-    // ;;;---set cpu3 config=num=3
-    // ;;;---; As per GB61-01 Operators Guide, App. A
-    // ;;;---; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
-    // ;;;---set cpu3 config=data=024000717200
-    // ;;;---
-    // ;;;---; enable ports 0 and 1 (scu connections)
-    // ;;;---; portconfig: ABCD
-    // ;;;---;   each is 3 bits addr assignment
-    // ;;;---;           1 bit enabled 
-    // ;;;---;           1 bit sysinit enabled
-    // ;;;---;           1 bit interlace enabled (interlace?)
-    // ;;;---;           3 bit memory size
-    // ;;;---;              0 - 32K
-    // ;;;---;              1 - 64K
-    // ;;;---;              2 - 128K
-    // ;;;---;              3 - 256K
-    // ;;;---;              4 - 512K
-    // ;;;---;              5 - 1M
-    // ;;;---;              6 - 2M
-    // ;;;---;              7 - 4M  
-    // ;;;---
-    // ;;;---set cpu3 config=port=A
-    // ;;;---set cpu3   config=assignment=0
-    // ;;;---set cpu3   config=interlace=0
-    // ;;;---set cpu3   config=enable=1
-    // ;;;---set cpu3   config=init_enable=1
-    // ;;;---set cpu3   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu3 config=port=B
-    // ;;;---set cpu3   config=assignment=1
-    // ;;;---set cpu3   config=interlace=0
-    // ;;;---set cpu3   config=enable=1
-    // ;;;---set cpu3   config=init_enable=1
-    // ;;;---set cpu3   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu3 config=port=C
-    // ;;;---set cpu3   config=assignment=2
-    // ;;;---set cpu3   config=interlace=0
-    // ;;;---set cpu3   config=enable=1
-    // ;;;---set cpu3   config=init_enable=1
-    // ;;;---set cpu3   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu3 config=port=D
-    // ;;;---set cpu3   config=assignment=3
-    // ;;;---set cpu3   config=interlace=0
-    // ;;;---set cpu3   config=enable=1
-    // ;;;---set cpu3   config=init_enable=1
-    // ;;;---set cpu3   config=store_size=4M
-    // ;;;---
-    // ;;;---; 0 = GCOS 1 = VMS
-    // ;;;---set cpu3 config=mode=Multics
-    // ;;;---; 0 = 8/70
-    // ;;;---set cpu3 config=speed=0
-    // ;;;---
-    // ;;;---;echo
-    // ;;;---;show cpu3 config
-    // ;;;---;echo
-    // ;;;---
-    // ;;;---set cpu4 config=faultbase=Multics
-    // ;;;---
-    // ;;;---set cpu4 config=num=4
-    // ;;;---; As per GB61-01 Operators Guide, App. A
-    // ;;;---; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
-    // ;;;---set cpu4 config=data=024000717200
-    // ;;;---
-    // ;;;---; enable ports 0 and 1 (scu connections)
-    // ;;;---; portconfig: ABCD
-    // ;;;---;   each is 3 bits addr assignment
-    // ;;;---;           1 bit enabled 
-    // ;;;---;           1 bit sysinit enabled
-    // ;;;---;           1 bit interlace enabled (interlace?)
-    // ;;;---;           3 bit memory size
-    // ;;;---;              0 - 32K
-    // ;;;---;              1 - 64K
-    // ;;;---;              2 - 128K
-    // ;;;---;              3 - 256K
-    // ;;;---;              4 - 512K
-    // ;;;---;              5 - 1M
-    // ;;;---;              6 - 2M
-    // ;;;---;              7 - 4M  
-    // ;;;---
-    // ;;;---set cpu4 config=port=A
-    // ;;;---set cpu4   config=assignment=0
-    // ;;;---set cpu4   config=interlace=0
-    // ;;;---set cpu4   config=enable=1
-    // ;;;---set cpu4   config=init_enable=1
-    // ;;;---set cpu4   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu4 config=port=B
-    // ;;;---set cpu4   config=assignment=1
-    // ;;;---set cpu4   config=interlace=0
-    // ;;;---set cpu4   config=enable=1
-    // ;;;---set cpu4   config=init_enable=1
-    // ;;;---set cpu4   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu4 config=port=C
-    // ;;;---set cpu4   config=assignment=2
-    // ;;;---set cpu4   config=interlace=0
-    // ;;;---set cpu4   config=enable=1
-    // ;;;---set cpu4   config=init_enable=1
-    // ;;;---set cpu4   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu4 config=port=D
-    // ;;;---set cpu4   config=assignment=3
-    // ;;;---set cpu4   config=interlace=0
-    // ;;;---set cpu4   config=enable=1
-    // ;;;---set cpu4   config=init_enable=1
-    // ;;;---set cpu4   config=store_size=4M
-    // ;;;---
-    // ;;;---; 0 = GCOS 1 = VMS
-    // ;;;---set cpu4 config=mode=Multics
-    // ;;;---; 0 = 8/70
-    // ;;;---set cpu4 config=speed=0
-    // ;;;---
-    // ;;;---;echo
-    // ;;;---;show cpu4 config
-    // ;;;---;echo
-    // ;;;---
-    // ;;;---set cpu5 config=faultbase=Multics
-    // ;;;---
-    // ;;;---set cpu5 config=num=5
-    // ;;;---; As per GB61-01 Operators Guide, App. A
-    // ;;;---; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
-    // ;;;---set cpu5 config=data=024000717200
-    // ;;;---
-    // ;;;---; enable ports 0 and 1 (scu connections)
-    // ;;;---; portconfig: ABCD
-    // ;;;---;   each is 3 bits addr assignment
-    // ;;;---;           1 bit enabled 
-    // ;;;---;           1 bit sysinit enabled
-    // ;;;---;           1 bit interlace enabled (interlace?)
-    // ;;;---;           3 bit memory size
-    // ;;;---;              0 - 32K
-    // ;;;---;              1 - 64K
-    // ;;;---;              2 - 128K
-    // ;;;---;              3 - 256K
-    // ;;;---;              4 - 512K
-    // ;;;---;              5 - 1M
-    // ;;;---;              6 - 2M
-    // ;;;---;              7 - 4M  
-    // ;;;---
-    // ;;;---set cpu5 config=port=A
-    // ;;;---set cpu5   config=assignment=0
-    // ;;;---set cpu5   config=interlace=0
-    // ;;;---set cpu5   config=enable=1
-    // ;;;---set cpu5   config=init_enable=1
-    // ;;;---set cpu5   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu5 config=port=B
-    // ;;;---set cpu5   config=assignment=1
-    // ;;;---set cpu5   config=interlace=0
-    // ;;;---set cpu5   config=enable=1
-    // ;;;---set cpu5   config=init_enable=1
-    // ;;;---set cpu5   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu5 config=port=C
-    // ;;;---set cpu5   config=assignment=2
-    // ;;;---set cpu5   config=interlace=0
-    // ;;;---set cpu5   config=enable=1
-    // ;;;---set cpu5   config=init_enable=1
-    // ;;;---set cpu5   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu5 config=port=D
-    // ;;;---set cpu5   config=assignment=3
-    // ;;;---set cpu5   config=interlace=0
-    // ;;;---set cpu5   config=enable=1
-    // ;;;---set cpu5   config=init_enable=1
-    // ;;;---set cpu5   config=store_size=4M
-    // ;;;---
-    // ;;;---; 0 = GCOS 1 = VMS
-    // ;;;---set cpu5 config=mode=Multics
-    // ;;;---; 0 = 8/70
-    // ;;;---set cpu5 config=speed=0
-    // ;;;---
-    // ;;;---;echo
-    // ;;;---;show cpu5 config
-    // ;;;---;echo
-    // ;;;---
-    // ;;;---set cpu6 config=faultbase=Multics
-    // ;;;---
-    // ;;;---set cpu6 config=num=6
-    // ;;;---; As per GB61-01 Operators Guide, App. A
-    // ;;;---; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
-    // ;;;---set cpu6 config=data=024000717200
-    // ;;;---
-    // ;;;---; enable ports 0 and 1 (scu connections)
-    // ;;;---; portconfig: ABCD
-    // ;;;---;   each is 3 bits addr assignment
-    // ;;;---;           1 bit enabled 
-    // ;;;---;           1 bit sysinit enabled
-    // ;;;---;           1 bit interlace enabled (interlace?)
-    // ;;;---;           3 bit memory size
-    // ;;;---;              0 - 32K
-    // ;;;---;              1 - 64K
-    // ;;;---;              2 - 128K
-    // ;;;---;              3 - 256K
-    // ;;;---;              4 - 512K
-    // ;;;---;              5 - 1M
-    // ;;;---;              6 - 2M
-    // ;;;---;              7 - 4M  
-    // ;;;---
-    // ;;;---set cpu6 config=port=A
-    // ;;;---set cpu6   config=assignment=0
-    // ;;;---set cpu6   config=interlace=0
-    // ;;;---set cpu6   config=enable=1
-    // ;;;---set cpu6   config=init_enable=1
-    // ;;;---set cpu6   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu6 config=port=B
-    // ;;;---set cpu6   config=assignment=1
-    // ;;;---set cpu6   config=interlace=0
-    // ;;;---set cpu6   config=enable=1
-    // ;;;---set cpu6   config=init_enable=1
-    // ;;;---set cpu6   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu6 config=port=C
-    // ;;;---set cpu6   config=assignment=2
-    // ;;;---set cpu6   config=interlace=0
-    // ;;;---set cpu6   config=enable=1
-    // ;;;---set cpu6   config=init_enable=1
-    // ;;;---set cpu6   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu6 config=port=D
-    // ;;;---set cpu6   config=assignment=3
-    // ;;;---set cpu6   config=interlace=0
-    // ;;;---set cpu6   config=enable=1
-    // ;;;---set cpu6   config=init_enable=1
-    // ;;;---set cpu6   config=store_size=4M
-    // ;;;---
-    // ;;;---; 0 = GCOS 1 = VMS
-    // ;;;---set cpu6 config=mode=Multics
-    // ;;;---; 0 = 8/70
-    // ;;;---set cpu6 config=speed=0
-    // ;;;---
-    // ;;;---;echo
-    // ;;;---;show cpu6 config
-    // ;;;---;echo
-    // ;;;---
-    // ;;;---set cpu7 config=faultbase=Multics
-    // ;;;---
-    // ;;;---set cpu7 config=num=4M
-    // ;;;---; As per GB61-01 Operators Guide, App. A
-    // ;;;---; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
-    // ;;;---set cpu7 config=data=024000717200
-    // ;;;---
-    // ;;;---; enable ports 0 and 1 (scu connections)
-    // ;;;---; portconfig: ABCD
-    // ;;;---;   each is 3 bits addr assignment
-    // ;;;---;           1 bit enabled 
-    // ;;;---;           1 bit sysinit enabled
-    // ;;;---;           1 bit interlace enabled (interlace?)
-    // ;;;---;           3 bit memory size
-    // ;;;---;              0 - 32K
-    // ;;;---;              1 - 64K
-    // ;;;---;              2 - 128K
-    // ;;;---;              3 - 256K
-    // ;;;---;              4 - 512K
-    // ;;;---;              5 - 1M
-    // ;;;---;              6 - 2M
-    // ;;;---;              7 - 4M  
-    // ;;;---
-    // ;;;---set cpu7 config=port=A
-    // ;;;---set cpu7   config=assignment=0
-    // ;;;---set cpu7   config=interlace=0
-    // ;;;---set cpu7   config=enable=1
-    // ;;;---set cpu7   config=init_enable=1
-    // ;;;---set cpu7   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu7 config=port=B
-    // ;;;---set cpu7   config=assignment=1
-    // ;;;---set cpu7   config=interlace=0
-    // ;;;---set cpu7   config=enable=1
-    // ;;;---set cpu7   config=init_enable=1
-    // ;;;---set cpu7   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu7 config=port=C
-    // ;;;---set cpu7   config=assignment=2
-    // ;;;---set cpu7   config=interlace=0
-    // ;;;---set cpu7   config=enable=1
-    // ;;;---set cpu7   config=init_enable=1
-    // ;;;---set cpu7   config=store_size=4M
-    // ;;;---
-    // ;;;---set cpu7 config=port=D
-    // ;;;---set cpu7   config=assignment=3
-    // ;;;---set cpu7   config=interlace=0
-    // ;;;---set cpu7   config=enable=1
-    // ;;;---set cpu7   config=init_enable=1
-    // ;;;---set cpu7   config=store_size=4M
-    // ;;;---
-    // ;;;---; 0 = GCOS 1 = VMS
-    // ;;;---set cpu7 config=mode=Multics
-    // ;;;---; 0 = 8/70
-    // ;;;---set cpu7 config=speed=0
-    // ;;;---
-    // ;;;---;echo
-    // ;;;---;show cpu7 config
-    // ;;;---;echo
+// CPU1
 
+    doIniLine ("set cpu1 config=faultbase=Multics");
+
+    doIniLine ("set cpu1 config=num=1");
+    // ; As per GB61-01 Operators Guide, App. A
+    // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
+    doIniLine ("set cpu1 config=data=024000717200");
+
+    // ; enable ports 0 and 1 (scu connections)
+    // ; portconfig: ABCD
+    // ;   each is 3 bits addr assignment
+    // ;           1 bit enabled 
+    // ;           1 bit sysinit enabled
+    // ;           1 bit interlace enabled (interlace?)
+    // ;           3 bit memory size
+    // ;              0 - 32K
+    // ;              1 - 64K
+    // ;              2 - 128K
+    // ;              3 - 256K
+    // ;              4 - 512K
+    // ;              5 - 1M
+    // ;              6 - 2M
+    // ;              7 - 4M  
+
+    doIniLine ("set cpu1 config=port=A");
+    doIniLine ("set cpu1   config=assignment=0");
+    doIniLine ("set cpu1   config=interlace=0");
+    doIniLine ("set cpu1   config=enable=1");
+    doIniLine ("set cpu1   config=init_enable=1");
+    doIniLine ("set cpu1   config=store_size=4M");
+ 
+    doIniLine ("set cpu1 config=port=B");
+    doIniLine ("set cpu1   config=assignment=1");
+    doIniLine ("set cpu1   config=interlace=0");
+    doIniLine ("set cpu1   config=enable=1");
+    doIniLine ("set cpu1   config=init_enable=1");
+    doIniLine ("set cpu1   config=store_size=4M");
+
+    doIniLine ("set cpu1 config=port=C");
+    doIniLine ("set cpu1   config=assignment=2");
+    doIniLine ("set cpu1   config=interlace=0");
+    doIniLine ("set cpu1   config=enable=1");
+    doIniLine ("set cpu1   config=init_enable=1");
+    doIniLine ("set cpu1   config=store_size=4M");
+
+    doIniLine ("set cpu1 config=port=D");
+    doIniLine ("set cpu1   config=assignment=3");
+    doIniLine ("set cpu1   config=interlace=0");
+    doIniLine ("set cpu1   config=enable=1");
+    doIniLine ("set cpu1   config=init_enable=1");
+    doIniLine ("set cpu1   config=store_size=4M");
+
+    // ; 0 = GCOS 1 = VMS
+    doIniLine ("set cpu1 config=mode=Multics");
+    // ; 0 = 8/70
+    doIniLine ("set cpu1 config=speed=0");
+
+    doIniLine ("set cpu1 config=dis_enable=enable");
+    doIniLine ("set cpu1 config=steady_clock=disable");
+    doIniLine ("set cpu1 config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu1 config=disable_wam=disable");
+    doIniLine ("set cpu1 config=tro_enable=enable");
+    doIniLine ("set cpu1 config=y2k=disable");
+
+
+// CPU2
+
+    doIniLine ("set cpu2 config=faultbase=Multics");
+
+    doIniLine ("set cpu2 config=num=2");
+    // ; As per GB61-01 Operators Guide, App. A
+    // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
+    doIniLine ("set cpu2 config=data=024000717200");
+
+    // ; enable ports 0 and 1 (scu connections)
+    // ; portconfig: ABCD
+    // ;   each is 3 bits addr assignment
+    // ;           1 bit enabled 
+    // ;           1 bit sysinit enabled
+    // ;           1 bit interlace enabled (interlace?)
+    // ;           3 bit memory size
+    // ;              0 - 32K
+    // ;              1 - 64K
+    // ;              2 - 128K
+    // ;              3 - 256K
+    // ;              4 - 512K
+    // ;              5 - 1M
+    // ;              6 - 2M
+    // ;              7 - 4M  
+
+    doIniLine ("set cpu2 config=port=A");
+    doIniLine ("set cpu2   config=assignment=0");
+    doIniLine ("set cpu2   config=interlace=0");
+    doIniLine ("set cpu2   config=enable=1");
+    doIniLine ("set cpu2   config=init_enable=1");
+    doIniLine ("set cpu2   config=store_size=4M");
+ 
+    doIniLine ("set cpu2 config=port=B");
+    doIniLine ("set cpu2   config=assignment=1");
+    doIniLine ("set cpu2   config=interlace=0");
+    doIniLine ("set cpu2   config=enable=1");
+    doIniLine ("set cpu2   config=init_enable=1");
+    doIniLine ("set cpu2   config=store_size=4M");
+
+    doIniLine ("set cpu2 config=port=C");
+    doIniLine ("set cpu2   config=assignment=2");
+    doIniLine ("set cpu2   config=interlace=0");
+    doIniLine ("set cpu2   config=enable=1");
+    doIniLine ("set cpu2   config=init_enable=1");
+    doIniLine ("set cpu2   config=store_size=4M");
+
+    doIniLine ("set cpu2 config=port=D");
+    doIniLine ("set cpu2   config=assignment=3");
+    doIniLine ("set cpu2   config=interlace=0");
+    doIniLine ("set cpu2   config=enable=1");
+    doIniLine ("set cpu2   config=init_enable=1");
+    doIniLine ("set cpu2   config=store_size=4M");
+
+    // ; 0 = GCOS 1 = VMS
+    doIniLine ("set cpu2 config=mode=Multics");
+    // ; 0 = 8/70
+    doIniLine ("set cpu2 config=speed=0");
+
+    doIniLine ("set cpu2 config=dis_enable=enable");
+    doIniLine ("set cpu2 config=steady_clock=disable");
+    doIniLine ("set cpu2 config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu2 config=disable_wam=disable");
+    doIniLine ("set cpu2 config=tro_enable=enable");
+    doIniLine ("set cpu2 config=y2k=disable");
+
+
+// CPU3
+
+    doIniLine ("set cpu3 config=faultbase=Multics");
+
+    doIniLine ("set cpu3 config=num=3");
+    // ; As per GB61-01 Operators Guide, App. A
+    // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
+    doIniLine ("set cpu3 config=data=024000717200");
+
+    // ; enable ports 0 and 1 (scu connections)
+    // ; portconfig: ABCD
+    // ;   each is 3 bits addr assignment
+    // ;           1 bit enabled 
+    // ;           1 bit sysinit enabled
+    // ;           1 bit interlace enabled (interlace?)
+    // ;           3 bit memory size
+    // ;              0 - 32K
+    // ;              1 - 64K
+    // ;              2 - 128K
+    // ;              3 - 256K
+    // ;              4 - 512K
+    // ;              5 - 1M
+    // ;              6 - 2M
+    // ;              7 - 4M  
+
+    doIniLine ("set cpu3 config=port=A");
+    doIniLine ("set cpu3   config=assignment=0");
+    doIniLine ("set cpu3   config=interlace=0");
+    doIniLine ("set cpu3   config=enable=1");
+    doIniLine ("set cpu3   config=init_enable=1");
+    doIniLine ("set cpu3   config=store_size=4M");
+ 
+    doIniLine ("set cpu3 config=port=B");
+    doIniLine ("set cpu3   config=assignment=1");
+    doIniLine ("set cpu3   config=interlace=0");
+    doIniLine ("set cpu3   config=enable=1");
+    doIniLine ("set cpu3   config=init_enable=1");
+    doIniLine ("set cpu3   config=store_size=4M");
+
+    doIniLine ("set cpu3 config=port=C");
+    doIniLine ("set cpu3   config=assignment=2");
+    doIniLine ("set cpu3   config=interlace=0");
+    doIniLine ("set cpu3   config=enable=1");
+    doIniLine ("set cpu3   config=init_enable=1");
+    doIniLine ("set cpu3   config=store_size=4M");
+
+    doIniLine ("set cpu3 config=port=D");
+    doIniLine ("set cpu3   config=assignment=3");
+    doIniLine ("set cpu3   config=interlace=0");
+    doIniLine ("set cpu3   config=enable=1");
+    doIniLine ("set cpu3   config=init_enable=1");
+    doIniLine ("set cpu3   config=store_size=4M");
+
+    // ; 0 = GCOS 1 = VMS
+    doIniLine ("set cpu3 config=mode=Multics");
+    // ; 0 = 8/70
+    doIniLine ("set cpu3 config=speed=0");
+
+    doIniLine ("set cpu3 config=dis_enable=enable");
+    doIniLine ("set cpu3 config=steady_clock=disable");
+    doIniLine ("set cpu3 config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu3 config=disable_wam=disable");
+    doIniLine ("set cpu3 config=tro_enable=enable");
+    doIniLine ("set cpu3 config=y2k=disable");
+
+
+// CPU4
+
+    doIniLine ("set cpu4 config=faultbase=Multics");
+
+    doIniLine ("set cpu4 config=num=4");
+    // ; As per GB61-01 Operators Guide, App. A
+    // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
+    doIniLine ("set cpu4 config=data=024000717200");
+
+    // ; enable ports 0 and 1 (scu connections)
+    // ; portconfig: ABCD
+    // ;   each is 3 bits addr assignment
+    // ;           1 bit enabled 
+    // ;           1 bit sysinit enabled
+    // ;           1 bit interlace enabled (interlace?)
+    // ;           3 bit memory size
+    // ;              0 - 32K
+    // ;              1 - 64K
+    // ;              2 - 128K
+    // ;              3 - 256K
+    // ;              4 - 512K
+    // ;              5 - 1M
+    // ;              6 - 2M
+    // ;              7 - 4M  
+
+    doIniLine ("set cpu4 config=port=A");
+    doIniLine ("set cpu4   config=assignment=0");
+    doIniLine ("set cpu4   config=interlace=0");
+    doIniLine ("set cpu4   config=enable=1");
+    doIniLine ("set cpu4   config=init_enable=1");
+    doIniLine ("set cpu4   config=store_size=4M");
+ 
+    doIniLine ("set cpu4 config=port=B");
+    doIniLine ("set cpu4   config=assignment=1");
+    doIniLine ("set cpu4   config=interlace=0");
+    doIniLine ("set cpu4   config=enable=1");
+    doIniLine ("set cpu4   config=init_enable=1");
+    doIniLine ("set cpu4   config=store_size=4M");
+
+    doIniLine ("set cpu4 config=port=C");
+    doIniLine ("set cpu4   config=assignment=2");
+    doIniLine ("set cpu4   config=interlace=0");
+    doIniLine ("set cpu4   config=enable=1");
+    doIniLine ("set cpu4   config=init_enable=1");
+    doIniLine ("set cpu4   config=store_size=4M");
+
+    doIniLine ("set cpu4 config=port=D");
+    doIniLine ("set cpu4   config=assignment=3");
+    doIniLine ("set cpu4   config=interlace=0");
+    doIniLine ("set cpu4   config=enable=1");
+    doIniLine ("set cpu4   config=init_enable=1");
+    doIniLine ("set cpu4   config=store_size=4M");
+
+    // ; 0 = GCOS 1 = VMS
+    doIniLine ("set cpu4 config=mode=Multics");
+    // ; 0 = 8/70
+    doIniLine ("set cpu4 config=speed=0");
+
+    doIniLine ("set cpu4 config=dis_enable=enable");
+    doIniLine ("set cpu4 config=steady_clock=disable");
+    doIniLine ("set cpu4 config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu4 config=disable_wam=disable");
+    doIniLine ("set cpu4 config=tro_enable=enable");
+    doIniLine ("set cpu4 config=y2k=disable");
+
+
+// CPU5
+
+    doIniLine ("set cpu5 config=faultbase=Multics");
+
+    doIniLine ("set cpu5 config=num=5");
+    // ; As per GB61-01 Operators Guide, App. A
+    // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
+    doIniLine ("set cpu5 config=data=024000717200");
+
+    // ; enable ports 0 and 1 (scu connections)
+    // ; portconfig: ABCD
+    // ;   each is 3 bits addr assignment
+    // ;           1 bit enabled 
+    // ;           1 bit sysinit enabled
+    // ;           1 bit interlace enabled (interlace?)
+    // ;           3 bit memory size
+    // ;              0 - 32K
+    // ;              1 - 64K
+    // ;              2 - 128K
+    // ;              3 - 256K
+    // ;              4 - 512K
+    // ;              5 - 1M
+    // ;              6 - 2M
+    // ;              7 - 4M  
+
+    doIniLine ("set cpu5 config=port=A");
+    doIniLine ("set cpu5   config=assignment=0");
+    doIniLine ("set cpu5   config=interlace=0");
+    doIniLine ("set cpu5   config=enable=1");
+    doIniLine ("set cpu5   config=init_enable=1");
+    doIniLine ("set cpu5   config=store_size=4M");
+ 
+    doIniLine ("set cpu5 config=port=B");
+    doIniLine ("set cpu5   config=assignment=1");
+    doIniLine ("set cpu5   config=interlace=0");
+    doIniLine ("set cpu5   config=enable=1");
+    doIniLine ("set cpu5   config=init_enable=1");
+    doIniLine ("set cpu5   config=store_size=4M");
+
+    doIniLine ("set cpu5 config=port=C");
+    doIniLine ("set cpu5   config=assignment=2");
+    doIniLine ("set cpu5   config=interlace=0");
+    doIniLine ("set cpu5   config=enable=1");
+    doIniLine ("set cpu5   config=init_enable=1");
+    doIniLine ("set cpu5   config=store_size=4M");
+
+    doIniLine ("set cpu5 config=port=D");
+    doIniLine ("set cpu5   config=assignment=3");
+    doIniLine ("set cpu5   config=interlace=0");
+    doIniLine ("set cpu5   config=enable=1");
+    doIniLine ("set cpu5   config=init_enable=1");
+    doIniLine ("set cpu5   config=store_size=4M");
+
+    // ; 0 = GCOS 1 = VMS
+    doIniLine ("set cpu5 config=mode=Multics");
+    // ; 0 = 8/70
+    doIniLine ("set cpu5 config=speed=0");
+
+    doIniLine ("set cpu5 config=dis_enable=enable");
+    doIniLine ("set cpu5 config=steady_clock=disable");
+    doIniLine ("set cpu5 config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu5 config=disable_wam=disable");
+    doIniLine ("set cpu5 config=tro_enable=enable");
+    doIniLine ("set cpu5 config=y2k=disable");
+
+
+// CPU6
+
+    doIniLine ("set cpu6 config=faultbase=Multics");
+
+    doIniLine ("set cpu6 config=num=6");
+    // ; As per GB61-01 Operators Guide, App. A
+    // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
+    doIniLine ("set cpu6 config=data=024000717200");
+
+    // ; enable ports 0 and 1 (scu connections)
+    // ; portconfig: ABCD
+    // ;   each is 3 bits addr assignment
+    // ;           1 bit enabled 
+    // ;           1 bit sysinit enabled
+    // ;           1 bit interlace enabled (interlace?)
+    // ;           3 bit memory size
+    // ;              0 - 32K
+    // ;              1 - 64K
+    // ;              2 - 128K
+    // ;              3 - 256K
+    // ;              4 - 512K
+    // ;              5 - 1M
+    // ;              6 - 2M
+    // ;              7 - 4M  
+
+    doIniLine ("set cpu6 config=port=A");
+    doIniLine ("set cpu6   config=assignment=0");
+    doIniLine ("set cpu6   config=interlace=0");
+    doIniLine ("set cpu6   config=enable=1");
+    doIniLine ("set cpu6   config=init_enable=1");
+    doIniLine ("set cpu6   config=store_size=4M");
+ 
+    doIniLine ("set cpu6 config=port=B");
+    doIniLine ("set cpu6   config=assignment=1");
+    doIniLine ("set cpu6   config=interlace=0");
+    doIniLine ("set cpu6   config=enable=1");
+    doIniLine ("set cpu6   config=init_enable=1");
+    doIniLine ("set cpu6   config=store_size=4M");
+
+    doIniLine ("set cpu6 config=port=C");
+    doIniLine ("set cpu6   config=assignment=2");
+    doIniLine ("set cpu6   config=interlace=0");
+    doIniLine ("set cpu6   config=enable=1");
+    doIniLine ("set cpu6   config=init_enable=1");
+    doIniLine ("set cpu6   config=store_size=4M");
+
+    doIniLine ("set cpu6 config=port=D");
+    doIniLine ("set cpu6   config=assignment=3");
+    doIniLine ("set cpu6   config=interlace=0");
+    doIniLine ("set cpu6   config=enable=1");
+    doIniLine ("set cpu6   config=init_enable=1");
+    doIniLine ("set cpu6   config=store_size=4M");
+
+    // ; 0 = GCOS 1 = VMS
+    doIniLine ("set cpu6 config=mode=Multics");
+    // ; 0 = 8/70
+    doIniLine ("set cpu6 config=speed=0");
+
+    doIniLine ("set cpu6 config=dis_enable=enable");
+    doIniLine ("set cpu6 config=steady_clock=disable");
+    doIniLine ("set cpu6 config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu6 config=disable_wam=disable");
+    doIniLine ("set cpu6 config=tro_enable=enable");
+    doIniLine ("set cpu6 config=y2k=disable");
+
+
+#if 0 // Until the port expander code is working
+
+// CPU7
+
+    doIniLine ("set cpu7 config=faultbase=Multics");
+
+    doIniLine ("set cpu7 config=num=7");
+    // ; As per GB61-01 Operators Guide, App. A
+    // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
+    doIniLine ("set cpu7 config=data=024000717200");
+
+    // ; enable ports 0 and 1 (scu connections)
+    // ; portconfig: ABCD
+    // ;   each is 3 bits addr assignment
+    // ;           1 bit enabled 
+    // ;           1 bit sysinit enabled
+    // ;           1 bit interlace enabled (interlace?)
+    // ;           3 bit memory size
+    // ;              0 - 32K
+    // ;              1 - 64K
+    // ;              2 - 128K
+    // ;              3 - 256K
+    // ;              4 - 512K
+    // ;              5 - 1M
+    // ;              6 - 2M
+    // ;              7 - 4M  
+
+    doIniLine ("set cpu7 config=port=A");
+    doIniLine ("set cpu7   config=assignment=0");
+    doIniLine ("set cpu7   config=interlace=0");
+    doIniLine ("set cpu7   config=enable=1");
+    doIniLine ("set cpu7   config=init_enable=1");
+    doIniLine ("set cpu7   config=store_size=4M");
+ 
+    doIniLine ("set cpu7 config=port=B");
+    doIniLine ("set cpu7   config=assignment=1");
+    doIniLine ("set cpu7   config=interlace=0");
+    doIniLine ("set cpu7   config=enable=1");
+    doIniLine ("set cpu7   config=init_enable=1");
+    doIniLine ("set cpu7   config=store_size=4M");
+
+    doIniLine ("set cpu7 config=port=C");
+    doIniLine ("set cpu7   config=assignment=2");
+    doIniLine ("set cpu7   config=interlace=0");
+    doIniLine ("set cpu7   config=enable=1");
+    doIniLine ("set cpu7   config=init_enable=1");
+    doIniLine ("set cpu7   config=store_size=4M");
+
+    doIniLine ("set cpu7 config=port=D");
+    doIniLine ("set cpu7   config=assignment=3");
+    doIniLine ("set cpu7   config=interlace=0");
+    doIniLine ("set cpu7   config=enable=1");
+    doIniLine ("set cpu7   config=init_enable=1");
+    doIniLine ("set cpu7   config=store_size=4M");
+
+    // ; 0 = GCOS 1 = VMS
+    doIniLine ("set cpu7 config=mode=Multics");
+    // ; 0 = 8/70
+    doIniLine ("set cpu7 config=speed=0");
+
+    doIniLine ("set cpu7 config=dis_enable=enable");
+    doIniLine ("set cpu7 config=steady_clock=disable");
+    doIniLine ("set cpu7 config=halt_on_unimplemented=disable");
+    doIniLine ("set cpu7 config=disable_wam=disable");
+    doIniLine ("set cpu7 config=tro_enable=enable");
+    doIniLine ("set cpu7 config=y2k=disable");
+#endif
+
+
+// IOM0
 
     doIniLine ("set iom0 config=iom_base=Multics");
     doIniLine ("set iom0 config=multiplex_base=0120");
@@ -4038,6 +4029,9 @@ sim_printf ("XXX fix fnpserverport 6180\n");
     doIniLine ("set iom0 config=port=7");
     doIniLine ("set iom0   config=enable=0");
 
+#if 0
+// IOM1
+
     doIniLine ("set iom1 config=iom_base=Multics2");
     doIniLine ("set iom1 config=multiplex_base=0121");
     doIniLine ("set iom1 config=os=Multics");
@@ -4073,11 +4067,84 @@ sim_printf ("XXX fix fnpserverport 6180\n");
     doIniLine ("set iom1 config=port=7");
     doIniLine ("set iom1   config=enable=0");
 
-    // ;echo
-    // ;show iom0 config
-    // ;echo
-    // ;show iom1 config
-    // ;echo
+
+// IOM2
+
+    doIniLine ("set iom2 config=iom_base=Multics2");
+    doIniLine ("set iom2 config=multiplex_base=0121");
+    doIniLine ("set iom2 config=os=Multics");
+    doIniLine ("set iom2 config=boot=tape");
+    doIniLine ("set iom2 config=tapechan=012");
+    doIniLine ("set iom2 config=cardchan=011");
+    doIniLine ("set iom2 config=scuport=0");
+
+    doIniLine ("set iom2 config=port=0");
+    doIniLine ("set iom2   config=addr=0");
+    doIniLine ("set iom2   config=interlace=0");
+    doIniLine ("set iom2   config=enable=1");
+    doIniLine ("set iom2   config=initenable=0");
+    doIniLine ("set iom2   config=halfsize=0;");
+
+    doIniLine ("set iom2 config=port=1");
+    doIniLine ("set iom2   config=addr=1");
+    doIniLine ("set iom2   config=interlace=0");
+    doIniLine ("set iom2   config=enable=1");
+    doIniLine ("set iom2   config=initenable=0");
+    doIniLine ("set iom2   config=halfsize=0;");
+
+    doIniLine ("set iom2 config=port=2");
+    doIniLine ("set iom2   config=enable=0");
+    doIniLine ("set iom2 config=port=3");
+    doIniLine ("set iom2   config=enable=0");
+    doIniLine ("set iom2 config=port=4");
+    doIniLine ("set iom2   config=enable=0");
+    doIniLine ("set iom2 config=port=5");
+    doIniLine ("set iom2   config=enable=0");
+    doIniLine ("set iom2 config=port=6");
+    doIniLine ("set iom2   config=enable=0");
+    doIniLine ("set iom2 config=port=7");
+    doIniLine ("set iom2   config=enable=0");
+
+
+// IOM3
+
+    doIniLine ("set iom3 config=iom_base=Multics2");
+    doIniLine ("set iom3 config=multiplex_base=0121");
+    doIniLine ("set iom3 config=os=Multics");
+    doIniLine ("set iom3 config=boot=tape");
+    doIniLine ("set iom3 config=tapechan=012");
+    doIniLine ("set iom3 config=cardchan=011");
+    doIniLine ("set iom3 config=scuport=0");
+
+    doIniLine ("set iom3 config=port=0");
+    doIniLine ("set iom3   config=addr=0");
+    doIniLine ("set iom3   config=interlace=0");
+    doIniLine ("set iom3   config=enable=1");
+    doIniLine ("set iom3   config=initenable=0");
+    doIniLine ("set iom3   config=halfsize=0;");
+
+    doIniLine ("set iom3 config=port=1");
+    doIniLine ("set iom3   config=addr=1");
+    doIniLine ("set iom3   config=interlace=0");
+    doIniLine ("set iom3   config=enable=1");
+    doIniLine ("set iom3   config=initenable=0");
+    doIniLine ("set iom3   config=halfsize=0;");
+
+    doIniLine ("set iom3 config=port=2");
+    doIniLine ("set iom3   config=enable=0");
+    doIniLine ("set iom3 config=port=3");
+    doIniLine ("set iom3   config=enable=0");
+    doIniLine ("set iom3 config=port=4");
+    doIniLine ("set iom3   config=enable=0");
+    doIniLine ("set iom3 config=port=5");
+    doIniLine ("set iom3   config=enable=0");
+    doIniLine ("set iom3 config=port=6");
+    doIniLine ("set iom3   config=enable=0");
+    doIniLine ("set iom3 config=port=7");
+    doIniLine ("set iom3   config=enable=0");
+#endif
+
+// SC0
 
     doIniLine ("set scu0 config=mode=program");
     doIniLine ("set scu0 config=port0=enable");
@@ -4097,6 +4164,8 @@ sim_printf ("XXX fix fnpserverport 6180\n");
     doIniLine ("set scu0 config=int=0");
     doIniLine ("set scu0 config=lwr=0");
 
+// SCU1
+
     doIniLine ("set scu1 config=mode=program");
     doIniLine ("set scu1 config=port0=enable");
     doIniLine ("set scu1 config=port1=enable");
@@ -4114,6 +4183,8 @@ sim_printf ("XXX fix fnpserverport 6180\n");
     doIniLine ("set scu1 config=onl=014");
     doIniLine ("set scu1 config=int=0");
     doIniLine ("set scu1 config=lwr=0");
+
+// SCU2
 
     doIniLine ("set scu2 config=mode=program");
     doIniLine ("set scu2 config=port0=enable");
@@ -4133,6 +4204,8 @@ sim_printf ("XXX fix fnpserverport 6180\n");
     doIniLine ("set scu2 config=int=0");
     doIniLine ("set scu2 config=lwr=0");
 
+// SCU3
+
     doIniLine ("set scu3 config=mode=program");
     doIniLine ("set scu3 config=port0=enable");
     doIniLine ("set scu3 config=port1=enable");
@@ -4150,6 +4223,88 @@ sim_printf ("XXX fix fnpserverport 6180\n");
     doIniLine ("set scu3 config=onl=014");
     doIniLine ("set scu3 config=int=0");
     doIniLine ("set scu3 config=lwr=0");
+
+#if 0
+// SCU4
+
+    doIniLine ("set scu4 config=mode=program");
+    doIniLine ("set scu4 config=port0=enable");
+    doIniLine ("set scu4 config=port1=enable");
+    doIniLine ("set scu4 config=port2=enable");
+    doIniLine ("set scu4 config=port3=enable");
+    doIniLine ("set scu4 config=port4=enable");
+    doIniLine ("set scu4 config=port5=enable");
+    doIniLine ("set scu4 config=port6=enable");
+    doIniLine ("set scu4 config=port7=enable");
+    doIniLine ("set scu4 config=maska=off");
+    doIniLine ("set scu4 config=maskb=off");
+    doIniLine ("set scu4 config=lwrstoresize=7");
+    doIniLine ("set scu4 config=cyclic=0040");
+    doIniLine ("set scu4 config=nea=0200");
+    doIniLine ("set scu4 config=onl=014");
+    doIniLine ("set scu4 config=int=0");
+    doIniLine ("set scu4 config=lwr=0");
+
+// SCU5
+
+    doIniLine ("set scu5 config=mode=program");
+    doIniLine ("set scu5 config=port0=enable");
+    doIniLine ("set scu5 config=port1=enable");
+    doIniLine ("set scu5 config=port2=enable");
+    doIniLine ("set scu5 config=port3=enable");
+    doIniLine ("set scu5 config=port4=enable");
+    doIniLine ("set scu5 config=port5=enable");
+    doIniLine ("set scu5 config=port6=enable");
+    doIniLine ("set scu5 config=port7=enable");
+    doIniLine ("set scu5 config=maska=off");
+    doIniLine ("set scu5 config=maskb=off");
+    doIniLine ("set scu5 config=lwrstoresize=7");
+    doIniLine ("set scu5 config=cyclic=0040");
+    doIniLine ("set scu5 config=nea=0200");
+    doIniLine ("set scu5 config=onl=014");
+    doIniLine ("set scu5 config=int=0");
+    doIniLine ("set scu5 config=lwr=0");
+
+// SCU6
+
+    doIniLine ("set scu6 config=mode=program");
+    doIniLine ("set scu6 config=port0=enable");
+    doIniLine ("set scu6 config=port1=enable");
+    doIniLine ("set scu6 config=port2=enable");
+    doIniLine ("set scu6 config=port3=enable");
+    doIniLine ("set scu6 config=port4=enable");
+    doIniLine ("set scu6 config=port5=enable");
+    doIniLine ("set scu6 config=port6=enable");
+    doIniLine ("set scu6 config=port7=enable");
+    doIniLine ("set scu6 config=maska=off");
+    doIniLine ("set scu6 config=maskb=off");
+    doIniLine ("set scu6 config=lwrstoresize=7");
+    doIniLine ("set scu6 config=cyclic=0040");
+    doIniLine ("set scu6 config=nea=0200");
+    doIniLine ("set scu6 config=onl=014");
+    doIniLine ("set scu6 config=int=0");
+    doIniLine ("set scu6 config=lwr=0");
+
+// SCU7
+
+    doIniLine ("set scu7 config=mode=program");
+    doIniLine ("set scu7 config=port0=enable");
+    doIniLine ("set scu7 config=port1=enable");
+    doIniLine ("set scu7 config=port2=enable");
+    doIniLine ("set scu7 config=port3=enable");
+    doIniLine ("set scu7 config=port4=enable");
+    doIniLine ("set scu7 config=port5=enable");
+    doIniLine ("set scu7 config=port6=enable");
+    doIniLine ("set scu7 config=port7=enable");
+    doIniLine ("set scu7 config=maska=off");
+    doIniLine ("set scu7 config=maskb=off");
+    doIniLine ("set scu7 config=lwrstoresize=7");
+    doIniLine ("set scu7 config=cyclic=0040");
+    doIniLine ("set scu7 config=nea=0200");
+    doIniLine ("set scu7 config=onl=014");
+    doIniLine ("set scu7 config=int=0");
+    doIniLine ("set scu7 config=lwr=0");
+#endif
 
     // ; There are bugs in the FNP code that require sim unit number
     // ; to be the same as the Multics unit number; ie fnp0 == fnpa, etc.
@@ -4180,14 +4335,6 @@ sim_printf ("XXX fix fnpserverport 6180\n");
     doIniLine ("set fnp7 config=mailbox=06100");
     doIniLine ("set fnp7 ipc_name=fnp-h");
 
-
-    // ;echo
-    // ;show scu0 config
-    // ;echo
-    // ;show scu1 config
-    // ;echo
-    // ;echo
-    // ;show fnp0 config
 
     doIniLine ("set tape0 boot_drive");
 
@@ -4416,9 +4563,7 @@ sim_printf ("XXX fix fnpserverport 6180\n");
     doIniLine ("cable iom,1,3,3,1");
 
 
-    // ;;;
-    // ;;; SCU 0 --> CPUs
-    // ;;;
+// SCU0 --> CPU0-7
 
     // ; Attach SCU unit 0 port 7 to CPU unit A (0), port 0
     doIniLine ("cable scu,0,7,0,0");
@@ -4432,9 +4577,16 @@ sim_printf ("XXX fix fnpserverport 6180\n");
     // ; Attach SCU unit 0 port 4 to CPU unit D (3), port 0
     doIniLine ("cable scu,0,4,3,0");
 
-    // ;;;
-    // ;;; SCU 1 --> CPUs
-    // ;;;
+    // ; Attach SCU unit 0 port 3 to CPU unit E (4), port 0
+    doIniLine ("cable scu,0,3,4,0");
+
+    // ; Attach SCU unit 0 port 2 to CPU unit F (5), port 0
+    doIniLine ("cable scu,0,2,5,0");
+
+    // ; Attach SCU unit 0 port 1 to CPU unit G (6), port 0
+    doIniLine ("cable scu,0,1,6,0");
+
+// SCU1 --> CPU0-7
 
     // ; Attach SCU unit 1 port 7 to CPU unit A (0), port 1
     doIniLine ("cable scu,1,7,0,1");
@@ -4448,10 +4600,17 @@ sim_printf ("XXX fix fnpserverport 6180\n");
     // ; Attach SCU unit 1 port 4 to CPU unit D (3), port 1
     doIniLine ("cable scu,1,4,3,1");
 
+    // ; Attach SCU unit 1 port 3 to CPU unit E (4), port 0
+    doIniLine ("cable scu,1,3,4,1");
 
-    // ;;;
-    // ;;; SCU 2 --> CPUs
-    // ;;;
+    // ; Attach SCU unit 1 port 2 to CPU unit F (5), port 0
+    doIniLine ("cable scu,1,2,5,1");
+
+    // ; Attach SCU unit 0 port 1 to CPU unit G (6), port 0
+    doIniLine ("cable scu,1,1,6,1");
+
+
+// SCU2 --> CPU0-7
 
     // ; Attach SCU unit 2 port 7 to CPU unit A (0), port 2
     doIniLine ("cable scu,2,7,0,2");
@@ -4465,9 +4624,16 @@ sim_printf ("XXX fix fnpserverport 6180\n");
     // ; Attach SCU unit 2 port 4 to CPU unit D (3), port 2
     doIniLine ("cable scu,2,4,3,2");
 
-    // ;;;
-    // ;;; SCU 3 --> CPUs
-    // ;;;
+    // ; Attach SCU unit 2 port 3 to CPU unit E (4), port 0
+    doIniLine ("cable scu,2,3,4,2");
+
+    // ; Attach SCU unit 2 port 2 to CPU unit F (5), port 0
+    doIniLine ("cable scu,2,2,5,2");
+
+    // ; Attach SCU unit 2 port 1 to CPU unit G (6), port 0
+    doIniLine ("cable scu,2,1,6,2");
+
+// SCU3 --> CPU0-7
 
     // ; Attach SCU unit 3 port 7 to CPU unit A (0), port 3
     doIniLine ("cable scu,3,7,0,3");
@@ -4481,15 +4647,19 @@ sim_printf ("XXX fix fnpserverport 6180\n");
     // ; Attach SCU unit 3 port 4 to CPU unit D (3), port 3
     doIniLine ("cable scu,3,4,3,3");
 
-    // ;cable show
-    // ;cable verify
+    // ; Attach SCU unit 3 port 3 to CPU unit E (4), port 0
+    doIniLine ("cable scu,3,3,4,3");
 
-    doIniLine ("set cpu config=dis_enable=enable");
-    doIniLine ("set cpu config=steady_clock=disable");
-    doIniLine ("set cpu config=halt_on_unimplemented=disable");
-    doIniLine ("set cpu config=disable_wam=disable");
-    doIniLine ("set cpu config=tro_enable=enable");
-    doIniLine ("set cpu config=y2k=disable");
+    // ; Attach SCU unit 3 port 2 to CPU unit F (5), port 0
+    doIniLine ("cable scu,3,2,5,3");
+
+    // ; Attach SCU unit 3 port 1 to CPU unit G (6), port 0
+    doIniLine ("cable scu,3,1,6,3");
+
+
+
+
+
 
     doIniLine ("set cpu0 reset");
     doIniLine ("set scu0 reset");

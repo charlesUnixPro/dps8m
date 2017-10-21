@@ -2131,8 +2131,8 @@ static config_list_t scu_config_list [] =
     { NULL, 0, 0, NULL }
   };
 
-static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr, 
-                              UNUSED void * desc)
+static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value,
+                              const char * cptr, UNUSED void * desc)
   {
     long scuUnitIdx = UNIT_NUM (uptr);
     if (scuUnitIdx < 0 || scuUnitIdx >= (int) scu_dev . numunits)
@@ -2153,102 +2153,87 @@ static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr
         int64_t v;
         int rc = cfgparse ("scu_set_config", cptr, scu_config_list, 
                            & cfg_state, & v);
-        switch (rc)
-          {
-            case -2: // error
-              cfgparse_done (& cfg_state);
-              return SCPE_ARG; 
-
-            case -1: // done
-              break;
-
-            case 0: // MODE
-              sw -> mode = (uint) v;
-              break;
-
-            case 1: // MASKA
-            case 2: // MASKB
-              {
-                int m = rc - 1;
-                if (v == -1)
-                  sw -> mask_enable [m] = false;
-                else
-                  {
-                    sw -> mask_enable [m] = true;
-                    sw -> mask_assignment [m] = (uint) v;
-                  }
-              }
-              break;
-
-            case  3: // PORT0
-            case  4: // PORT1
-            case  5: // PORT2
-            case  6: // PORT3
-            case  7: // PORT4
-            case  8: // PORT5
-            case  9: // PORT6
-            case 10: // PORT7
-              {
-                int n = rc - 3;
-                sw -> port_enable [n] = (uint) v;
-                break;
-              } 
-
-            case 11: // LWRSTORESIZE
-              sw -> lower_store_size = (uint) v;
-              break;
-
-            case 12: // CYCLIC
-              sw -> cyclic = (uint) v;
-              break;
-
-            case 13: // NEA
-              sw -> nea = (uint) v;
-              break;
-
-            case 14: // ONL
-              sw -> onl = (uint) v;
-              break;
-
-            case 15: // INT
-              sw -> interlace = (uint) v;
-              break;
-
-            case 16: // LWR
-              sw -> lwr = (uint) v;
-              break;
-
-            case 17: // ELAPSED_DAYS
-              scu [scuUnitIdx] . elapsed_days = (uint) v;
-              break;
-
-            case 18: // STEADY_CLOCK
-              scu [scuUnitIdx] . steady_clock = (uint) v;
-              break;
-
-            case 19: // BULLET_TIME
-              scu [scuUnitIdx] . bullet_time = (uint) v;
-              break;
-
-            case 20: // y2k
-              scu [scuUnitIdx] . y2k = (uint) v;
-              break;
-
-            default:
-              sim_debug (DBG_ERR, & scu_dev, 
-                         "scu_set_config: Invalid cfgparse rc <%d>\n", rc);
-              sim_printf ("error: scu_set_config: invalid cfgparse rc <%d>\n", 
-                           rc);
-              cfgparse_done (& cfg_state);
-              return SCPE_ARG; 
-          } // switch
-        if (rc < 0)
+        if (rc == -1) // done
           break;
+
+        if (rc == -2) // error
+          {
+            cfgparse_done (& cfg_state);
+            return SCPE_ARG; 
+          }
+
+        const char * p = scu_config_list [rc] . name;
+        if (strcmp (p, "mode") == 0)
+          sw -> mode = (uint) v;
+        else if (strcmp (p, "maska") == 0)
+          {
+            if (v == -1)
+              sw -> mask_enable [0] = false;
+            else
+              {
+                sw -> mask_enable [0] = true;
+                sw -> mask_assignment [0] = (uint) v;
+              }
+          }
+        else if (strcmp (p, "maskb") == 0)
+          {
+            if (v == -1)
+              sw -> mask_enable [1] = false;
+            else
+              {
+                sw -> mask_enable [1] = true;
+                sw -> mask_assignment [1] = (uint) v;
+              }
+          }
+        else if (strcmp (p, "port0") == 0)
+          sw -> port_enable [0] = (uint) v;
+        else if (strcmp (p, "port1") == 0)
+          sw -> port_enable [1] = (uint) v;
+        else if (strcmp (p, "port2") == 0)
+          sw -> port_enable [2] = (uint) v;
+        else if (strcmp (p, "port3") == 0)
+          sw -> port_enable [3] = (uint) v;
+        else if (strcmp (p, "port4") == 0)
+          sw -> port_enable [4] = (uint) v;
+        else if (strcmp (p, "port5") == 0)
+          sw -> port_enable [5] = (uint) v;
+        else if (strcmp (p, "port6") == 0)
+          sw -> port_enable [6] = (uint) v;
+        else if (strcmp (p, "port7") == 0)
+          sw -> port_enable [7] = (uint) v;
+        else if (strcmp (p, "lwrstoresize") == 0)
+          sw -> lower_store_size = (uint) v;
+        else if (strcmp (p, "cyclic") == 0)
+          sw -> cyclic = (uint) v;
+        else if (strcmp (p, "nea") == 0)
+          sw -> nea = (uint) v;
+        else if (strcmp (p, "onl") == 0)
+          sw -> onl = (uint) v;
+        else if (strcmp (p, "int") == 0)
+          sw -> interlace = (uint) v;
+        else if (strcmp (p, "lwr") == 0)
+          sw -> lwr = (uint) v;
+        else if (strcmp (p, "elapsed_days") == 0)
+          scu [scuUnitIdx].elapsed_days = (uint) v;
+        else if (strcmp (p, "steady_clock") == 0)
+          scu [scuUnitIdx].steady_clock = (uint) v;
+        else if (strcmp (p, "bullet_time") == 0)
+          scu [scuUnitIdx].bullet_time = (uint) v;
+        else if (strcmp (p, "y2k") == 0)
+          scu [scuUnitIdx].y2k = (uint) v;
+        else
+          {
+            sim_debug (DBG_ERR, & scu_dev, 
+                       "scu_set_config: Invalid cfgparse rc <%d>\n", rc);
+            sim_printf ("error: scu_set_config: invalid cfgparse rc <%d>\n", 
+                         rc);
+            cfgparse_done (& cfg_state);
+            return SCPE_ARG; 
+          }
       } // process statements
     cfgparse_done (& cfg_state);
     return SCPE_OK;
   }
-
 
 t_stat scu_reset_unit (UNIT * uptr, UNUSED int32 value, UNUSED const char * cptr, 
                        UNUSED void * desc)
