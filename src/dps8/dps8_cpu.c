@@ -954,6 +954,9 @@ static void setCpuCycle (cycles_t cycle)
 uint setCPUnum (UNUSED uint cpuNum)
   {
     uint prev = currentRunningCpuIdx;
+#ifdef THREADZ
+    currentRunningCpuIdx = cpuNum;
+#endif
 #ifdef ROUND_ROBIN
     currentRunningCpuIdx = cpuNum;
 #endif
