@@ -146,8 +146,10 @@ static CTAB dps8_cmds[] =
     {"DBGRINGNO", dps_debug_ringno, 0, "dbgsegno Limit debugging to PRR == ringno\n", NULL, NULL},
     {"DBGBAR", dps_debug_bar, 1, "dbgbar Limit debugging to BAR mode\n", NULL, NULL},
     {"NODBGBAR", dps_debug_bar, 0, "dbgbar Limit debugging to BAR mode\n", NULL, NULL},
+#ifdef HDBG
     {"HDBG", hdbg_size, 0, "set hdbg size\n", NULL, NULL},
     {"PHDBG", hdbg_print, 0, "set hdbg size\n", NULL, NULL},
+#endif
     {"DISPLAYMATRIX", displayTheMatrix, 0, "displaymatrix Display instruction usage counts\n", NULL, NULL},
     {"LD_SYSTEM_BOOK", loadSystemBook, 0, "load_system_book: Load a Multics system book for symbolic debugging\n", NULL, NULL},
     {"ASBE", addSystemBookEntry, 0, "asbe: Add an entry to the system book\n", NULL, NULL},
