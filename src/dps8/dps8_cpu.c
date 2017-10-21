@@ -3644,7 +3644,7 @@ static const char * get_dbg_verb (uint32 dbits, DEVICE * dptr)
     return some_match ? some_match : debtab_nomatch;
   }
 
-void dps8_sim_debug (uint32 dbits, DEVICE * dptr, const char* fmt, ...)
+void dps8_sim_debug (uint32 dbits, DEVICE * dptr, unsigned long long cnt, const char* fmt, ...)
   {
     pthread_mutex_lock (& debug_lock);
     if (sim_deb && dptr && (dptr->dctrl & dbits))
@@ -3696,7 +3696,7 @@ void dps8_sim_debug (uint32 dbits, DEVICE * dptr, const char* fmt, ...)
                   {
                     if ((i != j) || (i == 0))
                       {
-                          fprintf (sim_deb, "DBG(%lld) %s %s %.*s\r\n", cpu.cycleCnt, dptr->name, debug_type, i-j, &buf[j]);
+                          fprintf (sim_deb, "DBG(%lld) %s %s %.*s\r\n", cnt, dptr->name, debug_type, i-j, &buf[j]);
                       }
                   }
                 j = i + 1;

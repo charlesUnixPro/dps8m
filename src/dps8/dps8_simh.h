@@ -130,9 +130,9 @@ extern DEVICE scu_dev;
 extern uint32 sim_brk_summ, sim_brk_types, sim_brk_dflt;
 extern FILE *sim_deb;
 #ifdef THREADZ
-void dps8_sim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...)
+void dps8_sim_debug (uint32 dbits, DEVICE* dptr, unsigned long long cnt, const char* fmt, ...)
 #ifdef __GNUC__
-  __attribute__ ((format (printf, 3, 4)))
+  __attribute__ ((format (printf, 4, 5)))
 #endif
 ;
 #endif
