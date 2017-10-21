@@ -20,19 +20,12 @@
 
 // JMP_ENTRY must be 0, which is the return value of the setjmp initial
 // entry
-#define JMP_ENTRY       0
-#define JMP_REENTRY     1
-#define JMP_RETRY       2   // retry instruction
-#define JMP_NEXT        3   // goto next sequential instruction
-#define JMP_TRA         4   // treat return as if it were a TRA instruction 
-                            // with PPR.IC already set to where to jump to
-#define JMP_STOP        5   // treat return as if it were an attempt to 
-                            // unravel the stack and gracefully exit out of 
-                            // sim_instr
-#define JMP_INTR        6   // Interrupt detected during processing
-#define JMP_SYNC_FAULT_RETURN 7
-#define JMP_REFETCH 8
-#define JMP_RESTART 9
+#define JMP_ENTRY             0
+#define JMP_REENTRY           1
+#define JMP_STOP              2
+#define JMP_SYNC_FAULT_RETURN 3
+#define JMP_REFETCH           4
+#define JMP_RESTART           5
 
 
 // The CPU supports 3 addressing modes
@@ -431,7 +424,6 @@ struct _cache_mode_register
 
 typedef struct _cache_mode_register _cache_mode_register;
 
-#if 1
 typedef struct mode_register
   {
     word36 r;
@@ -470,44 +462,6 @@ typedef struct mode_register
                     //  0       0           34
      word1 emr;     //  m       n           35 enable MR
   } _mode_register;
-#else
-typedef struct mode_register
-  {
-#ifdef L68
-    word15 FFV;
-#ifdef L68
-    word1 isolts_tracks;
-#endif
-    word1 OC_TRAP;
-    word1 ADR_TRAP;
-    word10 OPCODE;
-#endif
-    word1 cuolin;
-    word1 solin;
-    word1 sdpap;
-    word1 separ;
-    word2 tm;
-    word2 vm;
-#ifdef L68
-    word2 isolts_tracks2;
-#endif
-    word1 hrhlt;
-#ifdef DPS8M
-    word1 hrxfr;
-#endif
-#ifdef L68
-    word1 hropc;
-#endif
-    word1 ihr;
-    word1 ihrrs;
-// XXX This bit is used to track the position of the NORMAL/TEST switch
-//    word1 mrgctl;
-#ifdef DPS8M
-    word1 hexfp;
-#endif
-    word1 emr;
-  } _mode_register;
-#endif
 
 extern DEVICE cpu_dev;
 
@@ -729,10 +683,9 @@ struct DCDstruct
 
 typedef struct
   {
-    bool fault_pending;
-    int fault [N_FAULT_GROUPS];
+    vol int fault [N_FAULT_GROUPS];
                           // only one fault in groups 1..6 can be pending
-    bool XIP [N_SCU_UNITS_MAX];
+    vol bool XIP [N_SCU_UNITS_MAX];
   } events_t;
 
 // Physical Switches
@@ -1571,7 +1524,6 @@ typedef struct
                   // an XEC or XED instruction
     bool isXED; // The instruction being executed is the target of an
                 // XEC instruction
-    //bool isb29; // The instruction has a valid bit 29 set when fetched
 
     DCDstruct currentInstruction;
     EISstruct currentEISinstruction;
@@ -1609,16 +1561,14 @@ typedef struct
     struct _par PAR [8]; // pointer/address resisters
     struct _bar BAR;   // Base Address Register
     struct _dsbr DSBR; // Descriptor Segment Base Register
-#ifndef WAM
-    //_sdw SDWAM0; // Segment Descriptor Word Associative Memory
-#else
+#ifdef WAM
     _sdw SDWAM [N_WAM_ENTRIES]; // Segment Descriptor Word Associative Memory
+#endif
 #ifdef L68
     word4 SDWAMR;
 #endif
 #ifdef DPS8M
     word6 SDWAMR;
-#endif
 #endif
     _sdw * SDW; // working SDW
     _sdw SDW0; // a SDW not in SDWAM
@@ -1738,12 +1688,12 @@ typedef struct
 
 #ifdef WAM
     _ptw PTWAM [N_WAM_ENTRIES];
+#endif
 #ifdef L68
     word4 PTWAMR;
 #endif
 #ifdef DPS8M
     word6 PTWAMR;
-#endif
 #endif
     _ptw * PTW;
     _ptw0 PTW0; // a PTW not in PTWAM (PTWx1)
@@ -1789,9 +1739,6 @@ typedef struct
     bool secret_addressing_mode;
 #ifndef NOWENT
     bool went_appending; // we will go....
-#endif
-#if 0
-    bool bar_attempt;
 #endif
 #ifdef ROUND_ROBIN
     bool isRunning;
@@ -1893,7 +1840,27 @@ static inline void trackport (word24 a, word36 d)
   }
 #endif
 
+#ifdef THREADZ
+// Ugh. Circular dependencies XXX
+void lock_mem (void);
+void unlock_mem (void);
+#ifdef lockread
+#define LOCK_MEM if (! cpu.havelock) { lock_mem (); }
+#define UNLOCK_MEM if (! cpu.havelock) { unlock_mem (); }
+#else
+#define LOCK_MEM
+#define UNLOCK_MEM
+#endif // lockread
+#else // ! THREADZ
+#define LOCK_MEM
+#define UNLOCK_MEM
+#endif // ! THREADZ
+
 #ifdef SPEED
+// Ugh. Circular dependencies XXX
+void doFault (_fault faultNumber, _fault_subtype faultSubtype, 
+              const char * faultMsg) NO_RETURN;
+extern const _fault_subtype fst_str_nea;
 #ifdef SCUMEM
 // Stupid dependency order
 int lookup_cpu_mem_map (word24 addr, word24 * offset);
@@ -1933,9 +1900,13 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
     word24 offset;
     int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
     int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    LOCK_MEM;
     *data = scu [scuUnitIdx].M[offset] & DMASK;
+    UNLOCK_MEM;
 #else
+    LOCK_MEM;
     *data = M[addr] & DMASK;
+    UNLOCK_MEM;
 #endif
 #ifdef TR_WORK_MEM
     cpu.rTRticks ++;
@@ -1975,9 +1946,13 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
     word24 offset;
     int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
     int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    LOCK_MEM;
     scu [scuUnitIdx].M[offset] = data & DMASK;
+    UNLOCK_MEM;
 #else
+    LOCK_MEM;
     M[addr] = data & DMASK;
+    UNLOCK_MEM;
 #endif
 #ifdef TR_WORK_MEM
     cpu.rTRticks ++;
@@ -2020,12 +1995,21 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd,
     word24 offset;
     int scuUnitNum = lookup_cpu_mem_map (addr, & offset);
     int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    LOCK_MEM;
     *even = scu [scuUnitIdx].M[offset++] & DMASK;
-    *odd = scu [scuUnitIdx].M[offset] & DMASK;
-#else
-    *even = M[addr++] & DMASK;
+    UNLOCK_MEM;
     PNL (trackport (addr - 1, * even);)
+    LOCK_MEM;
+    *odd = scu [scuUnitIdx].M[offset] & DMASK;
+    UNLOCK_MEM;
+#else
+    LOCK_MEM;
+    *even = M[addr++] & DMASK;
+    UNLOCK_MEM;
+    PNL (trackport (addr - 1, * even);)
+    LOCK_MEM;
     *odd = M[addr] & DMASK;
+    UNLOCK_MEM;
 #endif
 #ifdef TR_WORK_MEM
     cpu.rTRticks ++;
@@ -2066,12 +2050,22 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd,
     word24 offset;
     int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
     int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    LOCK_MEM;
     scu [scuUnitIdx].M[offset++] = even & DMASK;
-    scu [scuUnitIdx].M[offset] = odd & DMASK;
-#else
-    M[addr++] = even;
+    UNLOCK_MEM;
     PNL (trackport (addr - 1, even);)
+    LOCK_MEM;
+    scu [scuUnitIdx].M[offset] = odd & DMASK;
+    UNLOCK_MEM;
+    PNL (trackport (addr, odd);)
+#else
+    LOCK_MEM;
+    M[addr++] = even;
+    UNLOCK_MEM;
+    PNL (trackport (addr - 1, even);)
+    LOCK_MEM;
     M[addr] = odd;
+    UNLOCK_MEM;
     PNL (trackport (addr, odd);)
 #endif
 #ifdef TR_WORK_MEM
@@ -2093,9 +2087,6 @@ static inline void core_readN (word24 addr, word36 * data, uint n,
         core_read (addr + i, data + i, ctx);
         HDBGMRead (addr + i, * (data + i));
       }
-#ifdef TR_WORK_MEM
-    cpu.rTRticks += (n+1) / 2; // Not n because pairs would have been read
-#endif
   }
 
 static inline void core_writeN (word24 addr, word36 * data, uint n,
@@ -2105,9 +2096,6 @@ static inline void core_writeN (word24 addr, word36 * data, uint n,
       {
         core_write (addr + i, data [i], ctx);
       }
-#ifdef TR_WORK_MEM
-    cpu.rTRticks += (n+1) / 2; // Not n because pairs would have been read
-#endif
   }
 
 int is_priv_mode (void);
@@ -2122,10 +2110,7 @@ void set_addr_mode (addr_modes_t mode);
 int queryScuUnitIdx (int cpu_unit_num, int cpu_port_num);
 void init_opcodes (void);
 void decodeInstruction (word36 inst, DCDstruct * p);
-//t_stat dumpKST (int32 arg, char * buf);
 t_stat memWatch (int32 arg, const char * buf);
-//_sdw0 *fetchSDW (word15 segno);
-_sdw *fetchSDW (word15 segno);
 char *strSDW0 (char * buf, _sdw *SDW);
 #ifdef SCUMEM
 int lookup_cpu_mem_map (word24 addr, word24 * offset);

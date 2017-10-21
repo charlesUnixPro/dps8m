@@ -6182,7 +6182,7 @@ static t_stat DoBasicInstruction (void)
 
           if (cpu.switches.drl_fatal)
             {
-              return STOP_HALT;
+              return STOP_STOP;
             }
           doFault (FAULT_DRL, fst_zero, "drl");
 
@@ -7735,7 +7735,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 
           if (! cpu.switches.dis_enable)
             {
-              return STOP_DIS;
+              return STOP_STOP;
             }
 
           // XXX This is subtle; g7Pending below won't see the queued
@@ -7843,7 +7843,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 
         default:
           if (cpu.switches.halt_on_unimp)
-            return STOP_ILLOP;
+            return STOP_STOP;
           doFault (FAULT_IPR,
                    fst_ill_op,
                    "Illegal instruction");
@@ -9158,7 +9158,7 @@ elapsedtime ();
 #endif
         default:
             if (cpu.switches.halt_on_unimp)
-                return STOP_ILLOP;
+                return STOP_STOP;
             doFault (FAULT_IPR,
                      fst_ill_op,
                      "Illegal instruction");
@@ -9353,7 +9353,7 @@ static int emCall (void)
         // case 17 used above
 
         case 18:     // halt
-            return STOP_HALT;
+            return STOP_STOP;
 
         case 19:     // putdecaq - put decimal contents of AQ to stdout
         {

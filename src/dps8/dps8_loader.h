@@ -109,3 +109,4 @@ t_stat dpsCmd_Dump (int32 arg, const char *buf);
 t_stat dpsCmd_Init (int32 arg, const char *buf);
 t_stat dpsCmd_Segment (int32 arg, const char *buf);
 t_stat dpsCmd_Segments (int32 arg, const char *buf);
+_sdw *fetchSDW (word15 segno);

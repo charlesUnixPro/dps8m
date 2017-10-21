@@ -230,14 +230,8 @@ static uint64 luf_limits[] =
 const char *sim_stop_messages[] =
   {
     "Unknown error",           // SCPE_OK
-    "Unimplemented Opcode",    // STOP_UNIMP
-    "DIS instruction",         // STOP_DIS
-    "Breakpoint",              // STOP_BKPT
-    "BUG",                     // STOP_BUG
-    "Fault cascade",           // STOP_FLT_CASCADE
-    "Halt",                    // STOP_HALT
-    "Illegal Opcode",          // STOP_ILLOP
     "Simulation stop",         // STOP_STOP
+    "Breakpoint",              // STOP_BKPT
   };
 
 /* End of simh interface */
@@ -315,41 +309,6 @@ void init_opcodes (void)
     IS_EIS (opcode1_dv3d);
   }
 
-
-// Assumes unpaged DSBR
-
-_sdw0 *fetchSDW (word15 segno)
-  {
-    word36 SDWeven, SDWodd;
-    
-    core_read2 ((cpu.DSBR.ADDR + 2u * segno) & PAMASK, & SDWeven, & SDWodd,
-                 __func__);
-    
-    // even word
-    
-    _sdw0 *SDW = & cpu._s;
-    memset (SDW, 0, sizeof (cpu._s));
-    
-    SDW->ADDR = (SDWeven >> 12) & 077777777;
-    SDW->R1 = (SDWeven >> 9) & 7;
-    SDW->R2 = (SDWeven >> 6) & 7;
-    SDW->R3 = (SDWeven >> 3) & 7;
-    SDW->DF = TSTBIT (SDWeven, 2);
-    SDW->FC = SDWeven & 3;
-    
-    // odd word
-    SDW->BOUND = (SDWodd >> 21) & 037777;
-    SDW->R = TSTBIT (SDWodd, 20);
-    SDW->E = TSTBIT (SDWodd, 19);
-    SDW->W = TSTBIT (SDWodd, 18);
-    SDW->P = TSTBIT (SDWodd, 17);
-    SDW->U = TSTBIT (SDWodd, 16);
-    SDW->G = TSTBIT (SDWodd, 15);
-    SDW->C = TSTBIT (SDWodd, 14);
-    SDW->EB = SDWodd & 037777;
-    
-    return SDW;
-  }
 
 
 char * strSDW0 (char * buf, _sdw0 * SDW)
@@ -541,6 +500,38 @@ static void getSerialNumber (void)
   }
 
 
+#ifdef STATS
+static void doStats (void)
+  {
+    static struct timespec statsTime;
+    static bool first = true;
+    if (first)
+      {
+        first = false;
+        clock_gettime (CLOCK_BOOTTIME, & statsTime);
+        sim_printf ("stats started\r\n");
+      }
+    else
+      {
+        struct timespec now, delta;
+        clock_gettime (CLOCK_BOOTTIME, & now);
+        timespec_diff (& statsTime, & now, & delta);
+        statsTime = now;
+        sim_printf ("stats %6ld.%02ld\r\n", delta.tv_sec,
+                    delta.tv_nsec / 10000000);
+
+        sim_printf ("Instruction counts\r\n");
+        for (uint i = 0; i < 8; i ++)
+          {
+            sim_printf (" %9lld", cpus[i].instrCnt);
+            cpus[i].instrCnt = 0;
+          }
+        sim_printf ("\r\n");
+
+        sim_printf ("\r\n");
+      }
+  }
+#endif
 #ifndef NO_EV_POLL
 // The 100Hz timer as expired; poll I/O
 
@@ -1138,7 +1129,7 @@ setCPU:;
             setCpuCycle (SYNC_FAULT_RTN_cycle);
             break;
         case JMP_STOP:
-            reason = STOP_HALT;
+            reason = STOP_STOP;
             goto leave;
         case JMP_REFETCH:
 

@@ -354,37 +354,40 @@ static void makeITS(int segno, int offset, int tag, word36 *Ypair)
     Ypair[1] = odd;
 }
 
-//static
-//_sdw0 *fetchSDW(int segno)
-//{
-//    int sdwAddr = DSBR.ADDR + (2 * segno);
-//    
-//    static _sdw0 SDW0;
-//    
-//    word36 SDWeven = M[sdwAddr + 0];
-//    word36 SDWodd  = M[sdwAddr + 1];
-//
-//    // even word
-//    SDW0.ADDR = (SDWeven >> 12) & 077777777;
-//    SDW0.R1 = (SDWeven >> 9) & 7;
-//    SDW0.R2 = (SDWeven >> 6) & 7;
-//    SDW0.R3 = (SDWeven >> 3) & 7;
-//    SDW0.F = TSTBIT(SDWeven, 2);
-//    SDW0.FC = SDWeven & 3;
-//    
-//    // odd word
-//    SDW0.BOUND = (SDWodd >> 21) & 037777;
-//    SDW0.R = TSTBIT(SDWodd, 20);
-//    SDW0.E = TSTBIT(SDWodd, 19);
-//    SDW0.W = TSTBIT(SDWodd, 18);
-//    SDW0.P = TSTBIT(SDWodd, 17);
-//    SDW0.U = TSTBIT(SDWodd, 16);
-//    SDW0.G = TSTBIT(SDWodd, 15);
-//    SDW0.C = TSTBIT(SDWodd, 14);
-//    SDW0.EB = SDWodd & 037777;
-//
-//    return &SDW0;
-//}
+// Assumes unpaged DSBR
+
+_sdw0 *fetchSDW (word15 segno)
+  {
+    word36 SDWeven, SDWodd;
+    
+    core_read2 ((cpu.DSBR.ADDR + 2u * segno) & PAMASK, & SDWeven, & SDWodd,
+                 __func__);
+    
+    // even word
+    
+    _sdw0 *SDW = & cpu._s;
+    memset (SDW, 0, sizeof (cpu._s));
+    
+    SDW->ADDR = (SDWeven >> 12) & 077777777;
+    SDW->R1 = (SDWeven >> 9) & 7;
+    SDW->R2 = (SDWeven >> 6) & 7;
+    SDW->R3 = (SDWeven >> 3) & 7;
+    SDW->DF = TSTBIT (SDWeven, 2);
+    SDW->FC = SDWeven & 3;
+    
+    // odd word
+    SDW->BOUND = (SDWodd >> 21) & 037777;
+    SDW->R = TSTBIT (SDWodd, 20);
+    SDW->E = TSTBIT (SDWodd, 19);
+    SDW->W = TSTBIT (SDWodd, 18);
+    SDW->P = TSTBIT (SDWodd, 17);
+    SDW->U = TSTBIT (SDWodd, 16);
+    SDW->G = TSTBIT (SDWodd, 15);
+    SDW->C = TSTBIT (SDWodd, 14);
+    SDW->EB = SDWodd & 037777;
+    
+    return SDW;
+  }
 #endif // ndef SCUMEM
 
 int getAddress(int segno, int offset)
