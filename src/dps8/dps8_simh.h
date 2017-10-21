@@ -42,10 +42,14 @@ extern DEVICE scu_dev;
     ) 
 #endif
 
+#ifndef THREADZ
+#define dps8_sim_debug _sim_debug
+#endif
+
 #undef sim_debug
 #define sim_debug(dbits, dptr, ...) \
   if_sim_debug((dbits), dptr) \
-    _sim_debug ((dbits), dptr, __VA_ARGS__); \
+    dps8_sim_debug ((dbits), dptr, __VA_ARGS__); \
   else \
     (void) 0
 
@@ -122,10 +126,12 @@ extern DEVICE scu_dev;
 
 extern uint32 sim_brk_summ, sim_brk_types, sim_brk_dflt;
 extern FILE *sim_deb;
-void _sim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...)
+#ifdef THREADZ
+void dps8_sim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...)
 #ifdef __GNUC__
   __attribute__ ((format (printf, 3, 4)))
 #endif
 ;
+#endif
 #define sim_warn(format, ...) _sim_err (format, ##__VA_ARGS__)
 #define sim_err(format, ...) { _sim_err (format, ##__VA_ARGS__); longjmp (cpu.jmpMain, JMP_STOP); }

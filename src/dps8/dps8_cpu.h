@@ -1729,9 +1729,7 @@ typedef struct
         word3  PRR;
         word18 IC;
       } cu_data;            // For STCD instruction
-#ifdef TR_WORK
     uint rTRticks;
-#endif
 #ifdef ISOLTS
     uint rTRlsb;
 #endif
