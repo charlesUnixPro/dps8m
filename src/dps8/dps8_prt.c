@@ -33,6 +33,8 @@
 #include "dps8_cpu.h"
 #include "dps8_cable.h"
 
+#define DBG_CTR 1
+
 //-- // XXX We use this where we assume there is only one unit
 //-- #define ASSUME0 0
 //-- 

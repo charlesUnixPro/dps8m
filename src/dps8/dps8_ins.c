@@ -40,6 +40,8 @@
 #include "dps8_iom.h"
 #include "dps8_cable.h"
 
+#define DBG_CTR cpu.cycleCnt
+
 // Forward declarations
 
 static int doABSA (word36 * result);

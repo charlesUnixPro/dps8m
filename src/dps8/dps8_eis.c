@@ -55,6 +55,8 @@
 #include "dps8_ins.h"
 #include "dps8_eis.h"
 
+#define DBG_CTR cpu.cycleCnt
+
 //  Restart status
 //
 //  a6bd   n/a

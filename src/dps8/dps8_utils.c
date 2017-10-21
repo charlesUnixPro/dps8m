@@ -31,6 +31,8 @@
 #include "dps8_utils.h"
 #include "dps8_opcodetable.h"
 
+#define DBG_CTR 1
+
 /*
  * misc utility routines used by simulator
  */

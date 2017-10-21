@@ -52,7 +52,7 @@ extern DEVICE scu_dev;
 #undef sim_debug
 #define sim_debug(dbits, dptr, ...) \
   if_sim_debug((dbits), dptr) \
-    dps8_sim_debug ((dbits), dptr, __VA_ARGS__); \
+    dps8_sim_debug ((dbits), dptr, DBG_CTR, __VA_ARGS__); \
   else \
     (void) 0
 

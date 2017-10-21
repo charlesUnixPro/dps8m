@@ -57,6 +57,8 @@
 #include "panelScraper.h"
 #endif
 
+#define DBG_CTR 1
+
 #define ASSUME0 0
 
 // XXX Strictly speaking, memory belongs in the SCU
@@ -66,7 +68,7 @@
 // contention across multiple CPUs, but that is a level of
 // emulation that will be ignored.
 
-word36 *M = NULL;                                          /*!< memory */
+word36 vol * M = NULL;                                          /*!< memory */
 
 
 // These are part of the simh interface

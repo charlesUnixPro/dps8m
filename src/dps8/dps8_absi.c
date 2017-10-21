@@ -31,6 +31,8 @@
 
 #include "udplib.h"
 
+#define DBG_CTR 1
+
 #define N_ABSI_UNITS 1 // default
 
 static t_stat absi_reset (DEVICE * dptr);

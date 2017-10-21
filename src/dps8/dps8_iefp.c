@@ -30,6 +30,8 @@
 #include "dps8_utils.h"
 #include "dps8_addrmods.h"
 
+#define DBG_CTR cpu.cycleCnt
+
 // new Read/Write stuff ...
 
 t_stat Read (word18 address, word36 * result, _processor_cycle_type cyctyp)

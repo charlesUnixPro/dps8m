@@ -34,6 +34,8 @@
 #include "dps8_cable.h"
 #include "sim_disk.h"
 
+#define DBG_CTR 1
+
 /*
  disk.c -- disk drives
  

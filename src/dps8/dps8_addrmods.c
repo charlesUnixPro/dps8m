@@ -32,6 +32,8 @@
 #include "dps8_iefp.h"
 #include "dps8_opcodetable.h"
 
+#define DBG_CTR cpu.cycleCnt
+
 // Computed Address Formation Flowcharts
 
 //

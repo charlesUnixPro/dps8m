@@ -50,6 +50,8 @@
 __thread uint currentRunningCpuIdx;
 #endif
 
+#define DBG_CTR cpu.cycleCnt
+
 // XXX Use this when we assume there is only a single cpu unit
 #define ASSUME0 0
 
@@ -3615,10 +3617,39 @@ void addAPUhist (enum APUH_e op)
 #endif
 
 #ifdef THREADZ
+static pthread_mutex_t debug_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static const char * get_dbg_verb (uint32 dbits, DEVICE * dptr)
+  {
+    static const char * debtab_none    = "DEBTAB_ISNULL";
+    static const char * debtab_nomatch = "DEBTAB_NOMATCH";
+    const char * some_match = NULL;
+    int32 offset = 0;
+
+    if (dptr->debflags == 0)
+      return debtab_none;
+
+    dbits &= dptr->dctrl;     /* Look for just the bits tha matched */
+
+    /* Find matching words for bitmask */
+
+    while (dptr->debflags[offset].name && (offset < 32))
+      {
+        if (dptr->debflags[offset].mask == dbits)   /* All Bits Match */
+          return dptr->debflags[offset].name;
+        if (dptr->debflags[offset].mask & dbits)
+          some_match = dptr->debflags[offset].name;
+        offset ++;
+      }
+    return some_match ? some_match : debtab_nomatch;
+  }
+
 void dps8_sim_debug (uint32 dbits, DEVICE * dptr, const char* fmt, ...)
   {
+    pthread_mutex_lock (& debug_lock);
     if (sim_deb && dptr && (dptr->dctrl & dbits))
       {
+        const char * debug_type = get_dbg_verb (dbits, dptr);
         char stackbuf[STACKBUFSIZE];
         int32 bufsize = sizeof (stackbuf);
         char * buf = stackbuf;
@@ -3665,7 +3696,7 @@ void dps8_sim_debug (uint32 dbits, DEVICE * dptr, const char* fmt, ...)
                   {
                     if ((i != j) || (i == 0))
                       {
-                          fprintf (sim_deb, "DBG(%lld) %.*s\r\n", cpu.cycleCnt, i-j, &buf[j]);
+                          fprintf (sim_deb, "DBG(%lld) %s %s %.*s\r\n", cpu.cycleCnt, dptr->name, debug_type, i-j, &buf[j]);
                       }
                   }
                 j = i + 1;
@@ -3677,6 +3708,6 @@ void dps8_sim_debug (uint32 dbits, DEVICE * dptr, const char* fmt, ...)
         if (buf != stackbuf)
           free (buf);
       }
-    return;
+    pthread_mutex_unlock (& debug_lock);
   }
 #endif

@@ -30,9 +30,8 @@
 #include "dps8_append.h"
 #include "dps8_ins.h"
 #include "dps8_utils.h"
-#ifndef QUIET_UNUSED
-static uint64 FR;
-#endif
+
+#define DBG_CTR cpu.cycleCnt
 
 /*
  FAULT RECOGNITION

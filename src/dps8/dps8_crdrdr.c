@@ -42,6 +42,8 @@
 #include "dps8_cpu.h"
 #include "dps8_cable.h"
 
+#define DBG_CTR 1
+
 /*
  Copyright (c) 2007-2013 Michael Mondy
  

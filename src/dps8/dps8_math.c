@@ -34,6 +34,8 @@
 #include "dps8_math.h"
 #include "dps8_utils.h"
 
+#define DBG_CTR cpu.cycleCnt
+
 #ifdef __CYGWIN__
 long double ldexpl(long double x, int n) {
        return __builtin_ldexpl(x, n);

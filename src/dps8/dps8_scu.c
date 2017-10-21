@@ -555,6 +555,8 @@
 #include "threadz.h"
 #endif
 
+#define DBG_CTR 1
+
 static t_stat scu_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat scu_set_nunits (UNIT * uptr, int32 value, const char * cptr, 
                               void * desc);

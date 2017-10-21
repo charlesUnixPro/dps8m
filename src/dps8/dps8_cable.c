@@ -33,6 +33,9 @@
 #include <unistd.h>
 #include "shm.h"
 #endif
+
+#define DBG_CTR 1
+
 struct cables_t * cables = NULL;
 
 #ifdef THREADZ

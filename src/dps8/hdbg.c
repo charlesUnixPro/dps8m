@@ -73,6 +73,10 @@ static struct hevt * hevents = NULL;
 static unsigned long hdbgSize = 0;
 static unsigned long hevtPtr = 0;
 
+#ifdef THREADZ
+static pthread_mutex_t hdbg_lock = PTHREAD_MUTEX_INITIALIZER;
+#endif
+
 static void createBuffer (void)
   {
     if (hevents)
@@ -95,11 +99,14 @@ static void createBuffer (void)
 
 void hdbgTrace (void)
   {
+#ifdef THREADZ
+    pthread_mutex_lock (& debug_lock);
+#endif
     if (! hevents)
-      return;
+      goto done;
 #ifdef ISOLTS
 if (currentRunningCpuIdx == 0)
-  return;
+  goto done;
 #endif
     hevents [hevtPtr] . type = hevtTrace;
     hevents [hevtPtr] . time = cpu.cycleCnt;
@@ -109,47 +116,68 @@ if (currentRunningCpuIdx == 0)
     hevents [hevtPtr] . trace . ring = cpu . PPR.PRR;
     hevents [hevtPtr] . trace . inst = cpu.cu.IWB;
     hevtPtr = (hevtPtr + 1) % hdbgSize;
+done: ;
+#ifdef THREADZ
+    pthread_mutex_unlock (& debug_lock);
+#endif
   }
 
 void hdbgMRead (word24 addr, word36 data)
   {
+#ifdef THREADZ
+    pthread_mutex_lock (& debug_lock);
+#endif
     if (! hevents)
-      return;
+      goto done;
 #ifdef ISOLTS
 if (currentRunningCpuIdx == 0)
-  return;
+  goto done;
 #endif
     hevents [hevtPtr] . type = hevtMRead;
     hevents [hevtPtr] . time = cpu.cycleCnt;
     hevents [hevtPtr] . memref . addr = addr;
     hevents [hevtPtr] . memref . data = data;
     hevtPtr = (hevtPtr + 1) % hdbgSize; 
+done: ;
+#ifdef THREADZ
+    pthread_mutex_unlock (& debug_lock);
+#endif
   }
 
 void hdbgMWrite (word24 addr, word36 data)
   {
+#ifdef THREADZ
+    pthread_mutex_lock (& debug_lock);
+#endif
     if (! hevents)
-      return;
+      goto done;
 #ifdef ISOLTS
 if (currentRunningCpuIdx == 0)
-  return;
+  goto done;
 #endif
     hevents [hevtPtr] . type = hevtMWrite;
     hevents [hevtPtr] . time = cpu.cycleCnt;
     hevents [hevtPtr] . memref . addr = addr;
     hevents [hevtPtr] . memref . data = data;
     hevtPtr = (hevtPtr + 1) % hdbgSize; 
+done: ;
+#ifdef THREADZ
+    pthread_mutex_unlock (& debug_lock);
+#endif
   }
 
 void hdbgFault (_fault faultNumber, _fault_subtype subFault,
                 const char * faultMsg)
 
   {
+#ifdef THREADZ
+    pthread_mutex_lock (& debug_lock);
+#endif
     if (! hevents)
-      return;
+      goto done;
 #ifdef ISOLTS
 if (currentRunningCpuIdx == 0)
-  return;
+  goto done;
 #endif
     hevents [hevtPtr] . type = hevtFault;
     hevents [hevtPtr] . time = cpu.cycleCnt;
@@ -158,37 +186,55 @@ if (currentRunningCpuIdx == 0)
     strncpy (hevents [hevtPtr] . fault . faultMsg, faultMsg, 63);
     hevents [hevtPtr] . fault . faultMsg [63] = 0;
     hevtPtr = (hevtPtr + 1) % hdbgSize; 
+done: ;
+#ifdef THREADZ
+    pthread_mutex_unlock (& debug_lock);
+#endif
   }
 
 void hdbgReg (enum hregs_t type, word36 data)
   {
+#ifdef THREADZ
+    pthread_mutex_lock (& debug_lock);
+#endif
     if (! hevents)
-      return;
+      goto done;
 #ifdef ISOLTS
 if (currentRunningCpuIdx == 0)
-  return;
+  goto done;
 #endif
     hevents[hevtPtr].type = hevtReg;
     hevents[hevtPtr].time = cpu.cycleCnt;
     hevents[hevtPtr].reg.type = type;
     hevents[hevtPtr].reg.data = data;
     hevtPtr = (hevtPtr + 1) % hdbgSize; 
+done: ;
+#ifdef THREADZ
+    pthread_mutex_unlock (& debug_lock);
+#endif
   }
 
 
 void hdbgPAReg (enum hregs_t type, struct _par * data)
   {
+#ifdef THREADZ
+    pthread_mutex_lock (& debug_lock);
+#endif
     if (! hevents)
-      return;
+      goto done;
 #ifdef ISOLTS
 if (currentRunningCpuIdx == 0)
-  return;
+  goto done;
 #endif
     hevents[hevtPtr].type = hevtPAReg;
     hevents[hevtPtr].time = cpu.cycleCnt;
     hevents[hevtPtr].par.type = type;
     hevents[hevtPtr].par.data =  * data;
     hevtPtr = (hevtPtr + 1) % hdbgSize; 
+done: ;
+#ifdef THREADZ
+    pthread_mutex_unlock (& debug_lock);
+#endif
   }
 
 static FILE * hdbgOut = NULL;
@@ -283,13 +329,16 @@ static void printPAReg (struct hevt * p)
 
 void hdbgPrint (void)
   {
+#ifdef THREADZ
+    pthread_mutex_lock (& debug_lock);
+#endif
     if (! hevents)
-      return;
+      goto done;
     hdbgOut = fopen ("hdbg.list", "w");
     if (! hdbgOut)
       {
         sim_printf ("can't open hdbg.list\n");
-        return;
+        goto done;
       }
     time_t curtime;
     time (& curtime);
@@ -338,19 +387,29 @@ void hdbgPrint (void)
     if (fd == -1)
       {
         sim_printf ("can't open M.dump\n");
-        return;
+        goto done;
       }
     /* ssize_t n = */ write (fd, M, MEMSIZE * sizeof (word36));
     close (fd);
+done: ;
+#ifdef THREADZ
+    pthread_mutex_unlock (& debug_lock);
+#endif
   }
 
 // set buffer size 
 t_stat hdbg_size (UNUSED int32 arg, const char * buf)
   {
+#ifdef THREADZ
+    pthread_mutex_lock (& debug_lock);
+#endif
     hdbgSize = strtoul (buf, NULL, 0);
     sim_printf ("hdbg size set to %ld\n", hdbgSize);
     createBuffer ();
     return SCPE_OK;
+#ifdef THREADZ
+    pthread_mutex_unlock (& debug_lock);
+#endif
   }
 
 t_stat hdbg_print (UNUSED int32 arg, const char * buf)

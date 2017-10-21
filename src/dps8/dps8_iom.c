@@ -227,6 +227,8 @@
 #include "threadz.h"
 #endif
 
+#define DBG_CTR 1
+
 #define ASSUME_CPU_0 0
 
 // Nomenclature

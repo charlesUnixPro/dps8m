@@ -41,6 +41,8 @@
 #include "sim_tmxr.h"
 #include <regex.h>
 
+#define DBG_CTR 1
+
 #ifdef THREADZ
 #include "threadz.h"
 

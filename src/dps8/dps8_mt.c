@@ -32,6 +32,8 @@
 #include "dps8_iom.h"
 #include "dps8_cable.h"
 
+#define DBG_CTR 1
+
 /*
  mt.c -- mag tape
  See manual AN87

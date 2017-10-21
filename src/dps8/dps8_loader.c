@@ -555,7 +555,7 @@ static int loadDeferredSegment(segment *sg, int addr24)
         
     word18 segwords = (word18) sg->size;
     
-    memcpy(M + addr24, sg->M, (unsigned long) sg->size * sizeof(word36));
+    memcpy((void *) M + addr24, sg->M, (unsigned long) sg->size * sizeof(word36));
     
     cpu . DSBR.BND = 037777;  // temporary max bound ...
     
@@ -1120,7 +1120,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr,
             if (n == 2)
             {
                 if (currSegment && currSegment->M == NULL)
-                    currSegment->M = &M[maddr];
+                    currSegment->M = (word36 *) &M[maddr];
 
                 if (maddr > MEMSIZE)
                     return SCPE_NXM;
@@ -1149,7 +1149,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr,
             {
                 if (currSegment && currSegment->M == NULL)
                 {
-                    currSegment->M = &M[ldaddr];
+                    currSegment->M = (word36 *) &M[ldaddr];
                     currSegment->segno = segno;
                 }
                 if (maddr > MEMSIZE)
@@ -1228,7 +1228,7 @@ static t_stat load_simh (FILE *fileref, int32 segno, int32 ldaddr,
             word36 w2 = extr36 (bytes, 1);
 
             if (currSegment && currSegment->M == NULL)
-              currSegment->M = &M[maddr];
+              currSegment->M = (word36 *) &M[maddr];
 
             if (maddr > MEMSIZE)
               return SCPE_NXM;
@@ -1253,7 +1253,7 @@ static t_stat load_simh (FILE *fileref, int32 segno, int32 ldaddr,
             word36 w2 = extr36 (bytes, 1);
 
             if (currSegment && currSegment->M == NULL)
-              currSegment->M = &M[maddr];
+              currSegment->M = (word36 *) &M[maddr];
 
             if (maddr > MEMSIZE)
               return SCPE_NXM;
@@ -1397,7 +1397,7 @@ char * lookupSegmentAddress (word18 segno, word18 offset, char * * compname, wor
 static t_stat sim_dump (FILE *fileref, UNUSED const char * cptr, UNUSED const char * fnam, 
                  UNUSED int flag)
 {
-    size_t rc = fwrite (M, sizeof (word36), MEMSIZE, fileref);
+    size_t rc = fwrite ((word36 *) M, sizeof (word36), MEMSIZE, fileref);
     if (rc != MEMSIZE)
     {
         sim_printf ("fwrite returned %ld; expected %d\n", (long) rc, MEMSIZE);

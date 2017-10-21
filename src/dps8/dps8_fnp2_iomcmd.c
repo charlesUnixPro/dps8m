@@ -27,6 +27,9 @@
 #include "dps8_fnp2.h"
 #include "dps8_fnp2_iomcmd.h"
 #include "fnpuv.h"
+
+#define DBG_CTR 1
+
 #ifdef THREADZ
 #include "threadz.h"
 

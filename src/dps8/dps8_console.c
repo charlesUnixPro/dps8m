@@ -44,6 +44,8 @@
 
 #include "libtelnet.h"
 
+#define DBG_CTR 1
+
 //#define ASSUME0 0
 
 #define N_OPCON_UNITS 1 // default
