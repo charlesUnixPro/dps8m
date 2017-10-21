@@ -352,6 +352,12 @@ t_stat hdbg_size (UNUSED int32 arg, const char * buf)
     createBuffer ();
     return SCPE_OK;
   }
+
+t_stat hdbg_print (UNUSED int32 arg, const char * buf)
+  {
+    hdbgPrint ();
+    return SCPE_OK;
+  }
 #else
 #include "dps8_utils.h"
 t_stat hdbg_size (UNUSED int32 arg, UNUSED const char * buf)
