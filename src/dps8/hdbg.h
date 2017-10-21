@@ -12,6 +12,7 @@
 #define HDBG_H
 
 t_stat hdbg_size (int32 arg, UNUSED const char * buf);
+t_stat hdbg_print (int32 arg, UNUSED const char * buf);
 #ifdef HDBG
 void hdbgTrace (void);
 void hdbgPrint (void);
