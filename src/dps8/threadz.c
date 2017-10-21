@@ -543,6 +543,7 @@ void int_handler (int signal);
 void setSignals (void)
   {
     struct sigaction act;
+    memset (& act, 0, sizeof (act));
     act.sa_handler = int_handler;
     act.sa_flags = 0;
     sigaction (SIGINT, & act, NULL);
