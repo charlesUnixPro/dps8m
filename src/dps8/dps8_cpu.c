@@ -544,7 +544,6 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
         oneHz = 0;
         rdrProcessEvent (); 
       }
-    scpProcessEvent (); 
     fnpProcessEvent (); 
     consoleProcess ();
 #ifndef __MINGW64__
@@ -1192,7 +1191,6 @@ setCPU:;
         if (queueSubsample ++ > 10240) // ~ 100Hz
           {
             queueSubsample = 0;
-            scpProcessEvent (); 
             fnpProcessEvent (); 
             consoleProcess ();
             absiProcessEvent ();
@@ -2017,7 +2015,6 @@ t_stat threadz_sim_instr (void)
             if (queueSubsample ++ > 10240) // ~ 100Hz
               {
                 queueSubsample = 0;
-                //scpProcessEvent ();
                 fnpProcessEvent ();
                 consoleProcess ();
                 absiProcessEvent ();
