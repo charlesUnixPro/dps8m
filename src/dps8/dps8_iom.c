@@ -2511,6 +2511,11 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
     thisIOMHaveLock = false;
 #endif
 
+#ifdef THREADZ
+    // Force mailbox and dma data to be up-to-date 
+    fence ();
+#endif
+
 // XXX this should call scu_svc
 
 // XXX shouldn't it interrupt the SCU that invoked the connect?
