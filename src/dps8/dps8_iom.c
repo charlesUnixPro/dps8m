@@ -1757,7 +1757,17 @@ static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
     iom_core_write (addr, faultWord, __func__);
 #endif
 
+#ifdef THREADZ
+    unlock_mem ();
+    thisIOMHaveLock = false;
+#endif
+
     send_general_interrupt (iomUnitIdx, 1, imwSystemFaultPic);
+
+#ifdef THREADZ
+    lock_mem ();
+    thisIOMHaveLock = false;
+#endif
 
     word36 ddcw;
 #ifdef SCUMEM

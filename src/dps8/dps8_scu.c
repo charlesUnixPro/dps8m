@@ -1736,8 +1736,9 @@ int scu_cioc (uint cpuUnitIdx, uint scuUnitIdx, uint scu_port_num,
       {
         int iomUnitIdx = portp->devIdx;
 #ifdef THREADZ
+        unlock_scu ();
         iom_interrupt (scuUnitIdx, (uint) iomUnitIdx);
-        goto done;
+        return 0;
 #else // ! THREADZ
         if (sys_opts . iom_times . connect < 0)
           {
