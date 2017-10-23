@@ -50,11 +50,19 @@ extern DEVICE scu_dev;
 #endif
 
 #undef sim_debug
+#ifdef THREADZ
 #define sim_debug(dbits, dptr, ...) \
   if_sim_debug((dbits), dptr) \
     dps8_sim_debug ((dbits), dptr, DBG_CTR, __VA_ARGS__); \
   else \
     (void) 0
+#else
+#define sim_debug(dbits, dptr, ...) \
+  if_sim_debug((dbits), dptr) \
+    dps8_sim_debug ((dbits), dptr, __VA_ARGS__); \
+  else \
+    (void) 0
+#endif
 
 /* scp Debug flags */
 

@@ -1772,13 +1772,10 @@ static t_stat dpsCmd_InitUnpagedSegmentTable ()
 #ifdef WAM
 static t_stat dpsCmd_InitSDWAM ()
   {
-    uint save = currentRunningCpuIdx;
     for (uint i = 0; i < N_CPU_UNITS_MAX; i ++)
       {
-        setCPUnum (i);
-        memset (cpu.SDWAM, 0, sizeof (cpu.SDWAM));
+        memset (cpus[i].SDWAM, 0, sizeof (cpu.SDWAM));
       }
-    setCPUnum (save);
     
     if (! sim_quiet)
       sim_printf ("zero-initialized SDWAM\n");

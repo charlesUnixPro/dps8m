@@ -100,6 +100,26 @@ bool test_mem_lock (void)
     return false;   
   }
 
+pthread_spinlock_t scu_lock;
+
+void lock_scu (void)
+  {
+    //sim_debug (DBG_TRACE, & cpu_dev, "lock_scu\n");
+    int rc;
+    rc = pthread_spin_lock (& scu_lock);
+    if (rc)
+      sim_printf ("lock_scu pthread_spin_lock scu %d\n", rc);
+  }
+
+void unlock_scu (void)
+  {
+    //sim_debug (DBG_TRACE, & cpu_dev, "unlock_scu\n");
+    int rc;
+    rc = pthread_spin_unlock (& scu_lock);
+    if (rc)
+      sim_printf ("unlock_scu pthread_spin_lock scu %d\n", rc);
+  }
+
 
 static pthread_mutex_t tst_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -534,6 +554,11 @@ void initThreadz (void)
   {
     // chnThreadz is sparse; make sure 'started' is false
     memset (chnThreadz, 0, sizeof (chnThreadz));
+
+#ifdef use_spinlock
+    pthread_spin_init (& mem_lock, PTHREAD_PROCESS_PRIVATE);
+#endif
+    pthread_spin_init (& scu_lock, PTHREAD_PROCESS_PRIVATE);
   }
 
 // Set up per-thread signal handlers

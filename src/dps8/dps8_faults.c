@@ -865,11 +865,9 @@ void setG7fault (uint cpuNo, _fault faultNo, _fault_subtype subFault)
   {
     sim_debug (DBG_FAULT, & cpu_dev, "setG7fault CPU %d fault %d (%o) sub %"PRId64" %"PRIo64"\n", 
                cpuNo, faultNo, faultNo, subFault.bits, subFault.bits);
-    uint save = setCPUnum (cpuNo);
-    cpu.g7FaultsPreset |= (1u << faultNo);
+    cpus[cpuNo].g7FaultsPreset |= (1u << faultNo);
     //cpu.g7SubFaultsPreset [faultNo] = subFault;
-    cpu.g7SubFaults [faultNo] = subFault;
-    setCPUnum (save);
+    cpus[cpuNo].g7SubFaults [faultNo] = subFault;
   }
 
 #ifdef L68

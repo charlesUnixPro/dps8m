@@ -1011,6 +1011,9 @@ static char * pcells (uint scuUnitIdx, char * buf)
 t_stat scu_smic (uint scuUnitIdx, uint UNUSED cpuUnitIdx, 
                  uint UNUSED cpu_port_num, word36 rega)
   {
+#ifdef THREADZ
+    lock_scu ();
+#endif
 // smic can set cells but not reset them...
 #if 1
     if (getbits36_1 (rega, 35))
@@ -1064,6 +1067,9 @@ t_stat scu_smic (uint scuUnitIdx, uint UNUSED cpuUnitIdx,
 #endif
     dumpIR ("smic", scuUnitIdx);
     deliverInterrupts (scuUnitIdx);
+#ifdef THREADZ
+    unlock_scu ();
+#endif
     return SCPE_OK;
   }
 
@@ -1137,8 +1143,14 @@ t_stat scu_sscr (uint scuUnitIdx, UNUSED uint cpuUnitIdx,
       {
         case 00000: // Set system controller mode register
           {
+#ifdef THREADZ
+            lock_scu ();
+#endif
             scu [scuUnitIdx] . id = (word4) getbits36_4 (regq, 50 - 36);
             scu [scuUnitIdx] . modeReg = getbits36_18 (regq, 54 - 36);
+#ifdef THREADZ
+            unlock_scu ();
+#endif
           }
           break;
 
@@ -1146,6 +1158,9 @@ t_stat scu_sscr (uint scuUnitIdx, UNUSED uint cpuUnitIdx,
                     // (4MW SCU only)
           {
             sim_debug (DBG_DEBUG, & scu_dev, "sscr 1 %d A: %012"PRIo64" Q: %012"PRIo64"\n", scuUnitIdx, rega, regq);
+#ifdef THREADZ
+            lock_scu ();
+#endif
             scu_t * up = scu + scuUnitIdx;
             for (int maskab = 0; maskab < 2; maskab ++)
               {
@@ -1193,6 +1208,9 @@ t_stat scu_sscr (uint scuUnitIdx, UNUSED uint cpuUnitIdx,
             up -> port_enable [6] = (regq >> 1) & 01;
             up -> port_enable [7] = (regq >> 0) & 01;
 
+#ifdef THREADZ
+            unlock_scu ();
+#endif
             // XXX A, A1, B, B1, INT, LWR not implemented. (AG87-00A pgs 2-5. 2-6)
             break;
           }
@@ -1206,6 +1224,9 @@ t_stat scu_sscr (uint scuUnitIdx, UNUSED uint cpuUnitIdx,
         //case 00062: // Set mask register port 6
         //case 00072: // Set mask register port 7
           {
+#ifdef THREADZ
+            lock_scu ();
+#endif
             uint port_num = (addr >> 6) & 07;
             sim_debug (DBG_DEBUG, & scu_dev, "Set mask register port %d to "
                        "%012"PRIo64",%012"PRIo64"\n", 
@@ -1234,6 +1255,9 @@ t_stat scu_sscr (uint scuUnitIdx, UNUSED uint cpuUnitIdx,
                 sim_debug (DBG_WARN, & scu_dev, 
                            "%s: No masks assigned to cpu on port %d\n", 
                            __func__, port_num);
+#ifdef THREADZ
+                unlock_scu ();
+#endif
                 return SCPE_OK;
               }
 
@@ -1274,11 +1298,17 @@ t_stat scu_sscr (uint scuUnitIdx, UNUSED uint cpuUnitIdx,
                        scu[scuUnitIdx].exec_intr_mask[mask_num]);
 
             deliverInterrupts (scuUnitIdx);
+#ifdef THREADZ
+            unlock_scu ();
+#endif
           }
           break;
 
         case 00003: // Set interrupt cells
           {
+#ifdef THREADZ
+            lock_scu ();
+#endif
             for (uint i = 0; i < 16; i ++)
               {
                 scu [scuUnitIdx] . cells [i] = 
@@ -1295,6 +1325,9 @@ t_stat scu_sscr (uint scuUnitIdx, UNUSED uint cpuUnitIdx,
                        scuUnitIdx, pcells (scuUnitIdx, pcellb));
             dumpIR ("sscr set interrupt cells", scuUnitIdx);
             deliverInterrupts (scuUnitIdx);
+#ifdef THREADZ
+            unlock_scu ();
+#endif
           }
           break;
 
@@ -1305,7 +1338,13 @@ t_stat scu_sscr (uint scuUnitIdx, UNUSED uint cpuUnitIdx,
             word16 b0_15 = (word16) getbits36_16 (cpu . rA, 20);
             word36 b16_51 = cpu . rQ;
             uint64 newClk = (((uint64) b0_15) << 36) | b16_51;
+#ifdef THREADZ
+            lock_scu ();
+#endif
             scu [scuUnitIdx] . userCorrection = (int64) (newClk - getSCUclock (scuUnitIdx));
+#ifdef THREADZ
+            unlock_scu ();
+#endif
             //sim_printf ("sscr %o\n", function);
           }
           break;
@@ -1367,8 +1406,14 @@ t_stat scu_rscr (uint scuUnitIdx, uint cpuUnitIdx, word18 addr,
             * rega = 0;
             //* regq = 0000002000000; // ID = 0010
             * regq = 0;
+#ifdef THREADZ
+            lock_scu ();
+#endif
             putbits36_4 (regq, 50 - 36, scu [scuUnitIdx] . id);
             putbits36_18 (regq, 54 - 36, scu [scuUnitIdx] . modeReg);
+#ifdef THREADZ
+            unlock_scu ();
+#endif
             break;
           }
 
@@ -1405,6 +1450,9 @@ t_stat scu_rscr (uint scuUnitIdx, uint cpuUnitIdx, word18 addr,
             //
             //struct config_switches * sw = config_switches + scuUnitIdx;
             sim_debug (DBG_DEBUG, & scu_dev, "rscr 1 %d\n", scuUnitIdx);
+#ifdef THREADZ
+            lock_scu ();
+#endif
             scu_t * up = scu + scuUnitIdx;
             word9 maskab [2];
             for (int i = 0; i < 2; i ++)
@@ -1438,6 +1486,9 @@ gotit:;
 
             if (scu_port_num < 0)
               {
+#ifdef THREADZ
+                unlock_scu ();
+#endif
                 sim_warn ("%s: can't find cpu port in the snarl of cables; "
                            "scu_unit_no %d, cpuUnitIdx %d\n", 
                            __func__, scuUnitIdx, cpuUnitIdx);
@@ -1480,6 +1531,9 @@ gotit:;
             putbits36_1 (& q, 35,  (word1) up -> port_enable [7]);
             * regq = q;
 
+#ifdef THREADZ
+            unlock_scu ();
+#endif
             sim_debug (DBG_DEBUG, & scu_dev, "rscr 1 %d A: %012"PRIo64" Q: %012"PRIo64"\n", scuUnitIdx, * rega, * regq);
             break;
           }
@@ -1487,6 +1541,9 @@ gotit:;
         case 00002: // mask register
           {
             uint portNum = (addr >> 6) & MASK3;
+#ifdef THREADZ
+            lock_scu ();
+#endif
             scu_t * up = scu + scuUnitIdx;
             uint maskContents = 0;
             if (up -> mask_assignment [0] == portNum)
@@ -1513,6 +1570,9 @@ gotit:;
             putbits36 (regq, 34,  1, up -> port_enable [6]);
             putbits36 (regq, 35,  1, up -> port_enable [7]);
 
+#ifdef THREADZ
+            unlock_scu ();
+#endif
             sim_debug (DBG_TRACE, & scu_dev,
                        "RSCR mask unit %u port %u assigns %u %u mask 0x%08x\n",
                        scuUnitIdx, portNum, up -> mask_assignment [0],
@@ -1523,6 +1583,9 @@ gotit:;
 
         case 00003: // Interrupt cells
           {
+#ifdef THREADZ
+            lock_scu ();
+#endif
             scu_t * up = scu + scuUnitIdx;
             // * rega = up -> exec_intr_mask [0];
             // * regq = up -> exec_intr_mask [1];
@@ -1534,6 +1597,9 @@ gotit:;
                 else
                   putbits36_1 (regq, i - 16, cell);
               }
+#ifdef THREADZ
+            unlock_scu ();
+#endif
           }
           break;
 
@@ -1618,8 +1684,12 @@ int scu_cioc (uint cpuUnitIdx, uint scuUnitIdx, uint scu_port_num,
                cpuUnitIdx, scuUnitIdx, scu_port_num,
               expander_command, sub_mask);
 
+#ifdef THREADZ
+    lock_scu ();
+#endif
     struct ports * portp = & scu [scuUnitIdx] . ports [scu_port_num];
 
+    int rc = 0;
     if (! scu [scuUnitIdx] . port_enable [scu_port_num])
       {
         sim_debug (DBG_ERR, & scu_dev, 
@@ -1627,7 +1697,8 @@ int scu_cioc (uint cpuUnitIdx, uint scuUnitIdx, uint scu_port_num,
         sim_debug (DBG_ERR, & scu_dev, 
                    "scu_cioc: scuUnitIdx %u scu_port_num %u\n",
                    scuUnitIdx, scu_port_num);
-        return 1;
+        rc = 1;
+        goto done;
       }
 
     if (expander_command == 1) // "set subport enables"
@@ -1636,8 +1707,7 @@ int scu_cioc (uint cpuUnitIdx, uint scuUnitIdx, uint scu_port_num,
           {
             portp->subport_enables [i] = !! (sub_mask & (0200u >> i));
           }
-
-        return 0;
+        goto done;
       }
 
     if (expander_command == 2) // "set xipmask"
@@ -1659,7 +1729,7 @@ int scu_cioc (uint cpuUnitIdx, uint scuUnitIdx, uint scu_port_num,
             val = -1;
           }
         portp->xipmaskval = val;
-        return 0;
+        goto done;
       }
 
     if (portp -> type == ADEV_IOM)
@@ -1667,13 +1737,12 @@ int scu_cioc (uint cpuUnitIdx, uint scuUnitIdx, uint scu_port_num,
         int iomUnitIdx = portp->devIdx;
 #ifdef THREADZ
         iom_interrupt (scuUnitIdx, (uint) iomUnitIdx);
-        return 0;
+        goto done;
 #else // ! THREADZ
-        int iomUnitIdx = portp -> devIdx;
         if (sys_opts . iom_times . connect < 0)
           {
             iom_interrupt (scuUnitIdx, (uint) iomUnitIdx);
-            return 0;
+            goto done;
           }
         else
           {
@@ -1691,10 +1760,10 @@ int scu_cioc (uint cpuUnitIdx, uint scuUnitIdx, uint scu_port_num,
             if ((rc = sim_activate (& iom_dev . units [iomUnitIdx], 
                 sys_opts . iom_times.connect)) != SCPE_OK) 
               {
-                sim_warn ("sim_activate failed (%d)\n", rc); // Dosen't return
-                return 0;
+                sim_warn ("sim_activate failed (%d)\n", rc); 
+                goto done;
               }
-            return 0;
+            goto done;
           }
 #endif // ! THREADZ
       }
@@ -1730,7 +1799,8 @@ int scu_cioc (uint cpuUnitIdx, uint scuUnitIdx, uint scu_port_num,
                 sim_warn ("Can't find CPU to interrupt\n");
 //sim_printf ("scu_cioc: Connect from %o sent to unit %o port %o exp %o mask %03o\n", cpuUnitIdx, scuUnitIdx, scu_port_num, expander_command, sub_mask);
 //sim_printf ("is_exp %u xipmaskval %o\n", portp->is_exp, portp->xipmaskval);
-                return 1;
+                rc = 1;
+                goto done;
               }
             setG7fault ((uint) cpuUnitIdx, FAULT_CON, fst_zero);
           }
@@ -1750,18 +1820,25 @@ int scu_cioc (uint cpuUnitIdx, uint scuUnitIdx, uint scu_port_num,
             sim_warn ("Can't find CPU to interrupt\n");
 sim_printf ("scu_cioc: Connect from %o sent to unit %o port %o exp %o mask %03o\n", cpuUnitIdx, scuUnitIdx, scu_port_num, expander_command, sub_mask);
 sim_printf ("is_exp %u xipmaskval %o\n", portp->is_exp, portp->xipmaskval);
-            return 1;
+            rc = 1;
+            goto done;
           }
         setG7fault (cpuUnitIdx, FAULT_CON, (_fault_subtype) {.bits=0});
 #endif
-        return 0;
+        goto done;
       }
     else
       {
         sim_debug (DBG_ERR, & scu_dev, 
                    "scu_cioc: Connect sent to not-an-IOM or CPU; dropping\n");
-        return 1;
+        rc = 1;
+        goto done;
       }
+done:
+#ifdef THREADZ
+    unlock_scu ();
+#endif
+    return rc;
 }
 
 
@@ -1786,14 +1863,32 @@ int scu_set_interrupt (uint scuUnitIdx, uint inum)
         return 1;
       }
     
+#ifdef THREADZ
+    lock_scu ();
+#endif
     scu [scuUnitIdx] . cells [inum] = 1;
     dumpIR ("scu_set_interrupt", scuUnitIdx);
     deliverInterrupts (scuUnitIdx);
+#ifdef THREADZ
+    unlock_scu ();
+#endif
     return 0;
 }
 
 // Either an interrupt has arrived on a port, or a mask register has
 // been updated. Bring the CPU up date on the interrupts.
+
+// threadz notes:
+//
+// deliverInterrupts is called either from a CPU instruction or from
+// IOM set_general_interrupt on the IOM thread.
+//
+// potential race condiions: 
+//   CPU variables: XIP
+//   SCU variables: cells, mask_enable, exec_intr_mask, mask assignment
+
+
+// Always called with SCU lock set
 
 static void deliverInterrupts (uint scuUnitIdx)
   {
@@ -1847,13 +1942,11 @@ static void deliverInterrupts (uint scuUnitIdx)
                                "interrupt set for CPU %d SCU %d\n",
                                cpuUnitIdx, scuUnitIdx);
 #else // ! THREADZ
-                    uint save = setCPUnum ((uint) cpuUnitIdx);
 //if (cpuUnitIdx && ! cpu.isRunning) sim_printf ("starting CPU %c\n", cpuUnitIdx + 'A');
 #ifdef ROUND_ROBIN
-                    cpu.isRunning = true;
+                    cpus[cpuUnitIdx].isRunning = true;
 #endif
-                    cpu.events.XIP[scuUnitIdx] = true;
-                    setCPUnum (save);
+                    cpus[cpuUnitIdx].events.XIP[scuUnitIdx] = true;
 sim_debug (DBG_DEBUG, & scu_dev, "interrupt set for CPU %d SCU %d\n", cpuUnitIdx, scuUnitIdx);
                     sim_debug (DBG_INTR, & scu_dev,
                                "XIP set for SCU %d\n", scuUnitIdx);
@@ -1872,7 +1965,9 @@ sim_debug (DBG_DEBUG, & scu_dev, "interrupt set for CPU %d SCU %d\n", cpuUnitIdx
 
 uint scuGetHighestIntr (uint scuUnitIdx)
   {
-    //for (uint inum = 0; inum < N_CELL_INTERRUPTS; inum ++)
+#ifdef THREADZ
+    lock_scu ();
+#endif
     for (int inum = N_CELL_INTERRUPTS - 1; inum >= 0; inum --)
       {
         for (uint pima = 0; pima < N_ASSIGNMENTS; pima ++) // A, B
@@ -1889,10 +1984,16 @@ uint scuGetHighestIntr (uint scuUnitIdx)
                 scu [scuUnitIdx] . cells [inum] = false;
                 dumpIR ("scuGetHighestIntr", scuUnitIdx);
                 deliverInterrupts (scuUnitIdx);
+#ifdef THREADZ
+                unlock_scu ();
+#endif
                 return (uint) inum * 2;
               }
           }
       }
+#ifdef THREADZ
+    unlock_scu ();
+#endif
     return 1;
   }
 
@@ -2323,6 +2424,9 @@ gotit:;
     //    IER 16-32       00000000        PER 4-7 
 
     sim_debug (DBG_TRACE, & scu_dev, "rmcm selected scu port %u\n", scu_port_num);
+#ifdef THREADZ
+    lock_scu ();
+#endif
     uint maskContents = 0;
     if (up -> mask_assignment [0] == (uint) scu_port_num)
       {
@@ -2350,6 +2454,9 @@ gotit:;
     putbits36_1 (regq, 34,  (word1) up -> port_enable [6]);
     putbits36_1 (regq, 35,  (word1) up -> port_enable [7]);
 
+#ifdef THREADZ
+    unlock_scu ();
+#endif
     sim_debug (DBG_TRACE, & scu_dev, "RMCM returns %012"PRIo64" %012"PRIo64"\n", 
                * rega, * regq);
     dumpIR ("rmcm", scuUnitIdx);
@@ -2404,6 +2511,9 @@ gotit:;
     uint imask =
       ((uint) getbits36_16(rega, 0) << 16) |
       ((uint) getbits36_16(regq, 0) <<  0);
+#ifdef THREADZ
+    lock_scu ();
+#endif
     if (up -> mask_assignment [0] == (uint) scu_port_num)
       {
         up -> exec_intr_mask [0] = imask;
@@ -2428,6 +2538,9 @@ gotit:;
 
     dumpIR ("smcm", scuUnitIdx);
     deliverInterrupts (scuUnitIdx);
+#ifdef THREADZ
+    unlock_scu ();
+#endif
     
     return SCPE_OK;
   }

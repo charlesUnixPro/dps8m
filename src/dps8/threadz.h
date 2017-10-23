@@ -91,6 +91,11 @@ void lock_mem (void);
 void unlock_mem (void);
 bool test_mem_lock (void);
 
+// scu lock
+void lock_scu (void);
+void unlock_scu (void);
+
+
 // testing lock
 void lock_tst (void);
 void unlock_tst (void);

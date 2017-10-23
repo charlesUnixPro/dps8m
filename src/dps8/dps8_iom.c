@@ -2405,11 +2405,11 @@ static int doConnectChan (uint iomUnitIdx)
     // If the IOM Central does not indicate a PTRO during the list service,
     // the connect channel obtains anther list service.
     //
-    // The connect channel does interrupt or store status.
+    // The connect channel does not interrupt or store status.
     //
     // The DCW and SCW mailboxes for the connect channel are not used by
     // the IOM.
-
+int loops = 0;
     iomChanData_t * p = & iomChanData [iomUnitIdx] [IOM_CONNECT_CHAN];
     p -> lsFirst = true;
     bool ptro, send, uff;
@@ -2433,6 +2433,7 @@ static int doConnectChan (uint iomUnitIdx)
         else
           {
             // Copy the PCW's DCW to the payload channel
+loops ++;
             iomChanData_t * q = & iomChanData [iomUnitIdx] [p -> PCW_CHAN];
             q -> DCW = p -> DCW;
             unpackDCW (iomUnitIdx, p -> PCW_CHAN);
@@ -2443,6 +2444,7 @@ static int doConnectChan (uint iomUnitIdx)
 #endif
           }
       } while (! ptro);
+if (loops > 1) sim_printf ("%d loops\r\n", loops);
     return 0; // XXX
   }
 
@@ -2653,7 +2655,7 @@ void iom_interrupt (uint scuUnitIdx, uint iomUnitIdx)
 
 #ifdef THREADZ
     setIOMInterrupt (iomUnitIdx);
-    iomDoneWait (iomUnitIdx);
+    //iomDoneWait (iomUnitIdx);
 #else
     int ret = doConnectChan (iomUnitIdx);
 

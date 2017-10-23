@@ -479,11 +479,9 @@ static void getSerialNumber (void)
           {
             if (cpun < N_CPU_UNITS_MAX)
               {
-                uint save = setCPUnum (cpun);
-                cpu.switches.serno = sn;
+                cpus[cpun].switches.serno = sn;
                 sim_printf ("Serial number of CPU %u is %u\n",
-                            cpun, cpu.switches.serno);
-                setCPUnum (save);
+                            cpun, cpus[cpun].switches.serno);
                 havesn = true;
               }
           }
@@ -560,11 +558,6 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
 
 void cpu_init (void)
   {
-#ifdef THREADZ
-#ifdef use_spinlock
-    pthread_spin_init (& mem_lock, PTHREAD_PROCESS_PRIVATE);
-#endif
-#endif
 
 // !!!! Do not use 'cpu' in this routine; usage of 'cpus' violates 'restrict'
 // !!!! attribute
@@ -705,6 +698,9 @@ static void cpuResetUnitIdx (UNUSED uint cpun, bool clearMem)
 
     tidy_cu ();
     setCPUnum (save);
+#ifdef THREADZ
+    fence ();
+#endif
   }
 
 static void cpuReset (void)
@@ -852,18 +848,21 @@ uint currentRunningCpuIdx;
 // address for the highest numbered interrupt on that SCU. If no interrupts
 // are found, return 1.
  
+// Called with SCU lock set
+
 static uint get_highest_intr (void)
   {
+    uint fp = 1;
     for (uint scuUnitNum = 0; scuUnitNum < N_SCU_UNITS_MAX; scuUnitNum ++)
       {
         if (cpu.events.XIP [scuUnitNum])
           {
-            uint fp = scuGetHighestIntr (scuUnitNum);
+            fp = scuGetHighestIntr (scuUnitNum); // CALLED WITH SCU LOCK
             if (fp != 1)
-              return fp;
+              break;
           }
       }
-    return 1;
+    return fp;
   }
 
 bool sample_interrupts (void)
@@ -2859,58 +2858,54 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
         return SCPE_ARG;
       }
 
-    uint save = setCPUnum ((uint) unit_num);
-
     sim_printf ("CPU unit number %ld\n", unit_num);
 
     sim_printf ("Fault base:               %03o(8)\n",
-                cpu.switches.FLT_BASE);
+                cpus[unit_num].switches.FLT_BASE);
     sim_printf ("CPU number:               %01o(8)\n",
-                cpu.switches.cpu_num);
+                cpus[unit_num].switches.cpu_num);
     sim_printf ("Data switches:            %012"PRIo64"(8)\n",
-                cpu.switches.data_switches);
+                cpus[unit_num].switches.data_switches);
     sim_printf ("Address switches:         %06o(8)\n",
-                cpu.switches.addr_switches);
+                cpus[unit_num].switches.addr_switches);
     for (int i = 0; i < N_CPU_PORTS; i ++)
       {
         sim_printf ("Port%c enable:             %01o(8)\n",
-                    'A' + i, cpu.switches.enable [i]);
+                    'A' + i, cpus[unit_num].switches.enable [i]);
         sim_printf ("Port%c init enable:        %01o(8)\n",
-                    'A' + i, cpu.switches.init_enable [i]);
+                    'A' + i, cpus[unit_num].switches.init_enable [i]);
         sim_printf ("Port%c assignment:         %01o(8)\n",
-                    'A' + i, cpu.switches.assignment [i]);
+                    'A' + i, cpus[unit_num].switches.assignment [i]);
         sim_printf ("Port%c interlace:          %01o(8)\n",
-                    'A' + i, cpu.switches.assignment [i]);
+                    'A' + i, cpus[unit_num].switches.assignment [i]);
         sim_printf ("Port%c store size:         %01o(8)\n",
-                    'A' + i, cpu.switches.store_size [i]);
+                    'A' + i, cpus[unit_num].switches.store_size [i]);
       }
     sim_printf ("Processor mode:           %s [%o]\n", 
-                cpu.switches.proc_mode ? "Multics" : "GCOS",
-                cpu.switches.proc_mode);
+                cpus[unit_num].switches.proc_mode ? "Multics" : "GCOS",
+                cpus[unit_num].switches.proc_mode);
     sim_printf ("Processor speed:          %02o(8)\n", 
-                cpu.switches.proc_speed);
+                cpus[unit_num].switches.proc_speed);
     sim_printf ("DIS enable:               %01o(8)\n", 
-                cpu.switches.dis_enable);
+                cpus[unit_num].switches.dis_enable);
     sim_printf ("Steady clock:             %01o(8)\n", 
                 scu [0].steady_clock);
     sim_printf ("Halt on unimplemented:    %01o(8)\n", 
-                cpu.switches.halt_on_unimp);
+                cpus[unit_num].switches.halt_on_unimp);
     sim_printf ("Disable SDWAM/PTWAM:      %01o(8)\n", 
-                cpu.switches.disable_wam);
+                cpus[unit_num].switches.disable_wam);
     sim_printf ("Report faults:            %01o(8)\n", 
-                cpu.switches.report_faults);
+                cpus[unit_num].switches.report_faults);
     sim_printf ("TRO faults enabled:       %01o(8)\n", 
-                cpu.switches.tro_enable);
+                cpus[unit_num].switches.tro_enable);
     sim_printf ("Y2K enabled:              %01o(8)\n", 
                 scu [0].y2k);
     sim_printf ("drl fatal enabled:        %01o(8)\n", 
-                cpu.switches.drl_fatal);
+                cpus[unit_num].switches.drl_fatal);
     sim_printf ("useMap:                   %d\n",
-                cpu.switches.useMap);
+                cpus[unit_num].switches.useMap);
     sim_printf ("Disable cache:            %01o(8)\n",
-                cpu.switches.disable_cache);
-
-    setCPUnum (save);
+                cpus[unit_num].switches.disable_cache);
 
     return SCPE_OK;
   }
@@ -3133,8 +3128,6 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value,
         return SCPE_ARG;
       }
 
-    uint save = setCPUnum ((uint) cpu_unit_num);
-
     static int port_num = 0;
 
     config_state_t cfg_state = { NULL, NULL };
@@ -3156,49 +3149,49 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value,
 
         const char * p = cpu_config_list [rc] . name;
         if (strcmp (p, "faultbase") == 0)
-          cpu.switches.FLT_BASE = (uint) v;
+          cpus[cpu_unit_num].switches.FLT_BASE = (uint) v;
         else if (strcmp (p, "num") == 0)
-          cpu.switches.cpu_num = (uint) v;
+          cpus[cpu_unit_num].switches.cpu_num = (uint) v;
         else if (strcmp (p, "data") == 0)
-          cpu.switches.data_switches = (word36) v;
+          cpus[cpu_unit_num].switches.data_switches = (word36) v;
         else if (strcmp (p, "address") == 0)
-          cpu.switches.addr_switches = (word18) v;
+          cpus[cpu_unit_num].switches.addr_switches = (word18) v;
         else if (strcmp (p, "mode") == 0)
-          cpu.switches.proc_mode = (uint) v;
+          cpus[cpu_unit_num].switches.proc_mode = (uint) v;
         else if (strcmp (p, "speed") == 0)
-          cpu.switches.proc_speed = (uint) v;
+          cpus[cpu_unit_num].switches.proc_speed = (uint) v;
         else if (strcmp (p, "port") == 0)
           port_num = (int) v;
         else if (strcmp (p, "assignment") == 0)
-          cpu.switches.assignment [port_num] = (uint) v;
+          cpus[cpu_unit_num].switches.assignment [port_num] = (uint) v;
         else if (strcmp (p, "interlace") == 0)
-          cpu.switches.interlace [port_num] = (uint) v;
+          cpus[cpu_unit_num].switches.interlace [port_num] = (uint) v;
         else if (strcmp (p, "enable") == 0)
-          cpu.switches.enable [port_num] = (uint) v;
+          cpus[cpu_unit_num].switches.enable [port_num] = (uint) v;
         else if (strcmp (p, "init_enable") == 0)
-          cpu.switches.init_enable [port_num] = (uint) v;
+          cpus[cpu_unit_num].switches.init_enable [port_num] = (uint) v;
         else if (strcmp (p, "store_size") == 0)
-          cpu.switches.store_size [port_num] = (uint) v;
+          cpus[cpu_unit_num].switches.store_size [port_num] = (uint) v;
         else if (strcmp (p, "dis_enable") == 0)
-          cpu.switches.dis_enable = (uint) v;
+          cpus[cpu_unit_num].switches.dis_enable = (uint) v;
         else if (strcmp (p, "steady_clock") == 0)
           scu [0].steady_clock = (uint) v;
         else if (strcmp (p, "halt_on_unimplemented") == 0)
-          cpu.switches.halt_on_unimp = (uint) v;
+          cpus[cpu_unit_num].switches.halt_on_unimp = (uint) v;
         else if (strcmp (p, "disable_wam") == 0)
-          cpu.switches.disable_wam = (uint) v;
+          cpus[cpu_unit_num].switches.disable_wam = (uint) v;
         else if (strcmp (p, "report_faults") == 0)
-          cpu.switches.report_faults = (uint) v;
+          cpus[cpu_unit_num].switches.report_faults = (uint) v;
         else if (strcmp (p, "tro_enable") == 0)
-          cpu.switches.tro_enable = (uint) v;
+          cpus[cpu_unit_num].switches.tro_enable = (uint) v;
         else if (strcmp (p, "y2k") == 0)
           scu [0].y2k = (uint) v;
         else if (strcmp (p, "drl_fatal") == 0)
-          cpu.switches.drl_fatal = (uint) v;
+          cpus[cpu_unit_num].switches.drl_fatal = (uint) v;
         else if (strcmp (p, "useMap") == 0)
-          cpu.switches.useMap = v;
+          cpus[cpu_unit_num].switches.useMap = v;
         else if (strcmp (p, "disable_cache") == 0)
-          cpu.switches.disable_cache = v;
+          cpus[cpu_unit_num].switches.disable_cache = v;
         else
           {
             sim_printf ("error: cpu_set_config: invalid cfgparse rc <%d>\n",
@@ -3208,8 +3201,6 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value,
           }
       } // process statements
     cfgparse_done (& cfg_state);
-
-    setCPUnum (save);
 
     return SCPE_OK;
   }
