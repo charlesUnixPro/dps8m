@@ -1955,8 +1955,20 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
       }
     else
       {
+#ifdef THREADZ
+        if (! cpu.havelock)
+          {
+            lock_mem ();
+          }
+#endif
         scu[scuUnitIdx].M[addr] = (scu[scuUnitIdx].M[addr] & ~cpu.useZone) |
                                   (data & cpu.useZone);
+#ifdef THREADZ
+        if (! cpu.havelock)
+          {
+            unlock_mem ();
+          }
+#endif
         cpu.useZone = MASK36; // Safety
       }
     UNLOCK_MEM;
@@ -1968,7 +1980,19 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
       }
     else
       {
+#ifdef THREADZ
+        if (! cpu.havelock)
+          {
+            lock_mem ();
+          }
+#endif
         M[addr] = (M[addr] & ~cpu.useZone) | (data & cpu.useZone);
+#ifdef THREADZ
+        if (! cpu.havelock)
+          {
+            unlock_mem ();
+          }
+#endif
         cpu.zone = cpu.useZone = MASK36; // Safety
       }
     UNLOCK_MEM;

@@ -2121,6 +2121,7 @@ t_stat WriteOP (word18 addr, UNUSED _processor_cycle_type cyctyp)
       {
         case 1:
             CPT (cpt1L, 12); // word
+// We delay this until here so that the CAF code isn't affected.
             cpu.useZone = cpu.zone;
             Write (addr, cpu.CY, OPERAND_STORE);
             break;
@@ -2322,8 +2323,20 @@ int core_write (word24 addr, word36 data, const char * ctx)
       }
     else
       {
+#ifdef THREADZ
+        if (! cpu.havelock)
+          {
+            lock_mem ();
+          }
+#endif
         scu[scuUnitIdx].M[addr] = (scu[scuUnitIdx].M[addr] & ~cpu.useZone) |
                                   (data & cpu.useZone);
+#ifdef THREADZ
+        if (! cpu.havelock)
+          {
+            unlock_mem ();
+          }
+#endif
         cpu.useZone = MASK36; // Safety
       }
     if (watchBits [addr])
@@ -2339,7 +2352,19 @@ int core_write (word24 addr, word36 data, const char * ctx)
       }
     else
       {
+#ifdef THREADZ
+        if (! cpu.havelock)
+          {
+            lock_mem ();
+          }
+#endif
         M[addr] = (M[addr] & ~cpu.useZone) | (data & cpu.useZone);
+#ifdef THREADZ
+        if (! cpu.havelock)
+          {
+            unlock_mem ();
+          }
+#endif
         cpu.zone = cpu.useZone = MASK36; // Safety
       }
     if (watchBits [addr])
