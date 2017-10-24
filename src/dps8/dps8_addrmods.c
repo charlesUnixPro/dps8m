@@ -1,7 +1,7 @@
 /*
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
- Copyright 2013-2016 by Charles Anthony
+ Copyrigh7 2013-2016 by Charles Anthony
 
  All rights reserved.
 
@@ -176,36 +176,6 @@ static char * opDescSTR (char * temp)
     return temp;    //"opDescSTR(???)";
   }
 
-#ifndef QUIET_UNUSED
-static char * operandSTR (void)
-  {
-    DCDstruct * i = & cpu.currentInstruction;
-    if (i -> info -> ndes > 0)
-      return "operandSTR(): MWEIS not handled yet";
-
-    static char temp [1024];
-
-    int n = OPSIZE ();
-    switch (n)
-      {
-        case 1:
-          sprintf (temp, "CY=%012"PRIo64"", cpu.CY);
-          break;
-        case 2:
-          sprintf (temp, "CYpair[0]=%012"PRIo64" CYpair[1]=%012"PRIo64"",
-                   cpu.Ypair [0], cpu.Ypair [1]);
-          break;
-        case 8:
-        case 16:
-        case 32:
-        default:
-          sprintf (temp, "Unhandled size: %d", n);
-          break;
-      }
-    return temp;
-}
-#endif
-
 static void doITP (void)
   {
     sim_debug (DBG_APPENDING, & cpu_dev,
@@ -319,13 +289,6 @@ static void doITSITP (word6 Tag, word6 * newtag)
     // address modifier will cause an illegal procedure, illegal modifier,
     // fault.
 
-    //cpu.itxPair [0] = indword;
-
-    //Read (address + 1, & cpu.itxPair [1], INDIRECT_WORD_FETCH);
-
-    //sim_debug (DBG_APPENDING, & cpu_dev,
-               //"doITS/ITP: YPair= %012"PRIo64" %012"PRIo64"\n",
-               //cpu.itxPair [0], cpu.itxPair [1]);
 
     if (ISITS (indTag))
         doITS ();
@@ -333,7 +296,6 @@ static void doITSITP (word6 Tag, word6 * newtag)
         doITP ();
 
     * newtag = GET_TAG (cpu.itxPair [1]);
-    //didITSITP = true;
 #ifndef NOWENT
     set_went_appending ();
 #endif
@@ -422,7 +384,6 @@ startCA:;
     // state and restart the fetch.
     if (cpu.cu.CT_HOLD)
       {
-//if (currentRunningCpuIdx) sim_printf ("restart CT_HOLD %o\n", cpu.cu.CT_HOLD);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "%s(startCA): IR mode restart; CT_HOLD %02o\n",
                    __func__, cpu.cu.CT_HOLD);
@@ -481,8 +442,6 @@ startCA:;
         // verified that Tm is R or RI, and Td is X1..X7.
         if (cpu.cu.rpt || cpu.cu.rd | cpu.cu.rl)
           {
-#if 1
-            //if (cpu.isb29)
             if (cpu.currentInstruction.b29)
               {
                 word3 PRn = GET_PRN(IWB_IRODD);
@@ -494,20 +453,6 @@ startCA:;
               {
                 cpu.TPR.CA = Cr;
               }
-#else
-            //if (cpu.isb29)
-            if (ISB29)
-              {
-                word3 PRn = cpu.cu.TSN_PRNO[0];
-                CPTUR (cptUsePRn + PRn);
-                cpu.TPR.CA = (Cr & MASK15) + cpu.PR [PRn].WORDNO;
-                cpu.TPR.CA &= AMASK;
-              }
-            else
-              {
-                cpu.TPR.CA = Cr;
-              }
-#endif
           }
         else
           {
@@ -517,13 +462,6 @@ startCA:;
         sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD: TPR.CA=%06o\n",
                    cpu.TPR.CA);
 
-#ifdef OLDCYCLE
-        // If repeat, the indirection chain is limited, so it is not necessary
-        // to clear the tag; the delta code later on needs the tag to know
-        // which X register to update
-        if (! (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl))
-          updateIWB (cpu.TPR.CA, 0); // Known to be 0 or ,n
-#endif
         return SCPE_OK;
       } // R_MOD
 
@@ -537,10 +475,6 @@ startCA:;
         if (Td == TD_DU || Td == TD_DL)
           doFault (FAULT_IPR, fst_ill_mod, "RI_MOD: Td == TD_DU || Td == TD_DL");
 
-#ifdef OLDCYCLE
-        word18 tmpCA = cpu.TPR.CA;
-#endif
-
         if (Td != 0)
           {
             word18 Cr = getCr (Td);  // C(r)
@@ -548,60 +482,32 @@ startCA:;
             // We don''t need to worry about direct operand here, since du
             // and dl are disallowed above
 
-#ifdef OLDCYCLE
-            sim_debug (DBG_ADDRMOD, & cpu_dev,
-                       "RI_MOD: Cr=%06o tmpCA(Before)=%06o\n", Cr, tmpCA);
-#else
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "RI_MOD: Cr=%06o CA(Before)=%06o\n", Cr, cpu.TPR.CA);
-#endif
 
             if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
               {
                  word6 Td_ = GET_TD (i -> tag);
                  uint Xn = X (Td_);  // Get Xn of next instruction
-#ifdef OLDCYCLE
-                 tmpCA = cpu.rX [Xn];
-#else
                  cpu.TPR.CA = cpu.rX [Xn];
-#endif
               }
             else
               {
-#ifdef OLDCYCLE
-                tmpCA += Cr;
-                tmpCA &= MASK18;   // keep to 18-bits
-#else
                 cpu.TPR.CA += Cr;
                 cpu.TPR.CA &= MASK18;   // keep to 18-bits
-#endif
               }
-#ifdef OLDCYCLE
-            sim_debug (DBG_ADDRMOD, & cpu_dev,
-                       "RI_MOD: tmpCA(After)=%06o\n", tmpCA);
-#else
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "RI_MOD: CA(After)=%06o\n", cpu.TPR.CA);
-#endif
           }
 
         // If the indirect word faults, on restart the CA will be the post
         // register modification value, so we want to prevent it from 
         // happening again on restart
 
-#ifdef OLDCYCLE
-        updateIWB (cpu.TPR.CA, TM_RI | TD_N);
-#endif
-
         // in case it turns out to be a ITS/ITP
         iTAG = cpu.rTAG;
 
-#ifdef OLDCYCLE
-        Read2 (tmpCA, cpu.itxPair, INDIRECT_WORD_FETCH); //TM_RI);
-#else
-        //Read2 (cpu.TPR.CA, cpu.itxPair, INDIRECT_WORD_FETCH); //TM_RI);
         ReadIndirect ();
-#endif
 
         // "In the case of RI modification, only one indirect reference is made
         // per repeated execution. The TAG field of the indirect word is not
@@ -622,27 +528,17 @@ startCA:;
           {
             if (GET_TD (GET_TAG (cpu.itxPair[0])) == IT_F2)
               {
-#ifdef OLDCYCLE
-                cpu.TPR.CA = tmpCA;
-#endif
                 doFault (FAULT_F2, fst_zero, "RI_MOD: IT_F2 (0)");
               }
             if (GET_TD (GET_TAG (cpu.itxPair[0])) == IT_F3)
               {
-#ifdef OLDCYCLE
-                cpu.TPR.CA = tmpCA;
-#endif
                 doFault (FAULT_F3, fst_zero, "RI_MOD: IT_F3");
               }
           }
 
         if (ISITP (cpu.itxPair[0]) || ISITS (cpu.itxPair[0]))
           {
-#ifdef OLDCYCLE
             doITSITP (iTAG, & cpu.rTAG);
-#else
-            doITSITP (iTAG, & cpu.rTAG);
-#endif
           }
         else
           {
@@ -687,7 +583,6 @@ startCA:;
         iTAG = cpu.rTAG;
 
         word18 saveCA = cpu.TPR.CA;
-        //Read2 (cpu.TPR.CA, cpu.itxPair, INDIRECT_WORD_FETCH);
         ReadIndirect ();
 
         if (ISITP (cpu.itxPair[0]) || ISITS (cpu.itxPair[0]))
@@ -772,7 +667,6 @@ startCA:;
 
             case TM_RI:
               {
-//if (currentRunningCpuIdx) sim_printf ("TM_RI\n");
                 word18 Cr = getCr (Td);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -985,13 +879,6 @@ startCA:;
                            "IT_MOD(IT_I): reading indirect word from %06o\n",
                            cpu.TPR.CA);
 
-#if 0
-{ static bool first = true;
-if (first) {
-first = false;
-sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n");
-}}
-#endif
                 //Read2 (cpu.TPR.CA, cpu.itxPair, INDIRECT_WORD_FETCH);
                 ReadIndirect ();
 
@@ -1000,9 +887,6 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            cpu.itxPair[0]);
 
                 cpu.TPR.CA = GET_ADDR (cpu.itxPair[0]);
-#ifdef OLDCYCLE
-                updateIWB (cpu.TPR.CA, 0);
-#endif
                 return SCPE_OK;
               } // IT_I
 
@@ -1061,9 +945,6 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            indword, saveCA);
 
                 cpu.TPR.CA = computedAddress;
-#ifdef OLDCYCLE
-                updateIWB (cpu.TPR.CA, 0); // XXX guessing here...
-#endif
                 return SCPE_OK;
               } // IT_AD
 
@@ -1104,7 +985,6 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
 
                 cpu.AM_tally += 1;
                 cpu.AM_tally &= 07777; // keep to 12-bits
-                //SC_I_TALLY (cpu.AM_tally == 0);
                 if (cpu.AM_tally == 0)
                   SET_I_TALLY;
 
@@ -1121,9 +1001,6 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
 
 
                 cpu.TPR.CA = Yi;
-#ifdef OLDCYCLE
-                updateIWB (cpu.TPR.CA, 0); // XXX guessing here...
-#endif
                 return SCPE_OK;
               } // IT_SD
 
@@ -1164,8 +1041,6 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 cpu.AM_tally += 1;
                 cpu.AM_tally &= 07777; // keep to 12-bits
                 SC_I_TALLY (cpu.AM_tally == 0);
-                //if (cpu.AM_tally == 0)
-                  //SET_I_TALLY;
 
                 // write back out indword
 
@@ -1181,9 +1056,6 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 Write (saveCA, indword, OPERAND_STORE);
 
                 cpu.TPR.CA = Yi;
-#ifdef OLDCYCLE
-                updateIWB (cpu.TPR.CA, 0); // XXX guessing here...
-#endif
                 return SCPE_OK;
               } // IT_DI
 
@@ -1243,9 +1115,6 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 Write (saveCA, indword, OPERAND_STORE);
 
                 cpu.TPR.CA = computedAddress;
-#ifdef OLDCYCLE
-                updateIWB (cpu.TPR.CA, 0); // XXX guessing here...
-#endif
                 return SCPE_OK;
               } // IT_ID
 
@@ -1313,22 +1182,12 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            "addr %06o\n", indword, saveCA);
 
                 Write (saveCA, indword, OPERAND_STORE);
-#if 0
+
                 // If the TAG of the indirect word invokes a register, that is,
                 // specifies r, ri, or ir modification, the effective Td value
                 // for the register is forced to "null" before the next
                 // computed address is formed.
 
-                cpu.TPR.CA = YiSafe2;
-
-                cpu.rTAG = idwtag;
-                Tm = GET_TM (cpu.rTAG);
-
-                if (Tm != TM_IT)
-                  {
-                    cpu.rTAG = idwtag & 0x70; // force R to 0
-                  }
-#else
                 // Thus, permissible variations are any allowable form of IT or
                 // IR, but if RI or R is used, R must equal N (RI and R forced
                 // to N).
@@ -1343,7 +1202,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                          doFault (FAULT_IPR, fst_ill_mod, "DIC Incorrect address modifier");
                        }
                   }
-#endif
+
 // Set the tally after the indirect word is processed; if it faults, the IR
 // should be unchanged. ISOLTS ps791 test-02g
                 SC_I_TALLY (cpu.AM_tally == 0);
@@ -1414,24 +1273,12 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
 
                 Write (saveCA, indword, OPERAND_STORE);
 
-#if 0
                 // If the TAG of the indirect word invokes a register, that is,
                 // specifies r, ri, or ir modification, the effective Td value
                 // for the register is forced to "null" before the next
                 // computed address is formed.
                 // But for the dps88 you can use everything but ir/ri.
 
-                // force R to 0 (except for IT)
-                cpu.TPR.CA = YiSafe;
-
-                cpu.rTAG = idwtag;
-                Tm = GET_TM (cpu.rTAG);
-
-                if (Tm != TM_IT)
-                  {
-                    cpu.rTAG = idwtag & 0x70; // force R to 0
-                  }
-#else
                 // Thus, permissible variations are any allowable form of IT or
                 // IR, but if RI or R is used, R must equal N (RI and R forced
                 // to N).
@@ -1446,7 +1293,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                          doFault (FAULT_IPR, fst_ill_mod, "IDC Incorrect address modifier");
                        }
                   }
-#endif
+
 // Set the tally after the indirect word is processed; if it faults, the IR
 // should be unchanged. ISOLTS ps791 test-02f
                 SC_I_TALLY (cpu.AM_tally == 0);
