@@ -2121,6 +2121,7 @@ t_stat WriteOP (word18 addr, UNUSED _processor_cycle_type cyctyp)
       {
         case 1:
             CPT (cpt1L, 12); // word
+            cpu.useZone = cpu.zone;
             Write (addr, cpu.CY, OPERAND_STORE);
             break;
         case 2:
@@ -2315,15 +2316,32 @@ int core_write (word24 addr, word36 data, const char * ctx)
     word24 offset;
     int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
     int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
-    scu [scuUnitIdx].M[offset] = data & DMASK;
+    if (cpu.useZone == MASK36)
+      {
+        scu[scuUnitIdx].M[offset] = data & DMASK;
+      }
+    else
+      {
+        scu[scuUnitIdx].M[addr] = (scu[scuUnitIdx].M[addr] & ~cpu.useZone) |
+                                  (data & cpu.useZone);
+        cpu.useZone = MASK36; // Safety
+      }
     if (watchBits [addr])
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o write   %08o %012"PRIo64" "
                     "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr, 
-                    data & DMASK, ctx);
+                    scu[scuUnitIdx].M[offset], ctx);
       }
 #else
-    M[addr] = data & DMASK;
+    if (cpu.useZone == MASK36)
+      {
+        M[addr] = data & DMASK;
+      }
+    else
+      {
+        M[addr] = (M[addr] & ~cpu.useZone) | (data & cpu.useZone);
+        cpu.zone = cpu.useZone = MASK36; // Safety
+      }
     if (watchBits [addr])
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o write  %08o %012"PRIo64" "
@@ -2332,13 +2350,13 @@ int core_write (word24 addr, word36 data, const char * ctx)
         traceInstruction (0);
       }
 #endif
+    UNLOCK_MEM;
 #ifdef TR_WORK_MEM
     cpu.rTRticks ++;
 #endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write %08o %012"PRIo64" (%s)\n",
                 addr, data, ctx);
-    UNLOCK_MEM;
     PNL (trackport (addr, data));
     return 0;
   }

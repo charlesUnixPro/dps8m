@@ -1686,6 +1686,10 @@ typedef struct
     // Address Modification tally
     word12 AM_tally;
 
+    // Zone mask
+    word36 zone;
+    word36 useZone;
+
 #ifdef WAM
     _ptw PTWAM [N_WAM_ENTRIES];
 #endif
@@ -1945,11 +1949,28 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
     int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
     int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
     LOCK_MEM;
-    scu [scuUnitIdx].M[offset] = data & DMASK;
+    if (cpu.useZone == MASK36)
+      {
+        scu[scuUnitIdx].M[offset] = data & DMASK;
+      }
+    else
+      {
+        scu[scuUnitIdx].M[addr] = (scu[scuUnitIdx].M[addr] & ~cpu.useZone) |
+                                  (data & cpu.useZone);
+        cpu.useZone = MASK36; // Safety
+      }
     UNLOCK_MEM;
 #else
     LOCK_MEM;
-    M[addr] = data & DMASK;
+    if (cpu.useZone == MASK36)
+      {
+        M[addr] = data & DMASK;
+      }
+    else
+      {
+        M[addr] = (M[addr] & ~cpu.useZone) | (data & cpu.useZone);
+        cpu.zone = cpu.useZone = MASK36; // Safety
+      }
     UNLOCK_MEM;
 #endif
 #ifdef TR_WORK_MEM
