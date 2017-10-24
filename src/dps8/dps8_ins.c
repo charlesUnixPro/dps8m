@@ -3145,7 +3145,7 @@ static t_stat DoBasicInstruction (void)
           // set to IR, or left unchanged
           // RJ78 specifies unchanged
           //SETHI (cpu.CY, (cpu.PPR.IC + 2) & MASK18);
-          cpu.CY = ((cpu.PPR.IC + 2) & MASK18) << 18;
+          cpu.CY = ((word36) ((cpu.PPR.IC + 2) & MASK18)) << 18;
           cpu.zone = 0777777000000;
           break;
 
@@ -3235,11 +3235,14 @@ static t_stat DoBasicInstruction (void)
             // AL39 sti says that HEX is ignored, but the mode register 
             // description says that it isn't
 #ifdef DPS8M
-          SETLO (cpu.CY, (cpu.cu.IR & 0000000777770LL));
+          //SETLO (cpu.CY, (cpu.cu.IR & 0000000777770LL));
+          cpu.CY = cpu.cu.IR & 0000000777770LL;
 #endif
 #ifdef L68
-          SETLO (cpu.CY, (cpu.cu.IR & 0000000777760LL));
+          //SETLO (cpu.CY, (cpu.cu.IR & 0000000777760LL));
+          cpu.CY = cpu.cu.IR & 0000000777760LL;
 #endif
+          cpu.zone = 0000000777777;
           SCF (i->stiTally, cpu.CY, I_TALLY);
           break;
 
@@ -3271,7 +3274,9 @@ static t_stat DoBasicInstruction (void)
         case 0747:  // stx7
           {
             uint32 n = opcode & 07;  // get n
-            SETHI (cpu.CY, cpu.rX[n]);
+            //SETHI (cpu.CY, cpu.rX[n]);
+            cpu.CY = ((word36) cpu.rX[n]) << 18;
+            cpu.zone = 0777777000000;
           }
           break;
 
@@ -3287,7 +3292,8 @@ static t_stat DoBasicInstruction (void)
         case 0445:  // sxl5
         case 0446:  // sxl6
         case 0447:  // sxl7
-          SETLO (cpu.CY, cpu.rX[opcode & 07]);
+          //SETLO (cpu.CY, cpu.rX[opcode & 07]);
+          cpu.CY = cpu.rX[opcode & 07];
           cpu.zone = 0000000777777;
           break;
 
@@ -5306,7 +5312,8 @@ static t_stat DoBasicInstruction (void)
           // 00...0 -> C(Y)8,17
 
           CPTUR (cptUseE);
-          putbits36_18 (& cpu.CY, 0, ((word18) (cpu.rE & 0377) << 10));
+          //putbits36_18 (& cpu.CY, 0, ((word18) (cpu.rE & 0377) << 10));
+          cpu.CY = ((word36) (cpu.rE & 0377)) << 28;
           cpu.zone = 0777777000000;
           break;
 
@@ -6359,7 +6366,8 @@ static t_stat DoBasicInstruction (void)
         case 0550:  // sbar
           // C(BAR) -> C(Y) 0,17
           CPTUR (cptUseBAR);
-          SETHI (cpu.CY, (cpu.BAR.BASE << 9) | cpu.BAR.BOUND);
+          //SETHI (cpu.CY, (cpu.BAR.BASE << 9) | cpu.BAR.BOUND);
+          cpu.CY = ((((word36) cpu.BAR.BASE) << 9) | cpu.BAR.BOUND) << 18;
           cpu.zone = 0777777000000;
           break;
 
