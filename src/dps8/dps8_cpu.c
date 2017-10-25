@@ -1763,6 +1763,29 @@ setCPU:;
                     // *1000 is 10  milliseconds
                     // *1000 is 10000 microseconds
                     // in uSec;
+#ifdef THREADZ
+                    // rTR is 512KHz; sleepCPU is in 1Mhz
+                    //   rTR * 1,000,000 / 512,000
+                    //   rTR * 1000 / 512
+                    //   rTR * 500 / 256
+                    //   rTR * 250 / 128
+                    //   rTR * 125 / 64
+
+                    unsigned long left = sleepCPU (cpu.rTR * 125u / 64u);
+                    if (left)
+                      {
+                        cpu.rTR = left * 64 / 125;
+                      }
+                    else
+                      {
+                        if (cpu.switches.tro_enable)
+                          setG7fault (currentRunningCpuIdx, FAULT_TRO,
+                                      fst_zero);
+                        cpu.rTR = 0;
+                      }
+                    cpu.rTRticks = 0;
+                    break;
+#endif
                     usleep (10000);
 
 #ifndef THREADZ

@@ -296,13 +296,17 @@ void iom_core_write (uint iomUnitIdx, word24 addr, word36 data, UNUSED const cha
     int scuUnitNum = queryIomScbankMap (iomUnitIdx, addr, & offset);
     int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
 #ifdef THREADZ
+#ifdef lockread
     if (! thisIOMHaveLock)
       lock_mem ();
 #endif
+#endif
     scu [scuUnitIdx].M[offset] = data & DMASK;
 #ifdef THREADZ
+#ifdef lockread
     if (! thisIOMHaveLock)
       unlock_mem ();
+#endif
 #endif
   }
 
@@ -312,14 +316,18 @@ void iom_core_write2 (uint iomUnitIdx, word24 addr, word36 even, word36 odd, UNU
     int scuUnitNum = queryIomScbankMap (iomUnitIdx, addr & PAEVEN, & offset);
     int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
 #ifdef THREADZ
+#ifdef lockread
     if (! thisIOMHaveLock)
       lock_mem ();
+#endif
 #endif
     scu [scuUnitIdx].M[offset ++] = even & DMASK;
     scu [scuUnitIdx].M[offset   ] = odd & DMASK;
 #ifdef THREADZ
+#ifdef lockread
     if (! thisIOMHaveLock)
       unlock_mem ();
+#endif
 #endif
   }
 #else
@@ -361,27 +369,35 @@ void iom_core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char *
 void iom_core_write (word24 addr, word36 data, UNUSED const char * ctx)
   {
 #ifdef THREADZ
+#ifdef lockread
     if (! thisIOMHaveLock)
       lock_mem ();
 #endif
+#endif
     M [addr] = data & DMASK;
 #ifdef THREADZ
+#ifdef lockread
     if (! thisIOMHaveLock)
       unlock_mem ();
+#endif
 #endif
   }
 
 void iom_core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
   {
 #ifdef THREADZ
+#ifdef lockread
     if (! thisIOMHaveLock)
       lock_mem ();
+#endif
 #endif
     M [addr ++] = even;
     M [addr] =    odd;
 #ifdef THREADZ
+#ifdef lockread
     if (! thisIOMHaveLock)
       unlock_mem ();
+#endif
 #endif
   }
 #endif
@@ -2738,7 +2754,7 @@ void * iomThreadMain (void * arg)
 //
 //
 
-t_stat iomUnitResetIdx (uint iomUnitIdx)
+t_stat iomUnitResetIdx (UNUSED uint iomUnitIdx)
   {
 #ifdef SCUMEM
     setupIOMScbankMap (iomUnitIdx);

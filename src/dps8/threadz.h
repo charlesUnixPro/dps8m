@@ -127,7 +127,7 @@ void createCPUThread (uint cpuNum);
 void cpuRdyWait (uint cpuNum);
 void setCPURun (uint cpuNum, bool run);
 void cpuRunningWait (void);
-void sleepCPU (unsigned long nsec);
+unsigned long sleepCPU (unsigned long nsec);
 void wakeCPU (uint cpuNum);
 
 // IOM threads

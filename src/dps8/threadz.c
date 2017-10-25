@@ -10,6 +10,7 @@
 #include "dps8_cpu.h"
 #include "dps8_faults.h"
 #include "dps8_iom.h"
+#include "dps8_utils.h"
 
 #include "threadz.h"
 
@@ -167,6 +168,27 @@ bool test_tst_lock (void)
 //
 ////////////////////////////////////////////////////////////////////////////////
 
+//
+// main thread
+//   createCPUThread 
+//
+// CPU and SCU thread
+//   setCPURun (bool)
+// CPU thread
+//   cpuRunningWait
+//   sleepCPU
+// SCU thread
+//   wakeCPU
+//
+// cpuThread:
+//
+//    while (1)
+//      {
+//        cpuRunningWait
+//        compute...
+//        dis:  sleepCPU
+//      }
+
 struct cpuThreadz_t cpuThreadz [N_CPU_UNITS_MAX];
 
 // Create CPU thread
@@ -254,8 +276,8 @@ void cpuRunningWait (void)
   }
 
 // Called by CPU thread to sleep until time up or signaled
-
-void sleepCPU (unsigned long nsec)
+// Return time left
+unsigned long  sleepCPU (unsigned long nsec)
   {
     int rc;
     struct cpuThreadz_t * p = & cpuThreadz[currentRunningCpuIdx];
@@ -272,10 +294,19 @@ void sleepCPU (unsigned long nsec)
                                  & abstime);
     if (rc && rc != ETIMEDOUT)
       sim_printf ("sleepCPU pthread_cond_timedwait %d\n", rc);
+    bool timeout = rc == ETIMEDOUT;
     rc = pthread_mutex_unlock (& p->sleepLock);
     if (rc)
       sim_printf ("sleepCPU pthread_mutex_unlock %d\n", rc);
     //sim_printf ("pthread_cond_timedwait %lu %d\n", nsec, n);
+    if (timeout)
+      return 0;
+    struct timespec newtime, delta;
+    clock_gettime (CLOCK_REALTIME, & newtime);
+    timespec_diff (& abstime, & newtime, & delta);
+    if (delta.tv_nsec < 0)
+      return 0; // safety
+    return (unsigned long) delta.tv_nsec;
   }
 
 // Called to wake sleeping CPU; such as interrupt during DIS
@@ -301,6 +332,23 @@ void wakeCPU (uint cpuNum)
 // IOM threads
 //
 ////////////////////////////////////////////////////////////////////////////////
+
+// main thread
+//   createIOMThread    create thread
+//   iomRdyWait         wait for IOM started
+//   setIOMInterrupt    signal IOM to start
+//   iomDoneWait        wait for IOM done
+// IOM thread
+//   iomInterruptWait   IOM thread wait for work
+//   iomInterruptDone   IOM thread signal done working
+//
+//   IOM thread
+//     while (1)
+//       {
+//         iomInterruptWake
+//         work...
+//         iomInterruptDone
+//      }
 
 struct iomThreadz_t iomThreadz [N_IOM_UNITS_MAX];
 
@@ -439,6 +487,22 @@ void iomRdyWait (uint iomNum)
 //
 ////////////////////////////////////////////////////////////////////////////////
 
+// main thread
+//   createChnThread    create thread
+// IOM thread
+//   chnRdyWait         wait for channel started
+//   setChnConnect      signal channel to start
+// Channel thread
+//   chnConnectWait     Channel thread wait for work
+//   chnConnectDone     Channel thread signal done working
+//
+//   IOM thread
+//     while (1)
+//       {
+//         iomInterruptWake
+//         work...
+//         iomInterruptDone
+//      }
 struct chnThreadz_t chnThreadz [N_IOM_UNITS_MAX] [MAX_CHANNELS];
 
 // Create channel thread

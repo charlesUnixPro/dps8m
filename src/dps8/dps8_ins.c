@@ -52,7 +52,6 @@ static int emCall (void);
 #endif
 #endif
 
-#ifdef LOOPTRC
 #include <time.h>
 void timespec_diff(struct timespec *start, struct timespec *stop,
                    struct timespec *result)
@@ -68,6 +67,7 @@ void timespec_diff(struct timespec *start, struct timespec *stop,
     return;
 }
 
+#ifdef LOOPTRC
 void elapsedtime (void)
   {
     static bool init = false;
