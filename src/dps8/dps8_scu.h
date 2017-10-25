@@ -79,7 +79,7 @@ typedef struct
     uint64 lastTime;
 #ifdef SCUMEM
 enum { SCU_MEM_SIZE = 020000000 };
-    word36 M [SCU_MEM_SIZE];
+    word36 vol M [SCU_MEM_SIZE];
 #endif
 } scu_t;
 
