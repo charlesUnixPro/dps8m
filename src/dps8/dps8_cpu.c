@@ -1764,6 +1764,8 @@ setCPU:;
                     // *1000 is 10000 microseconds
                     // in uSec;
 #ifdef THREADZ
+
+// XXX If interupt inhibit set, then sleep forever instead of TRO
                     // rTR is 512KHz; sleepCPU is in 1Mhz
                     //   rTR * 1,000,000 / 512,000
                     //   rTR * 1000 / 512
@@ -1774,7 +1776,7 @@ setCPU:;
                     unsigned long left = sleepCPU (cpu.rTR * 125u / 64u);
                     if (left)
                       {
-                        cpu.rTR = left * 64 / 125;
+                        cpu.rTR = (word27) (left * 64 / 125);
                       }
                     else
                       {
