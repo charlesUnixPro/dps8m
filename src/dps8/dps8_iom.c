@@ -1719,7 +1719,6 @@ static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
                       iomFaultServiceRequest req,
                       iomSysFaults_t signal)
   {
-
 #ifdef THREADZ
     lock_mem ();
     thisIOMHaveLock = true;
@@ -2681,7 +2680,7 @@ void iom_interrupt (uint scuUnitIdx, uint iomUnitIdx)
 
 #ifdef THREADZ
     setIOMInterrupt (iomUnitIdx);
-    //iomDoneWait (iomUnitIdx);
+    iomDoneWait (iomUnitIdx);
 #else
     int ret = doConnectChan (iomUnitIdx);
 
