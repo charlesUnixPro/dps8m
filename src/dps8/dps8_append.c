@@ -33,6 +33,7 @@
  */
 
 #ifdef TESTING
+#define DBG_CTR cpu.cycleCnt
 #define DBGAPP(...) sim_debug (DBG_APPENDING, & cpu_dev, __VA_ARGS__)
 #else
 #define DBGAPP(...)
