@@ -1010,6 +1010,7 @@ static void cpun_reset2 (UNUSED uint cpun)
     SET_I_NBAR;
     
     cpu.CMR.luf = 3;    // default of 16 mS
+#if 0
 #ifdef WAM
     cpu.cu.SD_ON = 1;
     cpu.cu.PT_ON = 1;
@@ -1017,6 +1018,10 @@ static void cpun_reset2 (UNUSED uint cpun)
 // If WAM emulation is not enabled in the build, mark it disabled
     cpu.cu.SD_ON = 0;
     cpu.cu.PT_ON = 0;
+#endif
+#else
+    cpu.cu.SD_ON = cpu.switches.disable_wam ? 0 : 1;
+    cpu.cu.PT_ON = cpu.switches.disable_wam ? 0 : 1;
 #endif
  
     setCpuCycle (FETCH_cycle);
