@@ -2249,8 +2249,6 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
 #endif
       nem_check (addr,  "core_read nem");
 
-      LOCK_MEM;
-
 #if 0 // XXX Controlled by TEST/NORMAL switch
 #ifdef ISOLTS
     if (cpu.MR.sdpap)
@@ -2269,7 +2267,9 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
     word24 offset;
     int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
     int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    LOCK_MEM;
     *data = scu [scuUnitIdx].M[offset] & DMASK;
+    UNLOCK_MEM;
     if (watchBits [addr])
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o read   %08o %012"PRIo64" "
@@ -2292,7 +2292,10 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
                     ctx);
         traceInstruction (0);
       }
+
+    LOCK_MEM;
     *data = M[addr] & DMASK;
+    UNLOCK_MEM;
 
 #endif
 #ifdef TR_WORK_MEM
@@ -2301,7 +2304,6 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read  %08o %012"PRIo64" (%s)\n",
                 addr, * data, ctx);
-    UNLOCK_MEM;
     PNL (trackport (addr, * data));
     return 0;
   }
@@ -2337,31 +2339,22 @@ int core_write (word24 addr, word36 data, const char * ctx)
         cpu.MR.separ = 0;
       }
 #endif
-    LOCK_MEM;
 #ifdef SCUMEM
     word24 offset;
     int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
     int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
     if (cpu.useZone == MASK36)
       {
+        LOCK_MEM;
         scu[scuUnitIdx].M[offset] = data & DMASK;
+        UNLOCK_MEM;
       }
     else
       {
-#ifdef THREADZ
-        if (! cpu.havelock)
-          {
-            lock_mem ();
-          }
-#endif
+        LOCK_MEM;
         scu[scuUnitIdx].M[addr] = (scu[scuUnitIdx].M[addr] & ~cpu.useZone) |
                                   (data & cpu.useZone);
-#ifdef THREADZ
-        if (! cpu.havelock)
-          {
-            unlock_mem ();
-          }
-#endif
+        UNLOCK_MEM;
         cpu.useZone = MASK36; // Safety
       }
     if (watchBits [addr])
@@ -2373,23 +2366,15 @@ int core_write (word24 addr, word36 data, const char * ctx)
 #else
     if (cpu.useZone == MASK36)
       {
+        LOCK_MEM;
         M[addr] = data & DMASK;
+        UNLOCK_MEM;
       }
     else
       {
-#ifdef THREADZ
-        if (! cpu.havelock)
-          {
-            lock_mem ();
-          }
-#endif
+        LOCK_MEM;
         M[addr] = (M[addr] & ~cpu.useZone) | (data & cpu.useZone);
-#ifdef THREADZ
-        if (! cpu.havelock)
-          {
-            unlock_mem ();
-          }
-#endif
+        UNLOCK_MEM;
         cpu.zone = cpu.useZone = MASK36; // Safety
       }
     if (watchBits [addr])
@@ -2400,7 +2385,6 @@ int core_write (word24 addr, word36 data, const char * ctx)
         traceInstruction (0);
       }
 #endif
-    UNLOCK_MEM;
 #ifdef TR_WORK_MEM
     cpu.rTRticks ++;
 #endif
@@ -2452,12 +2436,13 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
       }
 #endif
 #endif
-    LOCK_MEM;
 #ifdef SCUMEM
     word24 offset;
     int scuUnitNum = lookup_cpu_mem_map (addr, & offset);
     int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    LOCK_MEM;
     *even = scu [scuUnitIdx].M[offset++] & DMASK;
+    UNLOCK_MEM;
     if (watchBits [addr])
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" "
@@ -2467,7 +2452,9 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012"PRIo64" (%s)\n",
                 addr, * even, ctx);
+    LOCK_MEM;
     *odd = scu [scuUnitIdx].M[offset] & DMASK;
+    UNLOCK_MEM;
     if (watchBits [addr+1])
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" "
@@ -2493,11 +2480,12 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
                     M [addr], ctx);
         traceInstruction (0);
       }
+    LOCK_MEM;
     *even = M[addr++] & DMASK;
+    UNLOCK_MEM;
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012"PRIo64" (%s)\n",
                 addr - 1, * even, ctx);
-    PNL (trackport (addr - 1, * even));
 
     // if the even address is OK, the odd will be
     //nem_check (addr,  "core_read2 nem");
@@ -2516,16 +2504,17 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
         traceInstruction (0);
       }
 
+    LOCK_MEM;
     *odd = M[addr] & DMASK;
+    UNLOCK_MEM;
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012"PRIo64" (%s)\n",
                 addr, * odd, ctx);
 #endif
-    UNLOCK_MEM;
 #ifdef TR_WORK_MEM
     cpu.rTRticks ++;
 #endif
-    PNL (trackport (addr, * odd));
+    PNL (trackport (addr - 1, * even));
     return 0;
   }
 #endif
@@ -2568,7 +2557,6 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
       }
 #endif
 
-    LOCK_MEM;
 #ifdef SCUMEM
     word24 offset;
     int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
@@ -2580,7 +2568,9 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
                     "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr,
                     even, ctx);
       }
+    LOCK_MEM;
     scu [scuUnitIdx].M[offset] = odd & DMASK;
+    UNLOCK_MEM;
     if (watchBits [addr+1])
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o write2 %08o %012"PRIo64" "
@@ -2595,8 +2585,9 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
                     even, ctx);
         traceInstruction (0);
       }
+    LOCK_MEM;
     M[addr++] = even & DMASK;
-    PNL (trackport (addr - 1, even));
+    UNLOCK_MEM;
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write2 %08o %012"PRIo64" (%s)\n",
                 addr - 1, even, ctx);
@@ -2611,13 +2602,14 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
                     odd, ctx);
         traceInstruction (0);
       }
+    LOCK_MEM;
     M[addr] = odd & DMASK;
+    UNLOCK_MEM;
 #endif
 #ifdef TR_WORK_MEM
     cpu.rTRticks ++;
 #endif
-    UNLOCK_MEM;
-    PNL (trackport (addr, odd));
+    PNL (trackport (addr - 1, even));
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write2 %08o %012"PRIo64" (%s)\n",
                 addr, odd, ctx);

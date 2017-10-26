@@ -3,7 +3,6 @@
 #define tdbg
 
 //#define use_spinlock
-#define lock_read
 
 // Wrapper around pthreads
 

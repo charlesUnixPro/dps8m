@@ -1192,6 +1192,11 @@ static void fetchLPWPTW (uint iomUnitIdx, uint chan)
 void iomDirectDataService (uint iomUnitIdx, uint chan, word36 * data,
                            bool write)
   {
+#ifdef THREADZ
+    // Force mailbox and dma data to be up-to-date 
+    fence ();
+#endif
+
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     uint daddr = p -> DDCW_ADDR;
     switch (p -> chanMode)
@@ -1232,6 +1237,11 @@ sim_warn ("iomDirectDataService DCW paged\n");
     else
       iom_core_read (daddr, data, __func__);
 #endif
+#ifdef THREADZ
+    // Force mailbox and dma data to be up-to-date 
+    fence ();
+#endif
+
   }
 
 // 'tally' is the transfer size request by Multics.
@@ -1242,6 +1252,11 @@ sim_warn ("iomDirectDataService DCW paged\n");
 void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
                              uint * cnt, bool write)
 {
+#ifdef THREADZ
+    // Force mailbox and dma data to be up-to-date 
+    fence ();
+#endif
+
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     uint tally = p -> DDCW_TALLY;
     uint daddr = p -> DDCW_ADDR;
@@ -1334,6 +1349,11 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
           }
         * cnt = c;
       }
+#ifdef THREADZ
+    // Force mailbox and dma data to be up-to-date 
+    fence ();
+#endif
+
 }
 
 static void updateChanMode (uint iomUnitIdx, uint chan, bool tdcw)
@@ -1476,6 +1496,11 @@ static void writeLPW (uint iomUnitIdx, uint chan)
     if (chan != IOM_CONNECT_CHAN)
       iom_core_write (chanLoc + 1, p -> LPWX, __func__);
 #endif
+#ifdef THREADZ
+    // Force mailbox and dma data to be up-to-date 
+    fence ();
+#endif
+
   }
 
 static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
@@ -1484,6 +1509,11 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
 
     uint chanLoc = mbxLoc (iomUnitIdx, chan);
+
+#ifdef THREADZ
+    // Force mailbox and dma data to be up-to-date 
+    fence ();
+#endif
 
 #ifdef SCUMEM
     iom_core_read (iomUnitIdx, chanLoc, & p -> LPW, __func__);
@@ -1604,6 +1634,11 @@ static void packLPW (uint iomUnitIdx, uint chan)
 static void fetchAndParsePCW (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+#ifdef THREADZ
+    // Force mailbox and dma data to be up-to-date 
+    fence ();
+#endif
+
 #ifdef SCUMEM
     iom_core_read2 (iomUnitIdx, p -> LPW_DCW_PTR, & p -> PCW0, & p -> PCW1, __func__);
 #else
@@ -1654,6 +1689,11 @@ sim_err ("unhandled fetchAndParseDCW\n");
 
     iom_core_read (addr, & p -> DCW, __func__);
 #endif
+#ifdef THREADZ
+    // Force mailbox and dma data to be up-to-date 
+    fence ();
+#endif
+
     switch (p -> chanMode)
       {
         // LPW ABS

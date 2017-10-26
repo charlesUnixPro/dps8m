@@ -1846,13 +1846,8 @@ static inline void trackport (word24 a, word36 d)
 // Ugh. Circular dependencies XXX
 void lock_mem (void);
 void unlock_mem (void);
-#ifdef lockread
 #define LOCK_MEM if (! cpu.havelock) { lock_mem (); }
 #define UNLOCK_MEM if (! cpu.havelock) { unlock_mem (); }
-#else
-#define LOCK_MEM
-#define UNLOCK_MEM
-#endif // lockread
 #else // ! THREADZ
 #define LOCK_MEM
 #define UNLOCK_MEM
@@ -1955,20 +1950,8 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
       }
     else
       {
-#ifdef THREADZ
-        if (! cpu.havelock)
-          {
-            lock_mem ();
-          }
-#endif
         scu[scuUnitIdx].M[addr] = (scu[scuUnitIdx].M[addr] & ~cpu.useZone) |
                                   (data & cpu.useZone);
-#ifdef THREADZ
-        if (! cpu.havelock)
-          {
-            unlock_mem ();
-          }
-#endif
         cpu.useZone = MASK36; // Safety
       }
     UNLOCK_MEM;
@@ -1980,19 +1963,7 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
       }
     else
       {
-#ifdef THREADZ
-        if (! cpu.havelock)
-          {
-            lock_mem ();
-          }
-#endif
         M[addr] = (M[addr] & ~cpu.useZone) | (data & cpu.useZone);
-#ifdef THREADZ
-        if (! cpu.havelock)
-          {
-            unlock_mem ();
-          }
-#endif
         cpu.zone = cpu.useZone = MASK36; // Safety
       }
     UNLOCK_MEM;
@@ -2040,24 +2011,18 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd,
     int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
     LOCK_MEM;
     *even = scu [scuUnitIdx].M[offset++] & DMASK;
-    UNLOCK_MEM;
-    PNL (trackport (addr - 1, * even);)
-    LOCK_MEM;
     *odd = scu [scuUnitIdx].M[offset] & DMASK;
     UNLOCK_MEM;
 #else
     LOCK_MEM;
     *even = M[addr++] & DMASK;
-    UNLOCK_MEM;
-    PNL (trackport (addr - 1, * even);)
-    LOCK_MEM;
     *odd = M[addr] & DMASK;
     UNLOCK_MEM;
 #endif
 #ifdef TR_WORK_MEM
     cpu.rTRticks ++;
 #endif
-    PNL (trackport (addr, * odd);)
+    PNL (trackport (addr - 1, * even);)
     return 0;
   }
 
@@ -2095,22 +2060,15 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd,
     int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
     LOCK_MEM;
     scu [scuUnitIdx].M[offset++] = even & DMASK;
-    UNLOCK_MEM;
-    PNL (trackport (addr - 1, even);)
-    LOCK_MEM;
     scu [scuUnitIdx].M[offset] = odd & DMASK;
     UNLOCK_MEM;
-    PNL (trackport (addr, odd);)
 #else
     LOCK_MEM;
     M[addr++] = even;
-    UNLOCK_MEM;
-    PNL (trackport (addr - 1, even);)
-    LOCK_MEM;
     M[addr] = odd;
     UNLOCK_MEM;
-    PNL (trackport (addr, odd);)
 #endif
+    PNL (trackport (addr - 1, even);)
 #ifdef TR_WORK_MEM
     cpu.rTRticks ++;
 #endif
