@@ -747,7 +747,7 @@ typedef unsigned short int pxl;
 
 // 'global' variables to store screen info
 static pxl *fbp = 0;
-static int bytes_per_pixel = 2;
+static unsigned int bytes_per_pixel = 2;
 struct fb_var_screeninfo vinfo;
 struct fb_fix_screeninfo finfo;
 static pxl bg_col = 0;
@@ -755,16 +755,16 @@ static pxl fg_col = 0xffff;
 
 // 'plot' a pixel in given color
 
-void put_pixel (int x, int y, pxl c)
+void put_pixel (unsigned int x, unsigned int y, pxl c)
   {
     // calculate the pixel's byte offset inside the buffer
     unsigned int pix_offset = x + y * finfo.line_length/bytes_per_pixel;
     *(fbp + pix_offset) = c;
   }
 
-void fill_rect (int x, int y, int w, int h, pxl c)
+void fill_rect (unsigned int x, unsigned int y, unsigned int w, unsigned int h, pxl c)
   {
-    int cx, cy;
+    unsigned int cx, cy;
     for (cy = 0; cy < h; cy ++)
       {
         for (cx = 0; cx < w; cx ++)
@@ -778,7 +778,7 @@ static pxl grey = 0x8410;
 
 // Draw a text string on the display
 
-static void draw (int textX, int textY, char *arg)
+static void draw (unsigned int textX, unsigned int textY, char *arg)
   {
 
     // Convert from text row/col to pixel coordinates.
@@ -787,7 +787,7 @@ static void draw (int textX, int textY, char *arg)
 
     char * text = arg;
 
-    int i, l, x, y;
+    unsigned int i, l, x, y;
 
     // loop through all characters in the text string
     l = strlen (text);
@@ -858,7 +858,7 @@ cpu_state_t * cpun;
 
 
 static char buf [128];
-static void draw_n (int n, word36 v, int col, int row)
+static void draw_n (int n, word36 v, unsigned int col, unsigned int row)
   {
     char * p = buf;
     for (int i = n - 1; i >= 0; i --)
@@ -928,7 +928,7 @@ int main (int argc, char * argv [])
 // Open the framebuffer
 
     int fbfd = 0;
-    long int screensize = 0;
+    size_t screensize = 0;
 
     fbfd = open("/dev/fb1", O_RDWR);
     if (! fbfd)
@@ -957,7 +957,7 @@ int main (int argc, char * argv [])
 
 // map fb to user mem
 
-    screensize = finfo.smem_len;
+    screensize = (size_t) finfo.smem_len;
     fbp = (pxl *) mmap (0, screensize, PROT_READ | PROT_WRITE, MAP_SHARED,
                        fbfd, 0);
 
@@ -976,7 +976,7 @@ int main (int argc, char * argv [])
     // Write the labels
 
 //                 "0123456789012345678901234567890123456789"
-    int l = 0;
+    unsigned int l = 0;
     draw (0, l ++, "PRR ___ P _ PSR _______________");
     draw (0, l ++, "TRR ___ TSR _______________ TBR ______");
     draw (0, l ++, "IC  __________________");
@@ -1054,8 +1054,8 @@ int main (int argc, char * argv [])
             draw_n (15, cpun -> PAR [i] . SNR,     2, l); 
             draw_n ( 3, cpun -> PAR [i] . RNR,    18, l); 
             l ++;
-            draw_n ( 2, cpun -> PAR [i] . CHAR,    2, l);
-            draw_n ( 4, cpun -> PAR [i] . BITNO ,  5, l);
+            draw_n ( 2, cpun -> PAR [i] . AR_CHAR,    2, l);
+            draw_n ( 4, cpun -> PAR [i] . AR_BITNO ,  5, l);
             draw_n (18, cpun -> PAR [i] . WORDNO, 10, l);
             l ++;
           }
@@ -1067,7 +1067,7 @@ int main (int argc, char * argv [])
         l ++;
         draw_n ( 5, cpun -> faultNumber, 4, l);
         l ++;
-        draw_n (36, cpun -> subFault, 4, l);
+        draw_n (36, cpun -> subFault.bits, 4, l);
 
         usleep (10000);
       }
