@@ -101,7 +101,7 @@ bool test_mem_lock (void)
     return false;   
   }
 
-pthread_spinlock_t scu_lock;
+static pthread_spinlock_t scu_lock;
 
 void lock_scu (void)
   {
