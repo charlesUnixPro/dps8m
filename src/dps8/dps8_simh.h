@@ -130,10 +130,15 @@ extern DEVICE scu_dev;
 //  MTAB_NC do not convert option value to upper case
 //  MTAB_SHP SHOW parameter takes optional value 
  
-// Requires a value, DEV and DEVn both work.
-#define MTAB_unit_value     MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR
+// Requires a value, DEV and DEVn both work, not in "show"
+#define MTAB_unit_value      MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR
+// Requires a value, DEV and DEVn both work, in "show"
+#define MTAB_unit_value_show MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_VALR
 // Requires a value, DEV only.
 #define MTAB_dev_value     MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR
+
+// End of list marker
+#define MTAB_eol { 0, 0, NULL, NULL, 0, 0, NULL, NULL }
 
 extern uint32 sim_brk_summ, sim_brk_types, sim_brk_dflt;
 extern FILE *sim_deb;

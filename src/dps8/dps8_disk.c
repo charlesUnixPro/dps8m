@@ -75,10 +75,58 @@
 // sector size.
 //
 
+// Disk types
+//
+//  D500
+//  D451
+//  D400
+//  D190
+//  D181
+//  D501
+//  3380
+//  3381
 
-// assuming 512 word36  sectors; and seekPosition is seek512
-#define SECTOR_SZ_IN_W36 512
-#define SECTOR_SZ_IN_BYTES ((36 * SECTOR_SZ_IN_W36) / 8)
+enum seekSize_t { seek_64, seek_512};
+struct diskType_t
+  {
+    char * typename;
+    uint capac;
+    uint firstDevNumber;
+    bool removable;
+    enum seekSize_t seekSize; // false: seek 64  true: seek 512
+    uint sectorSizeWords;
+  };
+
+
+
+static struct diskType_t diskTypes [] =
+  {
+    { // disk_init assumes 3381 is at index 0
+      "3381", 22479, 0, false, seek_512, 512
+    },
+    {
+      "d500", 38258, 1, false, seek_64, 64
+    },
+    {
+      "d451", 38258, 1, true, seek_64, 64
+    },
+    {
+      "d400", 19270, 1, true, seek_64, 64
+    },
+    {
+      "d190", 14760, 1, true, seek_64, 64
+    },
+    {
+      "d181", 4444, 1, true, seek_64, 64
+    },
+    {
+      "d501", 67200, 1, false, seek_64, 64
+    },
+    {
+      "3380", 112395, 0, false, seek_512, 512
+    },
+  };
+#define N_DISK_TYPES (sizeof (diskTypes) / sizeof (struct diskType_t))
 
 #define M3381_SECTORS 6895616
 // records per subdev: 74930 (127 * 590)
@@ -170,46 +218,21 @@
 static t_stat disk_reset (DEVICE * dptr);
 static t_stat disk_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat disk_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat disk_show_type (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat disk_set_type (UNIT * uptr, int32 value, const char * cptr, void * desc);
 
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE | DKUF_F_RAW)
 UNIT disk_unit [N_DISK_UNITS_MAX] =
   {
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL}
+    [0 ... N_DISK_UNITS_MAX-1] =
+      {
+        UDATA (/* & disk_svc */ NULL, UNIT_FLAGS, M3381_SECTORS),
+        0, 0, 0, 0, 0, NULL, NULL, NULL, NULL
+      }
   };
 
-#define DISK_UNIT_NUM(uptr) ((uptr) - disk_unit)
+#define DISK_UNIT_IDX(uptr) ((uptr) - disk_unit)
 
 static DEBTAB disk_dt [] =
   {
@@ -230,7 +253,7 @@ static MTAB disk_mod [] =
     { UNIT_WATCH, 1, "WATCH", "WATCH", 0, 0, NULL, NULL },
     { UNIT_WATCH, 0, "NOWATCH", "NOWATCH", 0, 0, NULL, NULL },
     {
-      MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
+      MTAB_dev_value, /* mask */
       0,            /* match */
       "NUNITS",     /* print string */
       "NUNITS",         /* match string */
@@ -239,7 +262,17 @@ static MTAB disk_mod [] =
       "Number of DISK units in the system", /* value descriptor */
       NULL // Help
     },
-    { 0, 0, NULL, NULL, 0, 0, NULL, NULL }
+    {
+      MTAB_unit_value_show, // mask 
+      0,                    // match
+      "TYPE",               // print string
+      "TYPE",               // match string
+      disk_set_type,        // validation routine
+      disk_show_type,       // display routine
+      "disk type",          // value descriptor
+      "D500, D451, D400, D190, D181, D501, 3380, 3381" // Help
+    },
+    MTAB_eol
   };
 
 
@@ -276,23 +309,11 @@ DEVICE disk_dev = {
 
 static struct disk_state
   {
-    enum { no_mode, seek512_mode, seek_mode, read_mode, write_mode, request_status_mode } io_mode;
+    uint typeIdx;
+    enum { no_mode, seek512_mode, seek64_mode, seek_mode, read_mode, write_mode, request_status_mode } io_mode;
     uint seekPosition;
   } disk_states [N_DISK_UNITS_MAX];
 
-#if 0
-static int findDiskUnit (int iomUnitIdx, int chan_num, int dev_code)
-  {
-    for (int i = 0; i < N_DISK_UNITS_MAX; i ++)
-      {
-        if (iomUnitIdx == cables -> cablesFromIomToDsk [i] . iomUnitIdx &&
-            chan_num     == cables -> cablesFromIomToDsk [i] . chan_num     &&
-            dev_code     == cables -> cablesFromIomToDsk [i] . dev_code)
-          return i;
-      }
-    return -1;
-  }
-#endif
 
 /*
  * disk_init()
@@ -303,10 +324,11 @@ static int findDiskUnit (int iomUnitIdx, int chan_num, int dev_code)
 
 void disk_init (void)
   {
+    // Sets diskTypeIdx to 0: 3381
     memset (disk_states, 0, sizeof (disk_states));
   }
 
-static t_stat disk_reset (DEVICE * dptr)
+static t_stat disk_reset (UNUSED DEVICE * dptr)
   {
 #if 0
     for (uint i = 0; i < dptr -> numunits; i ++)
@@ -316,6 +338,76 @@ static t_stat disk_reset (DEVICE * dptr)
       }
 #endif
     return SCPE_OK;
+  }
+
+static int diskSeek64 (uint iomUnitIdx, uint chan)
+  {
+    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
+                      devices [chan] [p -> IDCW_DEV_CODE];
+    uint devUnitIdx = d -> devUnitIdx;
+    struct disk_state * disk_statep = & disk_states [devUnitIdx];
+    sim_debug (DBG_NOTIFY, & disk_dev, "Seek64 %d\n", devUnitIdx);
+    disk_statep -> io_mode = seek64_mode;
+
+// Process DDCW
+
+    bool ptro, send, uff;
+    int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+    if (rc < 0)
+      {
+        sim_printf ("diskSeek54 list service failed\n");
+        return -1;
+      }
+    if (uff)
+      {
+        sim_printf ("diskSeek54 ignoring uff\n"); // XXX
+      }
+    if (! send)
+      {
+        sim_printf ("diskSeek54 nothing to send\n");
+        return 1;
+      }
+    if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+      {
+        sim_printf ("diskSeek54 expected DDCW\n");
+        return -1;
+      }
+
+
+    uint tally = p -> DDCW_TALLY;
+    sim_debug (DBG_DEBUG, & disk_dev,
+               "%s: Tally %d (%o)\n", __func__, tally, tally);
+
+    // Seek specific processing
+
+    if (tally != 1)
+      {
+        sim_printf ("disk seek dazed by tally %d != 1\n", tally);
+        p -> stati = 04510; // Cmd reject, invalid inst. seq.
+        p -> chanStatus = chanStatIncorrectDCW;
+        return -1;
+      }
+
+    word36 seekData;
+    iomDirectDataService (iomUnitIdx, chan, & seekData, false);
+
+//sim_printf ("seekData %012"PRIo64"\n", seekData);
+// Observations about the seek/write stream
+// the stream is seek512 followed by a write 1024.
+// the seek data is:  000300nnnnnn
+// lets assume the 3 is a copy of the seek cmd # as a data integrity check.
+// highest observed n during vol. inoit. 272657(8) 95663(10)
+//
+
+// disk_control.pl1: 
+//   quentry.sector = bit (sector, 21);  /* Save the disk device address. */
+// suggests seeks are 21 bits.
+//  
+    disk_statep -> seekPosition = seekData & MASK21;
+//sim_printf ("seek seekPosition %d\n", disk_statep -> seekPosition);
+    p -> stati = 00000; // Channel ready
+    return 0;
   }
 
 static int diskSeek512 (uint iomUnitIdx, uint chan)
@@ -397,7 +489,9 @@ static int diskRead (uint iomUnitIdx, uint chan)
     uint devUnitIdx = d -> devUnitIdx;
     UNIT * unitp = & disk_unit [devUnitIdx];
     struct disk_state * disk_statep = & disk_states [devUnitIdx];
-
+    uint typeIdx = disk_statep->typeIdx;
+    uint sectorSizeWords = diskTypes[typeIdx].sectorSizeWords;
+    uint sectorSizeBytes = ((36 * sectorSizeWords) / 8);
     sim_debug (DBG_NOTIFY, & disk_dev, "Read %d\n", devUnitIdx);
     disk_statep -> io_mode = read_mode;
 
@@ -440,7 +534,7 @@ static int diskRead (uint iomUnitIdx, uint chan)
                    "%s: Tally %d (%o)\n", __func__, tally, tally);
 
         rc = fseek (unitp -> fileref, 
-                    (long) (disk_statep -> seekPosition * SECTOR_SZ_IN_BYTES),
+                    (long) (disk_statep -> seekPosition * sectorSizeBytes),
                     SEEK_SET);
         if (rc)
           {
@@ -455,17 +549,17 @@ static int diskRead (uint iomUnitIdx, uint chan)
     
         // this math assumes tally is even.
    
-        uint tallySectors = (tally + SECTOR_SZ_IN_W36 - 1) / 
-                             SECTOR_SZ_IN_W36;
-        uint tallyWords = tallySectors * SECTOR_SZ_IN_W36;
-        //uint tallyBytes = tallySectors * SECTOR_SZ_IN_BYTES;
+        uint tallySectors = (tally + sectorSizeWords - 1) / 
+                             sectorSizeWords;
+        uint tallyWords = tallySectors * sectorSizeWords;
+        //uint tallyBytes = tallySectors * sectorSizeBytes;
         uint p72ByteCnt = (tallyWords * 36) / 8;
         uint8 diskBuffer [p72ByteCnt];
         memset (diskBuffer, 0, sizeof (diskBuffer));
         sim_debug (DBG_TRACE, & disk_dev, "Disk read  %3d %8d %3d\n",
                    devUnitIdx, disk_statep -> seekPosition, tallySectors);
 
-        rc = (int) fread (diskBuffer, SECTOR_SZ_IN_BYTES,
+        rc = (int) fread (diskBuffer, sectorSizeBytes,
                     tallySectors,
                     unitp -> fileref);
 
@@ -520,6 +614,9 @@ static int diskWrite (uint iomUnitIdx, uint chan)
     uint devUnitIdx = d -> devUnitIdx;
     UNIT * unitp = & disk_unit [devUnitIdx];
     struct disk_state * disk_statep = & disk_states [devUnitIdx];
+    uint typeIdx = disk_statep->typeIdx;
+    uint sectorSizeWords = diskTypes[typeIdx].sectorSizeWords;
+    uint sectorSizeBytes = ((36 * sectorSizeWords) / 8);
 
     sim_debug (DBG_NOTIFY, & disk_dev, "Write %d\n", devUnitIdx);
     disk_statep -> io_mode = read_mode;
@@ -565,7 +662,7 @@ static int diskWrite (uint iomUnitIdx, uint chan)
                    "%s: Tally %d (%o)\n", __func__, tally, tally);
 
         rc = fseek (unitp -> fileref, 
-                    (long) (disk_statep -> seekPosition * SECTOR_SZ_IN_BYTES),
+                    (long) (disk_statep -> seekPosition * sectorSizeBytes),
                     SEEK_SET);
         if (rc)
           {
@@ -580,10 +677,10 @@ static int diskWrite (uint iomUnitIdx, uint chan)
     
         // this math assumes tally is even.
    
-        uint tallySectors = (tally + SECTOR_SZ_IN_W36 - 1) / 
-                             SECTOR_SZ_IN_W36;
-        uint tallyWords = tallySectors * SECTOR_SZ_IN_W36;
-        //uint tallyBytes = tallySectors * SECTOR_SZ_IN_BYTES;
+        uint tallySectors = (tally + sectorSizeWords - 1) / 
+                             sectorSizeWords;
+        uint tallyWords = tallySectors * sectorSizeWords;
+        //uint tallyBytes = tallySectors * sectorSizeBytes;
         uint p72ByteCnt = (tallyWords * 36) / 8;
         uint8 diskBuffer [p72ByteCnt];
         memset (diskBuffer, 0, sizeof (diskBuffer));
@@ -611,7 +708,7 @@ static int diskWrite (uint iomUnitIdx, uint chan)
 
         sim_debug (DBG_TRACE, & disk_dev, "Disk write %3d %8d %3d\n",
                    devUnitIdx, disk_statep -> seekPosition, tallySectors);
-        rc = (int) fwrite (diskBuffer, SECTOR_SZ_IN_BYTES,
+        rc = (int) fwrite (diskBuffer, sectorSizeBytes,
                      tallySectors,
                      unitp -> fileref);
 //sim_printf ("Disk write %8d %3d %08o\n",
@@ -797,15 +894,19 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
 //exit(1);
           break;
 
-#if 0
-        case 034: // CMD 34 SEEK
+        case 034: // CMD 34 SEEK_64
           {
-//sim_printf ("disk seek [%"PRId64"]\n", cpu.cycleCnt);
-            sim_debug (DBG_NOTIFY, & disk_dev, "Seek %d\n", devUnitIdx);
-            disk_statep -> io_mode = seek_mode;
+            // XXX is it correct to not process the DDCWs?
+            if (! unitp -> fileref)
+              {
+                p -> stati = 04240; // device offline
+                break;
+              }
+            int rc = diskSeek64 (iomUnitIdx, chan);
+            if (rc)
+              return -1;
           }
           break;
-#endif
 
         case 040: // CMD 40 Reset status
           {
@@ -839,29 +940,6 @@ sim_printf ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
       }
     return 0;
   }
-
-#ifdef IOM2
-static int disk_ddcw (UNIT * unitp, dcw_t * ddcwp)
-  {
-    int devUnitIdx = DISK_UNIT_NUM (unitp);
-    int iomUnitIdx = cables -> cablesFromIomToDsk [devUnitIdx] . iomUnitIdx;
-
-    struct disk_state * disk_statep = & disk_states [devUnitIdx];
-    iomChannelData_ * p = & iomChannelData [iomUnitIdx] [disk_statep -> chan];
-    switch (disk_statep -> io_mode)
-      {
-        case seek_mode:
-          {
-            sim_printf ("disk seek not here yet\n");
-            p -> stati = 04510; // Cmd reject, invalid inst. seq.
-            p -> chanStatus = chanStatIncorrectDCW;
-          }
-          break;
-
-      }
-    return 0;
-  }
-#endif
 
 int disk_iom_cmd (uint iomUnitIdx, uint chan)
   {
@@ -912,6 +990,57 @@ static t_stat disk_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, const cha
     return SCPE_OK;
   }
 
+static t_stat disk_show_type (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)
+  {
+    int diskUnitIdx = (int) DISK_UNIT_IDX (uptr);
+    if (diskUnitIdx < 0 || diskUnitIdx >= N_DISK_UNITS_MAX)
+      {
+        sim_printf ("error: invalid unit number %d\n", diskUnitIdx);
+        return SCPE_ARG;
+      }
+
+    sim_printf("type %s\r\n", diskTypes[diskUnitIdx].typename);
+
+    return SCPE_OK;
+  }
+
+static t_stat disk_set_type (UNUSED UNIT * uptr, UNUSED int32 value, const char * cptr, UNUSED void * desc)
+  {
+    int diskUnitIdx = (int) DISK_UNIT_IDX (uptr);
+    if (diskUnitIdx < 0 || diskUnitIdx >= N_DISK_UNITS_MAX)
+      {
+        sim_printf ("error: invalid unit number %d\n", diskUnitIdx);
+        return SCPE_ARG;
+      }
+
+    uint i;
+    for (i = 0; i < N_DISK_TYPES; i ++)
+      {
+        if (strcasecmp (cptr, diskTypes[i].typename) == 0)
+          break;
+      }
+    if (i >= N_DISK_TYPES)
+     {
+       sim_printf ("Disk type %s unrecognized, expected one of "
+                   "%s %s %s %s %s %s %s %s\r\n",
+                   cptr,
+                   diskTypes[0].typename,
+                   diskTypes[1].typename,
+                   diskTypes[2].typename,
+                   diskTypes[3].typename,
+                   diskTypes[4].typename,
+                   diskTypes[5].typename,
+                   diskTypes[6].typename,
+                   diskTypes[7].typename);
+        return SCPE_ARG;
+      }
+    disk_states[diskUnitIdx].typeIdx = i;
+    disk_unit[diskUnitIdx].capac = (t_addr) diskTypes[diskUnitIdx].capac;
+    sim_printf ("disk unit %d set to type %s\r\n",
+                diskUnitIdx, diskTypes[i].typename);
+    return SCPE_OK;
+  }
+
 void loadDisk (uint driveNumber, char * diskFilename)
   {
     //sim_printf ("in loadTape %d %s\n", driveNumber, tapeFilename);
@@ -944,7 +1073,7 @@ t_stat attachDisk (char * label)
   {
     //sim_printf ("%s %s %s\n", label, withring ? "rw" : "ro", drive);
     uint i;
-    for (i = 1; i < N_DISK_UNITS_MAX; i ++)
+    for (i = 0; i < N_DISK_UNITS_MAX; i ++)
       {
 sim_printf ("%d fileref %p filename %s\n", i, (void *) disk_unit [i] . fileref, disk_unit [i] . filename);
         if (disk_unit [i] . fileref == NULL)
