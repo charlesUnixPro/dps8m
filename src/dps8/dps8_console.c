@@ -343,7 +343,7 @@ static int opcon_autoinput_set (UNUSED UNIT * uptr, UNUSED int32 val,
     return SCPE_OK;
   }
 
-int opconClearAutoinput (int32 flag, const char * cptr)
+int opconClearAutoinput (int32 flag, UNUSED const char * cptr)
   {
     con_state_t * csp = console_state + flag;
     if (csp->auto_input)
@@ -1310,7 +1310,7 @@ eol:
 
 void consoleProcess (void)
   {
-    for (int conUnitIdx = 0; conUnitIdx < opcon_dev.numunits; conUnitIdx ++)
+    for (int conUnitIdx = 0; conUnitIdx < (int) opcon_dev.numunits; conUnitIdx ++)
       consoleProcessIdx (conUnitIdx);
   }
 
