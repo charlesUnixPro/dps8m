@@ -194,7 +194,7 @@ void prt_init (void)
       prt_state [i] . prtfile = -1;
   }
 
-static t_stat prt_reset (DEVICE * dptr)
+static t_stat prt_reset (UNUSED DEVICE * dptr)
   {
 #if 0
     for (uint i = 0; i < dptr -> numunits; i ++)
