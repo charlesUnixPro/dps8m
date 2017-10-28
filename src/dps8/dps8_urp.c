@@ -173,7 +173,7 @@ void urp_init (void)
       //urp_state [i] . urpfile = -1;
   }
 
-static t_stat urp_reset (DEVICE * dptr)
+static t_stat urp_reset (UNUSED DEVICE * dptr)
   {
 #if 0
     for (uint i = 0; i < dptr -> numunits; i ++)
