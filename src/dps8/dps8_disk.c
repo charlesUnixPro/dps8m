@@ -1067,10 +1067,19 @@ static t_stat loadDisk (uint driveNumber, const char * diskFilename, bool ro)
 //    substr (w, 34, 3) is the low 3 bits of status 1
     //sim_printf ("%s %d %o\n", tapeFilename, ro,  mt_unit [driveNumber] . flags);
     //sim_printf ("special int %d %o\n", driveNumber, mt_unit [driveNumber] . flags);
+
+// disk pack ready
     send_special_interrupt ((uint) cables -> cablesFromIomToDsk [driveNumber] . iomUnitIdx,
                             (uint) cables -> cablesFromIomToDsk [driveNumber] . chan_num,
                             (uint) cables -> cablesFromIomToDsk [driveNumber] . dev_code,
                             0x40, 01 /* disk pack ready */);
+
+// controller ready
+//    send_special_interrupt ((uint) cables -> cablesFromIomToDsk [driveNumber] . iomUnitIdx,
+//                            (uint) cables -> cablesFromIomToDsk [driveNumber] . chan_num,
+//                            0,
+//                            0x40, 00 /* controller ready */);
+
     return SCPE_OK;
   }
 
