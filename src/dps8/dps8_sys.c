@@ -1267,6 +1267,7 @@ skipArgs:;
 
 static t_stat sbreak (int32 arg, const char * buf)
   {
+    sim_brk_types = SWMASK ('E');
     //printf (">> <%s>\n", buf);
     int segno, offset;
     int where;
