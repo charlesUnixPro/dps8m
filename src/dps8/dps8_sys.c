@@ -52,6 +52,9 @@
 #include "dps8_cable.h"
 #include "dps8_absi.h"
 #include "utlist.h"
+#ifdef THREADZ
+#include "threadz.h"
+#endif
 
 #ifdef PANEL
 #include "panelScraper.h"
@@ -311,6 +314,9 @@ static void dps8_init(void)
     defaultBaseSystem (0, NULL);
 #ifdef PANEL
     panelScraperInit ();
+#endif
+#ifdef THREADZ
+    initThreadz ();
 #endif
 }
 

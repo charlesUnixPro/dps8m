@@ -1020,7 +1020,6 @@ t_stat sim_instr (void)
     if (! inited)
       {
         inited = true;
-        initThreadz ();
 
 // Create channel threads
 
@@ -1108,6 +1107,9 @@ t_stat sim_instr (void)
         usleep (1000); // 1000 us == 1 ms == 1/1000 sec.
       }
     while (reason == 0);
+#ifdef HDBG
+    hdbgPrint ();
+#endif
     return reason;
   }
 #endif
@@ -3713,7 +3715,7 @@ void dps8_sim_debug (uint32 dbits, DEVICE * dptr, unsigned long long cnt, const 
                   {
                     if ((i != j) || (i == 0))
                       {
-                          fprintf (sim_deb, "DBG(%lld) %s %s %.*s\r\n", cnt, dptr->name, debug_type, i-j, &buf[j]);
+                          fprintf (sim_deb, "DBG(%lld) %o: %s %s %.*s\r\n", cnt, currentRunningCpuIdx, dptr->name, debug_type, i-j, &buf[j]);
                       }
                   }
                 j = i + 1;
