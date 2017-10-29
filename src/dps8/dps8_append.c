@@ -28,6 +28,8 @@
 #include "dps8_append.h"
 #include "dps8_addrmods.h"
 
+#define DBG_CTR cpu.cycleCnt
+
 /**
  * The appending unit ...
  */
