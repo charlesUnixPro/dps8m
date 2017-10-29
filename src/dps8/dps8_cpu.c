@@ -1774,7 +1774,7 @@ setCPU:;
                     unsigned long left = sleepCPU (cpu.rTR * 125u / 64u);
                     if (left)
                       {
-                        cpu.rTR = left * 64 / 125;
+                        cpu.rTR = (word27) (left * 64 / 125);
                       }
                     else
                       {
