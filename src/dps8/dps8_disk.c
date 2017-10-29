@@ -218,8 +218,10 @@ static struct diskType_t diskTypes [] =
 static t_stat disk_reset (DEVICE * dptr);
 static t_stat disk_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat disk_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
-static t_stat disk_show_type (FILE *st, UNIT *uptr, int val, const void *desc);
+//static t_stat disk_show_type (FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat disk_set_type (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat disk_attach (UNIT *uptr, CONST char *cptr);
+//static t_stat disk_detach (UNIT *uptr, CONST char *cptr);
 
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE | DKUF_F_RAW)
@@ -268,7 +270,7 @@ static MTAB disk_mod [] =
       "TYPE",               // print string
       "TYPE",               // match string
       disk_set_type,        // validation routine
-      disk_show_type,       // display routine
+      NULL /*disk_show_type*/,       // display routine
       "disk type",          // value descriptor
       "D500, D451, D400, D190, D181, D501, 3380, 3381" // Help
     },
@@ -292,8 +294,8 @@ DEVICE disk_dev = {
     NULL,         /* deposit */ 
     disk_reset,   /* reset */
     NULL,         /* boot */
-    NULL,         /* attach */
-    NULL,         /* detach */
+    disk_attach,  /* attach */
+    NULL /*disk_detach*/,  /* detach */
     NULL,         /* context */
     DEV_DEBUG,    /* flags */
     0,            /* debug control flags */
@@ -990,6 +992,7 @@ static t_stat disk_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, const cha
     return SCPE_OK;
   }
 
+#if 0
 static t_stat disk_show_type (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)
   {
     int diskUnitIdx = (int) DISK_UNIT_IDX (uptr);
@@ -999,10 +1002,11 @@ static t_stat disk_show_type (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int v
         return SCPE_ARG;
       }
 
-    sim_printf("type %s\r\n", diskTypes[diskUnitIdx].typename);
+    sim_printf("type %s\r\n", diskTypes[disk_states[diskUnitIdx].typeIdx].typename);
 
     return SCPE_OK;
   }
+#endif
 
 static t_stat disk_set_type (UNUSED UNIT * uptr, UNUSED int32 value, const char * cptr, UNUSED void * desc)
   {
@@ -1041,14 +1045,14 @@ static t_stat disk_set_type (UNUSED UNIT * uptr, UNUSED int32 value, const char 
     return SCPE_OK;
   }
 
-void loadDisk (uint driveNumber, char * diskFilename)
+static t_stat loadDisk (uint driveNumber, const char * diskFilename, bool ro)
   {
     //sim_printf ("in loadTape %d %s\n", driveNumber, tapeFilename);
     t_stat stat = attach_unit (& disk_unit [driveNumber], diskFilename);
     if (stat != SCPE_OK)
       {
         sim_printf ("loadDisk sim_disk_attach returned %d\n", stat);
-        return;
+        return stat;
       }
 
 // if substr (special_status_word, 20, 1) ^= "1"b | substr (special_status_word, 13, 6) ^= "00"b3
@@ -1067,24 +1071,22 @@ void loadDisk (uint driveNumber, char * diskFilename)
                             (uint) cables -> cablesFromIomToDsk [driveNumber] . chan_num,
                             (uint) cables -> cablesFromIomToDsk [driveNumber] . dev_code,
                             0x40, 01 /* disk pack ready */);
-  }
-
-t_stat attachDisk (char * label)
-  {
-    //sim_printf ("%s %s %s\n", label, withring ? "rw" : "ro", drive);
-    uint i;
-    for (i = 0; i < N_DISK_UNITS_MAX; i ++)
-      {
-sim_printf ("%d fileref %p filename %s\n", i, (void *) disk_unit [i] . fileref, disk_unit [i] . filename);
-        if (disk_unit [i] . fileref == NULL)
-          break;
-      }
-    if (i >= N_DISK_UNITS_MAX)
-      {
-        sim_printf ("can't find available disk drive\n");
-        return SCPE_ARG;
-      }
-    loadDisk (i, label);
     return SCPE_OK;
   }
+
+static t_stat disk_attach (UNIT *uptr, CONST char *cptr)
+  {
+    int diskUnitIdx = (int) DISK_UNIT_IDX (uptr);
+    if (diskUnitIdx < 0 || diskUnitIdx >= N_DISK_UNITS_MAX)
+      {
+        sim_printf ("error: invalid unit number %d\n", diskUnitIdx);
+        return SCPE_ARG;
+      }
+
+    return loadDisk ((uint) diskUnitIdx, cptr, false);
+  }
+
+//static t_stat disk_detach (UNIT *uptr, CONST char *cptr)
+  //{
+  //}
 

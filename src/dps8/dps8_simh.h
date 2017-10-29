@@ -132,9 +132,11 @@ extern DEVICE scu_dev;
  
 // Requires a value, DEV and DEVn both work, not in "show"
 #define MTAB_unit_value      MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_NMO | MTAB_VALR
+// Requires a value, DEVn, not in "show"
+#define MTAB_unitonly_value      MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_VALR
 // Requires a value, DEV and DEVn both work, in "show"
 #define MTAB_unit_value_show MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_VALR
-// Requires a value, DEV only.
+// Requires a value, DEV only, not in "show"
 #define MTAB_dev_value     MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR
 
 // End of list marker
