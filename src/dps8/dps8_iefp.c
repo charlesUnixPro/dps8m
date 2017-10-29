@@ -180,6 +180,8 @@ B29:;
                                 "%08o  readData=%012"PRIo64"\n", 
                                 cpu.iefpFinalAddress + i, result [i]);
                   }
+                HDBGMRead (cpu.iefpFinalAddress, * result);
+                HDBGMRead (cpu.iefpFinalAddress+1, * (result+1));
                 return SCPE_OK;
               }
             else
@@ -193,6 +195,8 @@ B29:;
                                  "  readData=%012"PRIo64"\n",
                                  cpu.iefpFinalAddress + i, result [i]);
                   }
+                HDBGMRead (cpu.iefpFinalAddress, * result);
+                HDBGMRead (cpu.iefpFinalAddress+1, * (result+1));
               }
             return SCPE_OK;
           }
@@ -272,7 +276,10 @@ B29:;
                                 "%08o  readData=%012"PRIo64"\n",
                                 cpu.iefpFinalAddress + i, result [i]);
                   }
-
+#ifdef HDBG
+                for (uint i = 0; i < 8; i ++)
+                  HDBGMRead (cpu.iefpFinalAddress + i, result[i]);
+#endif
                 return SCPE_OK;
               }
             else
@@ -473,6 +480,7 @@ B29:
                            "Write(Actual) Write: bar iefpFinalAddress=%08o "
                            "writeData=%012"PRIo64"\n",
                            cpu.iefpFinalAddress, data);
+                HDBGMWrite (cpu.iefpFinalAddress, data);
                 return SCPE_OK;
               } 
             else 
@@ -482,6 +490,7 @@ B29:
                            "Write(Actual) Write: iefpFinalAddress=%08o "
                            "writeData=%012"PRIo64"\n",
                            cpu.iefpFinalAddress, data);
+                HDBGMWrite (cpu.iefpFinalAddress, data);
                 return SCPE_OK;
               }
           }
@@ -544,6 +553,8 @@ B29:
                            "Write2 (Actual) Write: bar iefpFinalAddress=%08o "
                            "writeData=%012"PRIo64" %012"PRIo64"\n", 
                            address, data [0], data [1]);
+                HDBGMWrite (cpu.iefpFinalAddress, data[0]);
+                HDBGMWrite (cpu.iefpFinalAddress+1, data[1]);
               }
             else
               {
@@ -552,6 +563,8 @@ B29:
                            "Write2 (Actual) Write: iefpFinalAddress=%08o "
                            "writeData=%012"PRIo64" %012"PRIo64"\n", 
                            address, data [0], data [1]);
+                HDBGMWrite (cpu.iefpFinalAddress, data[0]);
+                HDBGMWrite (cpu.iefpFinalAddress+1, data[1]);
               }
           }
           break;
