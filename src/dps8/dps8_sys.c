@@ -364,6 +364,8 @@ static t_stat dps_debug_stop (UNUSED int32 arg, const char * buf)
 static t_stat dps_debug_break (UNUSED int32 arg, const char * buf)
   {
     sim_deb_break = strtoull (buf, NULL, 0);
+    if (buf [0] == '+')
+      sim_deb_break += sim_deb_start;
     sim_printf ("Debug set to break at cycle: %"PRId64"\n", sim_deb_break);
     return SCPE_OK;
   }
