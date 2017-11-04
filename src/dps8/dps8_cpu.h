@@ -1735,9 +1735,7 @@ typedef struct
 #endif
     uint64 lufCounter;
     bool secret_addressing_mode;
-#ifndef NOWENT
-    bool went_appending; // we will go....
-#endif
+    //bool went_appending; // we will go....
 #ifdef ROUND_ROBIN
     bool isRunning;
 #endif
@@ -2097,11 +2095,9 @@ static inline void core_writeN (word24 addr, word36 * data, uint n,
   }
 
 int is_priv_mode (void);
-#ifndef NOWENT
-void set_went_appending (void);
-void clr_went_appending (void);
-bool get_went_appending (void);
-#endif
+//void set_went_appending (void);
+//void clr_went_appending (void);
+//bool get_went_appending (void);
 bool get_bar_mode (void);
 addr_modes_t get_addr_mode (void);
 void set_addr_mode (addr_modes_t mode);

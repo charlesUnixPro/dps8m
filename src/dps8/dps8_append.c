@@ -1448,7 +1448,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "doAppendCycle bit 29 sets XSF to 1\n");
     //
     if (thisCycle == RTCD_OPERAND_FETCH &&
         get_addr_mode() == ABSOLUTE_mode &&
-        ! get_went_appending())
+        ! cpu.cu.XSF /*get_went_appending()*/)
       { 
         cpu.TPR.TSR = 0;
       }
@@ -2002,7 +2002,7 @@ H:;
 
     if (thisCycle == RTCD_OPERAND_FETCH &&
         get_addr_mode () == ABSOLUTE_mode &&
-        ! get_went_appending ())
+        ! cpu.cu.XSF /*get_went_appending ()*/)
       { 
         finalAddress = cpu.TPR.CA;
       }

@@ -296,9 +296,7 @@ static void doITSITP (word6 Tag, word6 * newtag)
         doITP ();
 
     * newtag = GET_TAG (cpu.itxPair [1]);
-#ifndef NOWENT
-    set_went_appending ();
-#endif
+    //set_went_appending ();
     cpu.cu.XSF = 1;
     sim_debug (DBG_APPENDING, & cpu_dev, "doITSITP sets XSF to 1\n");
   }

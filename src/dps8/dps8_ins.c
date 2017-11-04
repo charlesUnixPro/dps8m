@@ -2026,9 +2026,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            cpu.TPR.TSR, cpu.TPR.TRR);
                 cpu.cu.XSF = 1;
 sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction EIS sets XSF to %o\n", cpu.cu.XSF);
-#ifndef NOWENT
-                set_went_appending ();
-#endif
+                //set_went_appending ();
             }
 
 // Putting the a29 clear here makes sense, but breaks the emulator for unclear
@@ -2055,9 +2053,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction EIS sets XSF to %o\n", cpu.
                   }
                 cpu.cu.XSF = 0;
 sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", cpu.cu.XSF);
-#ifndef NOWENT
-                clr_went_appending ();
-#endif
+                //clr_went_appending ();
               }
           }
 
@@ -9386,11 +9382,8 @@ static int doABSA (word36 * result)
     sim_debug (DBG_APPENDING, & cpu_dev, "absa CA:%08o\n", cpu.TPR.CA);
 
     //if (get_addr_mode () == ABSOLUTE_mode && ! cpu.isb29)
-#ifdef NOWENT
+    //if (get_addr_mode () == ABSOLUTE_mode && ! cpu.went_appending) // ISOLTS-860
     if (get_addr_mode () == ABSOLUTE_mode && ! cpu.cu.XSF) // ISOLTS-860
-#else
-    if (get_addr_mode () == ABSOLUTE_mode && ! cpu.went_appending) // ISOLTS-860
-#endif
       {
         * result = ((word36) (cpu.TPR.CA & MASK18)) << 12; // 24:12 format
         return SCPE_OK;
