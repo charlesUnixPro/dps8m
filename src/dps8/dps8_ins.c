@@ -138,7 +138,7 @@ static void writeOperands (void)
         //word18 indwordAddress = cpu.TPR.CA;
         //Read2 (indwordAddress, cpu.itxPair, INDIRECT_WORD_FETCH);
         //ReadIndirect ();
-        Read (cpu.TPR.CA, cpu.itxPair, OPERAND_READ);
+        Read (cpu.TPR.CA, cpu.itxPair, APU_DATA_READ);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "writeOperands IT indword=%012"PRIo64"\n", cpu.itxPair[0]);
@@ -210,7 +210,7 @@ static void writeOperands (void)
         cpu.cu.pot = 1;
 
         word36 data;
-        Read (Yi, & data, OPERAND_READ);
+        Read (Yi, & data, APU_DATA_READ);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "writeOperands IT data=%012"PRIo64"\n", data);
 
@@ -237,7 +237,7 @@ static void writeOperands (void)
 
         PNL (cpu.prepare_state |= ps_SAW);
 
-        Write (Yi, data, OPERAND_STORE);
+        Write (Yi, data, APU_DATA_STORE);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "writeOperands IT wrote char/byte %012"PRIo64" to %06o "
@@ -338,7 +338,7 @@ static void readOperands (void)
 
         word36 indword;
         word18 indwordAddress = cpu.TPR.CA;
-        Read (indwordAddress, & indword, OPERAND_READ);
+        Read (indwordAddress, & indword, APU_DATA_READ);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "readOperands IT indword=%012"PRIo64"\n", indword);
@@ -408,7 +408,7 @@ static void readOperands (void)
         PNL (cpu.prepare_state |= ps_SIW);
 
         word36 data;
-        Read (Yi, & data, OPERAND_READ);
+        Read (Yi, & data, APU_DATA_READ);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "readOperands IT data=%012"PRIo64"\n", data);
 
@@ -1973,7 +1973,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
             //Read (cpu.PPR.IC + 1 + n, & cpu.currentEISinstruction.op[n],
                   //INSTRUCTION_FETCH);
             Read (cpu.PPR.IC + 1 + n, & cpu.currentEISinstruction.op[n],
-                  OPERAND_READ);
+                  APU_DATA_READ);
 #endif
           }
         PNL (cpu.IWRAddr = cpu.currentEISinstruction.op[0]);
@@ -2190,7 +2190,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
         //
 
         //Read2 (cpu.TPR.CA, cpu.itxPair, INDIRECT_WORD_FETCH);
-        Read (cpu.TPR.CA, cpu.itxPair, OPERAND_READ);
+        Read (cpu.TPR.CA, cpu.itxPair, APU_DATA_READ);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "update IT indword=%012"PRIo64"\n", cpu.itxPair[0]);
@@ -2284,9 +2284,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
                             cpu.ou.characterOperandSize |
                             cpu.ou.characterOperandOffset);
 
-//sim_printf ("XXX this has got to be wrong; OPERAND_WRITE?\n");
-        //Write (cpu.TPR.CA, indword, INDIRECT_WORD_FETCH);
-        Write (cpu.TPR.CA, cpu.itxPair[0], OPERAND_STORE);
+        Write (cpu.TPR.CA, cpu.itxPair[0], APU_DATA_STORE);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "update IT wrote tally word %012"PRIo64" to %06o\n",
