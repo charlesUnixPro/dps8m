@@ -1991,34 +1991,30 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
     else
       {
         CPT (cpt2U, 32); // non-EIS operand processing
-        // This must not happen on instruction restart
-        //if (! ci->restart)
-          //{
-            CPT (cpt2U, 33); // not restart non-EIS operand processing
-            //if (cpu.isb29)   // if A bit set set-up TPR stuff ...
-            if (ci->b29)   // if A bit set set-up TPR stuff ...
+        CPT (cpt2U, 33); // not restart non-EIS operand processing
+        if (ci->b29)   // if A bit set set-up TPR stuff ...
+          {
+            CPT (cpt2U, 34); // B29
+
+// AL39 says that RCU does not restore CA, so words to SCU does not.
+// So we do it here, even if restart
+            word3 n = GET_PRN(IWB_IRODD);  // get PRn
+            word15 offset = GET_OFFSET(IWB_IRODD);
+            CPTUR (cptUsePRn + n);
+
+            sim_debug (DBG_APPENDING, &cpu_dev,
+                       "doPtrReg(): PR[%o] SNR=%05o RNR=%o WORDNO=%06o "
+                       "BITNO=%02o\n",
+                       n, cpu.PAR[n].SNR, cpu.PAR[n].RNR,
+                       cpu.PAR[n].WORDNO, GET_PR_BITNO (n));
+
+            cpu.TPR.CA = (cpu.PAR[n].WORDNO + SIGNEXT15_18 (offset))
+                         & MASK18;
+
+            if (! ci-> restart)
               {
-                CPT (cpt2U, 34); // B29
-                //doPtrReg ();
-                word3 n = GET_PRN(IWB_IRODD);  // get PRn
-                word15 offset = GET_OFFSET(IWB_IRODD);
-                CPTUR (cptUsePRn + n);
-
-                sim_debug (DBG_APPENDING, &cpu_dev,
-                           "doPtrReg(): PR[%o] SNR=%05o RNR=%o WORDNO=%06o "
-                           "BITNO=%02o\n",
-                           n, cpu.PAR[n].SNR, cpu.PAR[n].RNR,
-                           cpu.PAR[n].WORDNO, GET_PR_BITNO (n));
-
-                //cpu.cu.TSN_PRNO [0] = n;
-                //cpu.cu.TSN_VALID [0] = 1;
-
-                cpu.TPR.CA = (cpu.PAR[n].WORDNO + SIGNEXT15_18 (offset))
-                             & MASK18;
+// Not EIS, bit 29 set, restart
                 cpu.TPR.TBR = GET_PR_BITNO (n);
-
-                //if (! (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl))
-                //  updateIWB (cpu.TPR.CA, GET_TAG (IWB_IRODD));
 
                 cpu.TPR.TSR = cpu.PAR[n].SNR;
                 cpu.TPR.TRR = max3 (cpu.PAR[n].RNR, cpu.TPR.TRR, cpu.PPR.PRR);
@@ -2028,14 +2024,12 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            "TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n",
                            n, offset, cpu.TPR.CA, cpu.TPR.TBR, 
                            cpu.TPR.TSR, cpu.TPR.TRR);
-
-if (! ci->restart) {
                 cpu.cu.XSF = 1;
 sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction EIS sets XSF to %o\n", cpu.cu.XSF);
 #ifndef NOWENT
                 set_went_appending ();
 #endif
-}
+            }
 
 // Putting the a29 clear here makes sense, but breaks the emulator for unclear
 // reasons (possibly ABSA?). Do it in updateIWB instead
@@ -2044,10 +2038,12 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction EIS sets XSF to %o\n", cpu.
 //                //  mode
 //                //a = false;
 //                putbits36_1 (& cpu.cu.IWB, 29, 0);
-              }
-            else
+          }
+        else
+          {
+// not eis, not bit b29
+            if (! ci->restart)
               {
-// not eis, bit b29
                 CPT (cpt2U, 35); // not B29
                 cpu.cu.TSN_VALID [0] = 0;
                 cpu.TPR.TBR = 0;
@@ -2057,15 +2053,13 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction EIS sets XSF to %o\n", cpu.
                     cpu.TPR.TRR = 0;
                     cpu.RSDWH_R1 = 0;
                   }
-if (! ci->restart) {
                 cpu.cu.XSF = 0;
 sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", cpu.cu.XSF);
 #ifndef NOWENT
                 clr_went_appending ();
 #endif
-}
               }
-          //}
+          }
 
         // This must not happen on instruction restart
         if (! ci->restart)
