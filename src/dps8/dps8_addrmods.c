@@ -300,6 +300,7 @@ static void doITSITP (word6 Tag, word6 * newtag)
     set_went_appending ();
 #endif
     cpu.cu.XSF = 1;
+    sim_debug (DBG_APPENDING, & cpu_dev, "doITSITP sets XSF to 1\n");
   }
 
 

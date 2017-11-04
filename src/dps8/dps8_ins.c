@@ -637,6 +637,7 @@ static void words2scu (word36 * words)
     cpu.PPR.PSR         = getbits36_15 (words[0], 3);
     cpu.PPR.P           = getbits36_1  (words[0], 18);
     cpu.cu.XSF          = getbits36_1  (words[0], 19);
+sim_debug (DBG_TRACE, & cpu_dev, "words2scu sets XSF to %o\n", cpu.cu.XSF);
     //cpu.cu.SDWAMM       = getbits36_1  (words[0], 20);
     //cpu.cu.SD_ON        = getbits36_1  (words[0], 21);
     //cpu.cu.PTWAMM       = getbits36_1  (words[0], 22);
@@ -1475,7 +1476,12 @@ IF1 sim_printf ("trapping opcode match......\n");
     if (ci->restart)
       goto restart_1;
 
+//
+// not restart
+//
+
     cpu.cu.XSF = 0;
+sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction sets XSF to %o\n", cpu.cu.XSF);
 
     CPT (cpt2U, 14); // non-restart processing
     // Set Address register empty
@@ -1739,7 +1745,7 @@ IF1 sim_printf ("trapping opcode match......\n");
 #endif
 
     ///
-    /// executeInstruction: Non-restart processing
+    /// executeInstruction: Restart or Non-restart processing
     ///                     Initialize address registers
     ///
 restart_1:
@@ -1926,6 +1932,10 @@ sim_debug (DBG_TRACE, & cpu_dev, "b29, ci->address %o\n", ci->address);
       } // cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl
 
 ///
+/// Restart or Non-restart
+///
+
+///
 /// executeInstruction: EIS operand processing
 ///
 
@@ -1969,12 +1979,16 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
         PNL (cpu.IWRAddr = cpu.currentEISinstruction.op[0]);
         setupEISoperands ();
       }
-    else
+
+///
+/// Restart or Non-restart
+///
 
 ///
 /// executeInstruction: non-EIS operand processing
 ///
 
+    else
       {
         CPT (cpt2U, 32); // non-EIS operand processing
         // This must not happen on instruction restart
@@ -2015,11 +2029,13 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            n, offset, cpu.TPR.CA, cpu.TPR.TBR, 
                            cpu.TPR.TSR, cpu.TPR.TRR);
 
-#ifdef NOWENT
+if (! ci->restart) {
                 cpu.cu.XSF = 1;
-#else
+sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction EIS sets XSF to %o\n", cpu.cu.XSF);
+#ifndef NOWENT
                 set_went_appending ();
 #endif
+}
 
 // Putting the a29 clear here makes sense, but breaks the emulator for unclear
 // reasons (possibly ABSA?). Do it in updateIWB instead
@@ -2031,6 +2047,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
               }
             else
               {
+// not eis, bit b29
                 CPT (cpt2U, 35); // not B29
                 cpu.cu.TSN_VALID [0] = 0;
                 cpu.TPR.TBR = 0;
@@ -2040,11 +2057,13 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                     cpu.TPR.TRR = 0;
                     cpu.RSDWH_R1 = 0;
                   }
-#ifdef NOWENT
+if (! ci->restart) {
                 cpu.cu.XSF = 0;
-#else
+sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", cpu.cu.XSF);
+#ifndef NOWENT
                 clr_went_appending ();
 #endif
+}
               }
           //}
 

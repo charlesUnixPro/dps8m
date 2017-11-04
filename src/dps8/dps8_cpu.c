@@ -1652,6 +1652,7 @@ setCPU:;
                                            //  place
 #endif
                     cpu.cu.XSF = 0; // Hmm. Is XSF == clr_went_appending ?
+sim_debug (DBG_TRACE, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                     cpu.cu.TSN_VALID [0] = 0;
                     PNL (cpu.prepare_state = ps_PIA);
                     PNL (L68_ (cpu.INS_FETCH = true;))
@@ -2736,9 +2737,9 @@ static void set_TEMPORARY_ABSOLUTE_mode (void)
   {
     CPT (cpt1L, 20); // set temp. abs. mode
     cpu.secret_addressing_mode = true;
-#ifdef NOWENT
     cpu.cu.XSF = false;
-#else
+sim_debug (DBG_TRACE, & cpu_dev, "set_TEMPORARY_ABSOLUTE_mode bit 29 sets XSF to 0\n");
+#ifndef NOWENT
     cpu.went_appending = false;
 #endif
   }
@@ -2798,9 +2799,9 @@ addr_modes_t get_addr_mode (void)
 
 void set_addr_mode (addr_modes_t mode)
   {
-#ifdef NOWENT
-    cpu.cu.XSF = false;
-#else
+//    cpu.cu.XSF = false;
+//sim_debug (DBG_TRACE, & cpu_dev, "set_addr_mode bit 29 sets XSF to 0\n");
+#ifndef NOWENT
     cpu.went_appending = false;
 #endif
 // Temporary hack to fix fault/intr pair address mode state tracking

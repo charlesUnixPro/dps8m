@@ -1342,7 +1342,6 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data,
     cpu.apu.lastCycle = thisCycle;
 
     DBGAPP ("doAppendCycle(Entry) XSF %o\n", cpu.cu.XSF);
-    bool wasXSF = !! cpu.cu.XSF;
 
     PNL (L68_ (cpu.apu.state = 0;))
 
@@ -1375,7 +1374,7 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data,
         lastCycle == OPERAND_READ)
       goto A;
 
-    if (lastCycle == INDIRECT_WORD_FETCH || wasXSF)
+    if (lastCycle == INDIRECT_WORD_FETCH || cpu.cu.XSF)
       goto A;
 
     if (lastCycle == RTCD_OPERAND_FETCH)
@@ -1424,6 +1423,7 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data,
              }
             cpu.TPR.TSR = cpu.PAR[n].SNR;
             cpu.cu.XSF = 1;
+sim_debug (DBG_TRACE, & cpu_dev, "doAppendCycle bit 29 sets XSF to 1\n");
             DBGAPP ("TSN TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
             goto A;
           }
