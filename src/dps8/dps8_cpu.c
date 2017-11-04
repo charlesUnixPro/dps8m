@@ -98,8 +98,10 @@ static t_stat cpu_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat cpu_set_nunits (UNIT * uptr, int32 value, const char * cptr,
                                void * desc);
 
+#ifndef NO_EV_POLL
 static uv_loop_t * ev_poll_loop;
 static uv_timer_t ev_poll_handle;
+#endif
 
 static MTAB cpu_mod[] =
   {
@@ -530,6 +532,8 @@ static void doStats (void)
       }
   }
 #endif
+
+#ifndef NO_EV_POLL
 // The 100Hz timer as expired; poll I/O
 
 static void ev_poll_cb (uv_timer_t * UNUSED handle)
@@ -551,7 +555,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
 #endif
     PNL (panelProcessEvent ());
   }
-
+#endif
 
     
 // called once initialization
@@ -606,10 +610,12 @@ void cpu_init (void)
 
     getSerialNumber ();
 
+#ifndef NO_EV_POLL
     ev_poll_loop = uv_default_loop ();
     uv_timer_init (ev_poll_loop, & ev_poll_handle);
     // 10 ms == 100Hz
     uv_timer_start (& ev_poll_handle, ev_poll_cb, 10, 10);
+#endif
 
     // TODO: reset *all* other structures to zero
     
@@ -1115,7 +1121,9 @@ t_stat sim_instr (void)
 #endif
 
 #ifndef THREADZ
+#ifndef NO_EV_POLL
 static uint fastQueueSubsample = 0;
+#endif
 #endif
 
 //
@@ -1274,6 +1282,7 @@ setCPU:;
             break;
           }
 
+#ifndef NO_EV_POLL
 // The event poll is consuming 40% of the CPU according to pprof.
 // We only want to process at 100Hz; yet we are testing at ~1MHz.
 // If we only test every 1000 cycles, we shouldn't miss by more then
@@ -1286,6 +1295,23 @@ setCPU:;
             uv_run (ev_poll_loop, UV_RUN_NOWAIT);
             PNL (panelProcessEvent ());
           }
+#else
+        static uint slowQueueSubsample = 0;
+        if (slowQueueSubsample ++ > 1024000) // ~ 1Hz
+          {
+            slowQueueSubsample = 0;
+            rdrProcessEvent ();
+          }
+        static uint queueSubsample = 0;
+        if (queueSubsample ++ > 10240) // ~ 100Hz
+          {
+            queueSubsample = 0;
+            fnpProcessEvent ();
+            consoleProcess ();
+            absiProcessEvent ();
+            PNL (panelProcessEvent ());
+          }
+#endif
         cpu.cycleCnt ++;
 #endif // ! THREADZ
 
@@ -1306,6 +1332,7 @@ setCPU:;
         if (con_unit_idx != -1)
           console_attn_idx (con_unit_idx);
 
+#ifndef NO_EV_POLL
 #ifndef THREADZ
 #ifdef ISOLTS
         if (cpu.cycle != FETCH_cycle)
@@ -1323,6 +1350,7 @@ setCPU:;
                   }
               }
           }
+#endif
 #endif
 #endif
 
@@ -1791,9 +1819,16 @@ setCPU:;
                     usleep (10000);
 
 #ifndef THREADZ
+#ifndef NO_EV_POLL
                     // Trigger I/O polling
                     uv_run (ev_poll_loop, UV_RUN_NOWAIT);
                     fastQueueSubsample = 0;
+#else
+                    // this ignores the amount of time since the last poll;
+                    // worst case is the poll delay of 1/50th of a second.
+                    slowQueueSubsample += 10240; // ~ 1Hz
+                    queueSubsample += 10240; // ~100Hz
+#endif
 
                     sim_interval = 0;
 #endif
