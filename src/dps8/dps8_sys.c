@@ -276,6 +276,8 @@ static void dps8_init(void)
 
     sim_vm_cmd = dps8_cmds;
 
+    sim_brk_types = sim_brk_dflt = SWMASK ('E');
+
 #ifndef __MINGW64__
     // Create a session for this dps8m system instance.
     dps8m_sid = setsid ();
@@ -1275,7 +1277,6 @@ skipArgs:;
 
 static t_stat sbreak (int32 arg, const char * buf)
   {
-    sim_brk_types = SWMASK ('E');
     //printf (">> <%s>\n", buf);
     int segno, offset;
     int where;
