@@ -1609,6 +1609,27 @@ setCPU:;
                   {
                     CPT (cpt1U, 16); // LUF
                     cpu.lufCounter = 0;
+#ifdef ISOLTS
+// This is a hack to fix ISOLTS 776. ISOLTS checks that the TR has
+// decremented by the LUF timeout value. To implement this, we set
+// the TR to the expected value.
+
+// LUF  time
+//  0    2ms
+//  1    4ms
+//  2    8ms
+//  3   16ms
+// units
+// you have: 2ms
+// units
+// You have: 512000Hz
+// You want: 1/2ms
+//    * 1024
+//    / 0.0009765625
+//
+//  TR = 1024 << LUF
+                   cpu.shadowTR = (word27) cpu.TR0 - (1024u << (is_priv_mode () ? 4 : cpu.CMR.luf));
+#endif
                     doFault (FAULT_LUF, fst_zero, "instruction cycle lockup");
                   }
 

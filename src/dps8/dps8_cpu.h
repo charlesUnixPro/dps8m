@@ -1771,6 +1771,7 @@ typedef struct
 
 #ifdef ISOLTS
     uint shadowTR;
+    uint TR0; // The value that the TR was set to.
 #endif
 #ifdef THREADZ
     // Set if this thread has set memlock

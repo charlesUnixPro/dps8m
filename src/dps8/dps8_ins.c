@@ -3076,7 +3076,6 @@ static t_stat DoBasicInstruction (void)
           HDBGRegQ ();
           cpu.Yblock8[6] = ((word36)(cpu.rE & MASK8)) << 28;
 #ifdef ISOLTS
-//IF1 sim_printf ("sreg %d\r\n", cpu.rTR);
           if (currentRunningCpuIdx)
             cpu.Yblock8[7] = (((-- cpu.shadowTR) & MASK27) << 9) | (cpu.rRALR & 07);
           else
@@ -6676,7 +6675,7 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
           cpu.rTR = (cpu.CY >> 9) & MASK27;
           cpu.rTRticks = 0;
 #if ISOLTS
-          cpu.shadowTR = cpu.rTR;
+          cpu.shadowTR = cpu.TR0 = cpu.rTR;
           cpu.rTRlsb = 0;
 //IF1 sim_printf ("CPU A ldt %d. (%o)\n", cpu.rTR, cpu.rTR);
 #endif
