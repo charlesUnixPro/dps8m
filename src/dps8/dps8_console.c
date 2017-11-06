@@ -1117,7 +1117,7 @@ eol:
 
 // XXX replace attn key signal with escape char check here
 // XXX check for escape to scpe (^E?)
-    if (stop_cpu)
+    if (breakEnable && stop_cpu)
       {
         console_putstr (conUnitIdx,  "Got <sim stop>\r\n");
         return;
@@ -1125,13 +1125,13 @@ eol:
     if (c == SCPE_OK)
         return; // no input
 // Windows doesn't handle ^E as a signal; need to explictily test for it.
-    if (c == SCPE_STOP)
+    if (breakEnable && c == SCPE_STOP)
       {
         console_putstr (conUnitIdx,  "Got <sim stop>\r\n");
         stop_cpu = 1;
         return; // User typed ^E to stop simulation
       }
-    if (c == SCPE_BREAK)
+    if (breakEnable && c == SCPE_BREAK)
       {
         console_putstr (conUnitIdx,  "Got <sim break>\r\n");
         return; // User typed ^E to stop simulation

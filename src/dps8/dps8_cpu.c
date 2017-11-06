@@ -98,8 +98,10 @@ static t_stat cpu_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat cpu_set_nunits (UNIT * uptr, int32 value, const char * cptr,
                                void * desc);
 
+#ifndef NO_EV_POLL
 static uv_loop_t * ev_poll_loop;
 static uv_timer_t ev_poll_handle;
+#endif
 
 static MTAB cpu_mod[] =
   {
@@ -530,6 +532,8 @@ static void doStats (void)
       }
   }
 #endif
+
+#ifndef NO_EV_POLL
 // The 100Hz timer as expired; poll I/O
 
 static void ev_poll_cb (uv_timer_t * UNUSED handle)
@@ -551,7 +555,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
 #endif
     PNL (panelProcessEvent ());
   }
-
+#endif
 
     
 // called once initialization
@@ -606,10 +610,12 @@ void cpu_init (void)
 
     getSerialNumber ();
 
+#ifndef NO_EV_POLL
     ev_poll_loop = uv_default_loop ();
     uv_timer_init (ev_poll_loop, & ev_poll_handle);
     // 10 ms == 100Hz
     uv_timer_start (& ev_poll_handle, ev_poll_cb, 10, 10);
+#endif
 
     // TODO: reset *all* other structures to zero
     
@@ -882,7 +888,7 @@ t_stat simh_hooks (void)
   {
     int reason = 0;
 
-    if (stop_cpu)
+    if (breakEnable && stop_cpu)
       return STOP_STOP;
 
 #ifdef ISOLTS
@@ -891,8 +897,9 @@ t_stat simh_hooks (void)
     // check clock queue 
     if (sim_interval <= 0)
       {
-//int32 int0 = sim_interval;
         reason = sim_process_event ();
+        if ((! breakEnable) && reason == SCPE_STOP)
+          reason = SCPE_OK;
         if (reason)
           return reason;
       }
@@ -1115,7 +1122,9 @@ t_stat sim_instr (void)
 #endif
 
 #ifndef THREADZ
+#ifndef NO_EV_POLL
 static uint fastQueueSubsample = 0;
+#endif
 #endif
 
 //
@@ -1274,6 +1283,7 @@ setCPU:;
             break;
           }
 
+#ifndef NO_EV_POLL
 // The event poll is consuming 40% of the CPU according to pprof.
 // We only want to process at 100Hz; yet we are testing at ~1MHz.
 // If we only test every 1000 cycles, we shouldn't miss by more then
@@ -1286,6 +1296,23 @@ setCPU:;
             uv_run (ev_poll_loop, UV_RUN_NOWAIT);
             PNL (panelProcessEvent ());
           }
+#else
+        static uint slowQueueSubsample = 0;
+        if (slowQueueSubsample ++ > 1024000) // ~ 1Hz
+          {
+            slowQueueSubsample = 0;
+            rdrProcessEvent ();
+          }
+        static uint queueSubsample = 0;
+        if (queueSubsample ++ > 10240) // ~ 100Hz
+          {
+            queueSubsample = 0;
+            fnpProcessEvent ();
+            consoleProcess ();
+            absiProcessEvent ();
+            PNL (panelProcessEvent ());
+          }
+#endif
         cpu.cycleCnt ++;
 #endif // ! THREADZ
 
@@ -1306,6 +1333,7 @@ setCPU:;
         if (con_unit_idx != -1)
           console_attn_idx (con_unit_idx);
 
+#ifndef NO_EV_POLL
 #ifndef THREADZ
 #ifdef ISOLTS
         if (cpu.cycle != FETCH_cycle)
@@ -1323,6 +1351,7 @@ setCPU:;
                   }
               }
           }
+#endif
 #endif
 #endif
 
@@ -1619,11 +1648,10 @@ setCPU:;
                     cpu.isExec = false;
                     cpu.isXED = false;
                     // fetch next instruction into current instruction struct
-#ifndef NOWENT
-                    clr_went_appending (); // XXX not sure this is the right
+                    //clr_went_appending (); // XXX not sure this is the right
                                            //  place
-#endif
-                    cpu.cu.XSF = 0; // Hmm. Is XSF == clr_went_appending ?
+                    cpu.cu.XSF = 0;
+sim_debug (DBG_TRACE, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                     cpu.cu.TSN_VALID [0] = 0;
                     PNL (cpu.prepare_state = ps_PIA);
                     PNL (L68_ (cpu.INS_FETCH = true;))
@@ -1713,7 +1741,8 @@ setCPU:;
                       } // fault or interrupt
 
 
-                    if (TST_I_ABS && get_went_appending ())
+                    //if (TST_I_ABS && get_went_appending ())
+                    if (TST_I_ABS && cpu.cu.XSF)
                       {
                         set_addr_mode (APPEND_mode);
                       }
@@ -1793,9 +1822,16 @@ setCPU:;
                     usleep (10000);
 
 #ifndef THREADZ
+#ifndef NO_EV_POLL
                     // Trigger I/O polling
                     uv_run (ev_poll_loop, UV_RUN_NOWAIT);
                     fastQueueSubsample = 0;
+#else
+                    // this ignores the amount of time since the last poll;
+                    // worst case is the poll delay of 1/50th of a second.
+                    slowQueueSubsample += 10240; // ~ 1Hz
+                    queueSubsample += 10240; // ~100Hz
+#endif
 
                     sim_interval = 0;
 #endif
@@ -2705,6 +2741,7 @@ int is_priv_mode (void)
     return 0;
   }
 
+#if 0
 #ifndef NOWENT
 void set_went_appending (void)
   {
@@ -2723,6 +2760,7 @@ bool get_went_appending (void)
     return cpu.went_appending;
   }
 #endif
+#endif
 
 /*
  * addr_modes_t get_addr_mode()
@@ -2738,22 +2776,17 @@ static void set_TEMPORARY_ABSOLUTE_mode (void)
   {
     CPT (cpt1L, 20); // set temp. abs. mode
     cpu.secret_addressing_mode = true;
-#ifdef NOWENT
     cpu.cu.XSF = false;
-#else
-    cpu.went_appending = false;
-#endif
+sim_debug (DBG_TRACE, & cpu_dev, "set_TEMPORARY_ABSOLUTE_mode bit 29 sets XSF to 0\n");
+    //cpu.went_appending = false;
   }
 
 static bool clear_TEMPORARY_ABSOLUTE_mode (void)
   {
     CPT (cpt1L, 21); // clear temp. abs. mode
     cpu.secret_addressing_mode = false;
-#ifdef NOWENT
     return cpu.cu.XSF;
-#else
-    return cpu.went_appending;
-#endif
+    //return cpu.went_appending;
   }
 
 /* 
@@ -2800,11 +2833,9 @@ addr_modes_t get_addr_mode (void)
 
 void set_addr_mode (addr_modes_t mode)
   {
-#ifdef NOWENT
-    cpu.cu.XSF = false;
-#else
-    cpu.went_appending = false;
-#endif
+//    cpu.cu.XSF = false;
+//sim_debug (DBG_TRACE, & cpu_dev, "set_addr_mode bit 29 sets XSF to 0\n");
+    //cpu.went_appending = false;
 // Temporary hack to fix fault/intr pair address mode state tracking
 //   1. secret_addressing_mode is only set in fault/intr pair processing.
 //   2. Assume that the only set_addr_mode that will occur is the b29 special

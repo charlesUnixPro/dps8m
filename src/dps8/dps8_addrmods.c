@@ -296,10 +296,9 @@ static void doITSITP (word6 Tag, word6 * newtag)
         doITP ();
 
     * newtag = GET_TAG (cpu.itxPair [1]);
-#ifndef NOWENT
-    set_went_appending ();
-#endif
+    //set_went_appending ();
     cpu.cu.XSF = 1;
+    sim_debug (DBG_APPENDING, & cpu_dev, "doITSITP sets XSF to 1\n");
   }
 
 
@@ -782,7 +781,7 @@ startCA:;
 
                 word36 indword;
                 word18 indwordAddress = cpu.TPR.CA;
-                Read (indwordAddress, & indword, OPERAND_READ);
+                Read (indwordAddress, & indword, APU_DATA_READ);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD CI/SC/SCR indword=%012"PRIo64"\n", indword);
@@ -858,7 +857,7 @@ startCA:;
                 cpu.cu.pot = 1;
 
                 word36 data;
-                Read (Yi_, & data, OPERAND_READ);
+                Read (Yi_, & data, APU_DATA_READ);
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "IT_MOD CI/SC/SCR data=%012"PRIo64"\n", data);
 
@@ -915,7 +914,7 @@ startCA:;
 
                 word18 saveCA = cpu.TPR.CA;
                 word36 indword;
-                Read (cpu.TPR.CA, & indword, OPERAND_READ);
+                Read (cpu.TPR.CA, & indword, APU_DATA_READ);
 
                 cpu.AM_tally = GET_TALLY (indword); // 12-bits
                 delta = GET_DELTA (indword); // 6-bits
@@ -944,7 +943,7 @@ startCA:;
                 indword = (word36) (((word36) Yi << 18) |
                                     (((word36) cpu.AM_tally & 07777) << 6) |
                                     delta);
-                Write (saveCA, indword, OPERAND_STORE);
+                Write (saveCA, indword, APU_DATA_STORE);
 
 #ifdef THREADZ
                 if (! cpu.havelock)
@@ -983,7 +982,7 @@ startCA:;
 
                 word18 saveCA = cpu.TPR.CA;
                 word36 indword;
-                Read (cpu.TPR.CA, & indword, OPERAND_READ);
+                Read (cpu.TPR.CA, & indword, APU_DATA_READ);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_SD): reading indirect word from %06o\n",
@@ -1013,7 +1012,7 @@ startCA:;
                 indword = (word36) (((word36) Yi << 18) |
                                     (((word36) cpu.AM_tally & 07777) << 6) |
                                     delta);
-                Write (saveCA, indword, OPERAND_STORE);
+                Write (saveCA, indword, APU_DATA_STORE);
 
 #ifdef THREADZ
                 if (! cpu.havelock)
@@ -1056,7 +1055,7 @@ startCA:;
 
                 word18 saveCA = cpu.TPR.CA;
                 word36 indword;
-                Read (cpu.TPR.CA, & indword, OPERAND_READ);
+                Read (cpu.TPR.CA, & indword, APU_DATA_READ);
 
                 Yi = GETHI (indword);
                 cpu.AM_tally = GET_TALLY (indword); // 12-bits
@@ -1088,7 +1087,7 @@ startCA:;
                            "addr %06o\n",
                            indword, saveCA);
 
-                Write (saveCA, indword, OPERAND_STORE);
+                Write (saveCA, indword, APU_DATA_STORE);
 
 #ifdef THREADZ
                 if (! cpu.havelock)
@@ -1125,7 +1124,7 @@ startCA:;
 #endif
 
                 word36 indword;
-                Read (cpu.TPR.CA, & indword, OPERAND_READ);
+                Read (cpu.TPR.CA, & indword, APU_DATA_READ);
 
                 Yi = GETHI (indword);
                 cpu.AM_tally = GET_TALLY (indword); // 12-bits
@@ -1160,7 +1159,7 @@ startCA:;
                            "addr %06o\n",
                            indword, saveCA);
 
-                Write (saveCA, indword, OPERAND_STORE);
+                Write (saveCA, indword, APU_DATA_STORE);
 
 #ifdef THREADZ
                 if (! cpu.havelock)
@@ -1209,7 +1208,7 @@ startCA:;
 
                 word18 saveCA = cpu.TPR.CA;
                 word36 indword;
-                Read (cpu.TPR.CA, & indword, OPERAND_READ);
+                Read (cpu.TPR.CA, & indword, APU_DATA_READ);
 
                 Yi = GETHI (indword);
                 cpu.AM_tally = GET_TALLY (indword); // 12-bits
@@ -1243,7 +1242,7 @@ startCA:;
                            "IT_MOD(IT_DIC): writing indword=%012"PRIo64" to "
                            "addr %06o\n", indword, saveCA);
 
-                Write (saveCA, indword, OPERAND_STORE);
+                Write (saveCA, indword, APU_DATA_STORE);
 
 #ifdef THREADZ
                 if (! cpu.havelock)
@@ -1314,7 +1313,7 @@ startCA:;
 
                 word18 saveCA = cpu.TPR.CA;
                 word36 indword;
-                Read (cpu.TPR.CA, & indword, OPERAND_READ);
+                Read (cpu.TPR.CA, & indword, APU_DATA_READ);
 
                 Yi = GETHI (indword);
                 cpu.AM_tally = GET_TALLY (indword); // 12-bits
@@ -1346,7 +1345,7 @@ startCA:;
                            " to addr %06o\n",
                            indword, saveCA);
 
-                Write (saveCA, indword, OPERAND_STORE);
+                Write (saveCA, indword, APU_DATA_STORE);
 
 #ifdef THREADZ
                 if (! cpu.havelock)

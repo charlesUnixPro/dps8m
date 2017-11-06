@@ -138,7 +138,7 @@ static void writeOperands (void)
         //word18 indwordAddress = cpu.TPR.CA;
         //Read2 (indwordAddress, cpu.itxPair, INDIRECT_WORD_FETCH);
         //ReadIndirect ();
-        Read (cpu.TPR.CA, cpu.itxPair, OPERAND_READ);
+        Read (cpu.TPR.CA, cpu.itxPair, APU_DATA_READ);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "writeOperands IT indword=%012"PRIo64"\n", cpu.itxPair[0]);
@@ -210,7 +210,7 @@ static void writeOperands (void)
         cpu.cu.pot = 1;
 
         word36 data;
-        Read (Yi, & data, OPERAND_READ);
+        Read (Yi, & data, APU_DATA_READ);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "writeOperands IT data=%012"PRIo64"\n", data);
 
@@ -237,7 +237,7 @@ static void writeOperands (void)
 
         PNL (cpu.prepare_state |= ps_SAW);
 
-        Write (Yi, data, OPERAND_STORE);
+        Write (Yi, data, APU_DATA_STORE);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "writeOperands IT wrote char/byte %012"PRIo64" to %06o "
@@ -338,7 +338,7 @@ static void readOperands (void)
 
         word36 indword;
         word18 indwordAddress = cpu.TPR.CA;
-        Read (indwordAddress, & indword, OPERAND_READ);
+        Read (indwordAddress, & indword, APU_DATA_READ);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "readOperands IT indword=%012"PRIo64"\n", indword);
@@ -408,7 +408,7 @@ static void readOperands (void)
         PNL (cpu.prepare_state |= ps_SIW);
 
         word36 data;
-        Read (Yi, & data, OPERAND_READ);
+        Read (Yi, & data, APU_DATA_READ);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "readOperands IT data=%012"PRIo64"\n", data);
 
@@ -637,6 +637,7 @@ static void words2scu (word36 * words)
     cpu.PPR.PSR         = getbits36_15 (words[0], 3);
     cpu.PPR.P           = getbits36_1  (words[0], 18);
     cpu.cu.XSF          = getbits36_1  (words[0], 19);
+sim_debug (DBG_TRACE, & cpu_dev, "words2scu sets XSF to %o\n", cpu.cu.XSF);
     //cpu.cu.SDWAMM       = getbits36_1  (words[0], 20);
     //cpu.cu.SD_ON        = getbits36_1  (words[0], 21);
     //cpu.cu.PTWAMM       = getbits36_1  (words[0], 22);
@@ -1205,6 +1206,7 @@ void fetchInstruction (word18 addr)
       }
 }
 
+#ifdef TESTING
 void traceInstruction (uint flag)
   {
     char buf [256];
@@ -1329,6 +1331,7 @@ force:;
       }
 
   }
+#endif
 
 bool chkOVF (void)
   {
@@ -1475,7 +1478,12 @@ IF1 sim_printf ("trapping opcode match......\n");
     if (ci->restart)
       goto restart_1;
 
+//
+// not restart
+//
+
     cpu.cu.XSF = 0;
+sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction sets XSF to %o\n", cpu.cu.XSF);
 
     CPT (cpt2U, 14); // non-restart processing
     // Set Address register empty
@@ -1739,7 +1747,7 @@ IF1 sim_printf ("trapping opcode match......\n");
 #endif
 
     ///
-    /// executeInstruction: Non-restart processing
+    /// executeInstruction: Restart or Non-restart processing
     ///                     Initialize address registers
     ///
 restart_1:
@@ -1926,6 +1934,10 @@ sim_debug (DBG_TRACE, & cpu_dev, "b29, ci->address %o\n", ci->address);
       } // cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl
 
 ///
+/// Restart or Non-restart
+///
+
+///
 /// executeInstruction: EIS operand processing
 ///
 
@@ -1963,48 +1975,48 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
             //Read (cpu.PPR.IC + 1 + n, & cpu.currentEISinstruction.op[n],
                   //INSTRUCTION_FETCH);
             Read (cpu.PPR.IC + 1 + n, & cpu.currentEISinstruction.op[n],
-                  OPERAND_READ);
+                  APU_DATA_READ);
 #endif
           }
         PNL (cpu.IWRAddr = cpu.currentEISinstruction.op[0]);
         setupEISoperands ();
       }
-    else
+
+///
+/// Restart or Non-restart
+///
 
 ///
 /// executeInstruction: non-EIS operand processing
 ///
 
+    else
       {
         CPT (cpt2U, 32); // non-EIS operand processing
-        // This must not happen on instruction restart
-        //if (! ci->restart)
-          //{
-            CPT (cpt2U, 33); // not restart non-EIS operand processing
-            //if (cpu.isb29)   // if A bit set set-up TPR stuff ...
-            if (ci->b29)   // if A bit set set-up TPR stuff ...
+        CPT (cpt2U, 33); // not restart non-EIS operand processing
+        if (ci->b29)   // if A bit set set-up TPR stuff ...
+          {
+            CPT (cpt2U, 34); // B29
+
+// AL39 says that RCU does not restore CA, so words to SCU does not.
+// So we do it here, even if restart
+            word3 n = GET_PRN(IWB_IRODD);  // get PRn
+            word15 offset = GET_OFFSET(IWB_IRODD);
+            CPTUR (cptUsePRn + n);
+
+            sim_debug (DBG_APPENDING, &cpu_dev,
+                       "doPtrReg(): PR[%o] SNR=%05o RNR=%o WORDNO=%06o "
+                       "BITNO=%02o\n",
+                       n, cpu.PAR[n].SNR, cpu.PAR[n].RNR,
+                       cpu.PAR[n].WORDNO, GET_PR_BITNO (n));
+
+            cpu.TPR.CA = (cpu.PAR[n].WORDNO + SIGNEXT15_18 (offset))
+                         & MASK18;
+
+            if (! ci-> restart)
               {
-                CPT (cpt2U, 34); // B29
-                //doPtrReg ();
-                word3 n = GET_PRN(IWB_IRODD);  // get PRn
-                word15 offset = GET_OFFSET(IWB_IRODD);
-                CPTUR (cptUsePRn + n);
-
-                sim_debug (DBG_APPENDING, &cpu_dev,
-                           "doPtrReg(): PR[%o] SNR=%05o RNR=%o WORDNO=%06o "
-                           "BITNO=%02o\n",
-                           n, cpu.PAR[n].SNR, cpu.PAR[n].RNR,
-                           cpu.PAR[n].WORDNO, GET_PR_BITNO (n));
-
-                //cpu.cu.TSN_PRNO [0] = n;
-                //cpu.cu.TSN_VALID [0] = 1;
-
-                cpu.TPR.CA = (cpu.PAR[n].WORDNO + SIGNEXT15_18 (offset))
-                             & MASK18;
+// Not EIS, bit 29 set, restart
                 cpu.TPR.TBR = GET_PR_BITNO (n);
-
-                //if (! (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl))
-                //  updateIWB (cpu.TPR.CA, GET_TAG (IWB_IRODD));
 
                 cpu.TPR.TSR = cpu.PAR[n].SNR;
                 cpu.TPR.TRR = max3 (cpu.PAR[n].RNR, cpu.TPR.TRR, cpu.PPR.PRR);
@@ -2014,12 +2026,10 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            "TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n",
                            n, offset, cpu.TPR.CA, cpu.TPR.TBR, 
                            cpu.TPR.TSR, cpu.TPR.TRR);
-
-#ifdef NOWENT
                 cpu.cu.XSF = 1;
-#else
-                set_went_appending ();
-#endif
+sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction EIS sets XSF to %o\n", cpu.cu.XSF);
+                //set_went_appending ();
+            }
 
 // Putting the a29 clear here makes sense, but breaks the emulator for unclear
 // reasons (possibly ABSA?). Do it in updateIWB instead
@@ -2028,8 +2038,11 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
 //                //  mode
 //                //a = false;
 //                putbits36_1 (& cpu.cu.IWB, 29, 0);
-              }
-            else
+          }
+        else
+          {
+// not eis, not bit b29
+            if (! ci->restart)
               {
                 CPT (cpt2U, 35); // not B29
                 cpu.cu.TSN_VALID [0] = 0;
@@ -2040,13 +2053,11 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                     cpu.TPR.TRR = 0;
                     cpu.RSDWH_R1 = 0;
                   }
-#ifdef NOWENT
                 cpu.cu.XSF = 0;
-#else
-                clr_went_appending ();
-#endif
+sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", cpu.cu.XSF);
+                //clr_went_appending ();
               }
-          //}
+          }
 
         // This must not happen on instruction restart
         if (! ci->restart)
@@ -2185,7 +2196,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
         //
 
         //Read2 (cpu.TPR.CA, cpu.itxPair, INDIRECT_WORD_FETCH);
-        Read (cpu.TPR.CA, cpu.itxPair, OPERAND_READ);
+        Read (cpu.TPR.CA, cpu.itxPair, APU_DATA_READ);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "update IT indword=%012"PRIo64"\n", cpu.itxPair[0]);
@@ -2279,9 +2290,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                             cpu.ou.characterOperandSize |
                             cpu.ou.characterOperandOffset);
 
-//sim_printf ("XXX this has got to be wrong; OPERAND_WRITE?\n");
-        //Write (cpu.TPR.CA, indword, INDIRECT_WORD_FETCH);
-        Write (cpu.TPR.CA, cpu.itxPair[0], OPERAND_STORE);
+        Write (cpu.TPR.CA, cpu.itxPair[0], APU_DATA_STORE);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "update IT wrote tally word %012"PRIo64" to %06o\n",
@@ -9420,11 +9429,8 @@ static int doABSA (word36 * result)
     sim_debug (DBG_APPENDING, & cpu_dev, "absa CA:%08o\n", cpu.TPR.CA);
 
     //if (get_addr_mode () == ABSOLUTE_mode && ! cpu.isb29)
-#ifdef NOWENT
+    //if (get_addr_mode () == ABSOLUTE_mode && ! cpu.went_appending) // ISOLTS-860
     if (get_addr_mode () == ABSOLUTE_mode && ! cpu.cu.XSF) // ISOLTS-860
-#else
-    if (get_addr_mode () == ABSOLUTE_mode && ! cpu.went_appending) // ISOLTS-860
-#endif
       {
         * result = ((word36) (cpu.TPR.CA & MASK18)) << 12; // 24:12 format
         return SCPE_OK;

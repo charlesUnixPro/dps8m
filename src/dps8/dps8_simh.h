@@ -138,6 +138,8 @@ extern DEVICE scu_dev;
 #define MTAB_unit_value_show MTAB_XTD | MTAB_VUN | MTAB_VDV | MTAB_VALR
 // Requires a value, DEV only, not in "show"
 #define MTAB_dev_value     MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR
+// No value, DEV only, in "show"
+#define MTAB_dev_novalue     MTAB_XTD | MTAB_VDV 
 
 // End of list marker
 #define MTAB_eol { 0, 0, NULL, NULL, 0, 0, NULL, NULL }
