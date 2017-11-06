@@ -1762,7 +1762,9 @@ static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
     fetchAndParseDCW (iomUnitIdx, chan, false);
     if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
       {
+#ifdef TESTING
         sim_warn ("%s: expected a DDCW; fail\n", __func__);
+#endif
         return;
       }
     // No address extension or paging nonsense for channels 0-7. 
