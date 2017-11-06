@@ -48,8 +48,17 @@ pthread_spinlock_t mem_lock;
 static pthread_mutex_t mem_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
+#define dbg_lock
+#ifdef dbg_lock
+static __thread bool recurFlag = false;
+#endif
 void lock_mem (void)
   {
+#ifdef dbg_lock
+    if (recurFlag)
+      sim_printf ("recursive mem lock\n");
+    recurFlag = true;
+#endif
     //sim_debug (DBG_TRACE, & cpu_dev, "lock_mem\n");
     int rc;
 #ifdef use_spinlock
@@ -63,6 +72,11 @@ void lock_mem (void)
 
 void unlock_mem (void)
   {
+#ifdef dbg_lock
+    if (!recurFlag)
+      sim_printf ("spurious mem unlock\n");
+    recurFlag = false;
+#endif
     //sim_debug (DBG_TRACE, & cpu_dev, "unlock_mem\n");
     int rc;
 #ifdef use_spinlock

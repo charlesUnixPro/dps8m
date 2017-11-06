@@ -2124,6 +2124,10 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
         PNL (cpu.IWRAddr = 0);
       }
 
+// Initiialize zone to 'entire word'
+
+    cpu.zone = MASK36;
+
 ///
 /// executeInstruction: Execute the instruction
 ///
@@ -3098,14 +3102,26 @@ static t_stat DoBasicInstruction (void)
         case 0551:  // stba
           // 9-bit bytes of C(A) -> corresponding bytes of C(Y), the byte
           // positions affected being specified in the TAG field.
-          copyBytes ((i->tag >> 2) & 0xf, cpu.rA, &cpu.CY);
+          //copyBytes ((i->tag >> 2) & 0xf, cpu.rA, &cpu.CY);
+          cpu.CY = cpu.rA;
+          cpu.zone =
+             ((i->tag & 040) ? 0777000000000 : 0) |
+             ((i->tag & 020) ? 0000777000000 : 0) |
+             ((i->tag & 010) ? 0000000777000 : 0) |
+             ((i->tag & 004) ? 0000000000777 : 0);
           cpu.ou.crflag = true;
           break;
 
         case 0552:  // stbq
           // 9-bit bytes of C(Q) -> corresponding bytes of C(Y), the byte
           // positions affected being specified in the TAG field.
-          copyBytes ((i->tag >> 2) & 0xf, cpu.rQ, &cpu.CY);
+          //copyBytes ((i->tag >> 2) & 0xf, cpu.rQ, &cpu.CY);
+          cpu.CY = cpu.rQ;
+          cpu.zone =
+             ((i->tag & 040) ? 0777000000000 : 0) |
+             ((i->tag & 020) ? 0000777000000 : 0) |
+             ((i->tag & 010) ? 0000000777000 : 0) |
+             ((i->tag & 004) ? 0000000000777 : 0);
           cpu.ou.crflag = true;
           break;
 
@@ -3128,21 +3144,39 @@ static t_stat DoBasicInstruction (void)
           // AL-39 doesn't specify if the low half is set to zero,
           // set to IR, or left unchanged
           // RJ78 specifies unchanged
-          SETHI (cpu.CY, (cpu.PPR.IC + 2) & MASK18);
+          //SETHI (cpu.CY, (cpu.PPR.IC + 2) & MASK18);
+          cpu.CY = ((word36) ((cpu.PPR.IC + 2) & MASK18)) << 18;
+          cpu.zone = 0777777000000;
           break;
 
         case 0751: // stca
           // Characters of C(A) -> corresponding characters of C(Y),
           // the character positions affected being specified in the TAG
           // field.
-          copyChars (i->tag, cpu.rA, &cpu.CY);
+          //copyChars (i->tag, cpu.rA, &cpu.CY);
+          cpu.CY = cpu.rA;
+          cpu.zone =
+             ((i->tag & 040) ? 0770000000000 : 0) |
+             ((i->tag & 020) ? 0007700000000 : 0) |
+             ((i->tag & 010) ? 0000077000000 : 0) |
+             ((i->tag & 004) ? 0000000770000 : 0) |
+             ((i->tag & 002) ? 0000000007700 : 0) |
+             ((i->tag & 001) ? 0000000000077 : 0);
           cpu.ou.crflag = true;
           break;
 
         case 0752: // stcq
           // Characters of C(Q) -> corresponding characters of C(Y), the
           // character positions affected being specified in the TAG field.
-          copyChars (i->tag, cpu.rQ, &cpu.CY);
+          //copyChars (i->tag, cpu.rQ, &cpu.CY);
+          cpu.CY = cpu.rQ;
+          cpu.zone =
+             ((i->tag & 040) ? 0770000000000 : 0) |
+             ((i->tag & 020) ? 0007700000000 : 0) |
+             ((i->tag & 010) ? 0000077000000 : 0) |
+             ((i->tag & 004) ? 0000000770000 : 0) |
+             ((i->tag & 002) ? 0000000007700 : 0) |
+             ((i->tag & 001) ? 0000000000077 : 0);
           cpu.ou.crflag = true;
           break;
 
@@ -3201,11 +3235,14 @@ static t_stat DoBasicInstruction (void)
             // AL39 sti says that HEX is ignored, but the mode register 
             // description says that it isn't
 #ifdef DPS8M
-          SETLO (cpu.CY, (cpu.cu.IR & 0000000777770LL));
+          //SETLO (cpu.CY, (cpu.cu.IR & 0000000777770LL));
+          cpu.CY = cpu.cu.IR & 0000000777770LL;
 #endif
 #ifdef L68
-          SETLO (cpu.CY, (cpu.cu.IR & 0000000777760LL));
+          //SETLO (cpu.CY, (cpu.cu.IR & 0000000777760LL));
+          cpu.CY = cpu.cu.IR & 0000000777760LL;
 #endif
+          cpu.zone = 0000000777777;
           SCF (i->stiTally, cpu.CY, I_TALLY);
           break;
 
@@ -3237,7 +3274,9 @@ static t_stat DoBasicInstruction (void)
         case 0747:  // stx7
           {
             uint32 n = opcode & 07;  // get n
-            SETHI (cpu.CY, cpu.rX[n]);
+            //SETHI (cpu.CY, cpu.rX[n]);
+            cpu.CY = ((word36) cpu.rX[n]) << 18;
+            cpu.zone = 0777777000000;
           }
           break;
 
@@ -3253,7 +3292,9 @@ static t_stat DoBasicInstruction (void)
         case 0445:  // sxl5
         case 0446:  // sxl6
         case 0447:  // sxl7
-          SETLO (cpu.CY, cpu.rX[opcode & 07]);
+          //SETLO (cpu.CY, cpu.rX[opcode & 07]);
+          cpu.CY = cpu.rX[opcode & 07];
+          cpu.zone = 0000000777777;
           break;
 
         /// Fixed-Point Data Movement Shift
@@ -5271,7 +5312,9 @@ static t_stat DoBasicInstruction (void)
           // 00...0 -> C(Y)8,17
 
           CPTUR (cptUseE);
-          putbits36_18 (& cpu.CY, 0, ((word18) (cpu.rE & 0377) << 10));
+          //putbits36_18 (& cpu.CY, 0, ((word18) (cpu.rE & 0377) << 10));
+          cpu.CY = ((word36) (cpu.rE & 0377)) << 28;
+          cpu.zone = 0777777000000;
           break;
 
 
@@ -6323,8 +6366,9 @@ static t_stat DoBasicInstruction (void)
         case 0550:  // sbar
           // C(BAR) -> C(Y) 0,17
           CPTUR (cptUseBAR);
-          SETHI (cpu.CY, (cpu.BAR.BASE << 9) | cpu.BAR.BOUND);
-
+          //SETHI (cpu.CY, (cpu.BAR.BASE << 9) | cpu.BAR.BOUND);
+          cpu.CY = ((((word36) cpu.BAR.BASE) << 9) | cpu.BAR.BOUND) << 18;
+          cpu.zone = 0777777000000;
           break;
 
 
@@ -8850,6 +8894,7 @@ elapsedtime ();
                                      (word3) ((GET_AR_CHAR (n) & MASK2) << 1));
                         break;
                 }
+              cpu.zone = 0777777700000;
             }
             break;
 
@@ -8895,6 +8940,7 @@ elapsedtime ();
                                      (word3) ((GET_AR_CHAR (n) & MASK2) << 1));
                         break;
                 }
+              cpu.zone = 0777777700000;
             }
             break;
 
@@ -8918,6 +8964,7 @@ elapsedtime ();
                 putbits36 (& cpu.CY, 18, 2, GET_AR_CHAR (n));
                 putbits36 (& cpu.CY, 20, 4, GET_AR_BITNO (n));
                 //putbits36 (& cpu.CY, 18, 6, GET_PR_BITNO (n));
+                cpu.zone = 0777777770000;
                 break;
             }
 
