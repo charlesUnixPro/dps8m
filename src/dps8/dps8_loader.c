@@ -1721,8 +1721,10 @@ t_stat dpsCmd_Dump (UNUSED int32 arg, const char *buf)
         ! strcasecmp (cmds[1], "table"))
         return dpsCmd_DumpSegmentTable ();
 #ifdef WAM
+#ifdef L68
     if (nParams == 1 && !strcasecmp (cmds[0], "sdwam"))
         return dumpSDWAM ();
+#endif
 #endif
     
     return SCPE_OK;

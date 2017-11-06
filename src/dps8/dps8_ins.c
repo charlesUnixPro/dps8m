@@ -52,6 +52,7 @@ static int emCall (void);
 #endif
 #endif
 
+#ifdef LOOPTRC
 #include <time.h>
 void timespec_diff(struct timespec *start, struct timespec *stop,
                    struct timespec *result)
@@ -67,7 +68,6 @@ void timespec_diff(struct timespec *start, struct timespec *stop,
     return;
 }
 
-#ifdef LOOPTRC
 void elapsedtime (void)
   {
     static bool init = false;
@@ -3075,7 +3075,16 @@ static t_stat DoBasicInstruction (void)
           cpu.Yblock8[5] = cpu.rQ;
           HDBGRegQ ();
           cpu.Yblock8[6] = ((word36)(cpu.rE & MASK8)) << 28;
+#ifdef ISOLTS
+//IF1 sim_printf ("sreg %d\r\n", cpu.rTR);
+          if (currentRunningCpuIdx)
+            cpu.Yblock8[7] = (((-- cpu.shadowTR) & MASK27) << 9) | (cpu.rRALR & 07);
+          else
+            cpu.Yblock8[7] = ((cpu.rTR & MASK27) << 9) | (cpu.rRALR & 07);
+
+#else
           cpu.Yblock8[7] = ((cpu.rTR & MASK27) << 9) | (cpu.rRALR & 07);
+#endif
           break;
 
         case 0755:  // sta
