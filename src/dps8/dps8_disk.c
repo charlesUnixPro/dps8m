@@ -670,7 +670,9 @@ static int readStatusRegister (uint iomUnitIdx, uint chan)
 // XXX need status register data format 
 // system_library_tools/source/bound_io_tools_.s.archive/analyze_detail_stat_.pl1  anal_fips_disk_().
 
+#ifdef TESTING
     sim_warn ("Need status register data format\n");
+#endif
 #if 1
     word36 buffer [tally];
     memset (buffer, 0, sizeof (buffer));
