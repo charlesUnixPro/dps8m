@@ -888,7 +888,7 @@ t_stat simh_hooks (void)
   {
     int reason = 0;
 
-    if (stop_cpu)
+    if (breakEnable && stop_cpu)
       return STOP_STOP;
 
 #ifdef ISOLTS
@@ -897,8 +897,9 @@ t_stat simh_hooks (void)
     // check clock queue 
     if (sim_interval <= 0)
       {
-//int32 int0 = sim_interval;
         reason = sim_process_event ();
+        if ((! breakEnable) && reason == SCPE_STOP)
+          reason = SCPE_OK;
         if (reason)
           return reason;
       }

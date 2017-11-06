@@ -1206,6 +1206,7 @@ void fetchInstruction (word18 addr)
       }
 }
 
+#ifdef TESTING
 void traceInstruction (uint flag)
   {
     char buf [256];
@@ -1330,6 +1331,7 @@ force:;
       }
 
   }
+#endif
 
 bool chkOVF (void)
   {
