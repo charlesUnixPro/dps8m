@@ -25,7 +25,7 @@
 #include "dps8_faults.h"
 #include "dps8_cpu.h"
 
-enum hevtType { hevtEmpty = 0, hevtTrace, hevtMRead, hevtMWrite, hevtIWBUpdate, hevtRegs, hevtFault, hevtReg, hevtPAReg };
+enum hevtType { hevtEmpty = 0, hevtTrace, hevtMRead, hevtMWrite, hevtIWBUpdate, hevtRegs, hevtFault, hevtIntrSet, hevtIntr, hevtReg, hevtPAReg };
 
 struct hevt
   {
@@ -57,6 +57,18 @@ struct hevt
 
         struct
           {
+            uint inum;
+            uint cpuUnitIdx;
+            uint scuUnitIdx;
+          } intrSet;
+
+        struct
+          {
+            uint intr_pair_addr;
+          } intr;
+
+        struct
+          {
             enum hregs_t type;
             word36 data;
           } reg;
@@ -72,6 +84,7 @@ struct hevt
 static struct hevt * hevents = NULL;
 static unsigned long hdbgSize = 0;
 static unsigned long hevtPtr = 0;
+static unsigned long hevtMark = 0;
 
 #ifdef THREADZ
 static pthread_mutex_t hdbg_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -97,6 +110,17 @@ static void createBuffer (void)
     hevtPtr = 0;
   }
 
+static void hdbg_inc (void)
+  {
+    hevtPtr = (hevtPtr + 1) % hdbgSize;
+    if (hevtMark)
+      {
+        hevtMark --;
+        if (hevtMark == 0)
+          hdbgPrint ();
+      }
+  }
+
 void hdbgTrace (void)
   {
 #ifdef THREADZ
@@ -115,7 +139,7 @@ if (currentRunningCpuIdx == 0)
     hevents [hevtPtr] . trace . ic = cpu . PPR.IC;
     hevents [hevtPtr] . trace . ring = cpu . PPR.PRR;
     hevents [hevtPtr] . trace . inst = cpu.cu.IWB;
-    hevtPtr = (hevtPtr + 1) % hdbgSize;
+    hdbg_inc ();
 done: ;
 #ifdef THREADZ
     pthread_mutex_unlock (& hdbg_lock);
@@ -137,7 +161,7 @@ if (currentRunningCpuIdx == 0)
     hevents [hevtPtr] . time = cpu.cycleCnt;
     hevents [hevtPtr] . memref . addr = addr;
     hevents [hevtPtr] . memref . data = data;
-    hevtPtr = (hevtPtr + 1) % hdbgSize; 
+    hdbg_inc ();
 done: ;
 #ifdef THREADZ
     pthread_mutex_unlock (& hdbg_lock);
@@ -159,7 +183,7 @@ if (currentRunningCpuIdx == 0)
     hevents [hevtPtr] . time = cpu.cycleCnt;
     hevents [hevtPtr] . memref . addr = addr;
     hevents [hevtPtr] . memref . data = data;
-    hevtPtr = (hevtPtr + 1) % hdbgSize; 
+    hdbg_inc ();
 done: ;
 #ifdef THREADZ
     pthread_mutex_unlock (& hdbg_lock);
@@ -168,7 +192,6 @@ done: ;
 
 void hdbgFault (_fault faultNumber, _fault_subtype subFault,
                 const char * faultMsg)
-
   {
 #ifdef THREADZ
     pthread_mutex_lock (& hdbg_lock);
@@ -185,7 +208,51 @@ if (currentRunningCpuIdx == 0)
     hevents [hevtPtr] . fault . subFault = subFault;
     strncpy (hevents [hevtPtr] . fault . faultMsg, faultMsg, 63);
     hevents [hevtPtr] . fault . faultMsg [63] = 0;
-    hevtPtr = (hevtPtr + 1) % hdbgSize; 
+    hdbg_inc ();
+done: ;
+#ifdef THREADZ
+    pthread_mutex_unlock (& hdbg_lock);
+#endif
+  }
+
+void hdbgIntrSet (uint inum, uint cpuUnitIdx, uint scuUnitIdx)
+  {
+#ifdef THREADZ
+    pthread_mutex_lock (& hdbg_lock);
+#endif
+    if (! hevents)
+      goto done;
+#ifdef ISOLTS
+if (currentRunningCpuIdx == 0)
+  goto done;
+#endif
+    hevents [hevtPtr].type = hevtIntrSet;
+    hevents [hevtPtr].time = cpu.cycleCnt;
+    hevents [hevtPtr].intrSet.inum = inum;
+    hevents [hevtPtr].intrSet.cpuUnitIdx = cpuUnitIdx;
+    hevents [hevtPtr].intrSet.scuUnitIdx = scuUnitIdx;
+    hdbg_inc ();
+done: ;
+#ifdef THREADZ
+    pthread_mutex_unlock (& hdbg_lock);
+#endif
+  }
+
+void hdbgIntr (uint intr_pair_addr)
+  {
+#ifdef THREADZ
+    pthread_mutex_lock (& hdbg_lock);
+#endif
+    if (! hevents)
+      goto done;
+#ifdef ISOLTS
+if (currentRunningCpuIdx == 0)
+  goto done;
+#endif
+    hevents [hevtPtr].type = hevtIntr;
+    hevents [hevtPtr].time = cpu.cycleCnt;
+    hevents [hevtPtr].intr.intr_pair_addr = intr_pair_addr;
+    hdbg_inc ();
 done: ;
 #ifdef THREADZ
     pthread_mutex_unlock (& hdbg_lock);
@@ -207,7 +274,7 @@ if (currentRunningCpuIdx == 0)
     hevents[hevtPtr].time = cpu.cycleCnt;
     hevents[hevtPtr].reg.type = type;
     hevents[hevtPtr].reg.data = data;
-    hevtPtr = (hevtPtr + 1) % hdbgSize; 
+    hdbg_inc ();
 done: ;
 #ifdef THREADZ
     pthread_mutex_unlock (& hdbg_lock);
@@ -230,7 +297,7 @@ if (currentRunningCpuIdx == 0)
     hevents[hevtPtr].time = cpu.cycleCnt;
     hevents[hevtPtr].par.type = type;
     hevents[hevtPtr].par.data =  * data;
-    hevtPtr = (hevtPtr + 1) % hdbgSize; 
+    hdbg_inc ();
 done: ;
 #ifdef THREADZ
     pthread_mutex_unlock (& hdbg_lock);
@@ -279,6 +346,22 @@ static void printFault (struct hevt * p)
                 p -> fault.faultNumber, p -> fault.faultNumber,
                 p -> fault.subFault.bits, p -> fault.subFault.bits,
                 p -> fault.faultMsg);
+  }
+
+static void printIntrSet (struct hevt * p)
+  {
+    fprintf (hdbgOut, "DBG(%"PRId64")> CPU INTR_SET: Number %d(0%o), CPU %u SCU %u\n",
+                p -> time, 
+                p -> intrSet.inum, p -> intrSet.inum,
+                p -> intrSet.cpuUnitIdx,
+                p -> intrSet.scuUnitIdx);
+  }
+
+static void printIntr (struct hevt * p)
+  {
+    fprintf (hdbgOut, "DBG(%"PRId64")> CPU INTR: Interrupt pair address %o\n",
+                p -> time, 
+                p -> intr.intr_pair_addr);
   }
 
 static char * regNames [] =
@@ -369,6 +452,14 @@ void hdbgPrint (void)
               printFault (evtp);
               break;
                 
+            case hevtIntrSet:
+              printIntrSet (evtp);
+              break;
+                
+            case hevtIntr:
+              printIntr (evtp);
+              break;
+                
             case hevtReg:
               printReg (evtp);
               break;
@@ -393,6 +484,18 @@ void hdbgPrint (void)
     /* ssize_t n = */ write (fd, (const void *) M, MEMSIZE * sizeof (word36));
     close (fd);
 done: ;
+#ifdef THREADZ
+    pthread_mutex_unlock (& hdbg_lock);
+#endif
+  }
+
+void hdbg_mark (void)
+  {
+#ifdef THREADZ
+    pthread_mutex_lock (& hdbg_lock);
+#endif
+    hevtMark = hdbgSize;
+    sim_printf ("hdbg mark set to %ld\n", hevtMark);
 #ifdef THREADZ
     pthread_mutex_unlock (& hdbg_lock);
 #endif

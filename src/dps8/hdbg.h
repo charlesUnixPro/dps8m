@@ -11,6 +11,7 @@
 #ifndef HDBG_H
 #define HDBG_H
 
+void hdbg_mark (void);
 t_stat hdbg_size (int32 arg, UNUSED const char * buf);
 t_stat hdbg_print (int32 arg, UNUSED const char * buf);
 #ifdef HDBG
@@ -20,6 +21,8 @@ void hdbgMRead (word24 addr, word36 data);
 void hdbgMWrite (word24 addr, word36 data);
 void hdbgFault (_fault faultNumber, _fault_subtype subFault,
                 const char * faultMsg);
+void hdbgIntrSet (uint inum, uint cpuUnitIdx, uint scuUnitIdx);
+void hdbgIntr (uint intr_pair_addr);
 enum hregs_t
   {
     hreg_A,

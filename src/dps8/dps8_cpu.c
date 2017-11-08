@@ -1189,6 +1189,35 @@ void * cpuThreadMain (void * arg)
   }
 #endif // THREADZ
 
+static void doLufFault (void)
+  {
+    CPT (cpt1U, 16); // LUF
+    cpu.lufCounter = 0;
+    cpu.lufOccurred = false;
+#ifdef ISOLTS
+// This is a hack to fix ISOLTS 776. ISOLTS checks that the TR has
+// decremented by the LUF timeout value. To implement this, we set
+// the TR to the expected value.
+
+// LUF  time
+//  0    2ms
+//  1    4ms
+//  2    8ms
+//  3   16ms
+// units
+// you have: 2ms
+// units
+// You have: 512000Hz
+// You want: 1/2ms
+//    * 1024
+//    / 0.0009765625
+//
+//  TR = 1024 << LUF
+    cpu.shadowTR = (word27) cpu.TR0 - (1024u << (is_priv_mode () ? 4 : cpu.CMR.luf));
+#endif
+    doFault (FAULT_LUF, fst_zero, "instruction cycle lockup");
+  }
+
 #ifndef THREADZ
 #define threadz_sim_instr sim_instr
 #endif
@@ -1402,6 +1431,9 @@ setCPU:;
                 // present register.  
 
                 uint intr_pair_addr = get_highest_intr ();
+#ifdef HDBG
+                hdbgIntr (intr_pair_addr);
+#endif
                 cpu.cu.FI_ADDR = (word5) (intr_pair_addr / 2);
                 cu_safe_store ();
                 // XXX the whole interrupt cycle should be rewritten as an xed
@@ -1602,7 +1634,42 @@ setCPU:;
                     break;
                   }
 
+// "While in absolute mode or privileged mode the lockup fault is signalled at
+// the end of the time limit set in the lockup timer but is not recognized
+// until the 32 millisecond limit. If the processor returns to normal mode or
+// BAR mode after the fault has been signalled but before the 32 millisecond
+// limit, the fault is recognized before any instruction in the new mode is
+// executed."
+
                 cpu.lufCounter ++;
+#if 1
+                if (cpu.lufCounter > luf_limits[cpu.CMR.luf])
+                  {
+                    if (tmp_priv_mode)
+                      {
+                        // In priv. mode the LUF is noted but not executed
+                        cpu.lufOccurred = true;
+                      }
+                    else
+                      {
+                        doLufFault ();
+                      }
+                  } // lufCounter > luf_limit
+
+
+                // After 32ms, the LUF fires regardless of priv.
+                if (cpu.lufCounter > luf_limits[4])
+                  {
+                    doLufFault ();
+                  }
+
+                // If the LUF occured in priv. mode and we left priv. mode,
+                // fault.
+                if (! tmp_priv_mode && cpu.lufOccurred)
+                  {
+                    doLufFault ();
+                  }
+#else
                 if ((tmp_priv_mode && cpu.lufCounter > luf_limits[4]) || 
                     (! tmp_priv_mode && 
                      cpu.lufCounter > luf_limits[cpu.CMR.luf]))
@@ -1632,7 +1699,7 @@ setCPU:;
 #endif
                     doFault (FAULT_LUF, fst_zero, "instruction cycle lockup");
                   }
-
+#endif
                 // If we have done the even of an XED, do the odd
                 if (cpu.cu.xde == 0 && cpu.cu.xdo == 1)
                   {

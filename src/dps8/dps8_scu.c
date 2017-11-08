@@ -1937,6 +1937,9 @@ static void deliverInterrupts (uint scuUnitIdx)
                   {
 #ifdef THREADZ
                     cpus[cpuUnitIdx].events.XIP[scuUnitIdx] = true;
+#ifdef HDBG
+                    hdbgIntrSet (inum, cpuUnitIdx, scuUnitIdx);
+#endif
                     setCPURun ((uint) cpuUnitIdx, true);
                     wakeCPU ((uint) cpuUnitIdx);
                     sim_debug (DBG_DEBUG, & scu_dev,

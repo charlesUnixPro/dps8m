@@ -1791,7 +1791,13 @@ restart_1:
         hdbgTrace ();
 #endif // HDBG
       }
-#endif // SPEED
+#else  // !SPEED
+#ifdef HDBG
+    // Don't trace Multics idle loop
+    if (cpu.PPR.PSR != 061 || cpu.PPR.IC != 0307)
+      hdbgTrace ();
+#endif // HDBG
+#endif // !SPEED
 
 ///
 /// executeInstruction: Initialize misc.

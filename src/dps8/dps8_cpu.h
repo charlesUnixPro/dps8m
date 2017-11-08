@@ -1738,6 +1738,7 @@ typedef struct
     uint rTRlsb;
 #endif
     uint64 lufCounter;
+    bool lufOccurred;
     bool secret_addressing_mode;
     //bool went_appending; // we will go....
 #ifdef ROUND_ROBIN
