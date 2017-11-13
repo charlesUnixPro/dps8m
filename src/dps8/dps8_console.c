@@ -969,11 +969,11 @@ sim_printf ("uncomfortable with this\n");
                     //   ^xstring^x
                     size_t expl = strcspn ((char *) (csp->autop + 1), "\030");
 //sim_printf ("comparing <%s> to <%s>\r\n", text, csp->autop + 1);
-sim_printf ("\r\ncomparing ");
-for (uint i = 0; i < expl; i ++) sim_printf (" %03o", (uint) text [i]);
-sim_printf ("\r\nto        ");
-for (uint i = 0; i < expl; i ++) sim_printf (" %03o", (uint) csp->autop [i+1]);
-sim_printf ("\r\n");
+//sim_printf ("\r\ncomparing ");
+//for (uint i = 0; i < expl; i ++) sim_printf (" %03o", (uint) text [i]);
+//sim_printf ("\r\nto        ");
+//for (uint i = 0; i < expl; i ++) sim_printf (" %03o", (uint) csp->autop [i+1]);
+//sim_printf ("\r\n");
 
                     if (strncmp (text, (char *) (csp->autop + 1), expl) == 0)
                       {
