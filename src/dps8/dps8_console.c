@@ -28,7 +28,6 @@
 #ifndef __MINGW64__
 #include <termios.h>
 #endif
-#include <uv.h>
 
 #include "dps8.h"
 #include "dps8_iom.h"
@@ -191,7 +190,9 @@ typedef struct con_state_t
     bool have_eol;
     unsigned char *auto_input;
     unsigned char *autop;
+#ifdef ATTN_HACK
     bool once_per_boot;
+#endif
     
     // stuff saved from the Read ASCII command
     time_t startTime;
@@ -200,7 +201,9 @@ typedef struct con_state_t
     UNIT * unitp;
     int chan;
 
+#ifdef ATTN_HACK
     int attn_hack;
+#endif
 
     bool attn_pressed;
     bool simh_attn_pressed;
@@ -235,7 +238,9 @@ static t_stat opcon_reset (UNUSED DEVICE * dptr)
         console_state[i].io_mode = no_mode;
         console_state[i].tailp = console_state[i].buf;
         console_state[i].readp = console_state[i].buf;
+#ifdef ATTN_HACK
         console_state[i].once_per_boot = false;
+#endif
       }
     return SCPE_OK;
   }
@@ -277,7 +282,9 @@ void console_init (void)
         con_state_t * csp = console_state + i;
         csp->auto_input = NULL;
         csp->autop = NULL;
+#ifdef ATTN_HACK
         csp->attn_hack = 0;
+#endif
         csp->attn_pressed = false;
         csp->simh_attn_pressed = false;
         csp->simh_buffer_cnt = 0;
@@ -872,6 +879,7 @@ sim_printf ("uncomfortable with this\n");
                 iom_core_read (daddr + 1, & w1, __func__);
                 iom_core_read (daddr + 2, & w2, __func__);
 #endif
+#ifdef ATTN_HACK
                 // When the console prints out "Command:", press the Attention
                 // key one second later
                 if (csp->attn_hack &&
@@ -914,6 +922,7 @@ sim_printf ("uncomfortable with this\n");
                         csp->once_per_boot = true;
                       }
                   }
+#endif // ATTN_HACK
 
 //sim_printf ("%012"PRIo64" %012"PRIo64"\n", M[daddr + 0], M[daddr + 1]);
                 // Tally is in words, not chars.
@@ -951,6 +960,34 @@ sim_printf ("uncomfortable with this\n");
                       }
                   }
                 * textp ++ = 0;
+
+                // autoinput expect
+                if (csp->autop && * csp->autop == 030)
+                  {
+                    //   ^xstring\0
+                    //size_t expl = strlen ((char *) (csp->autop + 1));
+                    //   ^xstring^x
+                    size_t expl = strcspn ((char *) (csp->autop + 1), "\030");
+//sim_printf ("comparing <%s> to <%s>\r\n", text, csp->autop + 1);
+sim_printf ("\r\ncomparing ");
+for (uint i = 0; i < expl; i ++) sim_printf (" %03o", (uint) text [i]);
+sim_printf ("\r\nto        ");
+for (uint i = 0; i < expl; i ++) sim_printf (" %03o", (uint) csp->autop [i+1]);
+sim_printf ("\r\n");
+
+                    if (strncmp (text, (char *) (csp->autop + 1), expl) == 0)
+                      {
+sim_printf ("hit\r\n");
+                        csp->autop += expl + 2;
+#ifdef THREADZ
+                        // 1K ~= 1 sec
+                        sim_activate (& attn_unit[devUnitIdx], 1000);
+#else
+                        // 4M ~= 1 sec
+                        sim_activate (& attn_unit[devUnitIdx], 4000000);
+#endif
+                      }
+                  }
                 handleRCP (text);
 #ifndef __MINGW64__
                 newlineOn ();
@@ -1053,6 +1090,12 @@ static void consoleProcessIdx (int conUnitIdx)
                 sendConsole (conUnitIdx, 04310); // Null line, status operator
                                                  // distracted
                 console_putstr (conUnitIdx,  "CONSOLE: RELEASED\r\n");
+                return;
+              }
+            if (c == 030) // ^X 
+              {
+                // an expect string is in the autoinput buffer; wait for it 
+                // to be processed
                 return;
               }
             if (c == 0)
@@ -1365,6 +1408,7 @@ static t_stat opcon_set_nunits (UNUSED UNIT * uptr, int32 UNUSED value,
 
 
 
+#ifdef ATTN_HACK
 static config_value_list_t cfg_on_off[] =
   {
     { "off", 0 },
@@ -1373,18 +1417,23 @@ static config_value_list_t cfg_on_off[] =
     { "enable", 1 },
     { NULL, 0 }
   };
+#endif
 
 static config_list_t con_config_list[] =
   {
+#ifdef ATTN_HACK
     /* 0 */ { "attn_hack", 0, 1, cfg_on_off },
+#endif
    { NULL, 0, 0, NULL }
   };
 
 static t_stat con_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
                               const char * cptr, UNUSED void * desc)
   {
+#ifdef ATTN_HACK
     int devUnitIdx = (int) OPCON_UNIT_NUM (uptr);
     con_state_t * csp = console_state + devUnitIdx;
+#endif
 // XXX Minor bug; this code doesn't check for trailing garbage
     config_state_t cfg_state = { NULL, NULL };
 
@@ -1402,9 +1451,11 @@ static t_stat con_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
             case -1: // done
               break;
 
+#ifdef ATTN_HACK
             case  0: // attn_hack
               csp->attn_hack = (int) v;
               break;
+#endif
     
             default:
               sim_printf ("error: con_set_config: invalid cfgparse rc <%d>\n",
@@ -1422,9 +1473,11 @@ static t_stat con_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
 static t_stat con_show_config (UNUSED FILE * st, UNUSED UNIT * uptr,
                                UNUSED int  val, UNUSED const void * desc)
   {
+#ifdef ATTN_HACK
     int devUnitIdx = (int) OPCON_UNIT_NUM (uptr);
     con_state_t * csp = console_state + devUnitIdx;
     sim_printf ("Attn hack:  %d\n", csp->attn_hack);
+#endif
     return SCPE_OK;
   }
 

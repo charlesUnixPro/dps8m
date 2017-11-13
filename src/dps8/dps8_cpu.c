@@ -1214,6 +1214,19 @@ static void doLufFault (void)
 //
 //  TR = 1024 << LUF
     cpu.shadowTR = (word27) cpu.TR0 - (1024u << (is_priv_mode () ? 4 : cpu.CMR.luf));
+
+
+// That logic fails for test 785. 
+//
+// set slave mode, LUF time 16ms.
+// loop for 15.9 ms.
+// set master mode.
+// loop for 15.9 ms. The LUF should be noticed, and lufOccurred set.
+// return to slave mode. The LUF should fire, with the timer register
+// being set for 31.1 ms. 
+// With out accurate cycle timing or simply fudging the results, I don't
+// see how to fix this one.
+
 #endif
     doFault (FAULT_LUF, fst_zero, "instruction cycle lockup");
   }

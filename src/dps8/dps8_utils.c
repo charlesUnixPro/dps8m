@@ -1853,6 +1853,7 @@ void cfgparse_done (config_state_t * state)
 //   \t  tab
 //   \f  formfeed
 //   \r  carrriage return
+//   \0  null  // doesn't work, commented out.
 //
 // \\ doesn't seem to work...
 //  Also, a simh specific:
@@ -1867,7 +1868,9 @@ void cfgparse_done (config_state_t * state)
 //   \d  dollar
 //   \q  double quote
 //   \w  <backslash>
-//   \z  ^Z
+//   \z  ^D eof (DECism)
+//   \^  caret
+//   \x  expect; used by the autoinput parserj
 //
 // And a special case:
 //
@@ -1918,6 +1921,10 @@ char * strdupesc (const char * str)
           * p = '\004';
         else if (p [1] == 'k')       //  \k    caret
           * p = '^';
+        else if (p [1] == 'x')       //  \x    expect
+          * p = '\030';
+        //else if (p [1] == '0')       //  \0    null; used as end of expect string
+          //* p = 0;
 
 #if 0
         else if (p [1] == 'T' && p [2] == 'Z')  // \TZ   time zone

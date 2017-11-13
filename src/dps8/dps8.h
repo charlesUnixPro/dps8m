@@ -98,6 +98,9 @@ typedef struct { int64_t h; uint64_t l; } __int128_t;
 // Enable round-robin multi-CPU
 //#define ROUND_ROBIN
 
+// Legacy ATTN_HACK support
+// #define ATTN_HACK
+
 // Enable ISOLTS support
 //#define ISOLTS
 

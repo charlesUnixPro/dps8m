@@ -11,6 +11,8 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
+#include <uv.h>
+
 // System-wide info and options not tied to a specific CPU, IOM, or SCU
 typedef struct {
     int clock_speed;
@@ -31,6 +33,18 @@ typedef struct {
         int xfer;
     } mt_times;
     bool warn_uninit; // Warn when reading uninitialized memory
+    int machineRoomPort;
+#define PW_SIZE 128
+    char machineRoomPW[PW_SIZE + 1];
+    bool machineRoomOpen;
+    uv_tcp_t machineRoomServer;
+    uv_tcp_t * machineRoomClient;
+    uv_loop_t * machineRoomLoop;
+    void * machineRoomTelnetp;
+    bool loggedOn;
+    unsigned char * machineRoomInBuffer;
+    uint machineRoomInSize;
+    uint machineRoomInUsed;
 } sysinfo_t;
 
 #ifndef SCUMEM
@@ -57,4 +71,5 @@ void listSource (char * compname, word18 offset, uint dflag);
 //t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset);
 
 t_stat brkbrk (int32 arg, const char * buf);
+void startMachineRoom(void);
 
