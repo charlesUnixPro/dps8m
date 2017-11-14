@@ -835,7 +835,7 @@ static void loadSDWAM (word15 segno, UNUSED bool nomatch)
             
     char buf [256];
     DBGAPP ("loadSDWAM(2):SDWAM[%d]=%s\n",
-            toffset + setno, strSDW (cpu.SDW));
+            toffset + setno, strSDW (buf, cpu.SDW));
 #endif
 #endif // WAM
   }
