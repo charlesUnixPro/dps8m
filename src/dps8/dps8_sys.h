@@ -12,6 +12,7 @@
  */
 
 #include <uv.h>
+#include "uvutil.h"
 
 // System-wide info and options not tied to a specific CPU, IOM, or SCU
 typedef struct {
@@ -33,18 +34,7 @@ typedef struct {
         int xfer;
     } mt_times;
     bool warn_uninit; // Warn when reading uninitialized memory
-    int machineRoomPort;
-#define PW_SIZE 128
-    char machineRoomPW[PW_SIZE + 1];
-    bool machineRoomOpen;
-    uv_tcp_t machineRoomServer;
-    uv_tcp_t * machineRoomClient;
-    uv_loop_t * machineRoomLoop;
-    void * machineRoomTelnetp;
-    bool loggedOn;
-    unsigned char * machineRoomInBuffer;
-    uint machineRoomInSize;
-    uint machineRoomInUsed;
+    uv_access machineRoomAccess;
 } sysinfo_t;
 
 #ifndef SCUMEM

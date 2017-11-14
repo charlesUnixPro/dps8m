@@ -152,6 +152,7 @@ endif
 ifeq ($(THREADZ),1)
 C_SRCS += ./threadz.c
 endif
+C_SRCS += ./uvutil.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
@@ -206,6 +207,7 @@ H_SRCS += utlist.h
 ifeq ($(THREADZ),1)
 H_SRCS += ./threadz.h
 endif
+H_SRCS += ./uvutil.h
 
 
 

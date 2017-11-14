@@ -210,19 +210,8 @@ typedef struct con_state_t
 #define simh_buffer_sz 4096
     char simh_buffer[simh_buffer_sz];
     int simh_buffer_cnt;
-    unsigned char * consoleInBuffer;
-    uint consoleInSize;
-    uint consoleInUsed;
 
-    int console_port; // default is disabled
-#define PW_SIZE 128
-    char console_pw[PW_SIZE + 1];
-
-    bool console_open;
-    uv_tcp_t console_server;
-    uv_tcp_t * console_client;
-    void * console_telnetp;
-    bool loggedon;
+    uv_access console_access;
 
  } con_state_t;
 
@@ -272,8 +261,6 @@ int check_attn_key (void)
 
 // Once-only initialation
 
-static void uv_open_console (int conUnitIdx, int portno);
-
 void console_init (void)
 {
     opcon_reset (& opcon_dev);
@@ -288,16 +275,7 @@ void console_init (void)
         csp->attn_pressed = false;
         csp->simh_attn_pressed = false;
         csp->simh_buffer_cnt = 0;
-        csp->consoleInBuffer = NULL;
-        csp->consoleInSize = 0;
-        csp->consoleInUsed = 0;
-        strcpy (csp->console_pw, "MulticsRulez");
-        // int console_port = 6001;
-        csp->console_port = 0;
-        csp->console_open = false;
-        csp->console_client = NULL;
-        csp->console_telnetp = NULL;
-        csp->loggedon = false;
+        strcpy (csp->console_access.pw, "MulticsRulez");
       }
 
 #if 0
@@ -686,6 +664,7 @@ static int con_cmd (uint iomUnitIdx, uint chan)
     p->stati = 0;
 
     int conUnitIdx = (int) d->devUnitIdx;
+
     switch (p->IDCW_DEV_CMD)
       {
         case 0: // CMD 00 Request status
@@ -977,7 +956,6 @@ sim_printf ("uncomfortable with this\n");
 
                     if (strncmp (text, (char *) (csp->autop + 1), expl) == 0)
                       {
-sim_printf ("hit\r\n");
                         csp->autop += expl + 2;
 #ifdef THREADZ
                         // 1K ~= 1 sec
@@ -1049,8 +1027,6 @@ sim_printf ("hit\r\n");
       }
     return 0;
   }
-
-static int console_getchar (int conUnitIdx);
 
 static void consoleProcessIdx (int conUnitIdx)
   {
@@ -1156,7 +1132,7 @@ eol:
 
     c = sim_poll_kbd ();
     if (c == SCPE_OK)
-      c = console_getchar (conUnitIdx);
+      c = accessGetChar (& csp->console_access);
 
 // XXX replace attn key signal with escape char check here
 // XXX check for escape to scpe (^E?)
@@ -1488,7 +1464,7 @@ t_stat consolePort (int32 arg, const char * buf)
       return SCPE_ARG;
     if (arg < 0 || arg >= N_OPCON_UNITS_MAX)
       return SCPE_ARG;
-    console_state[arg].console_port = n;
+    console_state[arg].console_access.port = n;
     sim_printf ("Console %d port set to %d\n", arg, n);
     return SCPE_OK;
   }
@@ -1500,7 +1476,7 @@ t_stat consolePW (int32 arg, UNUSED const char * buf)
     if (strlen (buf) == 0)
       {
         sim_printf ("no password\n");
-        console_state[arg].console_pw[0] = 0;
+        console_state[arg].console_access.pw[0] = 0;
         return SCPE_OK;
       }
     if (arg < 0 || arg >= N_OPCON_UNITS_MAX)
@@ -1512,188 +1488,10 @@ t_stat consolePW (int32 arg, UNUSED const char * buf)
       return SCPE_ARG;
     if (strlen (token) > PW_SIZE)
       return SCPE_ARG;
-    strcpy (console_state[arg].console_pw, token);
+    strcpy (console_state[arg].console_access.pw, token);
     //sim_printf ("<%s>\n", token);
     return SCPE_OK;
   }
-
-#define USE_REQ_DATA
-#define DEFAULT_BACKLOG 16
-static uv_loop_t * loop = NULL;
-
-static const telnet_telopt_t my_telopts[] = {
-    { TELNET_TELOPT_SGA,       TELNET_WILL, TELNET_DO   },
-    { TELNET_TELOPT_ECHO,      TELNET_WILL, TELNET_DONT },
-
-    //{ TELNET_TELOPT_TTYPE,     TELNET_WONT, TELNET_DONT },
-    //{ TELNET_TELOPT_COMPRESS2, TELNET_WONT, TELNET_DO   },
-    //{ TELNET_TELOPT_ZMP,       TELNET_WONT, TELNET_DO   },
-    //{ TELNET_TELOPT_MSSP,      TELNET_WONT, TELNET_DO   },
-    { TELNET_TELOPT_BINARY,    TELNET_WILL, TELNET_DO   },
-    //{ TELNET_TELOPT_NAWS,      TELNET_WONT, TELNET_DONT },
-    { -1, 0, 0 }
-  };
-
-#if 0
-struct uvClientData
-  {
-    int conUnitIdx;
-  };
-typedef struct uvClientData uvClientData;
-#endif
-
-
-static void console_start_write_actual (uv_tcp_t * client, char * data,
-                                        ssize_t datalen);
-static void console_readcb (uv_tcp_t * client,
-                            ssize_t nread,
-                            unsigned char * buf);
-static void console_close_connection (uv_stream_t* stream);
-static void console_start_write (uv_tcp_t * client, char * data,
-                                 ssize_t datalen);
-static void consoleConnectPrompt (uv_tcp_t * client);
-
-static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event,
-                       void *user_data)
-  {
-    uv_tcp_t * client = (uv_tcp_t *) user_data;
-    switch (event->type)
-      {
-        case TELNET_EV_DATA:
-          {
-            console_readcb (client, (ssize_t) event->data.size,
-                            (unsigned char *)event->data.buffer);
-          }
-          break;
-
-        case TELNET_EV_SEND:
-          {
-            console_start_write_actual (client, (char *) event->data.buffer,
-                                        (ssize_t) event->data.size);
-          }
-          break;
-
-        case TELNET_EV_DO:
-          {
-            if (event->neg.telopt == TELNET_TELOPT_BINARY)
-              {
-                // DO Binary
-              }
-            else if (event->neg.telopt == TELNET_TELOPT_SGA)
-              {
-                // DO Suppress Go Ahead
-              }
-            else if (event->neg.telopt == TELNET_TELOPT_ECHO)
-              {
-                // DO Suppress Echo
-              }
-            else
-              {
-                sim_printf ("evHandler DO %d\n", event->neg.telopt);
-              }
-          }
-          break;
-
-        case TELNET_EV_DONT:
-          {
-            sim_printf ("evHandler DONT %d\n", event->neg.telopt);
-          }
-          break;
-
-        case TELNET_EV_WILL:
-          {
-            sim_printf ("evHandler WILL %d\n", event->neg.telopt);
-          }
-          break;
-
-        case TELNET_EV_WONT:
-          {
-            sim_printf ("evHandler WONT %d\n", event->neg.telopt);
-          }
-          break;
-
-        case TELNET_EV_ERROR:
-          {
-            sim_warn ("libtelnet evHandler error <%s>\n", event->error.msg);
-          }
-          break;
-
-        case TELNET_EV_IAC:
-          {
-            if (event->iac.cmd == 243 || // BRK
-                event->iac.cmd == 244) // IP
-              {
-                sim_warn ("libtelnet dropping unassociated console BRK/IP\n");
-              }
-            else
-              sim_warn ("libtelnet unhandled IAC event %d\n", event->iac.cmd);
-          }
-          break;
-
-        default:
-          sim_printf ("evHandler: unhandled event %d\n", event->type);
-          break;
-      }
-
-  }
-
-static void console_write_cb (uv_write_t * req, int status)
-  {
-    if (status < 0)
-      {
-        if (status == -ECONNRESET || status == -ECANCELED ||
-            status == -EPIPE)
-          {
-            // This occurs when the other end disconnects; not an "error"
-          }
-        else
-          {
-            sim_warn ("console_write_cb status %d (%s)\n", -status,
-                      strerror (-status));
-          }
-
-        // connection reset by peer
-        console_close_connection (req->handle);
-      }
-
-#ifdef USE_REQ_DATA
-    free (req->data);
-#else
-    unsigned int nbufs = req->nbufs;
-    uv_buf_t * bufs = req->bufs;
-    //if (! bufs)
-#if 0
-    if (nbufs > ARRAY_SIZE (req->bufsml))
-      bufs = req->bufsml;
-#endif
-    for (unsigned int i = 0; i < nbufs; i ++)
-      {
-        if (bufs && bufs[i].base)
-          {
-            free (bufs[i].base);
-            //bufp->base = NULL;
-          }
-        if (req->bufsml[i].base)
-          {
-            free (req->bufsml[i].base);
-          }
-      }
-#endif
-
-    // the buf structure is copied; do not free.
-//sim_printf ("freeing req %p\n", req);
-    free (req);
-  }
-
-static void console_putstr_force (int conUnitIdx, char * str)
-  {
-    size_t l = strlen (str);
-    for (size_t i = 0; i < l; i ++)
-      sim_putchar (str[i]);
-    console_start_write (console_state[conUnitIdx].console_client, str,
-                         (ssize_t) l);
-  }
-
 
 static void console_putstr (int conUnitIdx, char * str)
   {
@@ -1701,480 +1499,32 @@ static void console_putstr (int conUnitIdx, char * str)
     for (size_t i = 0; i < l; i ++)
       sim_putchar (str[i]);
     con_state_t * csp = console_state + conUnitIdx;
-    if (csp->loggedon)
-      console_start_write (console_state[conUnitIdx].console_client, str,
+    if (csp->console_access.loggedOn)
+      accessStartWrite (csp->console_access.client, str,
                            (ssize_t) l);
-  }
-
-static void console_putchar_force (int conUnitIdx, char ch)
-  {
-    sim_putchar (ch);
-    console_start_write (console_state[conUnitIdx].console_client, & ch, 1);
   }
 
 static void console_putchar (int conUnitIdx, char ch)
   {
     sim_putchar (ch);
     con_state_t * csp = console_state + conUnitIdx;
-    if (csp->loggedon)
-      console_start_write (console_state[conUnitIdx].console_client, & ch, 1);
-  }
-
-static int console_getchar (int conUnitIdx)
-  {
-    con_state_t * csp = console_state + conUnitIdx;
-    // The connection could have closed when we were not looking
-    if (! console_state[conUnitIdx].console_client)
-      {
-        if (csp->consoleInBuffer)
-          free (csp->consoleInBuffer);
-        csp->consoleInBuffer = NULL;
-        csp->consoleInSize = 0;
-        csp->consoleInUsed = 0;
-        return SCPE_OK;
-      }
-
-    if (csp->consoleInBuffer && csp->consoleInUsed < csp->consoleInSize)
-       {
-         unsigned char c = csp->consoleInBuffer[csp->consoleInUsed ++];
-         if (csp->consoleInUsed >= csp->consoleInSize)
-           {
-             free (csp->consoleInBuffer);
-             csp->consoleInBuffer = NULL;
-             csp->consoleInSize = 0;
-             csp->consoleInUsed = 0;
-             // The connection could have been closed when we weren't looking
-             //if (csp->console_client)
-               //fnpuv_read_start (csp->console_client);
-           }
-         return (int) c + SCPE_KFLAG;
-       }
-    return SCPE_OK;
-  }
-
-static void processConsoleInput (int conUnitIdx, unsigned char * buf,
-                                 ssize_t nread)
-  {
-    con_state_t * csp = console_state + conUnitIdx;
-    if (csp->consoleInBuffer)
-      {
-        //sim_warn ("consoleInBuffer overrun\n");
-        unsigned char * new =
-          realloc (csp->consoleInBuffer,
-                   (unsigned long) (csp->consoleInSize + nread));
-        if (! new)
-          {
-            sim_warn ("consoleInBuffer realloc fail; dropping data\n");
-            goto done;
-          }
-        memcpy (new + csp->consoleInSize, buf, (unsigned long) nread);
-        csp->consoleInSize += nread;
-        csp->consoleInBuffer = new;
-      }
-    else
-      {
-        csp->consoleInBuffer = malloc ((unsigned long) nread);
-        if (! csp->consoleInBuffer)
-          {
-            sim_warn ("consoleInBuffer malloc fail;  dropping data\n");
-            goto done;
-          }
-        memcpy (csp->consoleInBuffer, buf, (unsigned long) nread);
-        csp->consoleInSize = (uint) nread;
-        csp->consoleInUsed = 0;
-      }
-
-done:;
-    // Prevent further reading until this buffer is consumed
-    //fnpuv_read_stop (client);
-    //if (! client || uv_is_closing ((uv_handle_t *) client))
-      //return;
-    //uv_read_stop ((uv_stream_t *) client);
-  }
-
-
-static char pw_buffer[PW_SIZE + 1];
-static int pw_nPos = 0;
-static void console_logon (int conUnitIdx, unsigned char * buf, ssize_t nread)
-  {
-    con_state_t * csp = console_state + conUnitIdx;
-    for (ssize_t nchar = 0; nchar < nread; nchar ++)
-      {
-        unsigned char kar = buf[nchar];
-
-#if 0
-        if (kar == 0x1b || kar == 0x03)             // ESCape ('\e') | ^C
-          {
-            console_close_connection (csp->console_client);
-            return;
-          }
-#endif
-
-        // buffer too full for anything more?
-        if ((unsigned long) pw_nPos >= sizeof (pw_buffer))
-          {
-            // yes. Only allow \n, \r, ^H, ^R
-            switch (kar)
-              {
-                case '\b':  // backspace
-                case 127:   // delete
-                  {
-                    // remove char from line
-                    console_putstr_force (conUnitIdx, "\b \b");
-                    pw_buffer[pw_nPos] = 0;     // remove char from buffer
-                    if (pw_nPos > 0)
-                      pw_nPos -= 1;             // back up buffer pointer
-                  }
-                  break;
-
-                case '\n':
-                case '\r':
-                  {
-                    pw_buffer[pw_nPos] = 0;
-                    goto check;
-                  }
-
-                case 0x12:  // ^R
-                  {
-                    console_putstr_force (conUnitIdx, "^R\r\n"); // echo ^R
-                    consoleConnectPrompt (csp->console_client);
-                    console_putstr_force (conUnitIdx, pw_buffer);
-                  }
-                 break;
-
-                default:
-                  break;
-              } // switch kar
-            continue; // process next character in buffer
-          } // if buffer full
-
-        if (isprint (kar))   // printable?
-          {
-            console_putchar_force (conUnitIdx, '*');
-            pw_buffer[pw_nPos++] = (char) kar;
-            pw_buffer[pw_nPos] = 0;
-          }
-        else
-          {
-            switch (kar)
-              {
-                case '\b':  // backspace
-                case 127:   // delete
-                  {
-                    // remove char from line
-                    console_putstr_force (conUnitIdx, "\b \b"); 
-                   // remove char from buffer
-                    pw_buffer[pw_nPos] = 0;
-                    if (pw_nPos > 0)
-                      pw_nPos -= 1;   // back up buffer pointer
-                  }
-                  break;
-
-                case '\n':
-                case '\r':
-                  {
-                    pw_buffer[pw_nPos] = 0;
-                    goto check;
-                  }
-
-                case 0x12:  // ^R
-                  {
-                    console_putstr_force (conUnitIdx, "^R\r\n"); // echo ^R
-                    consoleConnectPrompt (csp->console_client);
-                    console_putstr_force (conUnitIdx, pw_buffer);
-                  }
-                  break;
-
-                default:
-                  break;
-              } // switch kar
-          } // not printable
-      } // for nchar
-    return;
-
-check:;
-    char cpy[pw_nPos + 1];
-    memcpy (cpy, pw_buffer, (unsigned long) pw_nPos);
-    cpy[pw_nPos] = 0;
-    trim (cpy);
-    //sim_printf ("<%s>", cpy);
-    pw_nPos = 0;
-    console_putstr_force (conUnitIdx, "\r\n");
-
-    if (strcmp (cpy, csp->console_pw) == 0)
-      {
-        console_putstr_force (conUnitIdx, "ok\r\n");
-        goto associate;
-      }
-    else
-      {
-        //console_putstr_force ("<");
-        //console_putstr_force (pw_buffer);
-        //console_putstr_force (">\r\n");
-        console_putstr_force (conUnitIdx, "nope\r\n");
-        goto reprompt;
-      }
- 
-reprompt:;
-    consoleConnectPrompt (csp->console_client);
-    return;
-
-associate:;
-
-    csp->loggedon = true;
-  }
-
-static void console_readcb (UNUSED uv_tcp_t * client,
-                            ssize_t nread,
-                            unsigned char * buf)
-  {
-    int conUnitIdx = (int) client->data;
-    //printf ("console readcb. <%*s>\n", (int) nread, buf);
-    if (console_state[conUnitIdx].loggedon)
-      processConsoleInput (conUnitIdx, buf, nread);
-    else
-      console_logon (conUnitIdx, buf, nread);
-  }
-
-static void * console_telnet_connect (uv_tcp_t * client)
-  {
-    void * p = (void *) telnet_init (my_telopts, evHandler, 0, client);
-    if (! p)
-      {
-        sim_warn ("telnet_init failed\n");
-      }
-    const telnet_telopt_t * q = my_telopts;
-    while (q->telopt != -1)
-      {
-        telnet_negotiate (p, q->us, (unsigned char) q->telopt);
-        q ++;
-      }
-    return p;
-  }
-
-//
-// alloc_buffer: libuv callback handler to allocate buffers for incoming data.
-//
-
-static void alloc_buffer (UNUSED uv_handle_t * handle, size_t suggested_size, 
-                          uv_buf_t * buf)
-  {
-    * buf = uv_buf_init ((char *) malloc (suggested_size),
-                         (uint) suggested_size);
-  }
-
-
-static void console_close_cb (uv_handle_t * stream)
-  {
-    free (stream);
-    //console_state[conUnitIdx].console_client = NULL;
-  }
-
-static void console_close_connection (uv_stream_t* stream)
-  {
-    sim_printf ("Console disconnect\n");
-    int conUnitIdx = (int) stream->data;
-    // Clean up allocated data
-    if (console_state[conUnitIdx].console_telnetp)
-      {
-        telnet_free (console_state[conUnitIdx].console_telnetp);
-        console_state[conUnitIdx].console_telnetp = NULL;
-      }
-    if (! uv_is_closing ((uv_handle_t *) stream))
-      uv_close ((uv_handle_t *) stream, console_close_cb);
-    console_state[conUnitIdx].console_client = NULL;
-  }
-
-//
-// console_read_cb: libuv read complete callback
-//
-//   Cleanup on read error.
-//   Forward data to appropriate handler.
-
-static void console_read_cb (uv_stream_t* stream,
-                             ssize_t nread,
-                             const uv_buf_t* buf)
-  {
-    if (nread < 0)
-      {
-        if (nread == UV_EOF)
-          {
-            console_close_connection (stream);
-          }
-      }
-    else if (nread > 0)
-      {
-        int conUnitIdx = (int) stream->data;
-        telnet_recv (console_state[conUnitIdx].console_telnetp, buf->base,
-                     (size_t) nread);
-      }
-
-    if (buf->base)
-        free (buf->base);
-  }
-
-//
-// Enable reading on connection
-//
-
-static void console_read_start (uv_tcp_t * client)
-  {
-    if (! client || uv_is_closing ((uv_handle_t *) client))
-      return;
-    uv_read_start ((uv_stream_t *) client, alloc_buffer, console_read_cb);
-  }
-
-// Create and start a write request
-
-static void console_start_write_actual (uv_tcp_t * client, char * data,
-                                        ssize_t datalen)
-  {
-    if (! client || uv_is_closing ((uv_handle_t *) client))
-      return;
-    uv_write_t * req = (uv_write_t *) malloc (sizeof (uv_write_t));
-    // This makes sure that bufs*.base and bufsml*.base are NULL
-    memset (req, 0, sizeof (uv_write_t));
-    uv_buf_t buf = uv_buf_init ((char *) malloc ((unsigned long) datalen),
-                                                 (uint) datalen);
-#ifdef USE_REQ_DATA
-    req->data = buf.base;
-#endif
-    memcpy (buf.base, data, (unsigned long) datalen);
-    int ret = uv_write (req, (uv_stream_t *) client, & buf, 1,
-                        console_write_cb);
-// There seems to be a race condition when Mulitcs signals a disconnect_line;
-// We close the socket, but Mulitcs is still writing its goodbye text trailing
-// NULs.
-// If the socket has been closed, write will return BADF; just ignore it.
-    if (ret < 0 && ret != -EBADF)
-      sim_printf ("uv_write returns %d\n", ret);
-  }
-
-static void console_start_write (uv_tcp_t * client, char * data,
-                                 ssize_t datalen)
-  {
-    if (! client || uv_is_closing ((uv_handle_t *) client))
-      return;
-    int conUnitIdx = (int) client->data;
-    telnet_send (console_state[conUnitIdx].console_telnetp, data,
-                 (size_t) datalen);
-  }
-
-static void console_start_writestr (uv_tcp_t * client, char * data)
-  {
-    console_start_write (client, data, (ssize_t) strlen (data));
+    if (csp->console_access.loggedOn)
+      accessStartWrite (csp->console_access.client, & ch, 1);
   }
 
 static void consoleConnectPrompt (uv_tcp_t * client)
   {
-    console_start_writestr (client, "password: \r\n");
-    pw_nPos = 0;
-  }
-
-//
-// Connection callback handler for console
-//
-
-static void on_new_console (uv_stream_t * server, int status)
-  {
-    if (status < 0)
-      {
-        fprintf (stderr, "New connection error %s\n", uv_strerror (status));
-        // error!
-        return;
-      }
-
-    uv_tcp_t * client = (uv_tcp_t *) malloc (sizeof (uv_tcp_t));
-    uv_tcp_init (loop, client);
-    client->data = server->data;
-    int conUnitIdx = (int) (client->data);
-    con_state_t * cs = console_state + conUnitIdx;
-    if (uv_accept (server, (uv_stream_t *) client) == 0)
-      {
-        // Only a single connection at a time
-        if (cs->console_client)
-          {
-#if 0
-            uv_close ((uv_handle_t *) client, console_close_cb);
-//sim_printf ("dropping 2nd console\n");
-            return;
-#else
-            sim_printf ("console cutting in\r\n");
-        //    uv_close ((uv_handle_t *) cs->console_client, console_close_cb);
-            cs->loggedon = false;
-            console_close_connection ((uv_stream_t *) cs->console_client);
-
-#endif
-          }
-        cs->console_client = client;
-        struct sockaddr name;
-        int namelen = sizeof (name);
-        int ret = uv_tcp_getpeername (cs->console_client, & name, & namelen);
-        if (ret < 0)
-          {
-            sim_printf ("Console connect;addr err %d\n", ret);
-          }
-        else
-          {
-            struct sockaddr_in * p = (struct sockaddr_in *) & name;
-            sim_printf ("Console connect %s\n", inet_ntoa (p->sin_addr));
-          }
-
-
-        cs->console_telnetp = console_telnet_connect (cs->console_client);
-
-        if (! cs->console_telnetp)
-          {
-             sim_warn ("ltnConnect failed\n");
-             return;
-          }
-        cs->loggedon =
-          ! strlen (cs->console_pw);
-        if (! cs->loggedon)
-          consoleConnectPrompt (cs->console_client);
-        console_read_start (cs->console_client);
-      }
-    else
-      {
-        uv_close ((uv_handle_t *) client, console_close_cb);
-      }
-  }
-
-static void uv_open_console (int conUnitIdx, int portno)
-  {
-    if (! portno)
-      {
-        //sim_printf ("console port disable\n");
-        return;
-      }
-    if (! loop)
-      loop = uv_default_loop ();
-
-    //sim_printf ("uv_open_console %d\n", portno);
-
-    // Do we already have a listening port (ie not first time)?
-    if (console_state[conUnitIdx].console_open)
-      return;
-
-    con_state_t * csp = console_state + conUnitIdx;
-    uv_tcp_init (loop, & csp->console_server);
-    csp->console_server.data = (void *) (uintptr_t) conUnitIdx;
-    struct sockaddr_in addr;
-    uv_ip4_addr ("0.0.0.0", portno, & addr);
-    uv_tcp_bind (& csp->console_server, (const struct sockaddr *) & addr, 0);
-//sim_printf ("console listening on port %d\n", portno);
-    int r = uv_listen ((uv_stream_t *) & csp->console_server, DEFAULT_BACKLOG, 
-                       on_new_console);
-    if (r)
-     {
-        fprintf (stderr, "Listen error %s\n", uv_strerror (r));
-      }
-    console_state[conUnitIdx].console_open = true;
+    accessStartWriteStr (client, "password: \r\n");
+    uv_access * console_access = (uv_access *) client->data;
+    console_access->pwPos = 0;
   }
 
 void startRemoteConsole (void)
   {
     for (int conUnitIdx = 0; conUnitIdx < N_OPCON_UNITS_MAX; conUnitIdx ++)
-      uv_open_console (conUnitIdx, console_state[conUnitIdx].console_port);
+      {
+        console_state[conUnitIdx].console_access.connectPrompt = consoleConnectPrompt;
+        uv_open_access (& console_state[conUnitIdx].console_access);
+      }
   }
 
