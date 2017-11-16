@@ -1524,6 +1524,8 @@ void startRemoteConsole (void)
     for (int conUnitIdx = 0; conUnitIdx < N_OPCON_UNITS_MAX; conUnitIdx ++)
       {
         console_state[conUnitIdx].console_access.connectPrompt = consoleConnectPrompt;
+        console_state[conUnitIdx].console_access.connected = NULL;
+        console_state[conUnitIdx].console_access.useTelnet = false;
         uv_open_access (& console_state[conUnitIdx].console_access);
       }
   }

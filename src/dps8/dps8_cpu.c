@@ -550,6 +550,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
       }
     fnpProcessEvent (); 
     consoleProcess ();
+    machineRoomProcess ();
 #ifndef __MINGW64__
     absiProcessEvent ();
 #endif
@@ -1351,6 +1352,7 @@ setCPU:;
             queueSubsample = 0;
             fnpProcessEvent ();
             consoleProcess ();
+            machineRoomProcess ();
             absiProcessEvent ();
             PNL (panelProcessEvent ());
           }

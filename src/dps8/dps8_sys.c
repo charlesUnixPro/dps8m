@@ -3841,6 +3841,45 @@ t_stat machineRoomPW (UNUSED int32 arg, UNUSED const char * buf)
 
 
 
+static void machineRoomConnected (uv_tcp_t * client)
+  {
+sim_printf ("machineRoomConnected\r\n");
+    //accessStartWriteStr (client, "connected\r\n");
+#define W(x) accessStartWriteStr (client, x)
+    //W ("<!DOCTYPE html>\n");
+    //W ("<html>\n");
+    //W ("<head>\n");
+    //W ("<title>Page Title</title>\n");
+    //W ("</head>\n");
+    //W ("<body>\n");
+
+    //W ("<h1>This is a Heading</h1>\n");
+    //W ("<p>This is a paragraph.</p>\n");
+
+    //W ("</body>\n");
+    //W ("</html>\n");
+  }
+
+void machineRoomProcess (void)
+  {
+    uv_access * access = & sys_opts.machineRoomAccess;
+    int c = accessGetChar (access);
+    if (c == SCPE_OK)
+      return;
+    if (c < SCPE_KFLAG)
+      {
+        //sim_printf ("Bad char\n");
+        return; // Should be impossible
+      }
+    c -= SCPE_KFLAG;    // translate to ascii
+
+    if (c == 0) // no char
+      return;
+
+    sim_printf ("%c", c);
+ }
+
+
 static void machineRoomConnectPrompt (uv_tcp_t * client)
   {
     accessStartWriteStr (client, "password: \r\n");
@@ -3852,6 +3891,8 @@ static void machineRoomConnectPrompt (uv_tcp_t * client)
 void startMachineRoom(void)
   {
     sys_opts.machineRoomAccess.connectPrompt = machineRoomConnectPrompt;
+    sys_opts.machineRoomAccess.connected = machineRoomConnected;
+    sys_opts.machineRoomAccess.useTelnet = false;
     uv_open_access (& sys_opts.machineRoomAccess);
   }
 

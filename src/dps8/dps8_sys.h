@@ -62,4 +62,5 @@ void listSource (char * compname, word18 offset, uint dflag);
 
 t_stat brkbrk (int32 arg, const char * buf);
 void startMachineRoom(void);
+void machineRoomProcess (void);
 
