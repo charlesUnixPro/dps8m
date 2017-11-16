@@ -2057,7 +2057,11 @@ I:;
 HI:
     DBGAPP ("doAppendCycle(HI)\n");
 
-    if (StrOp)
+    if (thisCycle == OPERAND_STORE && cpu.useZone)
+      {
+        core_write_zone (finalAddress, * data, strPCT (thisCycle));
+      }
+    else if (StrOp)
       {
         core_writeN (finalAddress, data, nWords, strPCT (thisCycle));
       }

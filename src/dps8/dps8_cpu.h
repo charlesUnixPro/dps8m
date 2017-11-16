@@ -1688,7 +1688,7 @@ typedef struct
 
     // Zone mask
     word36 zone;
-    word36 useZone;
+    bool useZone;
 
 #ifdef WAM
     _ptw PTWAM [N_WAM_ENTRIES];
@@ -1944,28 +1944,60 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
     int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
     int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
     LOCK_MEM;
-    if (cpu.useZone == MASK36)
-      {
-        scu[scuUnitIdx].M[offset] = data & DMASK;
-      }
-    else
-      {
-        scu[scuUnitIdx].M[addr] = (scu[scuUnitIdx].M[addr] & ~cpu.useZone) |
-                                  (data & cpu.useZone);
-        cpu.useZone = MASK36; // Safety
-      }
+    scu[scuUnitIdx].M[offset] = data & DMASK;
     UNLOCK_MEM;
 #else
     LOCK_MEM;
-    if (cpu.useZone == MASK36)
+    M[addr] = data & DMASK;
+    UNLOCK_MEM;
+#endif
+#ifdef TR_WORK_MEM
+    cpu.rTRticks ++;
+#endif
+    PNL (trackport (addr, data);)
+    return 0;
+  }
+
+static inline int core_write_zone (word24 addr, word36 data, UNUSED const char * ctx)
+  {
+    PNL (cpu.portBusy = true;)
+#ifdef ISOLTS
+    if (cpu.switches.useMap)
       {
-        M[addr] = data & DMASK;
+        uint pgnum = addr / SCBANK;
+        int os = cpu.scbank_pg_os [pgnum];
+        if (os < 0)
+          {
+            doFault (FAULT_STR, fst_str_nea, __func__);
+          }
+        addr = (uint) os + addr % SCBANK;
       }
-    else
+#endif
+#ifdef ISOLTS
+    if (cpu.MR.sdpap)
       {
-        M[addr] = (M[addr] & ~cpu.useZone) | (data & cpu.useZone);
-        cpu.zone = cpu.useZone = MASK36; // Safety
+        sim_warn ("failing to implement sdpap\n");
+        cpu.MR.sdpap = 0;
       }
+    if (cpu.MR.separ)
+      {
+        sim_warn ("failing to implement separ\n");
+        cpu.MR.separ = 0;
+      }
+#endif
+#ifdef SCUMEM
+    word24 offset;
+    int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
+    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    LOCK_MEM;
+    scu[scuUnitIdx].M[addr] = (scu[scuUnitIdx].M[addr] & ~cpu.zone) |
+                              (data & cpu.zone);
+    cpu.useZone = false; // Safety
+    UNLOCK_MEM;
+#else
+    LOCK_MEM;
+    M[addr] = (M[addr] & ~cpu.zone) | (data & cpu.zone);
+    cpu.useZone = false; // Safety
     UNLOCK_MEM;
 #endif
 #ifdef TR_WORK_MEM
@@ -2077,6 +2109,7 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd,
 #else
 int core_read (word24 addr, word36 *data, const char * ctx);
 int core_write (word24 addr, word36 data, const char * ctx);
+int core_write_zone (word24 addr, word36 data, const char * ctx);
 int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx);
 int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx);
 #endif

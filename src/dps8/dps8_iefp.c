@@ -450,7 +450,14 @@ t_stat Write (word18 address, word36 data, _processor_cycle_type cyctyp)
                 cpu.iefpFinalAddress = getBARaddress (address);
                 setAPUStatus (apuStatus_FABS); // XXX maybe...
                 fauxDoAppendCycle (cyctyp);
-                core_write (cpu.iefpFinalAddress, data, __func__);
+                if (cyctyp == OPERAND_STORE && cpu.useZone)
+                  {
+                    core_write_zone (cpu.iefpFinalAddress, data, __func__);
+                  }
+                else
+                  {
+                    core_write (cpu.iefpFinalAddress, data, __func__);
+                  }
                 sim_debug (DBG_FINAL, & cpu_dev,
                            "Write(Actual) Write:      bar address=%08o "
                            "writeData=%012"PRIo64"\n", address, data);
@@ -461,7 +468,14 @@ t_stat Write (word18 address, word36 data, _processor_cycle_type cyctyp)
               {
                 setAPUStatus (apuStatus_FABS);
                 fauxDoAppendCycle (cyctyp);
-                core_write (address, data, __func__);
+                if (cyctyp == OPERAND_STORE && cpu.useZone)
+                  {
+                    core_write_zone (address, data, __func__);
+                  }
+                else
+                  {
+                    core_write (address, data, __func__);
+                  }
                 sim_debug (DBG_FINAL, & cpu_dev,
                            "Write(Actual) Write:      abs address=%08o "
                            "writeData=%012"PRIo64"\n", 
@@ -753,7 +767,9 @@ t_stat Write16 (word18 address, word36 * data)
 
 t_stat Write32 (word18 address, word36 * data)
   {
-    address &= paragraphMask; // Round to 8 word boundary
+//#define paragraphMask 077777770
+    //address &= paragraphMask; // Round to 8 word boundary
+    address &= 077777740; // Round to 32 word boundary
     Write8 (address, data, false);
     Write8 (address + 8, data + 8, false);
     Write8 (address + 16, data + 16, false);

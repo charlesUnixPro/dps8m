@@ -2285,8 +2285,6 @@ t_stat WriteOP (word18 addr, UNUSED _processor_cycle_type cyctyp)
       {
         case 1:
             CPT (cpt1L, 12); // word
-// We delay this until here so that the CAF code isn't affected.
-            cpu.useZone = cpu.zone;
             Write (addr, cpu.CY, OPERAND_STORE);
             break;
         case 2:
@@ -2307,8 +2305,9 @@ t_stat WriteOP (word18 addr, UNUSED _processor_cycle_type cyctyp)
         case 32:
             CPT (cpt1L, 16); // 32 words
             addr &= 0777740;   // make on 32-word boundary
-            for (uint j = 0 ; j < 32 ; j += 1)
-                Write (addr + j, cpu.Yblock32[j], OPERAND_STORE);
+            //for (uint j = 0 ; j < 32 ; j += 1)
+                //Write (addr + j, cpu.Yblock32[j], OPERAND_STORE);
+            Write32 (addr, cpu.Yblock32);
             break;
       }
     
@@ -2482,20 +2481,9 @@ int core_write (word24 addr, word36 data, const char * ctx)
     word24 offset;
     int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
     int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
-    if (cpu.useZone == MASK36)
-      {
-        LOCK_MEM;
-        scu[scuUnitIdx].M[offset] = data & DMASK;
-        UNLOCK_MEM;
-      }
-    else
-      {
-        LOCK_MEM;
-        scu[scuUnitIdx].M[addr] = (scu[scuUnitIdx].M[addr] & ~cpu.useZone) |
-                                  (data & cpu.useZone);
-        UNLOCK_MEM;
-        cpu.useZone = MASK36; // Safety
-      }
+    LOCK_MEM;
+    scu[scuUnitIdx].M[offset] = data & DMASK;
+    UNLOCK_MEM;
     if (watchBits [addr])
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o write   %08o %012"PRIo64" "
@@ -2503,19 +2491,9 @@ int core_write (word24 addr, word36 data, const char * ctx)
                     scu[scuUnitIdx].M[offset], ctx);
       }
 #else
-    if (cpu.useZone == MASK36)
-      {
-        LOCK_MEM;
-        M[addr] = data & DMASK;
-        UNLOCK_MEM;
-      }
-    else
-      {
-        LOCK_MEM;
-        M[addr] = (M[addr] & ~cpu.useZone) | (data & cpu.useZone);
-        UNLOCK_MEM;
-        cpu.zone = cpu.useZone = MASK36; // Safety
-      }
+    LOCK_MEM;
+    M[addr] = data & DMASK;
+    UNLOCK_MEM;
     if (watchBits [addr])
       {
         sim_printf ("WATCH [%"PRId64"] %05o:%06o write  %08o %012"PRIo64" "
@@ -2529,6 +2507,75 @@ int core_write (word24 addr, word36 data, const char * ctx)
 #endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write %08o %012"PRIo64" (%s)\n",
+                addr, data, ctx);
+    PNL (trackport (addr, data));
+    return 0;
+  }
+#endif
+
+#ifndef SPEED
+int core_write_zone (word24 addr, word36 data, const char * ctx)
+  {
+    PNL (cpu.portBusy = true;)
+#ifdef ISOLTS
+    if (cpu.switches.useMap)
+      {
+        uint pgnum = addr / SCBANK;
+        int os = cpu.scbank_pg_os [pgnum];
+        if (os < 0)
+          { 
+            doFault (FAULT_STR, fst_str_nea,  __func__);
+          }
+        addr = (uint) os + addr % SCBANK;
+      }
+    else
+#endif
+      nem_check (addr,  "core_write_zone nem");
+#ifdef ISOLTS
+    if (cpu.MR.sdpap)
+      {
+        sim_warn ("failing to implement sdpap\n");
+        cpu.MR.sdpap = 0;
+      }
+    if (cpu.MR.separ)
+      {
+        sim_warn ("failing to implement separ\n");
+        cpu.MR.separ = 0;
+      }
+#endif
+#ifdef SCUMEM
+    word24 offset;
+    int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
+    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    LOCK_MEM;
+    scu[scuUnitIdx].M[addr] = (scu[scuUnitIdx].M[addr] & ~cpu.zone) |
+                              (data & cpu.zone);
+    UNLOCK_MEM;
+    cpu.useZone = false; // Safety
+    if (watchBits [addr])
+      {
+        sim_printf ("WATCH [%"PRId64"] %05o:%06o writez  %08o %012"PRIo64" "
+                    "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr, 
+                    scu[scuUnitIdx].M[offset], ctx);
+      }
+#else
+    LOCK_MEM;
+    M[addr] = (M[addr] & ~cpu.zone) | (data & cpu.zone);
+    UNLOCK_MEM;
+    cpu.useZone = false; // Safety
+    if (watchBits [addr])
+      {
+        sim_printf ("WATCH [%"PRId64"] %05o:%06o writez %08o %012"PRIo64" "
+                    "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr, 
+                    M [addr], ctx);
+        traceInstruction (0);
+      }
+#endif
+#ifdef TR_WORK_MEM
+    cpu.rTRticks ++;
+#endif
+    sim_debug (DBG_CORE, & cpu_dev,
+               "core_write_zone %08o %012"PRIo64" (%s)\n",
                 addr, data, ctx);
     PNL (trackport (addr, data));
     return 0;

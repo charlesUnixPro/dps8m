@@ -2143,6 +2143,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
 
 // Initiialize zone to 'entire word'
 
+    cpu.useZone = false;
     cpu.zone = MASK36;
 
 ///
@@ -3132,6 +3133,7 @@ static t_stat DoBasicInstruction (void)
              ((i->tag & 020) ? 0000777000000 : 0) |
              ((i->tag & 010) ? 0000000777000 : 0) |
              ((i->tag & 004) ? 0000000000777 : 0);
+          cpu.useZone = true;
           cpu.ou.crflag = true;
           break;
 
@@ -3145,6 +3147,7 @@ static t_stat DoBasicInstruction (void)
              ((i->tag & 020) ? 0000777000000 : 0) |
              ((i->tag & 010) ? 0000000777000 : 0) |
              ((i->tag & 004) ? 0000000000777 : 0);
+          cpu.useZone = true;
           cpu.ou.crflag = true;
           break;
 
@@ -3170,6 +3173,7 @@ static t_stat DoBasicInstruction (void)
           //SETHI (cpu.CY, (cpu.PPR.IC + 2) & MASK18);
           cpu.CY = ((word36) ((cpu.PPR.IC + 2) & MASK18)) << 18;
           cpu.zone = 0777777000000;
+          cpu.useZone = true;
           break;
 
         case 0751: // stca
@@ -3185,6 +3189,7 @@ static t_stat DoBasicInstruction (void)
              ((i->tag & 004) ? 0000000770000 : 0) |
              ((i->tag & 002) ? 0000000007700 : 0) |
              ((i->tag & 001) ? 0000000000077 : 0);
+          cpu.useZone = true;
           cpu.ou.crflag = true;
           break;
 
@@ -3200,6 +3205,7 @@ static t_stat DoBasicInstruction (void)
              ((i->tag & 004) ? 0000000770000 : 0) |
              ((i->tag & 002) ? 0000000007700 : 0) |
              ((i->tag & 001) ? 0000000000077 : 0);
+          cpu.useZone = true;
           cpu.ou.crflag = true;
           break;
 
@@ -3266,6 +3272,7 @@ static t_stat DoBasicInstruction (void)
           cpu.CY = cpu.cu.IR & 0000000777760LL;
 #endif
           cpu.zone = 0000000777777;
+          cpu.useZone = true;
           SCF (i->stiTally, cpu.CY, I_TALLY);
           break;
 
@@ -3300,6 +3307,7 @@ static t_stat DoBasicInstruction (void)
             //SETHI (cpu.CY, cpu.rX[n]);
             cpu.CY = ((word36) cpu.rX[n]) << 18;
             cpu.zone = 0777777000000;
+            cpu.useZone = true;
           }
           break;
 
@@ -3318,6 +3326,7 @@ static t_stat DoBasicInstruction (void)
           //SETLO (cpu.CY, cpu.rX[opcode & 07]);
           cpu.CY = cpu.rX[opcode & 07];
           cpu.zone = 0000000777777;
+          cpu.useZone = true;
           break;
 
         /// Fixed-Point Data Movement Shift
@@ -5338,6 +5347,7 @@ static t_stat DoBasicInstruction (void)
           //putbits36_18 (& cpu.CY, 0, ((word18) (cpu.rE & 0377) << 10));
           cpu.CY = ((word36) (cpu.rE & 0377)) << 28;
           cpu.zone = 0777777000000;
+          cpu.useZone = true;
           break;
 
 
@@ -6392,6 +6402,7 @@ static t_stat DoBasicInstruction (void)
           //SETHI (cpu.CY, (cpu.BAR.BASE << 9) | cpu.BAR.BOUND);
           cpu.CY = ((((word36) cpu.BAR.BASE) << 9) | cpu.BAR.BOUND) << 18;
           cpu.zone = 0777777000000;
+          cpu.useZone = true;
           break;
 
 
@@ -8918,6 +8929,7 @@ elapsedtime ();
                         break;
                 }
               cpu.zone = 0777777700000;
+              cpu.useZone = true;
             }
             break;
 
@@ -8964,6 +8976,7 @@ elapsedtime ();
                         break;
                 }
               cpu.zone = 0777777700000;
+              cpu.useZone = true;
             }
             break;
 
@@ -8988,6 +9001,7 @@ elapsedtime ();
                 putbits36 (& cpu.CY, 20, 4, GET_AR_BITNO (n));
                 //putbits36 (& cpu.CY, 18, 6, GET_PR_BITNO (n));
                 cpu.zone = 0777777770000;
+                cpu.useZone = true;
                 break;
             }
 
