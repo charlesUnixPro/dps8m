@@ -1506,6 +1506,8 @@ typedef struct
     cycles_t cycle;
     unsigned long long cycleCnt;
     unsigned long long instrCnt;
+    unsigned long long instrCntT0;
+    unsigned long long instrCntT1;
     unsigned long faultCnt [N_FAULTS];
 
     // The following are all from the control unit history register:

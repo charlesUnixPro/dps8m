@@ -111,7 +111,7 @@
 
 #include "sim_tape.h"
 
-#include "dps8_mt.h"
+struct tape_state tape_states [N_MT_UNITS_MAX];
 
 static t_stat mt_rewind (UNIT * uptr, int32 value, const char * cptr, void * desc);
 static t_stat mt_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
@@ -300,28 +300,9 @@ DEVICE tape_dev = {
     NULL
 };
 
-#define MAX_DEV_NAME_LEN 64
-
 //-- /* unfinished; copied from tape_dev */
 static const char * simh_tape_msg (int code); // hack
 //static const size_t bufsz = 4096 * 9 / 2;
-#define BUFSZ (4096 * 9 / 2)
-
-static struct tape_state
-  {
-    enum { no_mode, read_mode, write_mode, survey_mode } io_mode;
-    bool is9;
-    uint8 buf [BUFSZ];
-    t_mtrlnt tbc; // Number of bytes read into buffer
-    uint words_processed; // Number of Word36 processed from the buffer
-// XXX bug: 'sim> set tapeN rewind' doesn't reset rec_num
-    int rec_num; // track tape position
-    char device_name [MAX_DEV_NAME_LEN];
-    word16 cntlrAddress;
-    word16 cntlrTally;
-    int tape_length;
-  } tape_states [N_MT_UNITS_MAX];
-
 // XXX this assumes only one controller, needs to be indexed
 static int boot_drive = 1; // Drive number to boot from
 #define TAPE_PATH_LEN 4096

@@ -159,7 +159,6 @@ DEVICE crdrdr_dev = {
     NULL
 };
 
-#define MAX_DEV_NAME_LEN 64
 
 
 

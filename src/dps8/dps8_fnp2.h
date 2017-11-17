@@ -152,8 +152,6 @@ typedef struct
       } line [MAX_LINES];
   } t_MState;
 
-#define MAX_DEV_NAME_LEN 64
-
 // Indexed by sim unit number
 struct fnpUnitData
   {

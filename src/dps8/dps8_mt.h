@@ -11,6 +11,26 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
+#define BUFSZ (4096 * 9 / 2)
+
+struct tape_state
+  {
+    enum { no_mode, read_mode, write_mode, survey_mode } io_mode;
+    bool is9;
+    uint8 buf [BUFSZ];
+    t_mtrlnt tbc; // Number of bytes read into buffer
+    uint words_processed; // Number of Word36 processed from the buffer
+// XXX bug: 'sim> set tapeN rewind' doesn't reset rec_num
+    int rec_num; // track tape position
+    char device_name [MAX_DEV_NAME_LEN];
+    word16 cntlrAddress;
+    word16 cntlrTally;
+    int tape_length;
+  };
+
+extern struct tape_state tape_states [N_MT_UNITS_MAX];
+
+
 extern UNIT mt_unit [N_MT_UNITS_MAX];
 extern DEVICE tape_dev;
 void mt_init(void);

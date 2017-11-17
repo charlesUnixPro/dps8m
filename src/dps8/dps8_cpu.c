@@ -1345,6 +1345,8 @@ setCPU:;
           {
             slowQueueSubsample = 0;
             rdrProcessEvent ();
+            cpu.instrCntT0 = cpu.instrCntT1;
+            cpu.instrCntT1 = cpu.instrCnt;
           }
         static uint queueSubsample = 0;
         if (queueSubsample ++ > 10240) // ~ 100Hz

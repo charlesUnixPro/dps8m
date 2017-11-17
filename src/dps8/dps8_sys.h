@@ -14,6 +14,18 @@
 #include <uv.h>
 #include "uvutil.h"
 
+enum httpState_t 
+  {
+    hsInitial, // waiting for request
+    hsFields, // reading fields
+  };
+
+enum httpRequest_t
+  {
+    hrNone,
+    hrGet,
+  };
+
 // System-wide info and options not tied to a specific CPU, IOM, or SCU
 typedef struct {
     int clock_speed;
@@ -34,7 +46,18 @@ typedef struct {
         int xfer;
     } mt_times;
     bool warn_uninit; // Warn when reading uninitialized memory
+#define MR_BUFFER_SZ 4096
+    char mrBuffer[MR_BUFFER_SZ];
+    int mrBufferCnt;
+
     uv_access machineRoomAccess;
+
+// http parser
+
+    enum httpState_t httpState;
+    enum httpRequest_t httpRequest;
+    char httpGetURI[MR_BUFFER_SZ];
+
 } sysinfo_t;
 
 #ifndef SCUMEM

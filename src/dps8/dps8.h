@@ -586,5 +586,6 @@ typedef struct DCDstruct DCDstruct;
 #define UNUSED
 #endif
 
+#define MAX_DEV_NAME_LEN 64
 
 #endif // ifdef DPS8_H
