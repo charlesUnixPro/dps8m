@@ -47,37 +47,51 @@ pthread_spinlock_t mem_lock;
 #else
 static pthread_mutex_t mem_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif
+static __thread uint memLockDepth = 0;
 
-#define dbg_lock
-#ifdef dbg_lock
-static __thread bool recurFlag = false;
-#endif
 void lock_mem (void)
   {
-#ifdef dbg_lock
-    if (recurFlag)
-      sim_printf ("recursive mem lock\n");
-    recurFlag = true;
-#endif
-    //sim_debug (DBG_TRACE, & cpu_dev, "lock_mem\n");
-    int rc;
+    if (memLockDepth == 0)
+      {
+        int rc;
 #ifdef use_spinlock
-    rc = pthread_spin_lock (& mem_lock);
+        rc = pthread_spin_lock (& mem_lock);
 #else
-    rc = pthread_mutex_lock (& mem_lock);
+        rc = pthread_mutex_lock (& mem_lock);
 #endif
-    if (rc)
-      sim_printf ("lock_mem pthread_mutex_lock mem_lock %d\n", rc);
+        if (rc)
+          sim_printf ("lock_mem pthread_mutex_lock mem_lock %d\n", rc);
+      }
+    memLockDepth ++;
   }
 
 void unlock_mem (void)
   {
-#ifdef dbg_lock
-    if (!recurFlag)
-      sim_printf ("spurious mem unlock\n");
-    recurFlag = false;
+    if (memLockDepth == 0)
+      {
+        sim_printf ("spurious mem unlock %u\n", test_mem_lock());
+        return;
+      }
+
+    if (memLockDepth == 1)
+      {
+        int rc;
+#ifdef use_spinlock
+        rc = pthread_spin_unlock (& mem_lock);
+#else
+        rc = pthread_mutex_unlock (& mem_lock);
 #endif
-    //sim_debug (DBG_TRACE, & cpu_dev, "unlock_mem\n");
+        if (rc)
+          sim_printf ("unlock_mem pthread_mutex_lock mem_lock %d\n", rc);
+      }
+    memLockDepth --;
+  }
+
+void unlock_mem_force (void)
+  {
+    if (memLockDepth == 0)
+      return;
+    memLockDepth = 0;
     int rc;
 #ifdef use_spinlock
     rc = pthread_spin_unlock (& mem_lock);

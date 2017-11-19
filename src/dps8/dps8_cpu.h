@@ -1776,11 +1776,11 @@ typedef struct
     uint shadowTR;
     uint TR0; // The value that the TR was set to.
 #endif
-#ifdef THREADZ
-    // Set if this thread has set memlock
-    bool havelock; // Vetinari 
-bool have_tst_lock;
-#endif
+//#ifdef THREADZ
+//    // Set if this thread has set memlock
+//    bool havelock; // Vetinari 
+//bool have_tst_lock;
+//#endif
   } cpu_state_t;
 
 #ifdef M_SHARED
@@ -1848,8 +1848,8 @@ static inline void trackport (word24 a, word36 d)
 // Ugh. Circular dependencies XXX
 void lock_mem (void);
 void unlock_mem (void);
-#define LOCK_MEM if (! cpu.havelock) { lock_mem (); }
-#define UNLOCK_MEM if (! cpu.havelock) { unlock_mem (); }
+#define LOCK_MEM lock_mem ();
+#define UNLOCK_MEM unlock_mem ();
 #else // ! THREADZ
 #define LOCK_MEM
 #define UNLOCK_MEM

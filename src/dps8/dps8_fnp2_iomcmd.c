@@ -32,15 +32,12 @@
 
 #ifdef THREADZ
 #include "threadz.h"
-
-__thread static bool havelock = false;
 #endif
 
 static inline void fnp_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
 #ifdef THREADZ
-    if (! havelock)
-      lock_mem ();
+    lock_mem ();
 #endif
 #ifdef SCUMEM
     iom_core_read (addr, data, ctx);
@@ -48,16 +45,14 @@ static inline void fnp_core_read (word24 addr, word36 *data, UNUSED const char *
     * data = M [addr] & DMASK;
 #endif
 #ifdef THREADZ
-    if (! havelock)
-      unlock_mem ();
+    unlock_mem ();
 #endif
   }
 
 static inline void fnp_core_write (word24 addr, word36 data, UNUSED const char * ctx)
   {
 #ifdef THREADZ
-    if (! havelock)
-      lock_mem ();
+    lock_mem ();
 #endif
 #ifdef SCUMEM
     iom_core_write (addr, data, ctx);
@@ -65,16 +60,14 @@ static inline void fnp_core_write (word24 addr, word36 data, UNUSED const char *
     M [addr] = data & DMASK;
 #endif
 #ifdef THREADZ
-    if (! havelock)
-      unlock_mem ();
+    unlock_mem ();
 #endif
   }
 
 static inline void fnp_core_read_n (word24 addr, word36 *data, uint n, UNUSED const char * ctx)
   {
 #ifdef THREADZ
-    if (! havelock)
-      lock_mem ();
+    lock_mem ();
 #endif
     for (uint i = 0; i < n; i ++)
 #ifdef SCUMEM
@@ -83,8 +76,7 @@ static inline void fnp_core_read_n (word24 addr, word36 *data, uint n, UNUSED co
       data [i] = M [addr + i] & DMASK;
 #endif
 #ifdef THREADZ
-    if (! havelock)
-      unlock_mem ();
+    unlock_mem ();
 #endif
   }
 
@@ -102,13 +94,11 @@ static inline void l_putbits36_1 (word36 vol * x, uint p, word1 val)
     // caller may provide val that is too big, e.g., a word with all bits
     // set to one, so we mask val
 #ifdef THREADZ
-    if (! havelock)
-      lock_mem ();
+    lock_mem ();
 #endif
     * x = (* x & ~ smask) | (((word36) val & mask) << shift);
 #ifdef THREADZ
-    if (! havelock)
-      unlock_mem ();
+    unlock_mem ();
 #endif
 }
 #else
@@ -177,7 +167,6 @@ static void setTIMW (uint mailboxAddress, int mbx)
 #if 1
     l_putbits36_1 (& M [timwAddress], (uint) mbx, 1);
 #else
-    havelock = true;
     lock_mem ();
 //sim_printf ("new %p\n", & M [timwAddress]
     //word36 w = M [timwAddress];
@@ -187,7 +176,6 @@ static void setTIMW (uint mailboxAddress, int mbx)
     //M [timwAddress] = w;
     fnp_core_write (timwAddress, w, "setTIMW write");
     unlock_mem ();
-    havelock = false;
 #endif
   }
 

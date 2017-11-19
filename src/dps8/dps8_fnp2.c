@@ -45,8 +45,6 @@
 
 #ifdef THREADZ
 #include "threadz.h"
-
-__thread static bool havelock = false;
 #endif
 
 static t_stat fnpShowConfig (FILE *st, UNIT *uptr, int val, const void *desc);
@@ -242,11 +240,9 @@ static inline void l_putbits36_1 (word36 volatile * x, uint p, word1 val)
     word36 smask = mask << (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
     // caller may provide val that is too big, e.g., a word with all bits
     // set to one, so we mask val
-    if (! havelock)
-      lock_mem ();
+    lock_mem ();
     * x = (* x & ~ smask) | (((word36) val & mask) << shift);
-    if (! havelock)
-      unlock_mem ();
+    unlock_mem ();
 }
 
 static inline void l_putbits36_3 (word36 volatile * x, uint p, word3 val)
@@ -261,11 +257,9 @@ static inline void l_putbits36_3 (word36 volatile * x, uint p, word3 val)
     word36 smask = mask << (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
     // caller may provide val that is too big, e.g., a word with all bits
     // set to one, so we mask val
-    if (! havelock)
-      lock_mem ();
+    lock_mem ();
     * x = (* x & ~ smask) | (((word36) val & mask) << shift);
-    if (! havelock)
-      unlock_mem ();
+    unlock_mem ();
 }
 
 static inline void l_putbits36_6 (word36 volatile * x, uint p, word6 val)
@@ -280,11 +274,9 @@ static inline void l_putbits36_6 (word36 volatile * x, uint p, word6 val)
     word36 smask = mask << (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
     // caller may provide val that is too big, e.g., a word with all bits
     // set to one, so we mask val
-    if (! havelock)
-      lock_mem ();
+    lock_mem ();
     * x = (* x & ~ smask) | (((word36) val & mask) << shift);
-    if (! havelock)
-      unlock_mem ();
+    unlock_mem ();
 }
 
 static inline void l_putbits36_9 (word36 volatile * x, uint p, word9 val)
@@ -299,11 +291,9 @@ static inline void l_putbits36_9 (word36 volatile * x, uint p, word9 val)
     word36 smask = mask << (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
     // caller may provide val that is too big, e.g., a word with all bits
     // set to one, so we mask val
-    if (! havelock)
-      lock_mem ();
+    lock_mem ();
     * x = (* x & ~ smask) | (((word36) val & mask) << shift);
-    if (! havelock)
-      unlock_mem ();
+    unlock_mem ();
 }
 
 static inline void l_putbits36_12 (word36 volatile * x, uint p, word12 val)
@@ -318,11 +308,9 @@ static inline void l_putbits36_12 (word36 volatile * x, uint p, word12 val)
     word36 smask = mask << (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
     // caller may provide val that is too big, e.g., a word with all bits
     // set to one, so we mask val
-    if (! havelock)
-      lock_mem ();
+    lock_mem ();
     * x = (* x & ~ smask) | (((word36) val & mask) << shift);
-    if (! havelock)
-      unlock_mem ();
+    unlock_mem ();
 }
 
 static inline void l_putbits36_18 (word36 volatile * x, uint p, word18 val)
@@ -337,11 +325,9 @@ static inline void l_putbits36_18 (word36 volatile * x, uint p, word18 val)
     word36 smask = mask << (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
     // caller may provide val that is too big, e.g., a word with all bits
     // set to one, so we mask val
-    if (! havelock)
-      lock_mem ();
+    lock_mem ();
     * x = (* x & ~ smask) | (((word36) val & mask) << shift);
-    if (! havelock)
-      unlock_mem ();
+    unlock_mem ();
 }
 
 #else

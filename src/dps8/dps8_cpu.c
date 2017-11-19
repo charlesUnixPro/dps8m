@@ -1364,11 +1364,7 @@ setCPU:;
 
 #ifdef THREADZ
         // If we faulted somewhere with the memory lock set, clear it.
-        if (cpu.havelock)
-          {
-            unlock_mem ();
-            cpu.havelock = false;
-          }
+        unlock_mem_force ();
 
         // wait on run/switch
         cpuRunningWait ();
@@ -2241,7 +2237,6 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp)
 #endif
           {
             lock_mem ();
-            cpu.havelock = true;
           }
       }
 #endif
@@ -2316,10 +2311,11 @@ t_stat WriteOP (word18 addr, UNUSED _processor_cycle_type cyctyp)
       }
     
 #ifdef THREADZ
-    if (cpu.havelock)
+    if (cyctyp == OPERAND_STORE)
       {
-        unlock_mem ();
-        cpu.havelock = false;
+        DCDstruct * i = & cpu.currentInstruction;
+        if (RMWOP (i))
+          unlock_mem ();
       }
 #endif
     return SCPE_OK;

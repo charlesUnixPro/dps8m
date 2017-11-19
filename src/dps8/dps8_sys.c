@@ -3755,7 +3755,15 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set scu3 reset");
     doIniLine ("set iom0 reset");
 
+#ifdef THREADZ
+    doIniLine ("set cpu nunits=7");
+#else
+#ifdef ISOTLTS
+    doIniLine ("set cpu nunits=2");
+#else
     doIniLine ("set cpu nunits=1");
+#endif // ISOLTS
+#endif // THREADZ
     doIniLine ("set sys config=activate_time=8");
     doIniLine ("set sys config=terminate_time=8");
 
@@ -4109,6 +4117,7 @@ static void httpDoGet (char * uri)
         W ("</span>\n");
         W ("</body>\n");
         W ("</html>\n");
+        W ("\n");
       }
     else if (strcmp (uri, "/favicon.ico") == 0)
       {

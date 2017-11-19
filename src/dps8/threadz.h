@@ -88,6 +88,7 @@ void unlock_simh (void);
 // atomic memory lock
 void lock_mem (void);
 void unlock_mem (void);
+void unlock_mem_force (void);
 bool test_mem_lock (void);
 
 // scu lock

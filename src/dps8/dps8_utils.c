@@ -2197,7 +2197,6 @@ void print_int128 (int128 n, char * p)
   }
 #endif
 
-#if 0
 #ifdef THREADZ
 // https://gist.github.com/diabloneo/9619917
 
@@ -2214,7 +2213,9 @@ void timespec_diff(struct timespec * start, struct timespec * stop,
 
     return;
 }
+#endif // THREADZ
 
+#if 0
 // Calculate current TR value
 
 void currentTR (word27 * trunits, bool * ovf)
@@ -2246,5 +2247,4 @@ void currentTR (word27 * trunits, bool * ovf)
     //sim_printf ("time left %f\n", (float) (* trunits) / 5120000);
     * ovf = false;
   }
-#endif
 #endif
