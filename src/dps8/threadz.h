@@ -2,7 +2,7 @@
 
 #define tdbg
 
-//#define use_spinlock
+#define use_spinlock
 
 // Wrapper around pthreads
 
