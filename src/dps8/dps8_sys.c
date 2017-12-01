@@ -4056,21 +4056,22 @@ static void httpDoGet (char * uri)
     char buf [4096];
     if (strcmp (uri, "/") == 0)
       {
-        W ("<!DOCTYPE html>\n");
-        W ("<html>\n");
-        W ("<head>\n");
-        //W ("<title>Page Title</title>\n");
-        sprintf (buf, "<title>%s</title>\n", sim_name); W (buf);
-        W ("</head>\n");
-        W ("<body>\n");
-
-        W ("<span style=\"font-family: monospace;\">\n");
-        W ("<h5>CPU</h5>\n");
-        //W ("<p>This is a paragraph.</p>\n");
+        W ("HTTP/1.1 200 OK\r\n");
+        W ("\r\n");
+        W ("<!DOCTYPE html>\r\n");
+        W ("<html>\r\n");
+        W ("<head>\r\n");
+        //W ("<title>Page Title</title>\r\n");
+        sprintf (buf, "<title>%s</title>\r\n", sim_name); W (buf);
+        W ("</head>\r\n");
+        W ("<body>\r\n");
+        W ("<span style=\"font-family: monospace;\">\r\n");
+        W ("<h5>CPU</h5>\r\n");
+        //W ("<p>This is a paragraph.</p>\r\n");
         for (uint i = 0; i < cpu_dev.numunits; i ++)
           {
             sprintf (buf,
-                     "<p>%c serial # %u MIPS %4.2f %s%s PPR %05o:%06o R%u P%u</p>\n",
+                     "<p>%c serial # %u MIPS %4.2f %s%s PPR %05o:%06o R%u P%u</p>\r\n",
                      cpus[i].switches.cpu_num + 'A',
                      cpus[i].switches.serno,
                      (cpus[i].instrCntT1 - cpu.instrCntT0) / 1000000.0,
@@ -4084,7 +4085,7 @@ static void httpDoGet (char * uri)
 //#define A(x) (getbits36_1 (cpu.rA, x) ? "&bull" : " ")
 #define A(x) (getbits36_1 (cpu.rA, x) ? "1" : "0")
             sprintf (buf,
-             "<p>   A %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s</p>\n",
+             "<p>   A %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s</p>\r\n",
              A ( 0), A ( 1), A ( 2), A ( 3), A ( 4), A ( 5), A ( 6), A ( 7), A ( 8), 
              A ( 9), A (10), A (11), A (12), A (13), A (14), A (15), A (16), A (17), 
              A (18), A (19), A (20), A (21), A (22), A (23), A (24), A (25), A (26), 
@@ -4093,7 +4094,7 @@ static void httpDoGet (char * uri)
 //#define Q(x) (getbits36_1 (cpu.rQ, x) ? "&bull" : " ")
 #define Q(x) (getbits36_1 (cpu.rQ, x) ? "1" : "0")
             sprintf (buf,
-             "<p>   Q %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s</p>\n",
+             "<p>   Q %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s</p>\r\n",
              Q ( 0), Q ( 1), Q ( 2), Q ( 3), Q ( 4), Q ( 5), Q ( 6), Q ( 7), Q ( 8), 
              Q ( 9), Q (10), Q (11), Q (12), Q (13), Q (14), Q (15), Q (16), Q (17), 
              Q (18), Q (19), Q (20), Q (21), Q (22), Q (23), Q (24), Q (25), Q (26), 
@@ -4101,26 +4102,28 @@ static void httpDoGet (char * uri)
             W (buf);
           }
 
-        W ("<h5>TAPE</h5>\n");
+        W ("<h5>TAPE</h5>\r\n");
         for (uint i = 0; i < tape_dev.numunits; i ++)
           {
             UNIT * u = mt_unit + i;
             if (! u->fileref)
               continue;
             sprintf (buf,
-                     "<p>%s %s record %d</p>\n",
+                     "<p>%s %s record %d</p>\r\n",
                      tape_states[i].device_name,
                      u->filename,
                      tape_states[i].rec_num);
             W (buf);
           }
-        W ("</span>\n");
-        W ("</body>\n");
-        W ("</html>\n");
-        W ("\n");
+        W ("</span>\r\n");
+        W ("</body>\r\n");
+        W ("</html>\r\n");
+        W ("\r\n");
       }
     else if (strcmp (uri, "/favicon.ico") == 0)
       {
+        W ("HTTP/1.1 200 OK\r\n");
+        W ("\r\n");
         accessStartWrite (sys_opts.machineRoomAccess.client, (char *) favicon, sizeof (favicon));
       }
     else
