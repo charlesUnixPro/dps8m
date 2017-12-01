@@ -4065,7 +4065,7 @@ static void httpDoGet (char * uri)
         sprintf (buf, "<title>%s</title>\r\n", sim_name); W (buf);
         W ("</head>\r\n");
         W ("<body>\r\n");
-        W ("<span style=\"font-family: monospace;\">\r\n");
+        //W ("<span style=\"font-family: monospace;\">\r\n");
         W ("<h5>CPU</h5>\r\n");
         //W ("<p>This is a paragraph.</p>\r\n");
         for (uint i = 0; i < cpu_dev.numunits; i ++)
@@ -4115,7 +4115,7 @@ static void httpDoGet (char * uri)
                      tape_states[i].rec_num);
             W (buf);
           }
-        W ("</span>\r\n");
+        //W ("</span>\r\n");
         W ("</body>\r\n");
         W ("</html>\r\n");
         W ("\r\n");
