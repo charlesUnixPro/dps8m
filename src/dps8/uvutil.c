@@ -305,7 +305,7 @@ static void accessCloseCallback (uv_handle_t * stream)
 void accessCloseConnection (uv_stream_t* stream)
   {
     uv_access * access = (uv_access *) stream->data;
-    sim_printf ("access disconnect\n");
+    // sim_printf ("access disconnect\n");
     // Clean up allocated data
     if (access->telnetp)
       {
@@ -511,7 +511,7 @@ static void onNewAccess (uv_stream_t * server, int status)
         // Only a single connection at a time
         if (access->client)
           {
-            sim_printf ("access cutting in\r\n");
+            // sim_printf ("access cutting in\r\n");
             access->loggedOn = false;
             accessCloseConnection ((uv_stream_t *) access->client);
           }
@@ -525,8 +525,8 @@ static void onNewAccess (uv_stream_t * server, int status)
           }
         else
           {
-            struct sockaddr_in * p = (struct sockaddr_in *) & name;
-            sim_printf ("access connect %s\n", inet_ntoa (p->sin_addr));
+            // struct sockaddr_in * p = (struct sockaddr_in *) & name;
+            // sim_printf ("access connect %s\n", inet_ntoa (p->sin_addr));
           }
 
         if (access->useTelnet)

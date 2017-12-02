@@ -547,6 +547,9 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
 #ifdef STATS
         doStats ();
 #endif
+        cpu.instrCntT0 = cpu.instrCntT1;
+        cpu.instrCntT1 = cpu.instrCnt;
+
       }
     fnpProcessEvent (); 
     consoleProcess ();
