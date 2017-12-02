@@ -373,7 +373,7 @@ void fnpInit(void)
     fnpTelnetInit ();
   }
 
-static t_stat fnpReset (DEVICE * dptr)
+static t_stat fnpReset (UNUSED DEVICE * dptr)
   {
 #if 0
     for (int i = 0; i < (int) dptr -> numunits; i ++)
@@ -729,7 +729,7 @@ static void fnp_rcd_wru_timeout (int mbx, int fnpno, int lineno)
 // Process an input character according to the line discipline.
 // Return true if buffer should be shipped to the CS
 
-static inline bool processInputCharacter (struct t_line * linep, unsigned char kar, bool endOfBuffer)
+static inline bool processInputCharacter (struct t_line * linep, unsigned char kar, UNUSED bool endOfBuffer)
   {
 #ifdef TUN
     // TUN doesn't have a client

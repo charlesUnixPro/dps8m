@@ -217,7 +217,7 @@ void crdrdr_init (void)
 #endif
   }
 
-static t_stat crdrdr_reset (DEVICE * dptr)
+static t_stat crdrdr_reset (UNUSED DEVICE * dptr)
   {
 #if 0
     for (uint i = 0; i < dptr -> numunits; i ++)

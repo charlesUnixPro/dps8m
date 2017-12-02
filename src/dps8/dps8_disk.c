@@ -1047,7 +1047,7 @@ static t_stat disk_set_type (UNUSED UNIT * uptr, UNUSED int32 value, const char 
     return SCPE_OK;
   }
 
-static t_stat loadDisk (uint driveNumber, const char * diskFilename, bool ro)
+static t_stat loadDisk (uint driveNumber, const char * diskFilename, UNUSED bool ro)
   {
     //sim_printf ("in loadTape %d %s\n", driveNumber, tapeFilename);
     t_stat stat = attach_unit (& disk_unit [driveNumber], diskFilename);

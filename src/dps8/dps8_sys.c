@@ -1967,39 +1967,21 @@ t_stat parse_sym (UNUSED const char * cptr, UNUSED t_addr addr,
 
 // from MM
 
-sysinfo_t sys_opts =
-  {
-    0, /* clock speed */
-    {
-#ifdef FNPDBG
-      4000, /* iom_times.connect */
-#else
-      -1, /* iom_times.connect */
-#endif
-       0,  /* iom_times.chan_activate */
-      10, /* boot_time */
-      10000, /* terminate_time */
-    },
-    {
-      -1, /* mt_times.read */
-      -1  /* mt_times.xfer */
-    },
-    0 /* warn_uninit */
-  };
+sysinfo_t sys_opts;
 
 static t_stat sys_show_config (UNUSED FILE * st, UNUSED UNIT * uptr, 
                                UNUSED int  val, UNUSED const void * desc)
   {
     sim_printf ("IOM connect time:         %d\n",
                 sys_opts.iom_times.connect);
-    sim_printf ("IOM activate time:        %d\n",
-                sys_opts.iom_times.chan_activate);
-    sim_printf ("IOM boot time:            %d\n",
-                sys_opts.iom_times.boot_time);
-    sim_printf ("MT Read time:             %d\n",
-                sys_opts.mt_times.read);
-    sim_printf ("MT Xfer time:             %d\n",
-                sys_opts.mt_times.xfer);
+    // sim_printf ("IOM activate time:        %d\n",
+                // sys_opts.iom_times.chan_activate);
+    // sim_printf ("IOM boot time:            %d\n",
+                // sys_opts.iom_times.boot_time);
+    // sim_printf ("MT Read time:             %d\n",
+                // sys_opts.mt_times.read);
+    // sim_printf ("MT Xfer time:             %d\n",
+                // sys_opts.mt_times.xfer);
 
     return SCPE_OK;
 }
@@ -2011,7 +1993,7 @@ static config_value_list_t cfg_timing_list[] =
   };
 
 static t_stat sys_set_break (UNUSED UNIT *  uptr, int32 value, 
-                             const char * cptr, UNUSED void * desc)
+                             UNUSED const char * cptr, UNUSED void * desc)
   {
     breakEnable = !! value;
     return SCPE_OK;
@@ -2027,11 +2009,11 @@ static t_stat sys_show_break (UNUSED FILE * st, UNUSED UNIT * uptr,
 static config_list_t sys_config_list[] =
   {
     /*  0 */ { "connect_time", -1, 100000, cfg_timing_list },
-    /*  1 */ { "activate_time", -1, 100000, cfg_timing_list },
+    // /*  1 */ { "activate_time", -1, 100000, cfg_timing_list },
     /*  2 */ { "mt_read_time", -1, 100000, cfg_timing_list },
     /*  3 */ { "mt_xfer_time", -1, 100000, cfg_timing_list },
-    /*  4 */ { "iom_boot_time", -1, 100000, cfg_timing_list },
-    /*  5 */ { "terminate_time", -1, 100000, cfg_timing_list },
+    // /*  4 */ { "iom_boot_time", -1, 100000, cfg_timing_list },
+    // /*  5 */ { "terminate_time", -1, 100000, cfg_timing_list },
     { NULL, 0, 0, NULL }
  };
 
@@ -2058,16 +2040,16 @@ static t_stat sys_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
         const char * p = sys_config_list[rc].name;
         if (strcmp (p, "connect_time") == 0)
           sys_opts.iom_times.connect = (int) v;
-        else if (strcmp (p, "activate_time") == 0)
-          sys_opts.iom_times.chan_activate = (int) v;
-        else if (strcmp (p, "mt_read_time") == 0)
-          sys_opts.mt_times.read = (int) v;
-        else if (strcmp (p, "mt_xfer_time") == 0)
-          sys_opts.mt_times.xfer = (int) v;
-        else if (strcmp (p, "iom_boot_time") == 0)
-          sys_opts.iom_times.boot_time = (int) v;
-        else if (strcmp (p, "terminate_time") == 0)
-          sys_opts.iom_times.terminate_time = (int) v;
+        // else if (strcmp (p, "activate_time") == 0)
+          // sys_opts.iom_times.chan_activate = (int) v;
+        // else if (strcmp (p, "mt_read_time") == 0)
+          // sys_opts.mt_times.read = (int) v;
+        // else if (strcmp (p, "mt_xfer_time") == 0)
+          // sys_opts.mt_times.xfer = (int) v;
+        // else if (strcmp (p, "iom_boot_time") == 0)
+          // sys_opts.iom_times.boot_time = (int) v;
+        // else if (strcmp (p, "terminate_time") == 0)
+          // sys_opts.iom_times.terminate_time = (int) v;
         else
           {
             sim_printf ("error: sys_set_config: invalid cfgparse rc <%d>\n", rc);
@@ -3764,9 +3746,13 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set cpu nunits=1");
 #endif // ISOLTS
 #endif // THREADZ
-    doIniLine ("set sys config=activate_time=8");
-    doIniLine ("set sys config=terminate_time=8");
-
+    // doIniLine ("set sys config=activate_time=8");
+    // doIniLine ("set sys config=terminate_time=8");
+#ifdef FNPDBG
+    doIniLine ("set sys config=connect_time=4000");
+#else
+    doIniLine ("set sys config=connect_time=-1");
+#endif
 
 #if 0
     doIniLine ("fnpload Devices.txt");
@@ -4245,7 +4231,7 @@ t_stat machineRoomPW (UNUSED int32 arg, UNUSED const char * buf)
 
 
 
-static void machineRoomConnected (uv_tcp_t * client)
+static void machineRoomConnected (UNUSED uv_tcp_t * client)
   {
   }
 
@@ -4298,7 +4284,7 @@ void machineRoomProcess (void)
         if (c == '\012')  // CR
           {
             sys_opts.mrBuffer[sys_opts.mrBufferCnt] = 0;
-            sim_printf ("recvd: <%s>\r\n", sys_opts.mrBuffer);
+            //sim_printf ("recvd: <%s>\r\n", sys_opts.mrBuffer);
             httpParse (sys_opts.mrBuffer);
 
             sys_opts.mrBufferCnt = 0;

@@ -130,7 +130,7 @@ static void accessStartWriteActual (uv_tcp_t * client, char * data,
     req->data = buf.base;
 #endif
     memcpy (buf.base, data, (unsigned long) datalen);
-sim_printf ("write %u<%s>\n", datalen, data);
+//sim_printf ("write %u<%s>\n", datalen, data);
     int ret = uv_write (req, (uv_stream_t *) client, & buf, 1,
                         accessWriteCallback);
 // There seems to be a race condition when Mulitcs signals a disconnect_line;

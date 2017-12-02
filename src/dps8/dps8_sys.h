@@ -28,24 +28,20 @@ enum httpRequest_t
 
 // System-wide info and options not tied to a specific CPU, IOM, or SCU
 typedef struct {
-    int clock_speed;
-    // Instructions rccl and rscr allow access to a hardware clock.
-    // If zero, the hardware clock returns the real time of day.
-    // If non-zero, the clock starts at an arbitrary date and ticks at
-    // a rate approximately equal to the given number of instructions
-    // per second.
+    // int clock_speed;
     // Delay times are in cycles; negative for immediate
     struct {
         int connect;    // Delay between CIOC instr & connect channel operation
-        int chan_activate;  // Time for a list service to send a DCW
-        int boot_time; // delay between CPU start and IOM starting boot process
-        int terminate_time; // delay between CPU start and IOM starting boot process
+        //int chan_activate;  // Time for a list service to send a DCW
+        //int boot_time; // delay between CPU start and IOM starting boot process
+        //int terminate_time; // delay between CPU start and IOM starting boot process
     } iom_times;
-    struct {
-        int read;
-        int xfer;
-    } mt_times;
-    bool warn_uninit; // Warn when reading uninitialized memory
+    // struct {
+        // int read;
+        // int xfer;
+    // } mt_times;
+    // bool warn_uninit; // Warn when reading uninitialized memory
+
 #define MR_BUFFER_SZ 4096
     char mrBuffer[MR_BUFFER_SZ];
     int mrBufferCnt;
