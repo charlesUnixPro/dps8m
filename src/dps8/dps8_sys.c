@@ -191,7 +191,8 @@ static CTAB dps8_cmds[] =
 
     {"FNPLOAD", fnpLoad, 0, "fnpload: load Devices.txt into FNP", NULL, NULL},
 #ifdef FNP2
-    {"FNPSERVERPORT", fnpServerPort, 0, "fnpServerPort: set the FNP dialin telnter port number", NULL, NULL},
+    {"FNPSERVERPORT", fnpServerPort, 0, "fnpServerPort: set the FNP dialin telnetr port number", NULL, NULL},
+    {"FNPSERVER3270PORT", fnpServer3270Port, 0, "fnpServerPort: set the FNP 3270 port number", NULL, NULL},
 #endif
 #ifdef EISTESTJIG
     // invoke EIS test jig.......∫

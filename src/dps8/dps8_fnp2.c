@@ -388,7 +388,88 @@ sim_printf ("wcd %d. %o\n", decoded.op_code, decoded.op_code);
             word36 command_data0 = decoded.smbxp -> command_data [0];
             word36 command_data1 = decoded.smbxp -> command_data [1];
             word36 command_data2 = decoded.smbxp -> command_data [2];
-            sim_printf ("XXX line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"", decoded.slot_no, command_data0, command_data1, command_data2);
+            sim_printf ("XXX line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", decoded.slot_no, command_data0, command_data1, command_data2);
+
+// bisync_line_data.inc.pl1
+            word18 op = getbits36_18 (command_data0, 0);
+            word18 val1 = getbits36_18 (command_data0, 18);
+            word18 val2 = getbits36_18 (command_data1, 0);
+            word18 val3 = getbits36_18 (command_data1, 18);
+            switch (op)
+              {
+                case 1:
+                  sim_printf ("SET_BID_LIMIT\n");
+                  sim_printf ("    %u\n", val1);
+                  break;
+                case 2:
+                  sim_printf ("ACCEPT_BID\n");
+                  break;
+                case 3:
+                  sim_printf ("CONFIGURE\n");
+                  if (val1 == 0)
+                    sim_printf ("    non-transparent ASCII\n");
+                  else if (val1 == 1)
+                    sim_printf ("    non-transparent ASCII\n");
+                  else 
+                    sim_printf ("    unknown %u. %o\n", val1, val1);
+                  break;
+                case 4:
+                  sim_printf ("SET_TTD_PARAMS\n");
+                  sim_printf ("    ttd_time  %u\n", val1);
+                  sim_printf ("    ttd_limit %u\n", val2);
+                  break;
+                case 5:
+                  sim_printf ("REPORT_WRITE_STATUS\n");
+                  break;
+                case 6:
+                  sim_printf ("SET_3270_MODE\n");
+                  break;
+                case 7:
+                  sim_printf ("SET_POLLING_ADDR\n");
+                  word9 len = getbits36_9 (command_data0, 18);
+                  word9 c1 = getbits36_9 (command_data0, 27);
+                  word9 c2 = getbits36_9 (command_data1, 0);
+                  word9 c3 = getbits36_9 (command_data1, 9);
+                  word9 c4 = getbits36_9 (command_data1, 18);
+                  sim_printf ("    data_len %u\n", len);
+                  sim_printf ("    char1 %u\n", c1);
+                  sim_printf ("    char2 %u\n", c2);
+                  sim_printf ("    char3 %u\n", c3);
+                  sim_printf ("    char4 %u\n", c4);
+                  break;
+                case 8:
+                  sim_printf ("START_POLL\n");
+                  break;
+                case 9:
+                  sim_printf ("SET_SELECT_ADDR\n");
+                  break;
+                case 10:
+                  sim_printf ("STOP_AUTO_POLL\n");
+                  break;
+                case 11:
+                  sim_printf ("SET_MASTER_SLAVE_MODE\n");
+                  if (val1 == 0)
+                    sim_printf ("    slave\n");
+                  else if (val1 == 1)
+                    sim_printf ("    master\n");
+                  else 
+                    sim_printf ("    unknown %u. %o\n", val1, val1);
+                  break;
+                case 12:
+                  sim_printf ("SET_HASP_MODE\n");
+                  break;
+                case 13:
+                  sim_printf ("SET_NAK_LIMIT\n");
+                  sim_printf ("    %u\n", val1);
+                  break;
+                case 14:
+                  sim_printf ("SET_HASP_TIMERS\n");
+                  break;
+                default:
+                  sim_printf ("unknown %u. %o\n", op, op);
+                  break;
+              }
+  
 #if 0
         sim_printf ("received line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", p1, d1, d2, d3);
         sim_printf ("  dce_or_dte  %"PRIo64"\n", getbits36 (d1, 0, 1));
@@ -404,7 +485,16 @@ sim_printf ("wcd %d. %o\n", decoded.op_code, decoded.op_code);
 #endif
 
           }
+          break;
 
+        case 23: // sync_msg_size
+          {
+            word36 command_data0 = decoded.smbxp -> command_data [0];
+            word18 sz = getbits36_18 (command_data0, 0);
+            sim_printf ("sync_msg_size %u\n", sz);
+          }
+          break;
+  
         case 24: // set_echnego_break_table
           {
             //sim_printf ("fnp set_echnego_break_table\n");
@@ -869,7 +959,6 @@ word36 pad;
         case 19: // dump_mem
         case 20: // patch_mem
         case 21: // fnp_break
-        case 23: // sync_msg_size
         //case 24: // set_echnego_break_table
         //case 25: // start_negotiated_echo
         //case 26: // stop_negotiated_echo
