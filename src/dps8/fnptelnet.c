@@ -177,4 +177,8 @@ void fnpTelnetInit (void)
 #endif
   }
 
+void fnp3270Init (void)
+  {
+  }
+
 

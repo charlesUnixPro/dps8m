@@ -37,7 +37,7 @@ extern DEVICE mux_dev;
 // 
 
 // memset(0) sets service to serivce_undefined (0)
-enum service_types {service_undefined = 0, service_login, service_autocall, service_slave};
+enum service_types {service_undefined = 0, service_login, service_3270, service_autocall, service_slave};
 
 typedef struct
   {
@@ -177,6 +177,7 @@ int fnpIOMCmd (uint iomUnitIdx, uint chan);
 t_stat fnpServerPort (int32 arg, const char * buf);
 t_stat fnpStart (UNUSED int32 arg, UNUSED const char * buf);
 void fnpConnectPrompt (uv_tcp_t * client);
+void fnp3270ConnectPrompt (uv_tcp_t * client);
 void processUserInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
 void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
 t_stat fnpLoad (UNUSED int32 arg, const char * buf);

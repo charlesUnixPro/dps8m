@@ -1,3 +1,7 @@
+name: a.h012;
+   service: ibm3270;
+   port: 6132;
+
 name: d.h000;
 name: d.h001;
 name: d.h002;
