@@ -387,7 +387,7 @@ static int wcd (void)
           {
             word36 command_data0 = decoded.smbxp -> command_data [0];
             word36 command_data1 = decoded.smbxp -> command_data [1];
-            word36 command_data2 = decoded.smbxp -> command_data [2];
+            //word36 command_data2 = decoded.smbxp -> command_data [2];
             //sim_printf ("XXX line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", decoded.slot_no, command_data0, command_data1, command_data2);
 
 // bisync_line_data.inc.pl1
@@ -2023,12 +2023,20 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
     return false; 
   }
 
+// The 3270 controller received a EOR
+
+void fnpRecvEOR (uv_tcp_t * client)
+  {
+    struct uvClientData * p = client->data;
+    fnpUnitData[p->fnpno].MState.line[p->lineno].accept_input = 1;
+  }
 
 static void fnpProcessBuffer (struct t_line * linep)
   {
     // The connection could have closed when we were not looking
     if (! linep->client)
       {
+sim_printf ("discarding\n");
         if (linep->inBuffer)
           free (linep->inBuffer);
         linep->inBuffer = NULL;
@@ -2036,11 +2044,9 @@ static void fnpProcessBuffer (struct t_line * linep)
         linep->inUsed = 0;
         return;
       }
-
     while (linep->inBuffer && linep->inUsed < linep->inSize)
        {
          unsigned char c = linep->inBuffer [linep->inUsed ++];
-//sim_printf ("processing %d/%d %o '%c'\n", linep->inUsed-1, linep->inSize, c, isprint (c) ? c : '?');
 
          if (linep->inUsed >= linep->inSize)
            {
@@ -2051,6 +2057,12 @@ static void fnpProcessBuffer (struct t_line * linep)
              // The connection could have been closed when we weren't looking
              if (linep->client)
                fnpuv_read_start (linep->client);
+           }
+         if (linep->service == service_3270)
+           {
+             linep->buffer[linep->nPos++] = c;
+             linep->buffer[linep->nPos] = 0;
+             continue;
            }
          if (processInputCharacter (linep, c))
            break;
@@ -2259,10 +2271,16 @@ static void fnpcmdBootload (uint devUnitIdx)
     for (int p1 = 0; p1 < MAX_LINES; p1 ++)
       {
         fnpUnitData[devUnitIdx].MState.line [p1] . listen = false;
-        if (fnpUnitData[devUnitIdx].MState.line [p1].client)
+        if (fnpUnitData[devUnitIdx].MState.line[p1].client &&
+            fnpUnitData[devUnitIdx].MState.line[p1].service == service_login)
           {
             fnpuv_start_writestr (fnpUnitData[devUnitIdx].MState.line [p1].client,
               "The FNP has been restarted\r\n");
+          }
+        if (fnpUnitData[devUnitIdx].MState.line[p1].service == service_3270)
+          {
+            // 3270 controller connects immediately
+            fnpUnitData[devUnitIdx].MState.line[p1].accept_new_terminal = true;
           }
       }
     fnpuvInit (telnet_port);
@@ -2863,7 +2881,7 @@ void fnpConnectPrompt (uv_tcp_t * client)
 **  ASCII <=> EBCDIC conversion functions
 */
 
-static unsigned char a2e[256] = {
+unsigned char a2e[256] = {
           0,  1,  2,  3, 55, 45, 46, 47, 22,  5, 37, 11, 12, 13, 14, 15,
          16, 17, 18, 19, 60, 61, 50, 38, 24, 25, 63, 39, 28, 29, 30, 31,
          64, 79,127,123, 91,108, 80,125, 77, 93, 92, 78,107, 96, 75, 97,
@@ -2882,7 +2900,7 @@ static unsigned char a2e[256] = {
         220,221,222,223,234,235,236,237,238,239,250,251,252,253,254,255
 };
 
-static unsigned char e2a[256] = {
+unsigned char e2a[256] = {
           0,  1,  2,  3,156,  9,134,127,151,141,142, 11, 12, 13, 14, 15,
          16, 17, 18, 19,157,133,  8,135, 24, 25,146,143, 28, 29, 30, 31,
         128,129,130,131,132, 10, 23, 27,136,137,138,139,140,  5,  6,  7,
@@ -2931,13 +2949,15 @@ void fnp3270ConnectPrompt (uv_tcp_t * client)
                 p->assoc = true;
                 p->fnpno = fnpno;
                 p->lineno = lineno;
+                fnpUnitData[fnpno].MState.line[lineno].client = client;
+
                 unsigned char buf [256];
                 sprintf ((char *) buf, "DPS8/M 3270 connection to %c.%03d\n", fnpno+'a',lineno);
 
 //sim_printf ("%s", buf);
                 for (uint i = 0; i < strlen ((char *) buf); i ++)
                   buf[i] = a2e[buf[i]];
-                fnpUnitData[fnpno].MState.line[lineno].accept_new_terminal = true;
+                //fnpUnitData[fnpno].MState.line[lineno].accept_new_terminal = true;
 
 // command  Erase write 245  (xf5)
 // WCC      66 x42 0100 0010   Reset, KB restore
@@ -2950,7 +2970,7 @@ void fnp3270ConnectPrompt (uv_tcp_t * client)
                 unsigned char EW [] = {245, 66, 17, 64, 64 };
                 fnpuv_start_write (client, (char *) EW, sizeof (EW));
                 fnpuv_start_writestr (client, (char *) buf);
-                fnpuv_eor (client);
+                fnpuv_send_eor (client);
                 return;
               }
           }
@@ -2968,10 +2988,12 @@ void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
         sim_printf ("bogus client data\n");
         return;
       }
-//sim_printf ("assoc. %d.%d nread %ld <%*s>\n", fnpno, lineno, nread, (int) nread, buf);
-//{for (int i = 0; i < nread; i ++) sim_printf (" %03o", buf[i]);
- //sim_printf ("\n");
-//}
+sim_printf ("assoc. %d.%d nread %ld\n", fnpno, lineno, nread);
+{for (int i = 0; i < nread; i ++) sim_printf ("%c", isprint (e2a[buf[i]]) ? e2a[buf[i]] : '.');
+sim_printf ("\n");
+for (int i = 0; i < nread; i ++) sim_printf (" %02x", buf[i]);
+sim_printf ("\n");
+}
 
     if (! fnpUnitData[fnpno].MState.accept_calls)
       {

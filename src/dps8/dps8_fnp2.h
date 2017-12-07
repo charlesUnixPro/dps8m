@@ -167,6 +167,8 @@ struct fnpUnitData
 
 extern struct fnpUnitData fnpUnitData [N_FNP_UNITS_MAX];
 
+extern unsigned char a2e [256];
+extern unsigned char e2a [256];
 void fnpInit(void);
 int lookupFnpsIomUnitNumber (int fnpUnitNum);
 int lookupFnpLink (int fnpUnitNum);
@@ -182,3 +184,5 @@ void fnp3270ConnectPrompt (uv_tcp_t * client);
 void processUserInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
 void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
 t_stat fnpLoad (UNUSED int32 arg, const char * buf);
+void fnpRecvEOR (uv_tcp_t * client);
+

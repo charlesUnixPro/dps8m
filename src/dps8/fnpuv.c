@@ -268,7 +268,6 @@ void fnpuv_associated_readcb (uv_tcp_t * client,
                            ssize_t nread,
                            unsigned char * buf)
   {
-    //printf ("assoc. <%*s>\n", (int) nread, buf->base);
     processLineInput (client, buf, nread);
   }
 
@@ -490,12 +489,17 @@ void fnpuv_start_writestr (uv_tcp_t * client, char * data)
     fnpuv_start_write (client, data, (ssize_t) strlen (data));
   }
 
-void fnpuv_eor (uv_tcp_t * client)
+void fnpuv_send_eor (uv_tcp_t * client)
   {
     uvClientData * p = (uvClientData *) client->data;
     ltnEOR (p->telnetp);
   }
 
+
+void fnpuv_recv_eor (uv_tcp_t * client)
+  {
+    fnpRecvEOR (client);
+  }
 
 //
 // Enable reading on connection

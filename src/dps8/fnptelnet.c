@@ -84,6 +84,7 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
               }
             else if (event->neg.telopt == TELNET_TELOPT_EOR)
               {
+                fnpuv_recv_eor (client);
                 // DO EOR
               }
             else
@@ -134,10 +135,9 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
 
         case TELNET_EV_IAC:
           {
-            if (event->iac.cmd == 243 || // BRK
-                event->iac.cmd == 244) // IP
+            if (event->iac.cmd == TELNET_BREAK ||
+                event->iac.cmd == TELNET_IP)
               {
-                //sim_printf ("BRK\n");
                 uvClientData * p = (uvClientData *) client->data;
                 if (p -> assoc)
                   {
@@ -145,6 +145,10 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
                   }
                 else
                   sim_warn ("liblnet dropping unassociated BRK\n");
+              }
+            else if (event->iac.cmd == TELNET_EOR)
+              {
+sim_printf ("EOR");
               }
             else
               sim_warn ("liblnet unhandle IAC event %d\n", event->iac.cmd);
