@@ -237,9 +237,9 @@ static int tun_alloc (char * dev)
 #endif
 
 static uv_loop_t * loop = NULL;
+
 static uv_tcp_t du_server;
-static uv_loop_t * loop3270 = NULL;
-static uv_tcp_t du3270_server;
+static bool du_server_inited = false;
 
 //
 // alloc_buffer: libuv callback handler to allocate buffers for incomingd data.
@@ -490,6 +490,13 @@ void fnpuv_start_writestr (uv_tcp_t * client, char * data)
     fnpuv_start_write (client, data, (ssize_t) strlen (data));
   }
 
+void fnpuv_eor (uv_tcp_t * client)
+  {
+    uvClientData * p = (uvClientData *) client->data;
+    ltnEOR (p->telnetp);
+  }
+
+
 //
 // Enable reading on connection
 //
@@ -526,18 +533,6 @@ static void on_new_connection (uv_stream_t * server, int status)
       }
 
     uv_tcp_t * client = (uv_tcp_t *) malloc (sizeof (uv_tcp_t));
-
-#if 0
-    // if server->data is non-null, this is a slave server; else a dialup
-    // server
-    if (server->data)
-      {
-        uvClientData * p = (uvClientData *) server->data;
-        struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
-sim_printf ("slave connection to %d.%d\n", p->fnpno, p->lineno); 
-        linep->client = client;
-      }
-#endif
     uv_tcp_init (loop, client);
     if (uv_accept (server, (uv_stream_t *) client) == 0)
       {
@@ -653,98 +648,6 @@ sim_printf ("[FNP emulation: dropping 2nd slave]\n");
   }
 
 //
-// Connection callback handler for dialup connections
-//
-
-static void on_new_3270_connection (uv_stream_t * server, int status)
-  {
-    if (status < 0)
-      {
-        sim_printf ("[FNP 3270 emulation: New connection error %s]\n", uv_strerror (status));
-        // error!
-        return;
-      }
-
-    uv_tcp_t * client = (uv_tcp_t *) malloc (sizeof (uv_tcp_t));
-
-    uv_tcp_init (loop3270, client);
-    if (uv_accept (server, (uv_stream_t *) client) != 0)
-      {
-        uv_close ((uv_handle_t *) client, fuv_close_cb);
-        return;
-      }
-    struct sockaddr name;
-    int namelen = sizeof (name);
-    int ret = uv_tcp_getpeername (client, & name, & namelen);
-    if (ret < 0)
-      {
-        sim_printf ("[FNP emulation: CONNECT; addr err %d]\n", ret);
-      }
-    else
-      {
-        struct sockaddr_in * p = (struct sockaddr_in *) & name;
-        sim_printf ("[FNP emulation: CONNECT %s]\n", inet_ntoa (p -> sin_addr));
-      }
-
-    uvClientData * p = (uvClientData *) malloc (sizeof (uvClientData));
-    if (! p)
-      {
-         sim_warn ("uvClientData malloc failed\n");
-         return;
-      }
-    p -> assoc = false;
-    p -> nPos = 0;
-
-    p->telnetp = ltnConnect (client);
-
-    if (! p->telnetp)
-      {
-        sim_warn ("ltnConnect failed\n");
-        return;
-      }
-    client->data = p;
-    fnpuv_read_start (client);
-    fnp3270ConnectPrompt (client);
-        //uvClientData * p = (uvClientData *) server->data;
-        //struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
-        //linep->accept_new_terminal = true;
-        //linep->was_CR = false;
-        ////linep->listen = false;
-        //linep->inputBufferSize = 0;
-        //linep->ctrlStrIdx = 0;
-        //linep->breakAll = false;
-        //linep->handleQuit = false;
-        //linep->echoPlex = false;
-        //linep->crecho = false;
-        //linep->lfecho = false;
-        //linep->tabecho = false;
-        //linep->replay = false;
-        //linep->polite = false;
-        //linep->prefixnl = false;
-        //linep->eight_bit_out = false;
-        //linep->eight_bit_in = false;
-        //linep->odd_parity = false;
-        //linep->output_flow_control = false;
-        //linep->input_flow_control = false;
-        //linep->block_xfer_in_frame_sz = 0;
-        //linep->block_xfer_out_frame_sz = 0;
-        //memset (linep->delay_table, 0, sizeof (linep->delay_table));
-        //linep->inputSuspendLen = 0;
-        //memset (linep->inputSuspendStr, 0, sizeof (linep->inputSuspendStr));
-        //linep->inputResumeLen = 0;
-        //memset (linep->inputResumeStr, 0, sizeof (linep->inputResumeStr));
-        //linep->outputSuspendLen = 0;
-        //memset (linep->outputSuspendStr, 0, sizeof (linep->outputSuspendStr));
-        //linep->outputResumeLen = 0;
-        //memset (linep->outputResumeStr, 0, sizeof (linep->outputResumeStr));
-        //linep->frame_begin = 0;
-        //linep->frame_end = 0;
-        //memset (linep->echnego, 0, sizeof (linep->echnego));
-        //linep->echnego_len = 0;
-        //linep->line_break = false;
-  }
-
-//
 // Setup the dialup listener
 //
 
@@ -753,8 +656,13 @@ void fnpuvInit (int telnet_port)
     // Ignore multiple calls; this means that once the listen port is
     // opened, it can't be changed. Fixing this requires non-trivial
     // changes.
-    if (loop)
+    if (du_server_inited)
       return;
+    du_server_inited = true;
+
+    if (! loop)
+      loop = uv_default_loop ();
+
     // Initialize the server socket
     loop = uv_default_loop ();
     uv_tcp_init (loop, & du_server);
@@ -775,33 +683,6 @@ void fnpuvInit (int telnet_port)
     if (r)
      {
         sim_printf ("[FNP emulation: Listen error %s]\n", uv_strerror (r));
-      }
-  }
-
-void fnpuv3270Init (int telnet3270_port)
-  {
-    // Ignore multiple calls; this means that once the listen port is
-    // opened, it can't be changed. Fixing this requires non-trivial
-    // changes.
-    if (loop3270)
-      return;
-    // Initialize the server socket
-    loop3270 = uv_default_loop ();
-    uv_tcp_init (loop3270, & du3270_server);
-
-    // Flag the this server as being a 3270
-    du3270_server.data = NULL;
-
-    // Bind and listen
-    struct sockaddr_in addr;
-    sim_printf ("[FNP 3270 emulation: listening to %d]\n", telnet3270_port);
-    uv_ip4_addr ("0.0.0.0", telnet3270_port, & addr);
-    uv_tcp_bind (& du3270_server, (const struct sockaddr *) & addr, 0);
-    int r = uv_listen ((uv_stream_t *) & du3270_server, DEFAULT_BACKLOG, 
-                       on_new_3270_connection);
-    if (r)
-     {
-        sim_printf ("[FNP 3270 emulation: Listen error %s]\n", uv_strerror (r));
       }
   }
 
@@ -1271,3 +1152,147 @@ void fnpTUNProcessEvent (void)
       }
   }
 #endif
+
+static uv_tcp_t du3270_server;
+static bool du3270_server_inited = false;
+
+// 3270
+
+static bool du3270_poll = false;
+
+
+void fnpuv3270Poll (bool start)
+  {
+    du3270_poll = start;
+  }
+
+//
+// Connection callback handler for dialup connections
+//
+
+static void on_new_3270_connection (uv_stream_t * server, int status)
+  {
+    if (status < 0)
+      {
+        sim_printf ("[FNP 3270 emulation: New connection error %s]\n", uv_strerror (status));
+        // error!
+        return;
+      }
+
+    uv_tcp_t * client = (uv_tcp_t *) malloc (sizeof (uv_tcp_t));
+
+    uv_tcp_init (loop, client);
+    if (uv_accept (server, (uv_stream_t *) client) != 0)
+      {
+        uv_close ((uv_handle_t *) client, fuv_close_cb);
+        return;
+      }
+    struct sockaddr name;
+    int namelen = sizeof (name);
+    int ret = uv_tcp_getpeername (client, & name, & namelen);
+    if (ret < 0)
+      {
+        sim_printf ("[FNP emulation: CONNECT; addr err %d]\n", ret);
+      }
+    else
+      {
+        struct sockaddr_in * p = (struct sockaddr_in *) & name;
+        sim_printf ("[FNP emulation: CONNECT %s]\n", inet_ntoa (p -> sin_addr));
+      }
+
+    uvClientData * p = (uvClientData *) malloc (sizeof (uvClientData));
+    if (! p)
+      {
+         sim_warn ("uvClientData malloc failed\n");
+         return;
+      }
+    p -> assoc = false;
+    p -> nPos = 0;
+
+    p->telnetp = ltnConnect3270 (client);
+
+    if (! p->telnetp)
+      {
+        sim_warn ("ltnConnect3270 failed\n");
+        return;
+      }
+    client->data = p;
+    fnpuv_read_start (client);
+    fnp3270ConnectPrompt (client);
+        //uvClientData * p = (uvClientData *) server->data;
+        //struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
+        //linep->accept_new_terminal = true;
+        //linep->was_CR = false;
+        ////linep->listen = false;
+        //linep->inputBufferSize = 0;
+        //linep->ctrlStrIdx = 0;
+        //linep->breakAll = false;
+        //linep->handleQuit = false;
+        //linep->echoPlex = false;
+        //linep->crecho = false;
+        //linep->lfecho = false;
+        //linep->tabecho = false;
+        //linep->replay = false;
+        //linep->polite = false;
+        //linep->prefixnl = false;
+        //linep->eight_bit_out = false;
+        //linep->eight_bit_in = false;
+        //linep->odd_parity = false;
+        //linep->output_flow_control = false;
+        //linep->input_flow_control = false;
+        //linep->block_xfer_in_frame_sz = 0;
+        //linep->block_xfer_out_frame_sz = 0;
+        //memset (linep->delay_table, 0, sizeof (linep->delay_table));
+        //linep->inputSuspendLen = 0;
+        //memset (linep->inputSuspendStr, 0, sizeof (linep->inputSuspendStr));
+        //linep->inputResumeLen = 0;
+        //memset (linep->inputResumeStr, 0, sizeof (linep->inputResumeStr));
+        //linep->outputSuspendLen = 0;
+        //memset (linep->outputSuspendStr, 0, sizeof (linep->outputSuspendStr));
+        //linep->outputResumeLen = 0;
+        //memset (linep->outputResumeStr, 0, sizeof (linep->outputResumeStr));
+        //linep->frame_begin = 0;
+        //linep->frame_end = 0;
+        //memset (linep->echnego, 0, sizeof (linep->echnego));
+        //linep->echnego_len = 0;
+        //linep->line_break = false;
+  }
+
+void fnpuv3270Init (int telnet3270_port)
+  {
+    // Ignore multiple calls; this means that once the listen port is
+    // opened, it can't be changed. Fixing this requires non-trivial
+    // changes.
+    if (du3270_server_inited)
+      return;
+    du3270_server_inited = true;
+    if (! loop)
+      loop = uv_default_loop ();
+    // Initialize the server socket
+    uv_tcp_init (loop, & du3270_server);
+
+    // Flag the this server as being a 3270
+    du3270_server.data = NULL;
+
+    // Bind and listen
+    struct sockaddr_in addr;
+    sim_printf ("[FNP 3270 emulation: listening to %d]\n", telnet3270_port);
+    uv_ip4_addr ("0.0.0.0", telnet3270_port, & addr);
+    uv_tcp_bind (& du3270_server, (const struct sockaddr *) & addr, 0);
+    int r = uv_listen ((uv_stream_t *) & du3270_server, DEFAULT_BACKLOG, 
+		   on_new_3270_connection);
+    if (r)
+     {
+        sim_printf ("[FNP 3270 emulation: Listen error %s]\n", uv_strerror (r));
+      }
+    du3270_poll = false;
+  }
+
+
+void fnpuvProcess3270Event (void)
+  {
+    if (du3270_poll)
+      {
+        //sim_printf ("3270 poll\n");
+      }
+  }
