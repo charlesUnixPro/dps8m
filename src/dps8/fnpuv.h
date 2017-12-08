@@ -18,6 +18,9 @@ struct uvClientData
     // Work buffet for processLineInput
     char buffer [1024];
     size_t nPos;
+    // 3270
+    char * ttype;
+    uint stationNo;
   };
 
 typedef struct uvClientData uvClientData;

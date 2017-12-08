@@ -84,7 +84,8 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
               }
             else if (event->neg.telopt == TELNET_TELOPT_EOR)
               {
-                fnpuv_recv_eor (client);
+//sim_printf ("EOR rcvd\n");
+                //fnpuv_recv_eor (client);
                 // DO EOR
               }
             else
@@ -148,7 +149,8 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
               }
             else if (event->iac.cmd == TELNET_EOR)
               {
-sim_printf ("EOR");
+sim_printf ("EOR\n");
+                fnpuv_recv_eor (client);
               }
             else
               sim_warn ("liblnet unhandle IAC event %d\n", event->iac.cmd);
@@ -157,7 +159,8 @@ sim_printf ("EOR");
 
         case TELNET_EV_TTYPE:
           {
-            // 
+            uvClientData * p = (uvClientData *) client->data;
+            p->ttype = strdup (event->ttype.name);
           }
           break;
 

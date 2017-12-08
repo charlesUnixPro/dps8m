@@ -39,7 +39,7 @@ extern DEVICE mux_dev;
 // memset(0) sets service to serivce_undefined (0)
 enum service_types {service_undefined = 0, service_login, service_3270, service_autocall, service_slave};
 
-typedef struct
+typedef struct t_MState
   {
     t_bool accept_calls;
     // 60132445 FEP Coupler Spec Nov77 - Unknown.pdf
@@ -106,6 +106,7 @@ typedef struct
         bool line_disconnected;
         bool ack_echnego_init;
         bool acu_dial_failure;
+        bool sendLineStatus;
         bool wru_timeout;
         uint accept_input; // If non-zero, the number of centiseconds until
                           // an accept_input message should be sent; this is
@@ -142,19 +143,34 @@ typedef struct
         int tun_fd;
 #endif
 
+        word9 lineType;
+        word36 lineStatus0, lineStatus1;
       } line [MAX_LINES];
   } t_MState;
+
+// for now, one controller
+
+#define IBM3270_CONTROLLERS_MAX 1
+#define IBM3270_STATIONS_MAX 32
+
+struct s_ibm3270ctlr
+  {
+    bool configured;
+    uint fnpno;
+    uint lineno;
+    // polling and selection addresses
+
+    word9 ctlrChar;
+    word9 devChar;
+    uv_tcp_t * stations [IBM3270_STATIONS_MAX];
+    bool EORReceived [IBM3270_STATIONS_MAX];
+  };
 
 #define MAX_DEV_NAME_LEN 64
 
 // Indexed by sim unit number
 struct fnpUnitData
   {
-//-    enum { no_mode, read_mode, write_mode, survey_mode } io_mode;
-//-    uint8 * bufp;
-//-    t_mtrlnt tbc; // Number of bytes read into buffer
-//-    uint words_processed; // Number of Word36 processed from the buffer
-//-    int rec_num; // track tape position
     uint mailboxAddress;
     bool fnpIsRunning;
     bool fnpMBXinUse [4];  // 4 FNP submailboxes
@@ -165,10 +181,25 @@ struct fnpUnitData
     t_MState MState;
   };
 
-extern struct fnpUnitData fnpUnitData [N_FNP_UNITS_MAX];
+typedef struct s_fnpData
+  {
+    struct fnpUnitData fnpUnitData [N_FNP_UNITS_MAX];
+    struct s_ibm3270ctlr ibm3270ctlr [IBM3270_CONTROLLERS_MAX];
+    int telnet_port;
+    int telnet3270_port;
+    uv_loop_t * loop;
+    uv_tcp_t du_server;
+    bool du_server_inited;
+    uv_tcp_t du3270_server;
+    bool du3270_server_inited;
+    bool du3270_poll;
+  } t_fnpData;
 
-extern unsigned char a2e [256];
-extern unsigned char e2a [256];
+extern t_fnpData fnpData;
+
+extern const unsigned char a2e [256];
+extern const unsigned char e2a [256];
+
 void fnpInit(void);
 int lookupFnpsIomUnitNumber (int fnpUnitNum);
 int lookupFnpLink (int fnpUnitNum);

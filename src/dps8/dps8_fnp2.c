@@ -20,6 +20,8 @@
 // XXX any message that from a line that is in a busy mailbox. I wonder how
 // XXX the real DN355 dealt with this?
 
+#define ASSUME0 0
+
 #include <stdio.h>
 #include <ctype.h>
 
@@ -153,10 +155,7 @@ DEVICE fnpDev = {
     NULL
 };
 
-static int telnet_port = 6180;
-static int telnet3270_port = 3270;
-
-struct fnpUnitData fnpUnitData [N_FNP_UNITS_MAX];
+t_fnpData fnpData;
 
 static inline void fnp_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
@@ -238,12 +237,13 @@ int lookupFnpsIomUnitNumber (int fnpUnitIdx)
 void fnpInit(void)
   {
     // 0 sets set service to service_undefined
-    memset(fnpUnitData, 0, sizeof(fnpUnitData));
+    memset(& fnpData, 0, sizeof(fnpData));
     for (int i = 0; i < N_FNP_UNITS_MAX; i ++)
       {
         cables -> cablesFromIomToFnp [i] . iomUnitIdx = -1;
       }
-    //fnpuvInit (telnet_port);
+    fnpData.telnet_port = 6180;
+    fnpData.telnet3270_port = 3270;
     fnpTelnetInit ();
     fnp3270Init ();
   }
@@ -300,7 +300,7 @@ static void dmpmbx (uint mailboxAddress)
 
 static int findMbx (uint fnpUnitIdx)
   {
-    struct fnpUnitData * fudp = & fnpUnitData [fnpUnitIdx];
+    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpUnitIdx];
     for (uint i = 0; i < 4; i ++)
       if (! fudp -> fnpMBXinUse [i])
         return (int) i;
@@ -426,16 +426,20 @@ static int wcd (void)
                   break;
                 case 7:
                   sim_printf ("SET_POLLING_ADDR\n");
-                  word9 len = getbits36_9 (command_data0, 18);
+//word36 command_data2 = decoded.smbxp -> command_data [2];
+//sim_printf ("XXX line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", decoded.slot_no, command_data0, command_data1, command_data2);
+                  //word9 len = getbits36_9 (command_data0, 18);
                   word9 c1 = getbits36_9 (command_data0, 27);
-                  word9 c2 = getbits36_9 (command_data1, 0);
+                  //word9 c2 = getbits36_9 (command_data1, 0);
                   word9 c3 = getbits36_9 (command_data1, 9);
-                  word9 c4 = getbits36_9 (command_data1, 18);
-                  sim_printf ("    data_len %u\n", len);
+                  //word9 c4 = getbits36_9 (command_data1, 18);
+                  //sim_printf ("    data_len %u\n", len);
                   sim_printf ("    char1 %u\n", c1);
-                  sim_printf ("    char2 %u\n", c2);
+                  //sim_printf ("    char2 %u\n", c2);
                   sim_printf ("    char3 %u\n", c3);
-                  sim_printf ("    char4 %u\n", c4);
+                  //sim_printf ("    char4 %u\n", c4);
+                  fnpData.ibm3270ctlr[ASSUME0].ctlrChar = c1;
+                  fnpData.ibm3270ctlr[ASSUME0].devChar = c3;
                   break;
                 case 8:
                   sim_printf ("START_POLL\n");
@@ -472,7 +476,7 @@ static int wcd (void)
               }
   
 #if 0
-        sim_printf ("received line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", p1, d1, d2, d3);
+        sim_printf ("received line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", lineno, d1, d2, d3);
         sim_printf ("  dce_or_dte  %"PRIo64"\n", getbits36 (d1, 0, 1));
         sim_printf ("  lap_or_lapb %"PRIo64"\n", getbits36 (d1, 1, 1));
         sim_printf ("  disc_first  %"PRIo64"\n", getbits36 (d1, 2, 1));
@@ -720,7 +724,7 @@ static int wcd (void)
 
                     //sim_printf ("fnp dump input\n");
         // dump the input
-       //int muxLineNo = MState[fnpUnitNum].line [p1] . muxLineNum;
+       //int muxLineNo = MState[fnpUnitNum].line [lineno] . muxLineNum;
        //sim_printf ("dumping mux line %d\n");
        //ttys [muxLineNo] . nPos = 0; 
                   }
@@ -1002,7 +1006,7 @@ static void notifyCS (int mbx, int fnpno, int lineno)
 #ifdef FNPDBG
 sim_printf ("notifyCS mbx %d\n", mbx);
 #endif
-    struct fnpUnitData * fudp = & fnpUnitData [fnpno];
+    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
@@ -1020,7 +1024,7 @@ sim_printf ("notifyCS mbx %d\n", mbx);
 
 static void fnp_rcd_ack_echnego_init (int mbx, int fnpno, int lineno)
   {
-    struct fnpUnitData * fudp = & fnpUnitData [fnpno];
+    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
@@ -1036,7 +1040,7 @@ static void fnp_rcd_ack_echnego_init (int mbx, int fnpno, int lineno)
 static void fnp_rcd_line_disconnected (int mbx, int fnpno, int lineno)
   {
 //sim_printf ("fnp_rcd_line_disconnected mbx %d fnp %d lineno %d\n", mbx, fnpno, lineno);
-    struct fnpUnitData * fudp = & fnpUnitData [fnpno];
+    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
@@ -1052,7 +1056,7 @@ static void fnp_rcd_line_disconnected (int mbx, int fnpno, int lineno)
 static void fnp_rcd_input_in_mailbox (int mbx, int fnpno, int lineno)
   {
 //sim_printf ("fnp_rcd_input_in_mailbox mbx %d fnp %d lineno %d\n", mbx, fnpno, lineno);
-    struct fnpUnitData * fudp = & fnpUnitData [fnpno];
+    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
     struct t_line * linep = & fudp->MState.line[lineno];
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
@@ -1116,10 +1120,28 @@ sim_printf ("\n");
     notifyCS (mbx, fnpno, lineno);
   }
 
+static void fnp_rcd_line_status  (int mbx, int fnpno, int lineno)
+  {
+sim_printf ("fnp_rcd_line_status  mbx %d fnp %d lineno %d\n", mbx, fnpno, lineno);
+    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
+    struct t_line * linep = & fudp->MState.line[lineno];
+    struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
+    struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+
+    putbits36_18 (& smbxp -> word2, 0, 2); // cmd_data_len
+    putbits36_9 (& smbxp -> word2, 18, 0124); // op_code accept_input
+    putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
+
+    smbxp -> mystery [0] = linep->lineStatus0;
+    smbxp -> mystery [1] = linep->lineStatus1;
+
+    notifyCS (mbx, fnpno, lineno);
+  }
+
 static void fnp_rcd_accept_input (int mbx, int fnpno, int lineno)
   {
 //sim_printf ("fnp_rcd_accept_input mbx %d fnp %d lineno %d\n", mbx, fnpno, lineno);
-    struct fnpUnitData * fudp = & fnpUnitData [fnpno];
+    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
     struct t_line * linep = & fudp->MState.line[lineno];
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
@@ -1152,7 +1174,7 @@ static void fnp_rcd_accept_input (int mbx, int fnpno, int lineno)
 
 static void fnp_rcd_line_break (int mbx, int fnpno, int lineno)
   {
-    struct fnpUnitData * fudp = & fnpUnitData [fnpno];
+    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
@@ -1170,7 +1192,7 @@ static void fnp_rcd_send_output (int mbx, int fnpno, int lineno)
 #ifdef FNPDBG
 sim_printf ("send_output\n");
 #endif
-    struct fnpUnitData * fudp = & fnpUnitData [fnpno];
+    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
@@ -1185,7 +1207,7 @@ sim_printf ("send_output\n");
 static void fnp_rcd_acu_dial_failure (int mbx, int fnpno, int lineno)
   {
     //sim_printf ("acu_dial_failure %d %d %d\n", mbx, fnpno, lineno);
-    struct fnpUnitData * fudp = & fnpUnitData [fnpno];
+    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
@@ -1200,8 +1222,8 @@ static void fnp_rcd_acu_dial_failure (int mbx, int fnpno, int lineno)
 static void fnp_rcd_accept_new_terminal (int mbx, int fnpno, int lineno)
   {
 //sim_printf ("accept_new_terminal %d %d %d\n", mbx, fnpno, lineno);
-    struct fnpUnitData * fudp = & fnpUnitData [fnpno];
-    //struct t_line * linep = & fudp->MState.line[lineno];
+    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
+    struct t_line * linep = & fudp->MState.line[lineno];
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
@@ -1209,8 +1231,47 @@ static void fnp_rcd_accept_new_terminal (int mbx, int fnpno, int lineno)
     putbits36_9 (& smbxp -> word2, 18, 64); // op_code accept_new_terminal
     putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
 
-    smbxp -> mystery [0] = 1; // (word36) termType;  XXX
-    smbxp -> mystery [1] = 0; // (word36) chanBaud;  XXX
+//  pcb.line_type, dialup_info.line_type = bin (sub_mbx.command_data (1), 17);
+//  if sub_mbx.command_data (2)
+//    then pcb.baud_rate = baud_table (bin (sub_mbx.command_data (2), 17));
+
+// declare   (LINE_MC            initial (-2),
+//            LINE_TELNET        initial (-1),
+//            LINE_UNKNOWN       initial (0),
+//            LINE_ASCII         initial (1),
+//            LINE_1050          initial (2),
+//            LINE_2741          initial (3),
+//            LINE_ARDS          initial (4),
+//            LINE_SYNCH         initial (5),
+//            LINE_G115          initial (6),
+//            LINE_BSC           initial (7),
+//            LINE_ETX           initial (8),
+//            LINE_VIP           initial (9),
+//            LINE_ASYNC1        initial (10),
+//            LINE_ASYNC2        initial (11),
+//            LINE_ASYNC3        initial (12),
+//            LINE_SYNC1         initial (13),
+//            LINE_SYNC2         initial (14),
+//            LINE_SYNC3         initial (15),
+//            LINE_POLLED_VIP    initial (16),
+//            LINE_X25LAP        initial (17),
+//            LINE_HDLC          initial (18),
+//            LINE_COLTS         initial (19),
+//            LINE_DSA           initial (20),
+//            LINE_HASP_OPR      initial (21)
+//          ) fixed bin internal static options (constant);
+
+// dcl 1 dialup_info aligned, /* for use with DIALUP interrupt */
+//     2 line_type fixed bin (9) unal uns,
+//     2 buffer_pad fixed bin (9) unal uns, /* free space multiplexer would like in output bufs */
+//     2 baud_rate fixed bin (18) unal uns,
+//     2 max_buf_size fixed bin (9) unal uns,
+//     2 receive_mode_device bit (1) unal, /* device must be told to enter receive mode */
+//     2 pad bit (26) unal;
+
+    smbxp->mystery [0] = 0; 
+    smbxp->mystery [1] = 0;
+    putbits36_9 (smbxp->mystery + 0, 27, linep->lineType);
 
     notifyCS (mbx, fnpno, lineno);
   }
@@ -1218,7 +1279,7 @@ static void fnp_rcd_accept_new_terminal (int mbx, int fnpno, int lineno)
 static void fnp_rcd_wru_timeout (int mbx, int fnpno, int lineno)
   {
     //sim_printf ("wru_timeout %d %d %d\n", mbx, fnpno, lineno);
-    struct fnpUnitData * fudp = & fnpUnitData [fnpno];
+    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
@@ -1618,6 +1679,7 @@ static int interruptL66_FNP_to_CS (void)
               {
                 case  0: // terminal_accepted
                   {
+sim_printf ("terminal_accepted\n");
                     // outputBufferThreshold Ignored
                     //word36 command_data0 = decoded.fsmbxp -> mystery [0];
                     //uint outputBufferThreshold = getbits36_18 (command_data0, 0);
@@ -1734,7 +1796,7 @@ sim_printf ("Multics marked cell %d (mbx %d) as unused; was %o\n", decoded.cell,
         decoded.fudp -> fnpMBXinUse [mbx] = false;
         if (decoded.fudp->lineWaiting[mbx])
           {
-            struct t_line * linep = & fnpUnitData[decoded.devUnitIdx].MState.line[decoded.fudp->fnpMBXlineno[mbx]];
+            struct t_line * linep = & fnpData.fnpUnitData[decoded.devUnitIdx].MState.line[decoded.fudp->fnpMBXlineno[mbx]];
 #ifdef FNPDBG
 sim_printf ("clearing wait; was %d\n", linep->waitForMbxDone);
 #endif
@@ -1754,7 +1816,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
     struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
       devices [chan] [decoded.p -> IDCW_DEV_CODE];
     decoded.devUnitIdx = d -> devUnitIdx;
-    decoded.fudp = & fnpUnitData [decoded.devUnitIdx];
+    decoded.fudp = & fnpData.fnpUnitData [decoded.devUnitIdx];
     decoded.mbxp = (struct mailbox *) & M [decoded.fudp -> mailboxAddress];
     word36 dia_pcw = decoded.mbxp -> dia_pcw;
 
@@ -2000,8 +2062,8 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
     // If we filled the buffer, move it along
 
     if (
-        // Dialup or slave and inBuffer exhausted
-        (linep->service != service_login && linep->inUsed >= linep->inSize) ||
+        // Dialout or slave and inBuffer exhausted
+        ((linep->service == service_autocall || linep->service == service_slave) && linep->inUsed >= linep->inSize) ||
 
         // Internal buffer full
         (size_t) linep->nPos >= sizeof (linep->buffer) ||
@@ -2028,7 +2090,8 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
 void fnpRecvEOR (uv_tcp_t * client)
   {
     struct uvClientData * p = client->data;
-    fnpUnitData[p->fnpno].MState.line[p->lineno].accept_input = 1;
+    //fnpData.fnpUnitData[p->fnpno].MState.line[p->lineno].accept_input = 1;
+    fnpData.ibm3270ctlr[ASSUME0].EORReceived[p->stationNo] = true;
   }
 
 static void fnpProcessBuffer (struct t_line * linep)
@@ -2075,7 +2138,7 @@ static void fnpProcessBuffers (void)
       {
         for (int lineno = 0; lineno < MAX_LINES; lineno ++)
           {
-            struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
+            struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
 
             // If an accept_input request is posted, then buffer is busy.
             if (linep->accept_input)
@@ -2117,7 +2180,7 @@ void fnpProcessEvent (void)
           continue;
         for (int lineno = 0; lineno < MAX_LINES; lineno ++)
           {
-            struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
+            struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
 
             // Need to send a 'send_output' command to CS?
 
@@ -2243,6 +2306,12 @@ sim_printf ("input_in_mailbox\n");
                 linep->accept_input --;
               }
 
+            else if (linep->sendLineStatus)
+              {
+                linep->sendLineStatus = false;
+                fnp_rcd_line_status (mbx, fnpno, lineno);
+              }
+
             else
               {
                 continue;
@@ -2267,24 +2336,37 @@ nombx:;
 static void fnpcmdBootload (uint devUnitIdx)
   {
     sim_printf("Received BOOTLOAD command...\n");
-    fnpUnitData[devUnitIdx].MState.accept_calls = false;
-    for (int p1 = 0; p1 < MAX_LINES; p1 ++)
+    fnpData.fnpUnitData[devUnitIdx].MState.accept_calls = false;
+    for (uint lineno = 0; lineno < MAX_LINES; lineno ++)
       {
-        fnpUnitData[devUnitIdx].MState.line [p1] . listen = false;
-        if (fnpUnitData[devUnitIdx].MState.line[p1].client &&
-            fnpUnitData[devUnitIdx].MState.line[p1].service == service_login)
+        fnpData.fnpUnitData[devUnitIdx].MState.line [lineno] . listen = false;
+        if (fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].client &&
+            fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].service == service_login)
           {
-            fnpuv_start_writestr (fnpUnitData[devUnitIdx].MState.line [p1].client,
+            fnpuv_start_writestr (fnpData.fnpUnitData[devUnitIdx].MState.line [lineno].client,
               "The FNP has been restarted\r\n");
           }
-        if (fnpUnitData[devUnitIdx].MState.line[p1].service == service_3270)
+        if (fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].service == service_3270)
           {
-            // 3270 controller connects immediately
-            fnpUnitData[devUnitIdx].MState.line[p1].accept_new_terminal = true;
+// XXX assuming only single controller
+            if (fnpData.ibm3270ctlr[ASSUME0].configured)
+              {
+                sim_warn ("Too many 3270 controllers configured");
+              }
+            else
+              {
+                fnpData.ibm3270ctlr[ASSUME0].configured = true;
+                fnpData.ibm3270ctlr[ASSUME0].fnpno = devUnitIdx;
+                fnpData.ibm3270ctlr[ASSUME0].lineno = lineno;
+                
+                // 3270 controller connects immediately
+                fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].lineType  = 7 /* LINE_BSC */;
+                fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].accept_new_terminal = true;
+              }
           }
       }
-    fnpuvInit (telnet_port);
-    fnpuv3270Init (telnet3270_port);
+    fnpuvInit (fnpData.telnet_port);
+    fnpuv3270Init (fnpData.telnet3270_port);
   }
 
 static void processMBX (uint iomUnitIdx, uint chan)
@@ -2293,7 +2375,7 @@ static void processMBX (uint iomUnitIdx, uint chan)
     struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
       devices [chan] [p -> IDCW_DEV_CODE];
     uint devUnitIdx = d -> devUnitIdx;
-    struct fnpUnitData * fudp = & fnpUnitData [devUnitIdx];
+    struct fnpUnitData * fudp = & fnpData.fnpUnitData [devUnitIdx];
 
 // 60132445 FEP Coupler EPS
 // 2.2.1 Control Intercommunication
@@ -2628,7 +2710,7 @@ static t_stat fnpShowIPCname (UNUSED FILE * st, UNIT * uptr,
     long n = FNP_UNIT_IDX (uptr);
     if (n < 0 || n >= N_FNP_UNITS_MAX)
       return SCPE_ARG;
-    sim_printf("FNP IPC name is %s\n", fnpUnitData [n] . ipcName);
+    sim_printf("FNP IPC name is %s\n", fnpData.fnpUnitData [n] . ipcName);
     return SCPE_OK;
   }   
 
@@ -2640,11 +2722,11 @@ static t_stat fnpSetIPCname (UNUSED UNIT * uptr, UNUSED int32 value,
       return SCPE_ARG;
     if (cptr)
       {
-        strncpy (fnpUnitData [n] . ipcName, cptr, MAX_DEV_NAME_LEN - 1);
-        fnpUnitData [n] . ipcName [MAX_DEV_NAME_LEN - 1] = 0;
+        strncpy (fnpData.fnpUnitData [n] . ipcName, cptr, MAX_DEV_NAME_LEN - 1);
+        fnpData.fnpUnitData [n] . ipcName [MAX_DEV_NAME_LEN - 1] = 0;
       }
     else
-      fnpUnitData [n] . ipcName [0] = 0;
+      fnpData.fnpUnitData [n] . ipcName [0] = 0;
     return SCPE_OK;
   }
 
@@ -2661,7 +2743,7 @@ static t_stat fnpShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val,
       }
 
     sim_printf ("FNP unit number %ld\n", fnpUnitIdx);
-    struct fnpUnitData * fudp = fnpUnitData + fnpUnitIdx;
+    struct fnpUnitData * fudp = fnpData.fnpUnitData + fnpUnitIdx;
 
     sim_printf ("FNP Mailbox Address:         %04o(8)\n", fudp -> mailboxAddress);
  
@@ -2685,7 +2767,7 @@ static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, const char * cptr, UN
         return SCPE_ARG;
       }
 
-    struct fnpUnitData * fudp = fnpUnitData + fnpUnitIdx;
+    struct fnpUnitData * fudp = fnpData.fnpUnitData + fnpUnitIdx;
 
     config_state_t cfg_state = { NULL, NULL };
 
@@ -2754,20 +2836,20 @@ t_stat fnpLoad (UNUSED int32 arg, const char * buf)
             devnum = (uint) (dev - 'a');
             havename = true;
             // CMF format sets the default service to login
-            fnpUnitData[devnum].MState.line[linenum].service = service_login;                    
+            fnpData.fnpUnitData[devnum].MState.line[linenum].service = service_login;                    
           }
         else if (havename && second && strcmp (first, "service") == 0)
           {
             if (strcmp (second, "login") == 0)
-              fnpUnitData[devnum].MState.line[linenum].service = service_login;
+              fnpData.fnpUnitData[devnum].MState.line[linenum].service = service_login;
             if (strcmp (second, "ibm3270") == 0)
-              fnpUnitData[devnum].MState.line[linenum].service = service_3270;
+              fnpData.fnpUnitData[devnum].MState.line[linenum].service = service_3270;
             else if (strcmp (second, "autocall") == 0)
-              fnpUnitData[devnum].MState.line[linenum].service = service_autocall;                   
+              fnpData.fnpUnitData[devnum].MState.line[linenum].service = service_autocall;                   
             else if (strcmp (second, "slave") == 0)
-              fnpUnitData[devnum].MState.line[linenum].service = service_slave;                   
+              fnpData.fnpUnitData[devnum].MState.line[linenum].service = service_slave;                   
             else if (strcmp (second, "offline") == 0)
-              fnpUnitData[devnum].MState.line[linenum].service = service_undefined;                   
+              fnpData.fnpUnitData[devnum].MState.line[linenum].service = service_undefined;                   
             else
               sim_printf ("service type '%s' not recognized; skipping\n", second);
           }
@@ -2784,7 +2866,7 @@ t_stat fnpLoad (UNUSED int32 arg, const char * buf)
               }
             else
               {
-                fnpUnitData[devnum].MState.line[linenum].port = (int) port;
+                fnpData.fnpUnitData[devnum].MState.line[linenum].port = (int) port;
               }
 //sim_printf ("%s fromport %d\n", current->multics.name, current->multics.fromport);
         }
@@ -2825,9 +2907,9 @@ t_stat fnpServerPort (UNUSED int32 arg, const char * buf)
     int n = atoi (buf);
     if (n < 1 || n > 65535)
       return SCPE_ARG;
-    telnet_port = n;
+    fnpData.telnet_port = n;
     sim_printf ("FNP telnet server port set to %d\n", n);
-    //fnpuvInit (telnet_port);
+    //fnpuvInit (fnpData.telnet_port);
     return SCPE_OK;
   }
 
@@ -2836,7 +2918,7 @@ t_stat fnpServer3270Port (UNUSED int32 arg, const char * buf)
     int n = atoi (buf);
     if (n < 1 || n > 65535)
       return SCPE_ARG;
-    telnet3270_port = n;
+    fnpData.telnet3270_port = n;
     sim_printf ("FNP telnet3270 server port set to %d\n", n);
     return SCPE_OK;
   }
@@ -2844,8 +2926,8 @@ t_stat fnpServer3270Port (UNUSED int32 arg, const char * buf)
 t_stat fnpStart (UNUSED int32 arg, UNUSED const char * buf)
   {
     sim_printf ("FNP force start\n");
-    fnpuvInit (telnet_port);
-    fnpuv3270Init (telnet3270_port);
+    fnpuvInit (fnpData.telnet_port);
+    fnpuv3270Init (fnpData.telnet3270_port);
     return SCPE_OK;
   }
 
@@ -2860,7 +2942,7 @@ void fnpConnectPrompt (uv_tcp_t * client)
       {
         for (int lineno = 0; lineno < MAX_LINES; lineno ++)
           {
-            struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
+            struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
             if (linep->service == service_login && ! linep->client)
               {
                 if (! first)
@@ -2881,7 +2963,7 @@ void fnpConnectPrompt (uv_tcp_t * client)
 **  ASCII <=> EBCDIC conversion functions
 */
 
-unsigned char a2e[256] = {
+const unsigned char a2e[256] = {
           0,  1,  2,  3, 55, 45, 46, 47, 22,  5, 37, 11, 12, 13, 14, 15,
          16, 17, 18, 19, 60, 61, 50, 38, 24, 25, 63, 39, 28, 29, 30, 31,
          64, 79,127,123, 91,108, 80,125, 77, 93, 92, 78,107, 96, 75, 97,
@@ -2900,7 +2982,7 @@ unsigned char a2e[256] = {
         220,221,222,223,234,235,236,237,238,239,250,251,252,253,254,255
 };
 
-unsigned char e2a[256] = {
+const unsigned char e2a[256] = {
           0,  1,  2,  3,156,  9,134,127,151,141,142, 11, 12, 13, 14, 15,
          16, 17, 18, 19,157,133,  8,135, 24, 25,146,143, 28, 29, 30, 31,
         128,129,130,131,132, 10, 23, 27,136,137,138,139,140,  5,  6,  7,
@@ -2933,31 +3015,25 @@ static char EBCDICtoASCII(const unsigned char c)
 
 void fnp3270ConnectPrompt (uv_tcp_t * client)
   {
-    // slave lines pass the fnp#/line# around in server->data.
-    // which fnp/line is the 3270 controller connected to?
-    // XXX temp; only support a single controller. Need to have different
-    // XXX listeners for each controller
-    // XXX For now, look for it.
-    for (uint fnpno = 0; fnpno < N_FNP_UNITS_MAX; fnpno ++)
-      {
-        for (uint lineno = 0; lineno < MAX_LINES; lineno ++)
-          {
-            struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
-            if (linep->service == service_3270)
-              {
-                struct uvClientData * p = client->data;
-                p->assoc = true;
-                p->fnpno = fnpno;
-                p->lineno = lineno;
-                fnpUnitData[fnpno].MState.line[lineno].client = client;
+    uint fnpno = fnpData.ibm3270ctlr[ASSUME0].fnpno;
+    uint lineno = fnpData.ibm3270ctlr[ASSUME0].lineno;
+    //struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
+    struct uvClientData * p = client->data;
+    p->assoc = true;
+    p->fnpno = fnpno;
+    p->lineno = lineno;
+    //fnpData.fnpUnitData[fnpno].MState.line[lineno].client = client;
 
-                unsigned char buf [256];
-                sprintf ((char *) buf, "DPS8/M 3270 connection to %c.%03d\n", fnpno+'a',lineno);
+    // Don't know ttype yet because Telnet negotiation won't
+    // start until evPoll runs.
+    unsigned char buf [256];
+    sprintf ((char *) buf, "DPS8/M 3270 connection to %c.%03d ttype %s\n", fnpno+'a',lineno, p->ttype);
 
+#if 0
 //sim_printf ("%s", buf);
-                for (uint i = 0; i < strlen ((char *) buf); i ++)
-                  buf[i] = a2e[buf[i]];
-                //fnpUnitData[fnpno].MState.line[lineno].accept_new_terminal = true;
+    for (uint i = 0; i < strlen ((char *) buf); i ++)
+      buf[i] = a2e[buf[i]];
+    //fnpData.fnpUnitData[fnpno].MState.line[lineno].accept_new_terminal = true;
 
 // command  Erase write 245  (xf5)
 // WCC      66 x42 0100 0010   Reset, KB restore
@@ -2967,15 +3043,11 @@ void fnp3270ConnectPrompt (uv_tcp_t * client)
 // start field 29 x1D
 // arg  96
 //          29, 200, 133, 153, 131, 164, 147, 133 ??? 
-                unsigned char EW [] = {245, 66, 17, 64, 64 };
-                fnpuv_start_write (client, (char *) EW, sizeof (EW));
-                fnpuv_start_writestr (client, (char *) buf);
-                fnpuv_send_eor (client);
-                return;
-              }
-          }
-      }
-    sim_printf ("fnp3270ConnectPrompt couldn't find controller line\n");
+    unsigned char EW [] = {245, 66, 17, 64, 64 };
+    fnpuv_start_write (client, (char *) EW, sizeof (EW));
+    fnpuv_start_writestr (client, (char *) buf);
+    fnpuv_send_eor (client);
+#endif
   }
 
 void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
@@ -2988,22 +3060,24 @@ void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
         sim_printf ("bogus client data\n");
         return;
       }
-sim_printf ("assoc. %d.%d nread %ld\n", fnpno, lineno, nread);
-{for (int i = 0; i < nread; i ++) sim_printf ("%c", isprint (e2a[buf[i]]) ? e2a[buf[i]] : '.');
-sim_printf ("\n");
-for (int i = 0; i < nread; i ++) sim_printf (" %02x", buf[i]);
-sim_printf ("\n");
-}
+//sim_printf ("assoc. %d.%d nread %ld\n", fnpno, lineno, nread);
+//{for (int i = 0; i < nread; i ++) sim_printf ("%c", isprint (e2a[buf[i]]) ? e2a[buf[i]] : '.');
+//sim_printf ("\n");
+//for (int i = 0; i < nread; i ++) sim_printf (" %02x", buf[i]);
+//sim_printf ("\n");
+//}
 
-    if (! fnpUnitData[fnpno].MState.accept_calls)
+    struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
+    if (! fnpData.fnpUnitData[fnpno].MState.accept_calls)
       {
-        fnpuv_start_writestr (client, "Multics is not accepting calls\r\n");
+        if (linep->service == service_login)
+          fnpuv_start_writestr (client, "Multics is not accepting calls\r\n");
         return;
       }
-    struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
     if (! linep->listen)
       {
-        fnpuv_start_writestr (client, "Multics is not listening to this line\r\n");
+        if (linep->service == service_login)
+          fnpuv_start_writestr (client, "Multics is not listening to this line\r\n");
         return;
       }
 
@@ -3163,8 +3237,8 @@ check:;
             goto reprompt;
           }
         fnpno = (uint) (fnpcode - 'a');
-        if (fnpUnitData[fnpno].MState.line[lineno].service != service_login ||
-            fnpUnitData[fnpno].MState.line[lineno].client)
+        if (fnpData.fnpUnitData[fnpno].MState.line[lineno].service != service_login ||
+            fnpData.fnpUnitData[fnpno].MState.line[lineno].client)
           {
             fnpuv_start_writestr (client, "not availible\r\n");
             goto reprompt;
@@ -3177,8 +3251,8 @@ check:;
           {
             for (lineno = 0; lineno < MAX_LINES; lineno ++)
               {
-                if (fnpUnitData[fnpno].MState.line[lineno].service == service_login &&
-                    ! fnpUnitData[fnpno].MState.line[lineno].client)
+                if (fnpData.fnpUnitData[fnpno].MState.line[lineno].service == service_login &&
+                    ! fnpData.fnpUnitData[fnpno].MState.line[lineno].client)
                   {
                     goto associate;
                   }
@@ -3193,7 +3267,7 @@ reprompt:;
 
 associate:;
 
-    fnpUnitData[fnpno].MState.line[lineno].client = client;
+    fnpData.fnpUnitData[fnpno].MState.line[lineno].client = client;
 //sim_printf ("associated %c.%03d %p\n", fnpno + 'a', lineno, client);
     p -> assoc = true;
     p -> fnpno = fnpno;
@@ -3219,12 +3293,13 @@ associate:;
     sprintf (buf2, "Attached to line %c.h%03d\r\n", fnpno +'a', lineno);
     fnpuv_start_writestr (client, buf2);
 
-    if (! fnpUnitData[fnpno].MState.accept_calls)
+    if (! fnpData.fnpUnitData[fnpno].MState.accept_calls)
       fnpuv_start_writestr (client, "Multics is not accepting calls\r\n");
-    else if (! fnpUnitData[fnpno].MState.line[lineno].listen)
+    else if (! fnpData.fnpUnitData[fnpno].MState.line[lineno].listen)
       fnpuv_start_writestr (client, "Multics is not listening to this line\r\n");
 
-    fnpUnitData[fnpno].MState.line[lineno].accept_new_terminal = true;
-    fnpUnitData[fnpno].MState.line[lineno].was_CR = false;
+    fnpData.fnpUnitData[fnpno].MState.line[lineno].lineType = 1 /* LINE_ASCII */;
+    fnpData.fnpUnitData[fnpno].MState.line[lineno].accept_new_terminal = true;
+    fnpData.fnpUnitData[fnpno].MState.line[lineno].was_CR = false;
     ltnRaw (p->telnetp);
   }
