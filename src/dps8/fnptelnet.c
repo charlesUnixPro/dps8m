@@ -50,6 +50,9 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
         case TELNET_EV_DATA:
           {
             uvClientData * p = (uvClientData *) client->data;
+#if 1
+            (* p->read_cb) (client, (ssize_t) event->data.size, (unsigned char *)event->data.buffer);
+#else
             if (p -> assoc)
               {
                 fnpuv_associated_readcb (client, (ssize_t) event->data.size, (unsigned char *)event->data.buffer);
@@ -58,13 +61,17 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
               {
                 fnpuv_unassociated_readcb (client, (ssize_t) event->data.size, (unsigned char *)event->data.buffer);
               }
+#endif
           }
           break;
 
         case TELNET_EV_SEND:
           {
             //sim_printf ("evHandler: send %zu <%s>\n", event->data.size, event->data.buffer);
-            fnpuv_start_write_actual (client, (char *) event->data.buffer, (ssize_t) event->data.size);
+            //fnpuv_start_write_actual (client, (char *) event->data.buffer, (ssize_t) event->data.size);
+            uvClientData * p = client->data;
+            (* p->write_actual_cb) (client, (char *) event->data.buffer, (ssize_t) event->data.size);
+            
           }
           break;
 
@@ -200,17 +207,6 @@ void * ltnConnect3270 (uv_tcp_t * client)
       {
         sim_warn ("telnet_init failed\n");
       }
-#if 0
-    const telnet_telopt_t * q = my_3270telopts;
-    while (q->telopt != -1)
-      {
-        if (q->us)
-          telnet_negotiate (p, q->us, (unsigned char) q->telopt);
-        if (q->him)
-          telnet_negotiate (p, q->him, (unsigned char) q->telopt);
-        q ++;
-      }
-#endif
 
 // This behavior is copied from Hercules.
     telnet_negotiate (p, TELNET_DO, (unsigned char) TELNET_TELOPT_TTYPE);

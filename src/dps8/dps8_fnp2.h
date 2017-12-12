@@ -145,6 +145,7 @@ typedef struct t_MState
 
         word9 lineType;
         word36 lineStatus0, lineStatus1;
+        bool sendEOT;
       } line [MAX_LINES];
   } t_MState;
 
@@ -153,17 +154,26 @@ typedef struct t_MState
 #define IBM3270_CONTROLLERS_MAX 1
 #define IBM3270_STATIONS_MAX 32
 
-struct s_ibm3270ctlr
+struct ibm3270ctlr_s
   {
     bool configured;
     uint fnpno;
     uint lineno;
     // polling and selection addresses
 
-    word9 ctlrChar;
-    word9 devChar;
-    uv_tcp_t * stations [IBM3270_STATIONS_MAX];
-    bool EORReceived [IBM3270_STATIONS_MAX];
+    unsigned char pollCtlrChar;
+    unsigned char pollDevChar;
+    unsigned char selCtlrChar;
+    unsigned char selDevChar;
+    uint stn_no;
+    struct station_s
+      {
+        uv_tcp_t * client;
+        bool EORReceived;
+        unsigned char * stn_in_buffer;
+        uint stn_in_size; // Number of bytes in inBuffer
+        //uint stn_in_used; // Number of consumed bytes in buffer
+      } stations [IBM3270_STATIONS_MAX];
   };
 
 #define MAX_DEV_NAME_LEN 64
@@ -184,7 +194,7 @@ struct fnpUnitData
 typedef struct s_fnpData
   {
     struct fnpUnitData fnpUnitData [N_FNP_UNITS_MAX];
-    struct s_ibm3270ctlr ibm3270ctlr [IBM3270_CONTROLLERS_MAX];
+    struct ibm3270ctlr_s ibm3270ctlr [IBM3270_CONTROLLERS_MAX];
     int telnet_port;
     int telnet3270_port;
     uv_loop_t * loop;
@@ -192,13 +202,15 @@ typedef struct s_fnpData
     bool du_server_inited;
     uv_tcp_t du3270_server;
     bool du3270_server_inited;
-    bool du3270_poll;
+    int du3270_poll;
   } t_fnpData;
 
 extern t_fnpData fnpData;
 
 extern const unsigned char a2e [256];
 extern const unsigned char e2a [256];
+#define ADDR_MAP_ENTRIES 32
+extern const unsigned char addr_map [ADDR_MAP_ENTRIES];
 
 void fnpInit(void);
 int lookupFnpsIomUnitNumber (int fnpUnitNum);
@@ -216,4 +228,5 @@ void processUserInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
 void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
 t_stat fnpLoad (UNUSED int32 arg, const char * buf);
 void fnpRecvEOR (uv_tcp_t * client);
+void process3270Input (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
 
