@@ -2097,6 +2097,14 @@ static void fnpProcessBuffers (void)
 //            fixed binary static options (constant);
 
 // Send a message to Multics
+
+void set_3270_write_complete (uv_tcp_t * client)
+  {
+    uvClientData * p = client->data;
+sim_printf ("set_3270_write_complete %p stn_no %d\r\n", p, p->stationNo);
+    fnpData.ibm3270ctlr[ASSUME0].stations[p->stationNo].write_complete = true;
+  }
+
 static void send_3270_msg (uint ctlr_no, unsigned char * msg, size_t len, bool brk)
   {
 #if 0
@@ -2189,6 +2197,15 @@ static void fnp_process_3270_event (void)
                  send_3270_msg (ASSUME0, & ETX, sizeof (ETX), true);
                  fnpuv3270Poll (false);
                  break;
+               }
+             if (stnp->write_complete)
+               {
+                 uint fnpno = fnpData.ibm3270ctlr[ASSUME0].fnpno;
+                 uint lineno = fnpData.ibm3270ctlr[ASSUME0].lineno;
+                 struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
+                 linep->lineStatus0 = 6llu << 18; // IBM3270_WRITE_COMPLETE
+                 linep->lineStatus1 = 0;
+                 linep->sendLineStatus = true;
                }
           }
         if (stn_cnt >= IBM3270_STATIONS_MAX)
@@ -3092,7 +3109,8 @@ void fnp3270Msg (uv_tcp_t * client, unsigned char * msg)
 // start field 29 x1D
 // arg  96
 //          29, 200, 133, 153, 131, 164, 147, 133 ??? 
-    unsigned char EW [] = {245, 66, 17, 64, 64 };
+    //unsigned char EW [] = {245, 66, 17, 64, 64 };
+    unsigned char EW [] = {245, 0xc3, 17, 64, 64 };
     fnpuv_start_3270_write (client, EW, sizeof (EW));
     fnpuv_start_3270_write (client, buf, (ssize_t) l);
     fnpuv_send_eor (client);

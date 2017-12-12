@@ -70,7 +70,7 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
             //sim_printf ("evHandler: send %zu <%s>\n", event->data.size, event->data.buffer);
             //fnpuv_start_write_actual (client, (char *) event->data.buffer, (ssize_t) event->data.size);
             uvClientData * p = client->data;
-            (* p->write_actual_cb) (client, (char *) event->data.buffer, (ssize_t) event->data.size);
+            (* p->write_actual_cb) (client, (unsigned char *) event->data.buffer, (ssize_t) event->data.size);
             
           }
           break;

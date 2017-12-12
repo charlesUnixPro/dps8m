@@ -450,6 +450,19 @@ static void fuv_write_cb (uv_write_t * req, int status)
     free (req);
   }
 
+//
+// fuv_write_3270_cb: libuv write complete callback
+//
+//   Cleanup on error
+//   Free buffers
+//
+
+static void fuv_write_3270_cb (uv_write_t * req, int status)
+  {
+    fuv_write_cb (req, status);
+    set_3270_write_complete ((uv_tcp_t *) req->handle);
+  }
+
 // Create and start a write request
 
 static void fnpuv_start_write_3270_actual (uv_tcp_t * client, unsigned char * data, ssize_t datalen)
@@ -507,7 +520,7 @@ sim_printf ("\r\n");
 #endif
 //sim_printf ("fnpuv_start_write_actual req %p buf.base %p\n", req, buf.base);
     memcpy (buf.base, data, (unsigned long) datalen);
-    int ret = uv_write (req, (uv_stream_t *) stn_client, & buf, 1, fuv_write_cb);
+    int ret = uv_write (req, (uv_stream_t *) stn_client, & buf, 1, fuv_write_3270_cb);
 // There seems to be a race condition when Mulitcs signals a disconnect_line;
 // We close the socket, but Mulitcs is still writing its goodbye text trailing
 // NULs.

@@ -170,6 +170,7 @@ struct ibm3270ctlr_s
       {
         uv_tcp_t * client;
         bool EORReceived;
+        bool write_complete;
         unsigned char * stn_in_buffer;
         uint stn_in_size; // Number of bytes in inBuffer
         //uint stn_in_used; // Number of consumed bytes in buffer
@@ -229,4 +230,5 @@ void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
 t_stat fnpLoad (UNUSED int32 arg, const char * buf);
 void fnpRecvEOR (uv_tcp_t * client);
 void process3270Input (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
+void set_3270_write_complete (uv_tcp_t * client);
 
