@@ -55,7 +55,9 @@ typedef struct t_MState
         enum service_types service;
 
         // libuv hook
-        uv_tcp_t * client;
+        // For non-multiplexed lines, the connection to the remote is stored here; 
+        // For multiplexed lines (3270), the connection to the currenty selected station is stored here. Used by wtx.
+        uv_tcp_t * line_client;
 
         // libtelnet hook
         bool was_CR;
@@ -94,6 +96,7 @@ typedef struct t_MState
         uint frame_end;
         bool echnego [256];
         uint echnego_len;
+        uint sync_msg_size;
         // Pending requests
         bool line_break;
 #ifdef FNPDBG
@@ -165,16 +168,24 @@ struct ibm3270ctlr_s
     unsigned char pollDevChar;
     unsigned char selCtlrChar;
     unsigned char selDevChar;
+    bool sending_stn_in_buffer;
     uint stn_no;
     struct station_s
       {
         uv_tcp_t * client;
         bool EORReceived;
-        bool write_complete;
+        bool hdr_sent;
         unsigned char * stn_in_buffer;
         uint stn_in_size; // Number of bytes in inBuffer
+        uint stn_in_used;
         //uint stn_in_used; // Number of consumed bytes in buffer
       } stations [IBM3270_STATIONS_MAX];
+    // Although this is nominally a per/station event, Multics will not
+    // resume polling until after the write is complete, so only
+    // one event would be pending at any time; moving it out of the
+    // 'stations' structure makes it easier for the emulator event
+    // loops to see.
+    bool write_complete;
   };
 
 #define MAX_DEV_NAME_LEN 64
@@ -211,6 +222,8 @@ extern t_fnpData fnpData;
 extern const unsigned char a2e [256];
 extern const unsigned char e2a [256];
 #define ADDR_MAP_ENTRIES 32
+// map station number to selDevChar
+// addr_map [stn_no] == selDevChar
 extern const unsigned char addr_map [ADDR_MAP_ENTRIES];
 
 void fnpInit(void);

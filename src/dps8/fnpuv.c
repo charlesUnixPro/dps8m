@@ -319,11 +319,11 @@ void close_connection (uv_stream_t* stream)
               {
                 sim_printf ("[FNP emulation: DISCONNECT]\n");
               }
-            if (linep->client)
+            if (linep->line_client)
               {
-                // linep->client is a copied stream->data; will be freed
+                // linep->line_client is a copied stream->data; will be freed
                 // below
-                linep->client = NULL;
+                linep->line_client = NULL;
               }
           }
         // Clean up allocated data
@@ -467,8 +467,10 @@ static void fuv_write_3270_cb (uv_write_t * req, int status)
 
 static void fnpuv_start_write_3270_actual (uv_tcp_t * client, unsigned char * data, ssize_t datalen)
   {
+#ifdef FNP2_DEBUG
 sim_printf ("fnpuv_start_write_3270_actual\r\n");
-#if 1
+#endif
+#if 0
 sim_printf ("hex   :");
 for (ssize_t i = 0; i < datalen; i ++) sim_printf (" %02hhx", data[i]);
 sim_printf ("\r\n");
@@ -575,8 +577,10 @@ void fnpuv_start_3270_write (uv_tcp_t * client, unsigned char * data, ssize_t da
     if (! client || uv_is_closing ((uv_handle_t *) client))
       return;
     uvClientData * p = (uvClientData *) client->data;
-#if 1
-sim_printf ("fnpuv_start_3270_write :");
+#ifdef FNP2_DEBUG
+sim_printf ("fnpuv_start_3270_write\r\n");
+#endif
+#if 0
 sim_printf ("hex   :");
 for (ssize_t i = 0; i < datalen; i ++) sim_printf (" %02hhx", data[i]);
 sim_printf ("\r\n");
@@ -605,7 +609,9 @@ sim_printf ("\r\n");
 
     if (datalen == 1 && data [0] == 0x37) // EOT
       {
+#ifdef FNP2_DEBUG
 sim_printf ("detected EOT\r\n");
+#endif
         fnpuv_send_eor (client);
         return;
       }
@@ -677,6 +683,9 @@ void fnpuv_recv_eor (uv_tcp_t * client)
 
 void fnpuv_read_start (uv_tcp_t * client)
   {
+#ifdef FNP2_DEBUG
+sim_printf ("fnpuv_read_start\r\n");
+#endif
     if (! client || uv_is_closing ((uv_handle_t *) client))
       return;
     uv_read_start ((uv_stream_t *) client, alloc_buffer, fuv_read_cb);
@@ -722,14 +731,16 @@ static void on_new_connection (uv_stream_t * server, int status)
         struct t_line * linep = & fnpData.fnpUnitData[p->fnpno].MState.line[p->lineno];
 #if 1
         // Slave servers only handle a single connection at a time
-        if (linep->client)
+        if (linep->line_client)
           {
             uv_close ((uv_handle_t *) client, fuv_close_cb);
+#ifdef FNP2_DEBUG
 sim_printf ("[FNP emulation: dropping 2nd slave]\n");
+#endif
             return;
           }
 #endif
-        linep->client = client;
+        linep->line_client = client;
       }
         
     struct sockaddr name;
@@ -904,11 +915,11 @@ static void on_do_connect (uv_connect_t * server, int status)
         return;
       }
 
-    uv_read_start ((uv_stream_t *) linep->client, alloc_buffer, fuv_read_cb);
+    uv_read_start ((uv_stream_t *) linep->line_client, alloc_buffer, fuv_read_cb);
     linep->listen = true;
     linep->accept_new_terminal = true;
     linep->was_CR = false;
-    linep->client->data = p;
+    linep->line_client->data = p;
     if (p->telnetp)
       {
         ltnDialout (p->telnetp);
@@ -996,8 +1007,8 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
     struct sockaddr_in dest;
     uv_ip4_addr(ipaddr, (int) port, &dest);
 
-    linep->client = (uv_tcp_t *) malloc (sizeof (uv_tcp_t));
-    uv_tcp_init (fnpData.loop, linep->client);
+    linep->line_client = (uv_tcp_t *) malloc (sizeof (uv_tcp_t));
+    uv_tcp_init (fnpData.loop, linep->line_client);
 
 
     uvClientData * p = (uvClientData *) malloc (sizeof (uvClientData));
@@ -1015,7 +1026,7 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
       {
         p->write_cb = fnpuv_start_write;
         p->write_actual_cb = fnpuv_start_write_actual;
-        p->telnetp = ltnConnect (linep->client);
+        p->telnetp = ltnConnect (linep->line_client);
         if (! p->telnetp)
           {
               sim_warn ("ltnConnect failed\n");
@@ -1030,9 +1041,9 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
     p->fnpno = fnpno;
     p->lineno = lineno;
 
-    linep->client->data = p;
+    linep->line_client->data = p;
 
-    uv_tcp_connect (& linep->doConnect, linep->client, (const struct sockaddr *) & dest, on_do_connect);
+    uv_tcp_connect (& linep->doConnect, linep->line_client, (const struct sockaddr *) & dest, on_do_connect);
   }
 
 #if 0
@@ -1048,7 +1059,7 @@ static void on_slave_connect (uv_stream_t * server, int status)
         return;
       }
 
-    uv_read_start ((uv_stream_t *) & linep->client, alloc_buffer, do_readcb);
+    uv_read_start ((uv_stream_t *) & linep->line_client, alloc_buffer, do_readcb);
     linep->accept_new_terminal = true;
   }
 #endif
@@ -1091,7 +1102,7 @@ void fnpuv_open_slave (uint fnpno, uint lineno)
     p->fnpno = fnpno;
     p->lineno = lineno;
     linep->server.data = p;
-    linep->client = NULL;
+    linep->line_client = NULL;
 
     struct sockaddr_in addr;
     uv_ip4_addr ("0.0.0.0", linep->port, & addr);
@@ -1108,8 +1119,8 @@ void fnpuv_open_slave (uint fnpno, uint lineno)
 // but it's not clear to me how.
 
 #if 0
-    linep->client = (uv_tcp_t *) malloc (sizeof (uv_tcp_t));
-    uv_tcp_init (fnpData.loop, linep->client);
+    linep->line_client = (uv_tcp_t *) malloc (sizeof (uv_tcp_t));
+    uv_tcp_init (fnpData.loop, linep->line_client);
 
     uvClientData * p = (uvClientData *) malloc (sizeof (uvClientData));
     if (! p)
@@ -1123,13 +1134,13 @@ void fnpuv_open_slave (uint fnpno, uint lineno)
     p->fnpno = fnpno;
     p->lineno = lineno;
 
-    linep->client->data = p;
+    linep->line_client->data = p;
 
     struct sockaddr_in addr;
     uv_ip4_addr ("0.0.0.0", linep->port, & addr);
-    uv_tcp_bind (linep->client, (const struct sockaddr *) & addr, 0);
+    uv_tcp_bind (linep->line_client, (const struct sockaddr *) & addr, 0);
 sim_printf ("listening on port %d\n", linep->port);
-    int r = uv_listen ((uv_stream_t *) linep->client, DEFAULT_BACKLOG, 
+    int r = uv_listen ((uv_stream_t *) linep->line_client, DEFAULT_BACKLOG, 
                        on_slave_connect);
     if (r)
      {
@@ -1345,6 +1356,12 @@ static void on_new_3270_connection (uv_stream_t * server, int status)
         uv_close ((uv_handle_t *) client, fuv_close_cb);
         return;
       }
+
+    uint fnpno = fnpData.ibm3270ctlr[ASSUME0].fnpno;
+    uint lineno = fnpData.ibm3270ctlr[ASSUME0].lineno;
+    // Set the line client to NULL; the actual clients are in 'stations'
+    fnpData.fnpUnitData[fnpno].MState.line[lineno].line_client = NULL;
+
     fnpData.ibm3270ctlr[ASSUME0].stations[stn_no].client = client;
 
     // Set up selection so the telnet negotiation can find the station.
@@ -1371,6 +1388,8 @@ static void on_new_3270_connection (uv_stream_t * server, int status)
       }
     client->data = p;
     p->assoc = false;
+    p->fnpno = fnpno;
+    p->lineno = lineno;
     p->nPos = 0;
     p->ttype = NULL;
     p->read_cb = fnpuv_3270_readcb;
