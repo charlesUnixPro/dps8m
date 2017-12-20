@@ -533,11 +533,13 @@ sim_printf ("wcd dial_out %d\r\n", decoded.slot_no);
                     //word9 c2 = getbits36_9 (command_data1, 0);
                     word9 c3 = getbits36_9 (command_data1, 9);
                     //word9 c4 = getbits36_9 (command_data1, 18);
+#ifdef FNP2_DEBUG
                     //sim_printf ("    data_len %u\n", len);
                     sim_printf ("    char1 %u\n", c1);
                     //sim_printf ("    char2 %u\n", c2);
                     sim_printf ("    char3 %u\n", c3);
                     //sim_printf ("    char4 %u\n", c4);
+#endif
                     fnpData.ibm3270ctlr[ASSUME0].pollCtlrChar = (unsigned char) (c1 & 0xff);
                     fnpData.ibm3270ctlr[ASSUME0].pollDevChar = (unsigned char) (c3 & 0xff);
                     fnpData.
@@ -563,11 +565,13 @@ sim_printf ("wcd dial_out %d\r\n", decoded.slot_no);
                     //word9 c2 = getbits36_9 (command_data1, 0);
                     word9 c3 = getbits36_9 (command_data1, 9);
                     //word9 c4 = getbits36_9 (command_data1, 18);
+#ifdef FNP2_DEBUG
                     //sim_printf ("    data_len %u\n", len);
                     sim_printf ("    char1 %u\n", c1);
                     //sim_printf ("    char2 %u\n", c2);
                     sim_printf ("    char3 %u\n", c3);
                     //sim_printf ("    char4 %u\n", c4);
+#endif
                     fnpData.ibm3270ctlr[ASSUME0].selCtlrChar = (unsigned char) (c1 & 0xff);
                     fnpData.ibm3270ctlr[ASSUME0].selDevChar = (unsigned char) (c3 & 0xff);
 
@@ -1347,31 +1351,28 @@ static void fnp_rcd_accept_input (int mbx, int fnpno, int lineno)
     struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
     struct t_line * linep = & fudp->MState.line[lineno];
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
-    struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+    struct input_sub_mbx * smbxp = (struct input_sub_mbx *) & (mbxp -> fnp_sub_mbxes [mbx]);
 #ifdef FNP2_DEBUG
 sim_printf ("accept_input mbx %d fnpno %d lineno %d nPos %d\n", mbx, fnpno, lineno, linep->nPos);
 #endif
 
-    putbits36_18 (& smbxp -> word2, 0, (word18) linep->nPos); // cmd_data_len XXX
+    putbits36_18 (& smbxp -> word2, 0, (word18) linep->nPos); // cmd_data_len 
     putbits36_9 (& smbxp -> word2, 18, 0112); // op_code accept_input
     putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
 
-    // Not in AN85...
-    // It looks like we need to build the DCW list, and let CS fill in the
-    // addresses. I have no idea what the limit on the tally is; i.e. when
-    // does the data need to be split up into multiple buffers?
-    smbxp -> mystery [0] = 1; // n_buffers?
+    // AN85 is just wrong. CS expects us to specify the number of buffers
+    // and sizes.
 
-    // DCW for buffer
-    smbxp -> mystery [1] = 0;
-    putbits36_12 (& smbxp -> mystery [1], 24, (word12) linep->nPos);
+    smbxp -> n_buffers = 1; 
+    // DCW for buffer (1)
+    smbxp -> dcws [0] = 0;
+    putbits36_12 (& smbxp -> dcws [0], 24, (word12) linep->nPos);
 
-    // Command_data after n_buffers and 24 dcws
     // temporary until the logic is in place XXX
-    int outputChainPresent = 0;
+    word1 output_chain_present = 1;
 
-    putbits36_1 (& smbxp -> mystery [25], 16, (word1) outputChainPresent);
-    putbits36_1 (& smbxp -> mystery [25], 17, linep->input_break ? 1 : 0);
+    putbits36_1 (& smbxp -> command_data, 16, (word1) output_chain_present);
+    putbits36_1 (& smbxp -> command_data, 17, linep->input_break ? 1 : 0);
 
     fudp -> fnpMBXlineno [mbx] = lineno;
     notifyCS (mbx, fnpno, lineno);
@@ -1624,6 +1625,7 @@ extern bool watchBits [MEMSIZE];
     word12 tally1 = getbits36_12 (p->dcws[1], 24);
     if (n_buffers > 2)
       sim_warn ("n_buffers > 2?\n");
+sim_printf ("n_buffers %u\r\n", n_buffers);
 #ifdef FNP2_DEBUG
 watchBits[& p->n_buffers - M] = true;
 watchBits[& p->dcws[0] - M] = true;
@@ -1635,6 +1637,8 @@ watchBits[& p->dcws[0] - M] = true;
 
 // XXX This loop should copy just nPos characters...
 
+sim_printf ("long  in; tally0 %d addr0 %08o\n", tally0, addr0);
+sim_printf ("long  in; tally1 %d addr1 %08x\n", tally1, addr1);
 #ifdef FNP2_DEBUG
 sim_printf ("long  in; line %d tally %d\n", decoded.slot_no, linep->nPos);
 sim_printf ("long  in; tally0 %d addr0 %08o\n", tally0, addr0);
@@ -1650,6 +1654,7 @@ sim_printf ("long  in; tally0 %d addr0 %08o\n", tally0, addr0);
           putbits36_9 (& v, 18, data [i + 2]);
         if (i + 3 < tally0)
           putbits36_9 (& v, 27, data [i + 3]);
+sim_printf ("%08o:%012"PRIo64"\n", addr0, v);
 #ifdef FNP2_DEBUG
 sim_printf ("%012"PRIo64"\n", v);
 watchBits[addr0]=true;
@@ -1672,6 +1677,7 @@ sim_printf ("long  in; tally1 %d addr1 %08x\n", tally1, addr1);
           putbits36_9 (& v, 18, data [tally0 + i + 2]);
         if (i + 3 < tally1)
           putbits36_9 (& v, 27, data [tally0 + i + 3]);
+sim_printf ("%08o:%012"PRIo64"\n", addr1, v);
 #ifdef FNP2_DEBUG
 sim_printf ("%012"PRIo64"\n", v);
 #endif
@@ -2710,6 +2716,7 @@ sim_printf ("\r\n");
 sim_printf ("accept_input fnp %u line %u nPos %d\n", fnpno, lineno, linep->nPos);
 #endif
                     if (linep->nPos > 100)
+                    //if (1)
                       {
                         fnp_rcd_accept_input (mbx, fnpno, lineno);
 #ifdef FNPDBG
