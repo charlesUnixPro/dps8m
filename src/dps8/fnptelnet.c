@@ -49,6 +49,11 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
       {
         case TELNET_EV_DATA:
           {
+            if (! client || ! client->data)
+              {
+                sim_warn ("evHandler TELNET_EV_DATA bad client data\r\n");
+                return;
+              }
             uvClientData * p = (uvClientData *) client->data;
 #if 1
             (* p->read_cb) (client, (ssize_t) event->data.size, (unsigned char *)event->data.buffer);
@@ -69,6 +74,11 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
           {
             //sim_printf ("evHandler: send %zu <%s>\n", event->data.size, event->data.buffer);
             //fnpuv_start_write_actual (client, (char *) event->data.buffer, (ssize_t) event->data.size);
+            if (! client || ! client->data)
+              {
+                sim_warn ("evHandler TELNET_EV_SEND bad client data\r\n");
+                return;
+              }
             uvClientData * p = client->data;
             (* p->write_actual_cb) (client, (unsigned char *) event->data.buffer, (ssize_t) event->data.size);
             
@@ -146,6 +156,11 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
             if (event->iac.cmd == TELNET_BREAK ||
                 event->iac.cmd == TELNET_IP)
               {
+                if (! client || ! client->data)
+                  {
+                    sim_warn ("evHandler TELNET_EV_IAC bad client data\r\n");
+                    return;
+                  }
                 uvClientData * p = (uvClientData *) client->data;
                 if (p -> assoc)
                   {
@@ -168,6 +183,11 @@ sim_printf ("EOR\n");
 
         case TELNET_EV_TTYPE:
           {
+            if (! client || ! client->data)
+              {
+                sim_warn ("evHandler TELNET_EV_IAC bad client data\r\n");
+                return;
+              }
             uvClientData * p = (uvClientData *) client->data;
             p->ttype = strdup (event->ttype.name);
           }

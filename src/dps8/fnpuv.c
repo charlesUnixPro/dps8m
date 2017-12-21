@@ -250,6 +250,13 @@ static void alloc_buffer (UNUSED uv_handle_t * handle, size_t suggested_size,
 
 void fnpuv_associated_brk (uv_tcp_t * client)
   {
+    if (! client || uv_is_closing ((uv_handle_t *) client))
+      return;
+    if (! client->data)
+      {
+        sim_warn ("fnpuv_associated_brk bad client data\r\n");
+        return;
+      }
     uvClientData * p = (uvClientData *) client->data;
     uint fnpno = p -> fnpno;
     uint lineno = p -> lineno;
@@ -294,6 +301,11 @@ static void fuv_close_cb (uv_handle_t * stream)
 
 void close_connection (uv_stream_t* stream)
   {
+    if (! stream)
+      {
+        sim_warn ("close_connection bad client data\r\n");
+        return;
+      }
     uvClientData * p = (uvClientData *) stream->data;
     
     // If stream->data, the stream is associated with a Multics line.
@@ -362,6 +374,11 @@ static void fuv_read_cb (uv_stream_t* stream,
       }
     else if (nread > 0)
       {
+        if (! stream)
+          {
+            sim_warn ("fuv_read_cb bad client data\r\n");
+            return;
+          }
         uvClientData * p = (uvClientData *) stream->data;
         if (p)
           {
@@ -574,9 +591,11 @@ void fnpuv_start_write (uv_tcp_t * client, unsigned char * data, ssize_t datalen
 
 void fnpuv_start_3270_write (uv_tcp_t * client, unsigned char * data, ssize_t datalen)
   {
-    if (! client || uv_is_closing ((uv_handle_t *) client))
+    if (! client || uv_is_closing ((uv_handle_t *) client) || ! client->data)
       return;
     uvClientData * p = (uvClientData *) client->data;
+    if (! p)
+      return;
 #ifdef FNP2_DEBUG
 sim_printf ("fnpuv_start_3270_write\r\n");
 #endif
@@ -659,12 +678,26 @@ void fnpuv_start_write_special (uv_tcp_t * client, unsigned char * data, ssize_t
 void fnpuv_start_writestr (uv_tcp_t * client, unsigned char * data)
   {
     //fnpuv_start_write (client, data, (ssize_t) strlen (data));
+    if (! client || uv_is_closing ((uv_handle_t *) client))
+      return;
+    if (! client->data)
+      {
+        sim_warn ("fnpuv_start_writestr bad client data\r\n");
+        return;
+      }
     uvClientData * p = client->data;
     (* p->write_cb) (client, data, (ssize_t) strlen ((char *) data));
   }
 
 void fnpuv_send_eor (uv_tcp_t * client)
   {
+    if (! client || uv_is_closing ((uv_handle_t *) client))
+      return;
+    if (! client->data)
+      {
+        sim_warn ("fnpuv_send_eor bad client data\r\n");
+        return;
+      }
     uvClientData * p = (uvClientData *) client->data;
     ltnEOR (p->telnetp);
     //unsigned char EOR [] = { TELNET_IAC, TELNET_EOR };

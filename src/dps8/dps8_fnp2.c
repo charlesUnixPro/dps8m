@@ -1530,8 +1530,13 @@ sim_printf ("fnp_wtx_output tally %u\n", tally);
 
     if (tally > 0)
       {
-        uvClientData * p = linep->line_client->data;
-        (* p->write_cb) (linep->line_client, data, tally);
+        if (! linep->line_client || ! linep->line_client->data)
+          {
+            sim_warn ("fnp_wtx_output bad client data\r\n");
+            return;
+          }
+       uvClientData * p = linep->line_client->data;
+       (* p->write_cb) (linep->line_client, data, tally);
       }
   }
 
@@ -2046,6 +2051,11 @@ sim_printf ("CS interrupt %u\n", decoded.cell);
 static inline bool processInputCharacter (struct t_line * linep, unsigned char kar)
   {
 
+    if (! linep->line_client)
+      {
+        sim_warn ("processInputCharacter bad client\r\n");
+        return false;
+      }
 // telnet sends keyboard returns as CR/NUL. Drop the null when we see it;
     uvClientData * p = linep->line_client->data;
     //sim_printf ("kar %03o isTelnet %d was CR %d is Null %d\n", kar, !!p->telnetp, linep->was_CR, kar == 0);
@@ -2250,6 +2260,11 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
 
 void fnpRecvEOR (uv_tcp_t * client)
   {
+    if (! client || ! client->data)
+      {
+        sim_warn ("fnpRecvEOR bad client data\r\n");
+        return;
+      }
     uvClientData * p = client->data;
     //fnpData.fnpUnitData[p->fnpno].MState.line[p->lineno].accept_input = 1;
     fnpData.ibm3270ctlr[ASSUME0].stations[p->stationNo].EORReceived = true;
@@ -3464,6 +3479,11 @@ void fnp3270Msg (uv_tcp_t * client, unsigned char * msg)
 
 void fnp3270ConnectPrompt (uv_tcp_t * client)
   {
+    if (! client || ! client->data)
+      {
+        sim_warn ("fnp3270ConnectPrompt bad client data\r\n");
+        return;
+      }
     uint fnpno = fnpData.ibm3270ctlr[ASSUME0].fnpno;
     uint lineno = fnpData.ibm3270ctlr[ASSUME0].lineno;
     //struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
@@ -3485,6 +3505,11 @@ void fnp3270ConnectPrompt (uv_tcp_t * client)
 
 void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
   {
+    if (! client || ! client->data)
+      {
+        sim_warn ("processLineInput bad client data\r\n");
+        return;
+      }
     uvClientData * p = (uvClientData *) client->data;
     uint fnpno = p -> fnpno;
     uint lineno = p -> lineno;
@@ -3553,6 +3578,11 @@ done:;
 
 void process3270Input (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
   {
+    if (! client || ! client->data)
+      {
+        sim_warn ("process3270Input bad client data\r\n");
+        return;
+      }
     uvClientData * p = (uvClientData *) client->data;
     uint fnpno = p->fnpno;
     uint lineno = p->lineno;
@@ -3631,6 +3661,11 @@ done:;
 
 void processUserInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
   {
+    if (! client || ! client->data)
+      {
+        sim_warn ("processUserInput bad client data\r\n");
+        return;
+      }
     uvClientData * p = (uvClientData *) client->data;
     for (ssize_t nchar = 0; nchar < nread; nchar ++)
       {
