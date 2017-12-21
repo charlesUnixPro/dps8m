@@ -2434,32 +2434,20 @@ sim_printf ("send_stn_in_buffer\r\n");
 
 // MCS accept_input appears to be broken. Set the buffer size to <= 100 to
 // force input_in_mailbox
-#if 1
     uint left = 75;
-#else
-    uint left = linep->sync_msg_size;
-#endif
+
     unsigned char * bufp = linep->buffer;
+
+    * bufp ++  = 0x2; // STX
+    left --;
+
     if (! stnp->hdr_sent)
       {
-#ifdef FNP2_DEBUG
-sim_printf ("handling hdr_sent\r\n");
-#endif
-#if 1
-        * bufp ++  = 0x2; // STX
         * bufp ++  = addr_map [ASSUME0]; // Controller address
+        left --;
         * bufp ++  = addr_map [ctlrp->stn_no]; // Station address
-        left -= 3;
+        left --;
         stnp->hdr_sent = true;
-#else
-        unsigned char hdr [3];
-        hdr [0]  = 0x2; // STX
-        hdr [1]  = addr_map [ASSUME0]; // Controller address
-        hdr [2]  = addr_map [ctlrp->stn_no]; // Station address
-        send_3270_msg (ASSUME0, hdr, sizeof (hdr), false);
-        stnp->hdr_sent = true;
-        return;
-#endif
       }
 
     uint n_to_send = stnp->stn_in_size - stnp->stn_in_used;
@@ -2467,9 +2455,6 @@ sim_printf ("handling hdr_sent\r\n");
       n_to_send = left;
     if (n_to_send)
       {
-#ifdef FNP2_DEBUG
-sim_printf ("handling in used %u %u\r\n", stnp->stn_in_used, n_to_send);
-#endif
         //send_3270_msg (ASSUME0, stnp->stn_in_buffer + stnp->stn_in_used, n_to_send, false);
         //return;
         memcpy (bufp, stnp->stn_in_buffer + stnp->stn_in_used, n_to_send);
@@ -2480,9 +2465,6 @@ sim_printf ("handling in used %u %u\r\n", stnp->stn_in_used, n_to_send);
 
     if (stnp->stn_in_used >= stnp->stn_in_size && left)
       {
-#ifdef FNP2_DEBUG
-sim_printf ("handling ETX\r\n");
-#endif
         * bufp ++ = 0x3; // ETX
         left --;
 
@@ -2499,9 +2481,6 @@ sim_printf ("handling ETX\r\n");
     long sz = bufp - linep->buffer;
     if (sz)
       {
-#ifdef FNP2_DEBUG
-sim_printf ("I think data starts %02hhx\r\n", linep->buffer[0]);
-#endif
         linep->accept_input = 1;
         linep->nPos = (int) sz;
       }
