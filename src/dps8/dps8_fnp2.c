@@ -1353,7 +1353,7 @@ static void fnp_rcd_accept_input (int mbx, int fnpno, int lineno)
     struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
     struct input_sub_mbx * smbxp = (struct input_sub_mbx *) & (mbxp -> fnp_sub_mbxes [mbx]);
 #ifdef FNP2_DEBUG
-sim_printf ("accept_input mbx %d fnpno %d lineno %d nPos %d\n", mbx, fnpno, lineno, linep->nPos);
+sim_printf ("accept_input mbx %d fnpno %d lineno %d nPos %d inputBreak %d\n", mbx, fnpno, lineno, linep->nPos, linep->input_break);
 #endif
 
     putbits36_18 (& smbxp -> word2, 0, (word18) linep->nPos); // cmd_data_len 
@@ -2432,7 +2432,13 @@ sim_printf ("send_stn_in_buffer\r\n");
     struct ibm3270ctlr_s * ctlrp = & fnpData.ibm3270ctlr[ASSUME0];
     struct station_s * stnp = & fnpData.ibm3270ctlr[ASSUME0].stations[ctlrp->stn_no];
 
+// MCS accept_input appears to be broken. Set the buffer size to <= 100 to
+// force input_in_mailbox
+#if 1
+    uint left = 75;
+#else
     uint left = linep->sync_msg_size;
+#endif
     unsigned char * bufp = linep->buffer;
     if (! stnp->hdr_sent)
       {
