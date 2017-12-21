@@ -3177,7 +3177,7 @@ void cmpc (void)
       {
         word9 c1 = EISget469 (1, cpu.du.CHTALLY); // get Y-char1n
         word9 c2 = EISget469 (2, cpu.du.CHTALLY); // get Y-char2n
-
+sim_debug (DBG_TRACE, & cpu_dev, "cmpc tally %d c1 %03o c2 %03o\n", cpu.du.CHTALLY, c1, c2);
         if (c1 != c2)
           {
             CLR_I_ZERO;  // an inequality found

@@ -195,6 +195,8 @@ struct ibm3270ctlr_s
     bool write_complete;
   };
 
+#define MAX_DEV_NAME_LEN 64
+
 // Indexed by sim unit number
 struct fnpUnitData
   {
@@ -266,7 +268,4 @@ void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
 void fnpRecvEOR (uv_tcp_t * client);
 void process3270Input (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
 void set_3270_write_complete (uv_tcp_t * client);
-#if 0
-t_stat fnpLoad (UNUSED int32 arg, const char * buf);
-#endif
 void startFNPListener (void);

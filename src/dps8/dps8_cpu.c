@@ -276,7 +276,11 @@ const char *sim_stop_messages[] =
  * BUG: unimplemented instructions may not be represented
  */
 
+#ifdef FNP2_DEBUG
+bool watchBits [MEMSIZE];
+#else
 static bool watchBits [MEMSIZE];
+#endif
 
 static int is_eis[1024];    // hack
 
