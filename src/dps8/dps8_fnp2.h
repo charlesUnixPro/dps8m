@@ -37,9 +37,9 @@ extern DEVICE mux_dev;
 // 
 
 // memset(0) sets service to serivce_undefined (0)
-enum service_types {service_undefined = 0, service_login, service_autocall, service_slave};
+enum service_types {service_undefined = 0, service_login, service_3270, service_autocall, service_slave};
 
-typedef struct
+typedef struct t_MState
   {
     t_bool accept_calls;
     // 60132445 FEP Coupler Spec Nov77 - Unknown.pdf
@@ -55,7 +55,9 @@ typedef struct
         enum service_types service;
 
         // libuv hook
-        uv_tcp_t * client;
+        // For non-multiplexed lines, the connection to the remote is stored here; 
+        // For multiplexed lines (3270), the connection to the currenty selected station is stored here. Used by wtx.
+        uv_tcp_t * line_client;
 
         // libtelnet hook
         bool was_CR;
@@ -94,6 +96,7 @@ typedef struct
         uint frame_end;
         bool echnego [256];
         uint echnego_len;
+        uint sync_msg_size;
         // Pending requests
         bool line_break;
 #ifdef FNPDBG
@@ -110,6 +113,7 @@ typedef struct
 #endif
         bool ack_echnego_init;
         bool acu_dial_failure;
+        bool sendLineStatus;
         bool wru_timeout;
         uint accept_input; // If non-zero, the number of centiseconds until
                           // an accept_input message should be sent; this is
@@ -149,17 +153,51 @@ typedef struct
         uint frameLen;
 #endif
 
+        word9 lineType;
+        word36 lineStatus0, lineStatus1;
+        bool sendEOT;
       } line [MAX_LINES];
   } t_MState;
+
+// for now, one controller
+
+#define IBM3270_CONTROLLERS_MAX 1
+#define IBM3270_STATIONS_MAX 32
+
+struct ibm3270ctlr_s
+  {
+    bool configured;
+    uint fnpno;
+    uint lineno;
+    // polling and selection addresses
+
+    unsigned char pollCtlrChar;
+    unsigned char pollDevChar;
+    unsigned char selCtlrChar;
+    unsigned char selDevChar;
+    bool sending_stn_in_buffer;
+    uint stn_no;
+    struct station_s
+      {
+        uv_tcp_t * client;
+        bool EORReceived;
+        bool hdr_sent;
+        unsigned char * stn_in_buffer;
+        uint stn_in_size; // Number of bytes in inBuffer
+        uint stn_in_used;
+        //uint stn_in_used; // Number of consumed bytes in buffer
+      } stations [IBM3270_STATIONS_MAX];
+    // Although this is nominally a per/station event, Multics will not
+    // resume polling until after the write is complete, so only
+    // one event would be pending at any time; moving it out of the
+    // 'stations' structure makes it easier for the emulator event
+    // loops to see.
+    bool write_complete;
+  };
 
 // Indexed by sim unit number
 struct fnpUnitData
   {
-//-    enum { no_mode, read_mode, write_mode, survey_mode } io_mode;
-//-    uint8 * bufp;
-//-    t_mtrlnt tbc; // Number of bytes read into buffer
-//-    uint words_processed; // Number of Word36 processed from the buffer
-//-    int rec_num; // track tape position
     uint mailboxAddress;
     bool fnpIsRunning;
     bool fnpMBXinUse [4];  // 4 FNP submailboxes
@@ -170,7 +208,46 @@ struct fnpUnitData
     t_MState MState;
   };
 
-extern struct fnpUnitData fnpUnitData [N_FNP_UNITS_MAX];
+typedef struct s_fnpData
+  {
+    struct fnpUnitData fnpUnitData [N_FNP_UNITS_MAX];
+    struct ibm3270ctlr_s ibm3270ctlr [IBM3270_CONTROLLERS_MAX];
+    int telnet_port;
+    int telnet3270_port;
+    uv_loop_t * loop;
+    uv_tcp_t du_server;
+    bool du_server_inited;
+    uv_tcp_t du3270_server;
+    bool du3270_server_inited;
+    int du3270_poll;
+  } t_fnpData;
+
+extern t_fnpData fnpData;
+
+// dn355_mailbox.incl.pl1 
+//   input_sub_mbx
+//       pad1:8, line_number:10, n_free_buffers:18
+//       n_chars:18, op_code:9, io_cmd:9
+//       n_buffers 
+//       { abs_addr:24, tally:12 } [24]
+//       command_data
+
+struct input_sub_mbx
+  {
+    word36 word1; // dn355_no; is_hsla; la_no; slot_no    // 0      word0
+    word36 word2; // cmd_data_len; op_code; io_cmd        // 1      word1
+    word36 n_buffers;
+    word36 dcws [24];
+    word36 command_data;
+  };
+
+
+extern const unsigned char a2e [256];
+extern const unsigned char e2a [256];
+#define ADDR_MAP_ENTRIES 32
+// map station number to selDevChar
+// addr_map [stn_no] == selDevChar
+extern const unsigned char addr_map [ADDR_MAP_ENTRIES];
 
 void fnpInit(void);
 int lookupFnpsIomUnitNumber (int fnpUnitNum);
@@ -180,10 +257,15 @@ t_stat diaCommand (int fnpUnitNum, char *arg3);
 void fnpToCpuQueueMsg (int fnpUnitNum, char * msg);
 int fnpIOMCmd (uint iomUnitIdx, uint chan);
 t_stat fnpServerPort (int32 arg, const char * buf);
+t_stat fnpServer3270Port (int32 arg, const char * buf);
 t_stat fnpStart (UNUSED int32 arg, UNUSED const char * buf);
 void fnpConnectPrompt (uv_tcp_t * client);
+void fnp3270ConnectPrompt (uv_tcp_t * client);
 void processUserInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
 void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
+void fnpRecvEOR (uv_tcp_t * client);
+void process3270Input (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
+void set_3270_write_complete (uv_tcp_t * client);
 #if 0
 t_stat fnpLoad (UNUSED int32 arg, const char * buf);
 #endif

@@ -15,6 +15,8 @@
 // This module contains the code that runs under the IOM channel thread
 //
 
+#define ASSUME0 0
+
 #include <stdio.h>
 #include <ctype.h>
 
@@ -264,8 +266,8 @@ static int wcd (void)
         case  1: // disconnect_this_line
           {
             sim_debug (DBG_TRACE, & fnpDev, "[%u]    disconnect_this_line\n", decoded.slot_no);
-            if (linep->client && linep->service == service_login)
-              fnpuv_start_writestr (linep->client, "Multics has disconnected you\r\n");
+            if (linep->line_client && linep->service == service_login)
+              fnpuv_start_writestr (linep->line_client, (unsigned char *) "Multics has disconnected you\r\n");
 #ifdef DISC_DELAY
             // '1' --> disconnect on next poll
             linep -> line_disconnected = 1;
@@ -273,9 +275,9 @@ static int wcd (void)
             linep -> line_disconnected = true;
 #endif
             linep -> listen = false;
-            if (linep->client)
+            if (linep->line_client)
               {
-                close_connection ((uv_stream_t *) linep->client);
+                close_connection ((uv_stream_t *) linep->line_client);
               }
             
           }
@@ -324,10 +326,189 @@ static int wcd (void)
             sim_debug (DBG_TRACE, & fnpDev, "[%u]    line_control\n", decoded.slot_no);
             word36 command_data0 = decoded.smbxp -> command_data [0];
             word36 command_data1 = decoded.smbxp -> command_data [1];
-            word36 command_data2 = decoded.smbxp -> command_data [2];
-            sim_printf ("XXX line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"", decoded.slot_no, command_data0, command_data1, command_data2);
+            //word36 command_data2 = decoded.smbxp -> command_data [2];
+            //sim_printf ("XXX line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", decoded.slot_no, command_data0, command_data1, command_data2);
+
+// bisync_line_data.inc.pl1
+            word18 op = getbits36_18 (command_data0, 0);
+#ifdef FNP2_DEBUG
+            word18 val1 = getbits36_18 (command_data0, 18);
+            word18 val2 = getbits36_18 (command_data1, 0);
+#endif
+            //word18 val3 = getbits36_18 (command_data1, 18);
+//sim_printf ("line_control %d op %d. %o\r\n", decoded.slot_no, op, op);
+            switch (op)
+              {
+                case 1:
+#ifdef FNP2_DEBUG
+                  sim_printf ("SET_BID_LIMIT\n");
+                  sim_printf ("    %u\n", val1);
+#endif
+                  break;
+                case 2:
+#ifdef FNP2_DEBUG
+                  sim_printf ("ACCEPT_BID\n");
+#endif
+                  break;
+                case 3:
+#ifdef FNP2_DEBUG
+                  sim_printf ("CONFIGURE\n");
+                  if (val1 == 0)
+                    sim_printf ("    non-transparent ASCII\n");
+                  else if (val1 == 1)
+                    sim_printf ("    non-transparent EBCDIC\n");
+                  else if (val1 == 2)
+                    sim_printf ("    transparent ASCII\n");
+                  else if (val1 == 3)
+                    sim_printf ("    transparent EBCDIC\n");
+                  else 
+                    sim_printf ("    unknown %u. %o\n", val1, val1);
+#endif
+                  break;
+                case 4:
+#ifdef FNP2_DEBUG
+                  sim_printf ("SET_TTD_PARAMS\n");
+                  sim_printf ("    ttd_time  %u\n", val1);
+                  sim_printf ("    ttd_limit %u\n", val2);
+#endif
+                  break;
+                case 5:
+#ifdef FNP2_DEBUG
+                  sim_printf ("REPORT_WRITE_STATUS\n");
+#endif
+                  break;
+                case 6:
+#ifdef FNP2_DEBUG
+                  sim_printf ("SET_3270_MODE\n");
+#endif
+                  break;
+                case 7:
+                  {
+#ifdef FNP2_DEBUG
+                    sim_printf ("SET_POLLING_ADDR\n");
+#endif
+//word36 command_data2 = decoded.smbxp -> command_data [2];
+//sim_printf ("XXX line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", decoded.slot_no, command_data0, command_data1, command_data2);
+                    //word9 len = getbits36_9 (command_data0, 18);
+                    word9 c1 = getbits36_9 (command_data0, 27);
+                    //word9 c2 = getbits36_9 (command_data1, 0);
+                    word9 c3 = getbits36_9 (command_data1, 9);
+                    //word9 c4 = getbits36_9 (command_data1, 18);
+#ifdef FNP2_DEBUG
+                    //sim_printf ("    data_len %u\n", len);
+                    sim_printf ("    char1 %u\n", c1);
+                    //sim_printf ("    char2 %u\n", c2);
+                    sim_printf ("    char3 %u\n", c3);
+                    //sim_printf ("    char4 %u\n", c4);
+#endif
+                    fnpData.ibm3270ctlr[ASSUME0].pollCtlrChar = (unsigned char) (c1 & 0xff);
+                    fnpData.ibm3270ctlr[ASSUME0].pollDevChar = (unsigned char) (c3 & 0xff);
+                    fnpData.
+                      fnpUnitData[decoded.devUnitIdx].
+                        MState.
+                          line[decoded.slot_no].
+                            line_client = NULL;
+                  }
+                  break;
+                case 8:
+#ifdef FNP2_DEBUG
+                  sim_printf ("START_POLL\n");
+#endif
+                  fnpuv3270Poll (true);
+                  break;
+                case 9:
+                  {
+#ifdef FNP2_DEBUG
+                    sim_printf ("SET_SELECT_ADDR\n");
+#endif
+                    //word9 len = getbits36_9 (command_data0, 18);
+                    word9 c1 = getbits36_9 (command_data0, 27);
+                    //word9 c2 = getbits36_9 (command_data1, 0);
+                    word9 c3 = getbits36_9 (command_data1, 9);
+                    //word9 c4 = getbits36_9 (command_data1, 18);
+#ifdef FNP2_DEBUG
+                    //sim_printf ("    data_len %u\n", len);
+                    sim_printf ("    char1 %u\n", c1);
+                    //sim_printf ("    char2 %u\n", c2);
+                    sim_printf ("    char3 %u\n", c3);
+                    //sim_printf ("    char4 %u\n", c4);
+#endif
+                    fnpData.ibm3270ctlr[ASSUME0].selCtlrChar = (unsigned char) (c1 & 0xff);
+                    fnpData.ibm3270ctlr[ASSUME0].selDevChar = (unsigned char) (c3 & 0xff);
+
+                    // General Poll
+                    if (fnpData.ibm3270ctlr[ASSUME0].selDevChar == 127)
+                      {
+                        fnpData.
+                          fnpUnitData[decoded.devUnitIdx].
+                            MState.
+                              line[decoded.slot_no].
+                                line_client = NULL;
+                        break;
+                      }
+// Setup line_client to that wtx can locate the connection
+
+                    // Find the client from the device selection call
+
+                    uint stn_no;
+                    for (stn_no = 0; stn_no < ADDR_MAP_ENTRIES; stn_no ++)
+                      if (addr_map [stn_no] == fnpData.ibm3270ctlr[ASSUME0].selDevChar)
+                        break;
+                    if (stn_no >= ADDR_MAP_ENTRIES)
+                      {
+                        sim_warn ("SET_POLLING_ADDR couldn't find selDevChar %02hhx\r\n", fnpData.ibm3270ctlr[ASSUME0].selDevChar);
+                        break;
+                      }
+                    fnpData.
+                      fnpUnitData[decoded.devUnitIdx].
+                        MState.
+                          line[decoded.slot_no].
+                            line_client = 
+                                           fnpData.
+                                             ibm3270ctlr[ASSUME0].
+                                               stations[stn_no].
+                                                 client;
+                  }
+                  break;
+                case 10:
+#ifdef FNP2_DEBUG
+                  sim_printf ("STOP_AUTO_POLL\n");
+#endif
+                  break;
+                case 11:
+#ifdef FNP2_DEBUG
+                  sim_printf ("SET_MASTER_SLAVE_MODE\n");
+                  if (val1 == 0)
+                    sim_printf ("    slave\n");
+                  else if (val1 == 1)
+                    sim_printf ("    master\n");
+                  else 
+                    sim_printf ("    unknown %u. %o\n", val1, val1);
+#endif
+                  break;
+                case 12:
+#ifdef FNP2_DEBUG
+                  sim_printf ("SET_HASP_MODE\n");
+#endif
+                  break;
+                case 13:
+#ifdef FNP2_DEBUG
+                  sim_printf ("SET_NAK_LIMIT\n");
+                  sim_printf ("    %u\n", val1);
+#endif
+                  break;
+                case 14:
+#ifdef FNP2_DEBUG
+                  sim_printf ("SET_HASP_TIMERS\n");
+#endif
+                  break;
+                default:
+                  sim_printf ("unknown %u. %o\n", op, op);
+                  break;
+              }
+  
 #if 0
-        sim_printf ("received line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", p1, d1, d2, d3);
+        sim_printf ("received line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", lineno, d1, d2, d3);
         sim_printf ("  dce_or_dte  %"PRIo64"\n", getbits36 (d1, 0, 1));
         sim_printf ("  lap_or_lapb %"PRIo64"\n", getbits36 (d1, 1, 1));
         sim_printf ("  disc_first  %"PRIo64"\n", getbits36 (d1, 2, 1));
@@ -341,6 +522,15 @@ static int wcd (void)
 #endif
 
           }
+        break;
+
+        case 23: // sync_msg_size
+          {
+            word36 command_data0 = decoded.smbxp -> command_data [0];
+            linep->sync_msg_size = (uint) getbits36_18 (command_data0, 0);
+            //sim_printf ("sync_msg_size %u\n", sz);
+          }
+          break;
 
         case 24: // set_echnego_break_table
           {
@@ -532,7 +722,7 @@ static int wcd (void)
                 case 16: // Listen
                   {
                     sim_debug (DBG_TRACE, & fnpDev, "[%u]        alter_parameters listen %u\n", decoded.slot_no, flag);
-                    //sim_printf ("fnp listen %p %d.%d %d\n", linep->client, decoded.devUnitIdx,decoded.slot_no, flag);
+                    //sim_printf ("fnp listen %p %d.%d %d\n", linep->line_client, decoded.devUnitIdx,decoded.slot_no, flag);
                     uint bufsz = getbits36_18 (decoded.smbxp->command_data[0], 18);
                     linep->listen = !! flag;
                     linep->inputBufferSize = bufsz;
@@ -540,14 +730,14 @@ static int wcd (void)
                     if (linep->service == service_undefined)
                       linep->service = service_login;
 
-                    if (linep->service == service_login && linep -> client)
+                    if (linep->service == service_login && linep -> line_client)
                       {
-                        fnpuv_start_writestr (linep->client,
+                        fnpuv_start_writestr (linep->line_client,
                           linep->listen ?
-                            "Multics is now listening to this line\r\n":
-                            "Multics is no longer listening to this line\r\n");
+                            (unsigned char *) "Multics is now listening to this line\r\n":
+                            (unsigned char *) "Multics is no longer listening to this line\r\n");
                       }
-                    if (linep->service == service_slave && ! linep -> client)
+                    if (linep->service == service_slave && ! linep -> line_client)
                       fnpuv_open_slave (decoded.devUnitIdx, decoded.slot_no);
                   }
                   break;
@@ -592,7 +782,7 @@ static int wcd (void)
 
                     //sim_printf ("fnp dump input\n");
         // dump the input
-       //int muxLineNo = MState[fnpUnitNum].line [p1] . muxLineNum;
+       //int muxLineNo = MState[fnpUnitNum].line [lineno] . muxLineNum;
        //sim_printf ("dumping mux line %d\n");
        //ttys [muxLineNo] . nPos = 0; 
                   }
@@ -847,7 +1037,6 @@ word36 pad;
         case 19: // dump_mem
         case 20: // patch_mem
         case 21: // fnp_break
-        case 23: // sync_msg_size
         //case 24: // set_echnego_break_table
         //case 25: // start_negotiated_echo
         //case 26: // stop_negotiated_echo
@@ -1065,32 +1254,18 @@ sim_printf ("\\%03o", data [i]);
 sim_printf ("']\n");
 }
 }
-//#endif
-
-#if 1
-    unsigned char * clean = data;
-#else
-    // delete NULs
-    //unsigned char * clean = malloc (tally + 1);
-    unsigned char clean [tally + 1];
-    unsigned char * p = data;
-    unsigned char * q = clean;
-    for (uint i = 0; i < tally; i ++)
-      {
-        unsigned char c = * p ++;
-        if (c)
-          * q ++ = c;
-      }
-    * q ++ = 0;
-#endif
-//sim_printf ("clean:%d.%d <%s>\r\n", decoded.devUnitIdx, decoded.slot_no, clean);
-    //if (strlen ((char *) clean) && linep->client)
 #ifdef TUN
     if (linep->is_tun && tally > 0)
-      tun_write (linep, data9, tally);
+      {
+        tun_write (linep, data9, tally);
+        return;
+     }
 #endif
-    if (tally > 0 && linep->client)
-      fnpuv_start_write (linep->client, (char *) clean, tally);
+    if (tally > 0 && linep->line_client)
+      {
+        uvClientData * p = linep->line_client->data;
+        (* p->write_cb) (linep->line_client, data, tally);
+      }
   }
 
 static int wtx (void)
@@ -1178,11 +1353,12 @@ static void fnp_rtx_input_accepted (void)
 //      request required a wraparound of the circular buffer.
 //
 
-    word9 n_buffers = getbits36_9 (decoded.fsmbxp->mystery[0], 27);
-    word24 addr0 = getbits36_24 (decoded.fsmbxp->mystery[1], 0);
-    word12 tally0 = getbits36_12 (decoded.fsmbxp->mystery[1], 24);
-    word24 addr1 = getbits36_24 (decoded.fsmbxp->mystery[2], 0);
-    word12 tally1 = getbits36_12 (decoded.fsmbxp->mystery[2], 24);
+    struct input_sub_mbx * p = (struct input_sub_mbx *) decoded.fsmbxp;
+    word9 n_buffers = getbits36_9 (p->n_buffers, 27);
+    word24 addr0 = getbits36_24 (p->dcws[0], 0);
+    word12 tally0 = getbits36_12 (p->dcws[0], 24);
+    word24 addr1 = getbits36_24 (p->dcws[1], 0);
+    word12 tally1 = getbits36_12 (p->dcws[1], 24);
     if (n_buffers > 2)
       sim_warn ("n_buffers > 2?\n");
     
@@ -1227,35 +1403,39 @@ sim_printf ("']\n");
         addr0 ++;
       }
 
-    for (int i = 0; i < tally1 + 3; i += 4)
+    if (n_buffers > 1 && linep->nPos > tally0)
       {
-        word36 v = 0;
-        if (i < tally1)
-          putbits36_9 (& v, 0, data [tally0 + i]);
-        if (i + 1 < tally1)
-          putbits36_9 (& v, 9, data [tally0 + i + 1]);
-        if (i + 2 < tally1)
-          putbits36_9 (& v, 18, data [tally0 + i + 2]);
-        if (i + 3 < tally1)
-          putbits36_9 (& v, 27, data [tally0 + i + 3]);
+        for (int i = 0; i < tally1 + 3; i += 4)
+          {
+            word36 v = 0;
+            if (i < tally1)
+              putbits36_9 (& v, 0, data [tally0 + i]);
+            if (i + 1 < tally1)
+              putbits36_9 (& v, 9, data [tally0 + i + 1]);
+            if (i + 2 < tally1)
+              putbits36_9 (& v, 18, data [tally0 + i + 2]);
+            if (i + 3 < tally1)
+              putbits36_9 (& v, 27, data [tally0 + i + 3]);
 //sim_printf ("%012"PRIo64"\n", v);
 #ifdef SCUMEM
-        iom_core_write (iomUnitIdx, addr1, v, __func__);
+            iom_core_write (iomUnitIdx, addr1, v, __func__);
 #else
         //M [addr1 ++] = v;
-        fnp_core_write (addr1, v, "rtx_input_accepted");
+            fnp_core_write (addr1, v, "rtx_input_accepted");
 #endif
-        addr1 ++;
+            addr1 ++;
+          }
       }
 
-// command_data is at mystery[25]?
-
     // temporary until the logic is in place XXX
-    int outputChainPresent = 0;
+    // This appears to only be used in tty_interrupt.pl1 as
+    // rtx_info.output_in_fnp as part of echo negotiation:
+    //    if ^rtx_info.output_in_fnp  /* if there's no output going on */
+    // So apparently a flag indicating that there is output queued.
+    word1 output_chain_present = 1;
 
-    l_putbits36_1 (& decoded.fsmbxp->mystery[25], 16, (word1) outputChainPresent);
-    l_putbits36_1 (& decoded.fsmbxp->mystery[25], 17, linep->input_break ? 1 : 0);
-//sim_printf ("fnp_rtx_input_accepted input_break %d\n", linep->input_break ? 1 : 0);
+    l_putbits36_1 (& p->command_data, 16, output_chain_present);
+    l_putbits36_1 (& p->command_data, 17, linep->input_break ? 1 : 0);
 
     // Mark the line as ready to receive more data
     linep->input_reply_pending = false;
@@ -1504,7 +1684,7 @@ sim_printf ("Multics marked cell %d (mbx %d) as unused; was %o\n", decoded.cell,
         decoded.fudp -> fnpMBXinUse [mbx] = false;
         if (decoded.fudp->lineWaiting[mbx])
           {
-            struct t_line * linep = & fnpUnitData[decoded.devUnitIdx].MState.line[decoded.fudp->fnpMBXlineno[mbx]];
+            struct t_line * linep = & fnpData.fnpUnitData[decoded.devUnitIdx].MState.line[decoded.fudp->fnpMBXlineno[mbx]];
 #ifdef FNPDBG
 sim_printf ("clearing wait; was %d\n", linep->waitForMbxDone);
 #endif
@@ -1523,7 +1703,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
     struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
       devices [chan] [decoded.p -> IDCW_DEV_CODE];
     decoded.devUnitIdx = d -> devUnitIdx;
-    decoded.fudp = & fnpUnitData [decoded.devUnitIdx];
+    decoded.fudp = & fnpData.fnpUnitData [decoded.devUnitIdx];
 #ifdef SCUMEM
     word24 offset;
     int scuUnitNum =  queryIomScbankMap (iomUnitIdx, decoded.fudp->mailboxAddress, & offset);
@@ -1597,17 +1777,40 @@ sim_printf ("CS interrupt %u\n", decoded.cell);
 static void fnpcmdBootload (uint devUnitIdx)
   {
     sim_printf("Received BOOTLOAD command...\n");
-    fnpUnitData[devUnitIdx].MState.accept_calls = false;
-    for (int p1 = 0; p1 < MAX_LINES; p1 ++)
+    fnpData.fnpUnitData[devUnitIdx].MState.accept_calls = false;
+    for (uint lineno = 0; lineno < MAX_LINES; lineno ++)
       {
-        fnpUnitData[devUnitIdx].MState.line [p1] . listen = false;
-        if (fnpUnitData[devUnitIdx].MState.line [p1].client)
+        fnpData.fnpUnitData[devUnitIdx].MState.line [lineno] . listen = false;
+        if (fnpData.fnpUnitData[devUnitIdx].MState.line [lineno].line_client)
           {
-            fnpuv_start_writestr (fnpUnitData[devUnitIdx].MState.line [p1].client,
-              "The FNP has been restarted\r\n");
+            fnpuv_start_writestr (fnpData.fnpUnitData[devUnitIdx].MState.line [lineno].line_client,
+              (unsigned char *) "The FNP has been restarted\r\n");
+          }
+        if (fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].service == service_3270)
+          {
+#ifdef FNP2_DEBUG
+sim_printf ("3270 controller found at unit %u line %u\r\n", devUnitIdx, lineno);
+#endif
+// XXX assuming only single controller
+            if (fnpData.ibm3270ctlr[ASSUME0].configured)
+              {
+                sim_warn ("Too many 3270 controllers configured");
+              }
+            else
+              {
+                memset (& fnpData.ibm3270ctlr[ASSUME0], 0, sizeof (struct ibm3270ctlr_s));
+                fnpData.ibm3270ctlr[ASSUME0].configured = true;
+                fnpData.ibm3270ctlr[ASSUME0].fnpno = devUnitIdx;
+                fnpData.ibm3270ctlr[ASSUME0].lineno = lineno;
+                
+                // 3270 controller connects immediately
+                fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].lineType  = 7 /* LINE_BSC */;
+                fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].accept_new_terminal = true;
+              }
           }
       }
-    //fnpuvInit (telnet_port);
+    fnpuvInit (fnpData.telnet_port);
+    fnpuv3270Init (fnpData.telnet3270_port);
   }
 
 static void processMBX (uint iomUnitIdx, uint chan)
@@ -1616,7 +1819,7 @@ static void processMBX (uint iomUnitIdx, uint chan)
     struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
       devices [chan] [p -> IDCW_DEV_CODE];
     uint devUnitIdx = d -> devUnitIdx;
-    struct fnpUnitData * fudp = & fnpUnitData [devUnitIdx];
+    struct fnpUnitData * fudp = & fnpData.fnpUnitData [devUnitIdx];
 
 // 60132445 FEP Coupler EPS
 // 2.2.1 Control Intercommunication

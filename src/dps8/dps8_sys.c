@@ -218,6 +218,7 @@ static CTAB dps8_cmds[] =
     {"SEARCHMEMORY",        searchMemory,         0, "searchMemory: search memory for value\n", NULL, NULL},
 
     {"FNPSERVERPORT",       fnpServerPort,        0, "fnpServerPort: set the FNP dialin telnet port number", NULL, NULL},
+    {"FNPSERVER3270PORT", fnpServer3270Port, 0, "fnpServerPort: set the FNP 3270 port number", NULL, NULL},
 #ifdef EISTESTJIG
     // invoke EIS test jig.......∫
     {"ET",                  eisTest,              0, "invoke EIS test jig\n", NULL, NULL}, 
