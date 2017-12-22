@@ -279,6 +279,7 @@ static uint virtToPhys (uint ptPtr, uint l66Address)
     fnp_core_read (pageTable + l66AddressPage, & ptw, "fnpIOMCmd get ptw");
     uint page = getbits36_14 (ptw, 4);
     uint addr = page * 1024u + l66Address % 1024u;
+//sim_printf ("PCW_PAGE_TABLE_PTR %08o v: %08o ptw %012llo page %05o (%5d.) addr %08o\r\n", ptPtr, l66Address, ptw, page, page, addr);
     return addr;
   }
 
@@ -1630,8 +1631,8 @@ extern bool watchBits [MEMSIZE];
     word12 tally1 = getbits36_12 (p->dcws[1], 24);
     if (n_buffers > 2)
       sim_warn ("n_buffers > 2?\n");
-sim_printf ("n_buffers %u\r\n", n_buffers);
 #ifdef FNP2_DEBUG
+sim_printf ("n_buffers %u\r\n", n_buffers);
 watchBits[& p->n_buffers - M] = true;
 watchBits[& p->dcws[0] - M] = true;
 #endif
@@ -1642,8 +1643,6 @@ watchBits[& p->dcws[0] - M] = true;
 
 // XXX This loop should copy just nPos characters...
 
-sim_printf ("long  in; tally0 %d addr0 %08o\n", tally0, addr0);
-sim_printf ("long  in; tally1 %d addr1 %08x\n", tally1, addr1);
 #ifdef FNP2_DEBUG
 sim_printf ("long  in; line %d tally %d\n", decoded.slot_no, linep->nPos);
 sim_printf ("long  in; tally0 %d addr0 %08o\n", tally0, addr0);
@@ -1659,12 +1658,14 @@ sim_printf ("long  in; tally0 %d addr0 %08o\n", tally0, addr0);
           putbits36_9 (& v, 18, data [i + 2]);
         if (i + 3 < tally0)
           putbits36_9 (& v, 27, data [i + 3]);
-sim_printf ("%08o:%012"PRIo64"\n", addr0, v);
 #ifdef FNP2_DEBUG
 sim_printf ("%012"PRIo64"\n", v);
 watchBits[addr0]=true;
 #endif
-        M [addr0 ++] = v;
+        //M [addr0 ++] = v;
+        uint dcwAddrPhys = virtToPhys (decoded.p -> PCW_PAGE_TABLE_PTR, addr0);
+        M [dcwAddrPhys] = v;
+        addr0 ++;
       }
 
 if (linep->nPos > tally0) {
@@ -1686,7 +1687,10 @@ sim_printf ("%08o:%012"PRIo64"\n", addr1, v);
 #ifdef FNP2_DEBUG
 sim_printf ("%012"PRIo64"\n", v);
 #endif
-        M [addr1 ++] = v;
+        //M [addr1 ++] = v;
+        uint dcwAddrPhys = virtToPhys (decoded.p -> PCW_PAGE_TABLE_PTR, addr1);
+        M [dcwAddrPhys] = v;
+        addr1 ++;
       }
 }
 
@@ -2447,9 +2451,7 @@ sim_printf ("send_stn_in_buffer\r\n");
     struct ibm3270ctlr_s * ctlrp = & fnpData.ibm3270ctlr[ASSUME0];
     struct station_s * stnp = & fnpData.ibm3270ctlr[ASSUME0].stations[ctlrp->stn_no];
 
-// MCS accept_input appears to be broken. Set the buffer size to <= 100 to
-// force input_in_mailbox
-    uint left = 75;
+    uint left = linep->sync_msg_size;
 
     unsigned char * bufp = linep->buffer;
 
@@ -2715,8 +2717,8 @@ sim_printf ("\r\n");
 #ifdef FNP2_DEBUG
 sim_printf ("accept_input fnp %u line %u nPos %d\n", fnpno, lineno, linep->nPos);
 #endif
-                    if (linep->nPos > 100)
-                    //if (1)
+                    //if (linep->nPos > 100)
+                    if (1)
                       {
                         fnp_rcd_accept_input (mbx, fnpno, lineno);
 #ifdef FNPDBG
