@@ -1263,6 +1263,11 @@ sim_printf ("']\n");
 #endif
     if (tally > 0 && linep->line_client)
       {
+        if (! linep->line_client || ! linep->line_client->data)
+          {
+            sim_warn ("fnp_wtx_output bad client data\r\n");
+            return;
+          }
         uvClientData * p = linep->line_client->data;
         (* p->write_cb) (linep->line_client, data, tally);
       }
@@ -1382,7 +1387,7 @@ sim_printf ("']\n");
     uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [decoded.devUnitIdx].iomUnitIdx;
 #endif
 //sim_printf ("long  in; line %d tally %d\n", decoded.slot_no, linep->nPos);
-    for (int i = 0; i < tally0 + 3; i += 4)
+    for (int i = 0; i < tally0; i += 4)
       {
         word36 v = 0;
         if (i < tally0)
@@ -1400,12 +1405,15 @@ sim_printf ("']\n");
         //M [addr0 ++] = v;
         fnp_core_write (addr0, v, "rtx_input_accepted");
 #endif
+        //M [addr0 ++] = v;
+        uint dcwAddrPhys = virtToPhys (decoded.p -> PCW_PAGE_TABLE_PTR, addr0);
+        M [dcwAddrPhys] = v;
         addr0 ++;
       }
 
     if (n_buffers > 1 && linep->nPos > tally0)
       {
-        for (int i = 0; i < tally1 + 3; i += 4)
+        for (int i = 0; i < tally1; i += 4)
           {
             word36 v = 0;
             if (i < tally1)
@@ -1423,6 +1431,9 @@ sim_printf ("']\n");
         //M [addr1 ++] = v;
             fnp_core_write (addr1, v, "rtx_input_accepted");
 #endif
+            //M [addr1 ++] = v;
+            uint dcwAddrPhys = virtToPhys (decoded.p -> PCW_PAGE_TABLE_PTR, addr1);
+            M [dcwAddrPhys] = v;
             addr1 ++;
           }
       }

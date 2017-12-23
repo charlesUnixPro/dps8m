@@ -953,7 +953,7 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
         core_read ((cpu.DSBR.ADDR + 2U * /*TPR.TSR*/ (uint) segno  + 1) & PAMASK, 
                    & SDWo, __func__);
 
-        // 3. If SDW.F = 0, then generate directed fault n where n is given in
+        // 3. If SDW.DF = 0, then generate directed fault n where n is given in
         // SDW.FC. The value of n used here is the value assigned to define a
         // missing segment fault or, simply, a segment fault.
 
@@ -1014,17 +1014,17 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
         PTW1.ADDR = GETHI(PTWx1);
         PTW1.U = TSTBIT(PTWx1, 9);
         PTW1.M = TSTBIT(PTWx1, 6);
-        PTW1.F = TSTBIT(PTWx1, 2);
+        PTW1.DF = TSTBIT(PTWx1, 2);
         PTW1.FC = PTWx1 & 3;
 
-        // 4. If PTW(x1).F = 0, then generate directed fault n where n is 
+        // 4. If PTW(x1).DF = 0, then generate directed fault n where n is 
         // given in PTW(x1).FC. The value of n used here is the value 
         // assigned to define a missing page fault or, simply, a
         // page fault.
 
-        if (!PTW1.F)
+        if (!PTW1.DF)
           {
-            sim_printf ("!PTW1.F\n");
+            sim_printf ("!PTW1.DF\n");
             return SCPE_ARG;
           }
 
@@ -1041,7 +1041,7 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
         SDW0.R1 = (SDWeven >> 9) & 7;
         SDW0.R2 = (SDWeven >> 6) & 7;
         SDW0.R3 = (SDWeven >> 3) & 7;
-        SDW0.F = TSTBIT(SDWeven, 2);
+        SDW0.DF = TSTBIT(SDWeven, 2);
         SDW0.FC = SDWeven & 3;
 
         // odd word
@@ -1055,13 +1055,13 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
         SDW0.C = TSTBIT(SDWodd, 14);
         SDW0.EB = SDWodd & 037777;
 
-        // 6. If SDW(segno).F = 0, then generate directed fault n where 
+        // 6. If SDW(segno).DF = 0, then generate directed fault n where 
         // n is given in SDW(segno).FC.
         // This is a segment fault as discussed earlier in this section.
 
-        if (!SDW0.F)
+        if (!SDW0.DF)
           {
-            sim_printf ("!SDW0.F\n");
+            sim_printf ("!SDW0.DF\n");
             return SCPE_ARG;
           }
 
@@ -1099,20 +1099,20 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
             PTW2.ADDR = GETHI(PTWx2);
             PTW2.U = TSTBIT(PTWx2, 9);
             PTW2.M = TSTBIT(PTWx2, 6);
-            PTW2.F = TSTBIT(PTWx2, 2);
+            PTW2.DF = TSTBIT(PTWx2, 2);
             PTW2.FC = PTWx2 & 3;
 
-            // 11.If PTW(x2).F = 0, then generate directed fault n where n is 
+            // 11.If PTW(x2).DF = 0, then generate directed fault n where n is 
             // given in PTW(x2).FC. This is a page fault as in Step 4 above.
 
             // absAddr only wants the address; it doesn't care if the page is
             // resident
 
-            // if (!PTW2.F)
+            // if (!PTW2.DF)
             //   {
-            //     sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !PTW2.F\n");
+            //     sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !PTW2.DF\n");
             //     // initiate a directed fault
-            //     doFault(FAULT_DF0 + PTW2.FC, 0, "ABSA !PTW2.F");
+            //     doFault(FAULT_DF0 + PTW2.FC, 0, "ABSA !PTW2.DF");
             //   }
 
             // 12. Generate the 24-bit absolute main memory address 
@@ -1388,8 +1388,8 @@ static t_stat virtAddrN (uint address)
            
             if (PTW1.DF == 0)
                 continue;
-            //sim_printf ("%06o  Addr %06o U %o M %o F %o FC %o\n", 
-            //            segno, PTW1.ADDR, PTW1.U, PTW1.M, PTW1.F, PTW1.FC);
+            //sim_printf ("%06o  Addr %06o U %o M %o DF %o FC %o\n", 
+            //            segno, PTW1.ADDR, PTW1.U, PTW1.M, PTW1.DF, PTW1.FC);
             //sim_printf ("    Target segment page table\n");
             for (word15 tspt = 0; tspt < 512u; tspt ++)
             {

@@ -829,6 +829,11 @@ static void fnp_rcd_wru_timeout (int mbx, int fnpno, int lineno)
 
 static inline bool processInputCharacter (struct t_line * linep, unsigned char kar, UNUSED bool endOfBuffer)
   {
+    if (! linep->line_client)
+      {
+        sim_warn ("processInputCharacter bad client\r\n");
+        return false;
+      }
 #ifdef TUN
     // TUN doesn't have a client
     if (! linep->is_tun)
@@ -1046,6 +1051,11 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
 
 void fnpRecvEOR (uv_tcp_t * client)
   {
+    if (! client || ! client->data)
+      {
+        sim_warn ("fnpRecvEOR bad client data\r\n");
+        return;
+      }
     uvClientData * p = client->data;
     fnpData.ibm3270ctlr[ASSUME0].stations[p->stationNo].EORReceived = true;
     fnpData.ibm3270ctlr[ASSUME0].stations[p->stationNo].hdr_sent = false;
@@ -1227,27 +1237,19 @@ sim_printf ("send_stn_in_buffer\r\n");
     struct station_s * stnp = & fnpData.ibm3270ctlr[ASSUME0].stations[ctlrp->stn_no];
 
     uint left = linep->sync_msg_size;
+
     unsigned char * bufp = linep->buffer;
+
+    * bufp ++  = 0x2; // STX
+    left --;
+
     if (! stnp->hdr_sent)
       {
-#ifdef FNP2_DEBUG
-sim_printf ("handling hdr_sent\r\n");
-#endif
-#if 1
-        * bufp ++  = 0x2; // STX
         * bufp ++  = addr_map [ASSUME0]; // Controller address
+        left --;
         * bufp ++  = addr_map [ctlrp->stn_no]; // Station address
-        left -= 3;
+        left --;
         stnp->hdr_sent = true;
-#else
-        unsigned char hdr [3];
-        hdr [0]  = 0x2; // STX
-        hdr [1]  = addr_map [ASSUME0]; // Controller address
-        hdr [2]  = addr_map [ctlrp->stn_no]; // Station address
-        send_3270_msg (ASSUME0, hdr, sizeof (hdr), false);
-        stnp->hdr_sent = true;
-        return;
-#endif
       }
 
     uint n_to_send = stnp->stn_in_size - stnp->stn_in_used;
@@ -2052,6 +2054,11 @@ void fnp3270Msg (uv_tcp_t * client, unsigned char * msg)
 
 void fnp3270ConnectPrompt (uv_tcp_t * client)
   {
+    if (! client || ! client->data)
+      {
+        sim_warn ("fnp3270ConnectPrompt bad client data\r\n");
+        return;
+      }
     uint fnpno = fnpData.ibm3270ctlr[ASSUME0].fnpno;
     uint lineno = fnpData.ibm3270ctlr[ASSUME0].lineno;
     //struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
@@ -2073,6 +2080,11 @@ void fnp3270ConnectPrompt (uv_tcp_t * client)
 
 void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
   {
+    if (! client || ! client->data)
+      {
+        sim_warn ("processLineInput bad client data\r\n");
+        return;
+      }
     uvClientData * p = (uvClientData *) client->data;
     uint fnpno = p -> fnpno;
     uint lineno = p -> lineno;
@@ -2141,6 +2153,11 @@ done:;
 
 void process3270Input (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
   {
+    if (! client || ! client->data)
+      {
+        sim_warn ("process3270Input bad client data\r\n");
+        return;
+      }
     uvClientData * p = (uvClientData *) client->data;
     uint fnpno = p->fnpno;
     uint lineno = p->lineno;
@@ -2219,6 +2236,11 @@ done:;
 
 void processUserInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
   {
+    if (! client || ! client->data)
+      {
+        sim_warn ("processUserInput bad client data\r\n");
+        return;
+      }
     uvClientData * p = (uvClientData *) client->data;
     for (ssize_t nchar = 0; nchar < nread; nchar ++)
       {
