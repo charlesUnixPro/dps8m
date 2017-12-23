@@ -1360,7 +1360,7 @@ static void fnp_rtx_input_accepted (void)
     unsigned char * data = linep -> buffer;
 
 //sim_printf ("long  in; line %d tally %d\n", decoded.slot_no, linep->nPos);
-    for (int i = 0; i < tally0 + 3; i += 4)
+    for (int i = 0; i < tally0; i += 4)
       {
         word36 v = 0;
         if (i < tally0)
@@ -1372,22 +1372,32 @@ static void fnp_rtx_input_accepted (void)
         if (i + 3 < tally0)
           putbits36_9 (& v, 27, data [i + 3]);
 //sim_printf ("%012"PRIo64"\n", v);
-        M [addr0 ++] = v;
+        //M [addr0 ++] = v;
+        uint dcwAddrPhys = virtToPhys (decoded.p -> PCW_PAGE_TABLE_PTR, addr0);
+        M [dcwAddrPhys] = v;
+        addr0 ++;
       }
 
-    for (int i = 0; i < tally1 + 3; i += 4)
+    if (linep->nPos > tally0)
       {
-        word36 v = 0;
-        if (i < tally1)
-          putbits36_9 (& v, 0, data [tally0 + i]);
-        if (i + 1 < tally1)
-          putbits36_9 (& v, 9, data [tally0 + i + 1]);
-        if (i + 2 < tally1)
-          putbits36_9 (& v, 18, data [tally0 + i + 2]);
-        if (i + 3 < tally1)
-          putbits36_9 (& v, 27, data [tally0 + i + 3]);
+        for (int i = 0; i < tally1; i += 4)
+          {
+            word36 v = 0;
+            if (i < tally1)
+              putbits36_9 (& v, 0, data [tally0 + i]);
+            if (i + 1 < tally1)
+              putbits36_9 (& v, 9, data [tally0 + i + 1]);
+            if (i + 2 < tally1)
+              putbits36_9 (& v, 18, data [tally0 + i + 2]);
+            if (i + 3 < tally1)
+              putbits36_9 (& v, 27, data [tally0 + i + 3]);
 //sim_printf ("%012"PRIo64"\n", v);
-        M [addr1 ++] = v;
+            M [addr1 ++] = v;
+            //M [addr1 ++] = v;
+            uint dcwAddrPhys = virtToPhys (decoded.p -> PCW_PAGE_TABLE_PTR, addr1);
+            M [dcwAddrPhys] = v;
+            addr1 ++;
+          }
       }
 
 // command_data is at mystery[25]?
