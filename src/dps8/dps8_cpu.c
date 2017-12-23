@@ -886,7 +886,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
   {
     // Call the one hertz stuff every 100 loops
     static uint oneHz = 0;
-    if (oneHz ++ >= 100) // ~ 1Hz
+    if (oneHz ++ >= sys_opts.sys_slow_poll_interval) // ~ 1Hz
       {
         oneHz = 0;
         rdrProcessEvent (); 
@@ -980,7 +980,7 @@ void cpu_init (void)
     ev_poll_loop = uv_default_loop ();
     uv_timer_init (ev_poll_loop, & ev_poll_handle);
     // 10 ms == 100Hz
-    uv_timer_start (& ev_poll_handle, ev_poll_cb, 10, 10);
+    uv_timer_start (& ev_poll_handle, ev_poll_cb, sys_opts.sys_poll_interval, sys_opts.sys_poll_interval);
 #endif
   }
 
@@ -1646,7 +1646,7 @@ setCPU:;
 // 10%...
 
         //static uint fastQueueSubsample = 0;
-        if (fastQueueSubsample ++ > 1024) // ~ 1KHz
+        if (fastQueueSubsample ++ > sys_opts.sys_poll_check_rate) // ~ 1KHz
           {
             fastQueueSubsample = 0;
             uv_run (ev_poll_loop, UV_RUN_NOWAIT);
@@ -2158,7 +2158,7 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                     // *1000 is 10  milliseconds
                     // *1000 is 10000 microseconds
                     // in uSec;
-                    usleep (10000);
+                    usleep (sys_opts.sys_poll_interval * 1000/*10000*/);
 #ifdef EV_POLL
                     // Trigger I/O polling
                     uv_run (ev_poll_loop, UV_RUN_NOWAIT);
@@ -2178,7 +2178,12 @@ else sim_debug (DBG_TRACE, & cpu_dev, "not setting ABS mode\n");
                     // 512000/100 -> 5120  is .01 second
          
                     // Would we have underflowed while sleeping?
-                    if (cpu.rTR <= 5120)
+                    //if (cpu.rTR <= 5120)
+
+                    // Timer register runs at 512 KHz
+                    // 512Khz / 512 is millisecods
+                    if (cpu.rTR <= sys_opts.sys_poll_interval * 512)
+                    
                       {
                         if (cpu.switches.tro_enable)
                           setG7fault (currentRunningCPUnum, FAULT_TRO, (_fault_subtype) {.bits=0});
