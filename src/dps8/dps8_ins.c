@@ -1093,8 +1093,11 @@ void addToTheMatrix (uint32 opcode, bool opcodeX, bool a, word6 tag)
 t_stat display_the_matrix (UNUSED int32 arg, UNUSED const char * buf)
 {
     long long count;
+
     for (int opcode = 0; opcode < 01000; opcode ++)
     for (int opcodeX = 0; opcodeX < 2; opcodeX ++)
+    {
+    long long total = 0;
     for (int a = 0; a < 2; a ++)
     for (int tag = 0; tag < 64; tag ++)
     if ((count = theMatrix[opcode][opcodeX][a][tag]))
@@ -1138,6 +1141,26 @@ t_stat display_the_matrix (UNUSED int32 arg, UNUSED const char * buf)
                         count, opcode, opcodeX, a, tag);
         else
             sim_printf ("%20"PRId64": %s\n", count, result);
+        total += count;
+    }
+    static char result[132] = "???";
+    strcpy (result, "???");
+    if (total) {
+    // get mnemonic ...
+    // non-EIS first
+    if (!opcodeX)
+      {
+        if (NonEISopcodes[opcode].mne)
+            strcpy (result, NonEISopcodes[opcode].mne);
+      }
+    else
+      {
+        // EIS second...
+        if (EISopcodes[opcode].mne)
+          strcpy (result, EISopcodes[opcode].mne);
+      }
+    sim_printf ("%20"PRId64": %s\n", total, result);
+    }
     }
     return SCPE_OK;
 }
