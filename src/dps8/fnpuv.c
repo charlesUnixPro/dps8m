@@ -313,23 +313,21 @@ void close_connection (uv_stream_t* stream)
     //if (p && fnpData.fnpUnitData[p->fnpno].MState.line[p->lineno].service != service_3270)
     if (p)
       {
-        struct t_line * linep = & fnpData.fnpUnitData[p->fnpno].MState.line[p->lineno];
-        if (linep->service  == service_3270)
-         {
-           // On the 3270, the station closing does not close the controller
-           sim_printf ("[FNP emulation: 3270 %d.%d DISCONNECT]\n", ASSUME0, p->stationNo);
-         }
-        else
+        // If assoc is false, then the disconnect happened before the actual
+        // associaton took place
+        if (p->assoc)
           {
-            if (p->assoc)
+            struct t_line * linep = & fnpData.fnpUnitData[p->fnpno].MState.line[p->lineno];
+            if (linep->service  == service_3270)
+             {
+               // On the 3270, the station closing does not close the controller
+               sim_printf ("[FNP emulation: 3270 %d.%d DISCONNECT]\n", ASSUME0, p->stationNo);
+             }
+            else
               {
                 sim_printf ("[FNP emulation: DISCONNECT %c.d%03d]\n", p->fnpno+'a', p->lineno);
                 linep -> line_disconnected = true;
                 linep -> listen = false;
-              }
-            else
-              {
-                sim_printf ("[FNP emulation: DISCONNECT]\n");
               }
             if (linep->line_client)
               {
@@ -337,6 +335,10 @@ void close_connection (uv_stream_t* stream)
                 // below
                 linep->line_client = NULL;
               }
+          }
+        else
+          {
+            sim_printf ("[FNP emulation: DISCONNECT]\n");
           }
         // Clean up allocated data
         if (p->telnetp)
