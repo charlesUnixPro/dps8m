@@ -44,6 +44,7 @@
 #include "dps8_math.h"
 #include "dps8_scu.h"
 #include "dps8_mt.h"
+#include "dps8_socket_dev.h"
 #include "dps8_disk.h"
 #include "dps8_utils.h"
 #include "dps8_append.h"
@@ -277,6 +278,7 @@ static void dps8_init(void)
     console_init ();
     disk_init ();
     mt_init ();
+    sk_init ();
     fnpInit ();
     //mpc_init ();
     scu_init ();
@@ -2207,6 +2209,7 @@ DEVICE * sim_devices [] =
     & cpu_dev, // dev[0] is special to simh; it is the 'default device'
     & iom_dev,
     & tape_dev,
+    & sk_dev,
     & fnpDev,
     & disk_dev,
     & scu_dev,
@@ -3174,6 +3177,9 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set tape15 device_name=tapa_15");
     doIniLine ("cable tape,16,0,012,16");
     doIniLine ("set tape16 device_name=tapa_16");
+
+    // ; Attach socket device 0 to IOM 0, chan 033, dev_code 0
+    doIniLine ("cable sk,0,0,033,0");
 
     // ; Attach DISK unit 0 to IOM 0, chan 013, dev_code 0");
     doIniLine ("cable disk,0,0,013,0");

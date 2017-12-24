@@ -14,7 +14,8 @@
 typedef enum devType
   {
      DEVT_NONE = 0, DEVT_TAPE, DEVT_CON, DEVT_DISK, 
-     DEVT_MPC, DEVT_DN355, DEVT_CRDRDR, DEVT_CRDPUN, DEVT_PRT, DEVT_URP
+     DEVT_MPC, DEVT_DN355, DEVT_CRDRDR, DEVT_CRDPUN, DEVT_PRT, DEVT_URP,
+     DEVT_SK
   } devType;
 
 typedef enum chanType { chanTypeCPI, chanTypePSI, chanTypeDirect } chanType;
@@ -83,6 +84,7 @@ struct cables_t
     struct cableFromIom cablesFromIomToDsk [N_DISK_UNITS_MAX];
     struct cableFromIom cablesFromIomToCon [N_OPCON_UNITS_MAX];
     struct cableFromIom cablesFromIomToTap [N_MT_UNITS_MAX];
+    struct cableFromIom cablesFromIomToSK [N_SK_UNITS_MAX];
     struct cableFromIom cablesFromIomToAbsi [N_ABSI_UNITS_MAX];
 
     // SCU -> CPU

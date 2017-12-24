@@ -13,6 +13,7 @@
 #include "dps8_simh.h"
 #include "dps8_iom.h"
 #include "dps8_mt.h"
+#include "dps8_socket_dev.h"
 #include "dps8_scu.h"
 #include "dps8_sys.h"
 #include "dps8_faults.h"
@@ -571,6 +572,45 @@ static t_stat cable_mt (int mt_unit_num, int iomUnitIdx, int chan_num,
     return SCPE_OK;
   }
  
+//
+// String a cable from a socket device to an IOM
+//
+// This end: sk_unit_num
+// That end: iomUnitIdx, chan_num, dev_code
+// 
+
+static t_stat cable_sk (int sk_unit_num, int iomUnitIdx, int chan_num, 
+                        int dev_code)
+  {
+    if (sk_unit_num < 0 || sk_unit_num >= (int) sk_dev . numunits)
+      {
+        sim_printf ("cable_sk: sk_unit_num out of range <%d>\n", sk_unit_num);
+        return SCPE_ARG;
+      }
+
+    if (cables -> cablesFromIomToSK [sk_unit_num] . iomUnitIdx != -1)
+      {
+        sim_printf ("cable_sk: Socket device socket in use; unit number %d. (%o); uncabling.\n", sk_unit_num, sk_unit_num);
+        return SCPE_ARG;
+      }
+
+    // Plug the other end of the cable in
+    t_stat rc = cable_to_iom ((uint) iomUnitIdx, chan_num, dev_code, DEVT_SK, 
+                              chanTypePSI, (uint) sk_unit_num, & sk_dev, 
+                              & sk_unit [sk_unit_num], sk_iom_cmd);
+    if (rc)
+      {
+        sim_printf ("cable_sk: IOM socket error; uncabling Socket device unit number %d. (%o)\n", sk_unit_num, sk_unit_num);
+        return rc;
+      }
+
+    cables -> cablesFromIomToSK [sk_unit_num] . iomUnitIdx = iomUnitIdx;
+    cables -> cablesFromIomToSK [sk_unit_num] . chan_num = chan_num;
+    cables -> cablesFromIomToSK [sk_unit_num] . dev_code = dev_code;
+
+    return SCPE_OK;
+  }
+ 
 #ifndef __MINGW64__
 //
 // String a cable from a ABSI to an IOM
@@ -690,6 +730,10 @@ t_stat sys_cable (UNUSED int32 arg, const char * buf)
       {
         rc = cable_mt (n1, n2, n3, n4);
       }
+    else if (strcasecmp (name, "SK") == 0)
+      {
+        rc = cable_sk (n1, n2, n3, n4);
+      }
     else if (strcasecmp (name, "DISK") == 0)
       {
         rc = cable_disk (n1, n2, n3, n4);
@@ -748,14 +792,14 @@ static void cable_init (void)
   {
     // sets cablesFromIomToDev [iomUnitIdx] . devices [chanNum] [dev_code] . type to DEVT_NONE
     memset (cables, 0, sizeof (struct cables_t));
-    for (int i = 0; i < N_MT_UNITS_MAX; i ++)
-      {
-        cables -> cablesFromIomToTap [i] . iomUnitIdx = -1;
-      }
     for (int u = 0; u < N_SCU_UNITS_MAX; u ++)
       for (int p = 0; p < N_SCU_PORTS; p ++)
         for (int s = 0; s < N_SCU_SUBPORTS; s ++)
           cables -> cablesFromCpus [u] [p] [s] . cpu_unit_num = -1; // not connected
+    for (int i = 0; i < N_MT_UNITS_MAX; i ++)
+      cables -> cablesFromIomToTap [i] . iomUnitIdx = -1;
+    for (int i = 0; i < N_SK_UNITS_MAX; i ++)
+      cables -> cablesFromIomToSK [i] . iomUnitIdx = -1;
     for (int i = 0; i < N_OPCON_UNITS_MAX; i ++)
       cables -> cablesFromIomToCon [i] . iomUnitIdx = -1;
     for (int i = 0; i < N_DISK_UNITS_MAX; i ++)

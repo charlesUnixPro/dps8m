@@ -130,6 +130,11 @@ enum { N_CPU_PORTS = 8 };
 enum { N_MT_UNITS_MAX = 17 };
 
 //
+// Socket device
+//
+enum { N_SK_UNITS_MAX = 1 };
+
+//
 // Printer
 //
 
