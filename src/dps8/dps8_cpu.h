@@ -2144,7 +2144,7 @@ void set_addr_mode (addr_modes_t mode);
 int queryScuUnitIdx (int cpu_unit_num, int cpu_port_num);
 void init_opcodes (void);
 void decodeInstruction (word36 inst, DCDstruct * p);
-t_stat memWatch (int32 arg, const char * buf);
+t_stat set_mem_watch (int32 arg, const char * buf);
 char *strSDW0 (char * buf, _sdw *SDW);
 #ifdef SCUMEM
 int lookup_cpu_mem_map (word24 addr, word24 * offset);

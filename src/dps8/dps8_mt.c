@@ -2023,7 +2023,7 @@ t_stat attachTape (char * label, bool withring, char * drive)
 
 // mount <image.tap> ring|noring <drive>
 
-t_stat mountTape (UNUSED int32 arg, const char * buf)
+t_stat mount_tape (UNUSED int32 arg, const char * buf)
   {
     size_t bufl = strlen (buf) + 1;
     char fname [bufl];

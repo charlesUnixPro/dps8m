@@ -557,7 +557,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
       }
     fnpProcessEvent (); 
     consoleProcess ();
-    machineRoomProcess ();
+    machine_room_process ();
 #ifndef __MINGW64__
     absiProcessEvent ();
 #endif
@@ -1361,7 +1361,7 @@ setCPU:;
             queueSubsample = 0;
             fnpProcessEvent ();
             consoleProcess ();
-            machineRoomProcess ();
+            machine_room_process ();
             absiProcessEvent ();
             PNL (panelProcessEvent ());
           }
@@ -2329,7 +2329,7 @@ t_stat WriteOP (word18 addr, UNUSED _processor_cycle_type cyctyp)
     
   }
 
-t_stat memWatch (int32 arg, const char * buf)
+t_stat set_mem_watch (int32 arg, const char * buf)
   {
     if (strlen (buf) == 0)
       {

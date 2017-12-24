@@ -1089,11 +1089,9 @@ void addToTheMatrix (uint32 opcode, bool opcodeX, bool a, word6 tag)
     int _tag = tag & 077;
     theMatrix[_opcode][_opcodeX][_a][_tag] ++;
 }
-#endif
 
-t_stat displayTheMatrix (UNUSED int32 arg, UNUSED const char * buf)
+t_stat display_the_matrix (UNUSED int32 arg, UNUSED const char * buf)
 {
-#ifdef MATRIX
     long long count;
     for (int opcode = 0; opcode < 01000; opcode ++)
     for (int opcodeX = 0; opcodeX < 2; opcodeX ++)
@@ -1141,11 +1139,9 @@ t_stat displayTheMatrix (UNUSED int32 arg, UNUSED const char * buf)
         else
             sim_printf ("%20"PRId64": %s\n", count, result);
     }
-#else
-    sim_printf ("matrix code not enabled\n");
-#endif
     return SCPE_OK;
 }
+#endif
 
 
 // fetch instrcution at address
@@ -1216,8 +1212,8 @@ void traceInstruction (uint flag)
 force:;
         char * compname;
         word18 compoffset;
-        char * where = lookupAddress (cpu.PPR.PSR, cpu.PPR.IC, & compname,
-                                      & compoffset);
+        char * where = lookup_address (cpu.PPR.PSR, cpu.PPR.IC, & compname,
+                                       & compoffset);
         bool isBAR = TST_I_NBAR ? false : true;
         if (where)
           {
@@ -1247,7 +1243,7 @@ force:;
                                cpu.PPR.PSR, cpu.PPR.IC, where);
                   }
               }
-            listSource (compname, compoffset, flag);
+            list_source (compname, compoffset, flag);
           }
         if (get_addr_mode () == ABSOLUTE_mode)
           {

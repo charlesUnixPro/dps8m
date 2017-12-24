@@ -1919,7 +1919,7 @@ t_stat fnpLoad (UNUSED int32 arg, const char * buf)
   }
 #endif
 
-t_stat fnpServerPort (UNUSED int32 arg, const char * buf)
+t_stat set_fnp_server_port (UNUSED int32 arg, const char * buf)
   {
     int n = atoi (buf);
     if (n < 1 || n > 65535)
@@ -1930,7 +1930,7 @@ t_stat fnpServerPort (UNUSED int32 arg, const char * buf)
     return SCPE_OK;
   }
 
-t_stat fnpServer3270Port (UNUSED int32 arg, const char * buf)
+t_stat set_fnp_3270_server_port (UNUSED int32 arg, const char * buf)
   {
     int n = atoi (buf);
     if (n < 1 || n > 65535)
@@ -1940,7 +1940,7 @@ t_stat fnpServer3270Port (UNUSED int32 arg, const char * buf)
     return SCPE_OK;
   }
 
-t_stat fnpStart (UNUSED int32 arg, UNUSED const char * buf)
+t_stat fnp_start (UNUSED int32 arg, UNUSED const char * buf)
   {
     sim_printf ("FNP force start\n");
     fnpuvInit (fnpData.telnet_port);

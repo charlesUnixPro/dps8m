@@ -14,11 +14,11 @@ extern DEVICE opcon_dev;
 
 void console_init(void);
 void console_attn_idx (int con_unit_idx);
-int opconAutoinput (int32 flag, const char * cptr);
-int opconClearAutoinput (int32 flag, const char * cptr);
+int add_opcon_autoinput (int32 flag, const char * cptr);
+int clear_opcon_autoinput (int32 flag, const char * cptr);
 int con_iom_cmd (uint iomUnitIdx, uint chan);
 int check_attn_key (void);
 void consoleProcess (void);
-t_stat consolePort (UNUSED int32 arg, const char * buf);
-t_stat consolePW (UNUSED int32 arg, const char * buf);
+t_stat set_console_port (UNUSED int32 arg, const char * buf);
+t_stat set_console_pw (UNUSED int32 arg, const char * buf);
 void startRemoteConsole (void);

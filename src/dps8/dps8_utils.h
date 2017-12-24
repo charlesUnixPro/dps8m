@@ -901,9 +901,6 @@ word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
 word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf);
 word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf);
 
-#ifdef EISTESTJIG
-t_stat eisTest (UNUSED int32 arg, char *buf);
-#endif
 #ifdef THREADZ
 void timespec_diff(struct timespec *start, struct timespec *stop,
                    struct timespec *result);

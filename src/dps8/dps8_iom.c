@@ -3048,7 +3048,7 @@ static t_stat bootSvc (UNIT * unitp)
     startRemoteConsole ();
 
     // Start the machine room listener
-    startMachineRoom ();
+    start_machine_room  ();
 
     // Start the FNP dialup listener
     startFNPListener ();

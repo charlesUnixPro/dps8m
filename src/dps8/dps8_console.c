@@ -328,7 +328,7 @@ static int opcon_autoinput_set (UNUSED UNIT * uptr, UNUSED int32 val,
     return SCPE_OK;
   }
 
-int opconClearAutoinput (int32 flag, UNUSED const char * cptr)
+int clear_opcon_autoinput (int32 flag, UNUSED const char * cptr)
   {
     con_state_t * csp = console_state + flag;
     if (csp->auto_input)
@@ -339,7 +339,7 @@ int opconClearAutoinput (int32 flag, UNUSED const char * cptr)
     return SCPE_OK;
   }
 
-int opconAutoinput (int32 flag, const char * cptr)
+int add_opcon_autoinput (int32 flag, const char * cptr)
   {
     con_state_t * csp = console_state + flag;
     unsigned char * new = (unsigned char *) strdupesc (cptr);
@@ -1457,7 +1457,7 @@ static t_stat con_show_config (UNUSED FILE * st, UNUSED UNIT * uptr,
     return SCPE_OK;
   }
 
-t_stat consolePort (int32 arg, const char * buf)
+t_stat set_console_port (int32 arg, const char * buf)
   {
     int n = atoi (buf);
     if (n < 0 || n > 65535) // 0 is 'disable'
@@ -1469,7 +1469,7 @@ t_stat consolePort (int32 arg, const char * buf)
     return SCPE_OK;
   }
 
-t_stat consolePW (int32 arg, UNUSED const char * buf)
+t_stat set_console_pw (int32 arg, UNUSED const char * buf)
   {
     if (arg < 0 || arg >= N_OPCON_UNITS_MAX)
       return SCPE_ARG;

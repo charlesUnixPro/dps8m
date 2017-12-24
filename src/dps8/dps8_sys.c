@@ -1464,22 +1464,22 @@ static t_stat set_default_base_system (UNUSED int32 arg, UNUSED const char * buf
     return SCPE_OK;
   }
 
-static t_stat machineRoomPort (UNUSED int32 arg, const char * buf)
+static t_stat set_machine_room_port (UNUSED int32 arg, const char * buf)
   {
     int n = atoi (buf);
     if (n < 0 || n > 65535) // 0 is 'disable'
       return SCPE_ARG;
-    sys_opts.machineRoomAccess.port = n;
+    sys_opts.machine_room_access.port = n;
     sim_printf ("Machine room port set to %d\n", n);
     return SCPE_OK;
   }
 
-static t_stat machineRoomPW (UNUSED int32 arg, UNUSED const char * buf)
+static t_stat set_machine_room_pw (UNUSED int32 arg, UNUSED const char * buf)
   {
     if (strlen (buf) == 0)
       {
         sim_printf ("no password\n");
-        sys_opts.machineRoomAccess.pw[0] = 0;
+        sys_opts.machine_room_access.pw[0] = 0;
         return SCPE_OK;
       }
     char token[strlen (buf)];
@@ -1489,12 +1489,12 @@ static t_stat machineRoomPW (UNUSED int32 arg, UNUSED const char * buf)
       return SCPE_ARG;
     if (strlen (token) > PW_SIZE)
       return SCPE_ARG;
-    strcpy (sys_opts.machineRoomAccess.pw, token);
+    strcpy (sys_opts.machine_room_access.pw, token);
     //sim_printf ("<%s>\n", token);
     return SCPE_OK;
   }
 
-static t_stat bootSkip (int32 UNUSED arg, const char * UNUSED buf)
+static t_stat boot_skip (int32 UNUSED arg, const char * UNUSED buf)
   {
     uint32 skipped;
     return sim_tape_sprecsf (& mt_unit[0], 1, & skipped);
@@ -1502,7 +1502,7 @@ static t_stat bootSkip (int32 UNUSED arg, const char * UNUSED buf)
   
 // EXF
 
-static t_stat doEXF (UNUSED int32 arg,  UNUSED const char * buf)
+static t_stat do_execute_fault (UNUSED int32 arg,  UNUSED const char * buf)
   {
     // Assume bootload CPU
     setG7fault (0, FAULT_EXF, fst_zero);
@@ -1590,7 +1590,7 @@ static t_stat dps_debug_bar (int32 arg, UNUSED const char * buf)
   }
 
 #if 0
-t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
+t_stat computeAbsAddrN (word24 * abs_addr, int segno, uint offset)
   {
     word24 res;
 
@@ -1620,7 +1620,7 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
         // SDW.FC. The value of n used here is the value assigned to define a
         // missing segment fault or, simply, a segment fault.
 
-        // absAddr doesn't care if the page isn't resident
+        // abs_addr doesn't care if the page isn't resident
 
 
         // 4. If offset >= 16 * (SDW.BOUND + 1), then generate an access
@@ -1637,7 +1637,7 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
         //    incompatible with the reference, generate the appropriate access 
         //    violation fault.
 
-        // absAddr doesn't care
+        // abs_addr doesn't care
 
         // 6. Generate 24-bit absolute main memory address SDW.ADDR + offset.
 
@@ -1768,7 +1768,7 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
             // 11.If PTW(x2).DF = 0, then generate directed fault n where n is 
             // given in PTW(x2).FC. This is a page fault as in Step 4 above.
 
-            // absAddr only wants the address; it doesn't care if the page is
+            // abs_addr only wants the address; it doesn't care if the page is
             // resident
 
             // if (!PTW2.DF)
@@ -1795,7 +1795,7 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
           }
       }
 
-    * absAddr = res;
+    * abs_addr = res;
     return SCPE_OK;
   }
 #endif
@@ -1813,7 +1813,7 @@ static t_stat absAddrN (int segno, uint offset)
 
 // ABS segno:offset
 
-static t_stat absAddr (UNUSED int32 arg, const char * buf)
+static t_stat abs_addr (UNUSED int32 arg, const char * buf)
   {
     int segno;
     uint offset;
@@ -1954,8 +1954,8 @@ static char * lookupSystemBookAddress (word18 segno, word18 offset,
     return buf;
   }
 
-char * lookupAddress (word18 segno, word18 offset, char * * compname,
-                      word18 * compoffset)
+char * lookup_address (word18 segno, word18 offset, char * * compname,
+                       word18 * compoffset)
   {
     if (compname)
       * compname = NULL;
@@ -2048,7 +2048,7 @@ static int lookupSystemBookName (char * segname, char * compname, long * segno,
 
 static char * sourceSearchPath = NULL;
 
-void listSource (char * compname, word18 offset, uint dflag)
+void list_source (char * compname, word18 offset, uint dflag)
   {
     const int offset_str_len = 10;
     //char offset_str[offset_str_len + 1];
@@ -2257,7 +2257,7 @@ fileDone:
 
 // STK 
 
-static t_stat stackTrace (UNUSED int32 arg,  UNUSED const char * buf)
+static t_stat stack_trace (UNUSED int32 arg,  UNUSED const char * buf)
   {
     char * msg;
 
@@ -2268,12 +2268,12 @@ static t_stat stackTrace (UNUSED int32 arg,  UNUSED const char * buf)
     
     char * compname;
     word18 compoffset;
-    char * where = lookupAddress (icSegno, icOffset,
-                                  & compname, & compoffset);
+    char * where = lookup_address (icSegno, icOffset,
+                                   & compname, & compoffset);
     if (where)
       {
         sim_printf ("%05o:%06o %s\n", icSegno, icOffset, where);
-        listSource (compname, compoffset, 0);
+        list_source (compname, compoffset, 0);
       }
     sim_printf ("\n");
 
@@ -2316,24 +2316,24 @@ static t_stat stackTrace (UNUSED int32 arg,  UNUSED const char * buf)
               {
                 // try rX[7] as the return address
                 sim_printf ("guessing X7 has a return address....\n");
-                where = lookupAddress (icSegno, cpu.rX[7] - 1,
-                                       & compname, & compoffset);
+                where = lookup_address (icSegno, cpu.rX[7] - 1,
+                                        & compname, & compoffset);
                 if (where)
                   {
                     sim_printf ("%05o:%06o %s\n", icSegno, cpu.rX[7] - 1, where);
-                    listSource (compname, compoffset, 0);
+                    list_source (compname, compoffset, 0);
                   }
               }
           }
         else
           {
-            where = lookupAddress (returnSegno, returnOffset - 1,
-                                   & compname, & compoffset);
+            where = lookup_address (returnSegno, returnOffset - 1,
+                                    & compname, & compoffset);
             if (where)
               {
                 sim_printf ("%05o:%06o %s\n",
                             returnSegno, returnOffset - 1, where);
-                listSource (compname, compoffset, 0);
+                list_source (compname, compoffset, 0);
               }
           }
 
@@ -2342,12 +2342,12 @@ static t_stat stackTrace (UNUSED int32 arg,  UNUSED const char * buf)
     
         sim_printf ("Entry ptr   %05o:%06o\n", entrySegno, entryOffset);
     
-        where = lookupAddress (entrySegno, entryOffset,
-                               & compname, & compoffset);
+        where = lookup_address (entrySegno, entryOffset,
+                                & compname, & compoffset);
         if (where)
           {
             sim_printf ("%05o:%06o %s\n", entrySegno, entryOffset, where);
-            listSource (compname, compoffset, 0);
+            list_source (compname, compoffset, 0);
           }
     
         word15 argSegno = (word15) ((M[fp + 26] >> 18) & MASK15);
@@ -2422,7 +2422,7 @@ skipArgs:;
     return SCPE_OK;
   }
 
-static t_stat listSourceAt (UNUSED int32 arg, UNUSED const char *  buf)
+static t_stat list_source_at (UNUSED int32 arg, UNUSED const char *  buf)
   {
     // list seg:offset
     int segno;
@@ -2431,17 +2431,17 @@ static t_stat listSourceAt (UNUSED int32 arg, UNUSED const char *  buf)
       return SCPE_ARG;
     char * compname;
     word18 compoffset;
-    char * where = lookupAddress ((word18) segno, offset,
-                                  & compname, & compoffset);
+    char * where = lookup_address ((word18) segno, offset,
+                                   & compname, & compoffset);
     if (where)
       {
         sim_printf ("%05o:%06o %s\n", segno, offset, where);
-        listSource (compname, compoffset, 0);
+        list_source (compname, compoffset, 0);
       }
     return SCPE_OK;
   }
 
-static t_stat loadSystemBook (UNUSED int32 arg, UNUSED const char * buf)
+static t_stat load_system_book (UNUSED int32 arg, UNUSED const char * buf)
   {
 // Quietly ignore if not debug enabled
 #ifndef SPEED
@@ -2583,7 +2583,7 @@ static t_stat loadSystemBook (UNUSED int32 arg, UNUSED const char * buf)
     return SCPE_OK;
   }
 
-static t_stat addSystemBookEntry (UNUSED int32 arg, const char * buf)
+static t_stat add_system_book_entry (UNUSED int32 arg, const char * buf)
   {
     // asbe segname compname seg txt_start txt_len intstat_start intstat_length 
     // symbol_start symbol_length
@@ -2619,7 +2619,7 @@ static t_stat addSystemBookEntry (UNUSED int32 arg, const char * buf)
 //           given a segment name, component name and offset, return
 //           the segment number and offset
    
-static t_stat lookupSystemBook (UNUSED int32  arg, const char * buf)
+static t_stat lookup_system_book (UNUSED int32  arg, const char * buf)
   {
     char w1[strlen (buf)];
     char w2[strlen (buf)];
@@ -2658,7 +2658,7 @@ static t_stat lookupSystemBook (UNUSED int32  arg, const char * buf)
     if (* end1 == '\0' && * end2 == '\0' && * w3 == '\0')
       { 
         // n:n
-        char * ans = lookupAddress ((word18) segno, (word18) offset, NULL, NULL);
+        char * ans = lookup_address ((word18) segno, (word18) offset, NULL, NULL);
         sim_printf ("%s\n", ans ? ans : "not found");
       }
     else
@@ -2685,7 +2685,7 @@ static t_stat lookupSystemBook (UNUSED int32  arg, const char * buf)
 /*
     if (sscanf (buf, "%o:%o", & segno, & offset) != 2)
       return SCPE_ARG;
-    char * ans = lookupAddress (segno, offset);
+    char * ans = lookup_address (segno, offset);
     sim_printf ("%s\n", ans ? ans : "not found");
 */
     return SCPE_OK;
@@ -2802,7 +2802,7 @@ static t_stat virtAddrN (uint address)
   }
 // VIRTUAL address
 
-static t_stat virtAddr (UNUSED int32 arg, const char * buf)
+static t_stat virt_address (UNUSED int32 arg, const char * buf)
   {
     uint address;
     if (sscanf (buf, "%o", & address) != 1)
@@ -2812,7 +2812,7 @@ static t_stat virtAddr (UNUSED int32 arg, const char * buf)
 
 // search path is path:path:path....
 
-static t_stat setSearchPath (UNUSED int32 arg, UNUSED const char * buf)
+static t_stat set_search_path (UNUSED int32 arg, UNUSED const char * buf)
   {
 // Quietly ignore if debugging not enabled
 #ifndef SPEED
@@ -2833,7 +2833,7 @@ static t_stat setSearchPath (UNUSED int32 arg, UNUSED const char * buf)
 
 t_stat brkbrk (UNUSED int32 arg, UNUSED const char *  buf)
   {
-    //listSource (buf, 0);
+    //list_source (buf, 0);
     return SCPE_OK;
   }
 
@@ -3056,7 +3056,7 @@ sim_printf ("%05o:%06o\n", cpu.PR[2].SNR, cpu.rX[0]);
 
 // SEARCHMEMORY value
 
-static t_stat searchMemory (UNUSED int32 arg, const char * buf)
+static t_stat search_memory (UNUSED int32 arg, const char * buf)
   {
     word36 value;
     if (sscanf (buf, "%"PRIo64"", & value) != 1)
@@ -3069,7 +3069,7 @@ static t_stat searchMemory (UNUSED int32 arg, const char * buf)
     return SCPE_OK;
   }
 
-static t_stat setDbgCPUMask (int32 UNUSED arg, const char * UNUSED buf)
+static t_stat set_dbg_cpu_mask (int32 UNUSED arg, const char * UNUSED buf)
   {
     uint msk;
     int cnt = sscanf (buf, "%u", & msk);
@@ -3198,72 +3198,72 @@ static CTAB dps8_cmds[] =
 // Loader not supported by default
 
 #ifdef LOADER
-    {"DPSINIT",             dpsCmd_Init,          0, "dpsinit dps8/m initialize stuff ...\n", NULL, NULL},
-    {"DPSDUMP",             dpsCmd_Dump,          0, "dpsdump dps8/m dump stuff ...\n", NULL, NULL},
-    {"SEGMENT",             dpsCmd_Segment,       0, "segment dps8/m segment stuff ...\n", NULL, NULL},
-    {"SEGMENTS",            dpsCmd_Segments,      0, "segments dps8/m segments stuff ...\n", NULL, NULL},
+    {"DPSINIT",             dpsCmd_Init,              0, "dpsinit: dps8/m initialize stuff ...\n", NULL, NULL},
+    {"DPSDUMP",             dpsCmd_Dump,              0, "dpsdump: dps8/m dump stuff ...\n", NULL, NULL},
+    {"SEGMENT",             dpsCmd_Segment,           0, "segment: dps8/m segment stuff ...\n", NULL, NULL},
+    {"SEGMENTS",            dpsCmd_Segments,          0, "segments: dps8/m segments stuff ...\n", NULL, NULL},
 #endif
 
 //
 // System configuration
 //
 
-    {"DEFAULT_BASE_SYSTEM", set_default_base_system, 0, "Set configuration to defaults", NULL, NULL},
+    {"DEFAULT_BASE_SYSTEM", set_default_base_system,  0, "default_base_system: Set configuration to defaults\n", NULL, NULL},
 
-    {"CABLE",               sys_cable,            0, "cable String a cable\n" , NULL, NULL},
-    {"UNCABLE",             sys_cable,            1, "uncable Unstring a cable\n" , NULL, NULL},
-    {"CABLE_RIPOUT",        sys_cable_ripout,     0, "cable Unstring all cables\n" , NULL, NULL},
-    {"CABLE_SHOW",          sys_cable_show,       0, "cable Show cables\n" , NULL, NULL},
+    {"CABLE",               sys_cable,                0, "cable: String a cable\n" , NULL, NULL},
+    {"UNCABLE",             sys_cable,                1, "uncable: Unstring a cable\n" , NULL, NULL},
+    {"CABLE_RIPOUT",        sys_cable_ripout,         0, "cable: Unstring all cables\n" , NULL, NULL},
+    {"CABLE_SHOW",          sys_cable_show,           0, "cable: Show cables\n" , NULL, NULL},
 
-    {"FNPSERVERPORT",       fnpServerPort,        0, "fnpServerPort: set the FNP dialin telnet port number", NULL, NULL},
-    {"FNPSERVER3270PORT",   fnpServer3270Port,    0, "fnpServerPort: set the FNP 3270 port number", NULL, NULL},
+    {"FNPSERVERPORT",       set_fnp_server_port,      0, "fnpserverport: Set the FNP dialin telnet port number\n", NULL, NULL},
+    {"FNPSERVER3270PORT",   set_fnp_3270_server_port, 0, "fnpserver3270port: Set the FNP 3270 port number\n", NULL, NULL},
 
-    {"CONSOLEPORT",         consolePort,          0, "consolePort: set the Operator Console port number", NULL, NULL},
-    {"CONSOLEPW",           consolePW,            0, "consolePW: set the Operator Console port password", NULL, NULL},
-    {"CONSOLEPORT1",        consolePort,          1, "consolePort: set the Operator Console port number", NULL, NULL},
-    {"CONSOLEPW1",          consolePW,            1, "consolePW: set the Operator Console port password", NULL, NULL},
+    {"CONSOLEPORT",         set_console_port,         0, "consoleport: Set the Operator Console port number\n", NULL, NULL},
+    {"CONSOLEPW",           set_console_pw,           0, "consolepw: Set the Operator Console port password\n", NULL, NULL},
+    {"CONSOLEPORT1",        set_console_port,         1, "consoleport1: Set the CPU-B Operator Console port number\n", NULL, NULL},
+    {"CONSOLEPW1",          set_console_pw,           1, "consolepw1: Set the CPU-B Operator Console port password\n", NULL, NULL},
 
-    {"MACHINEROOMPORT",     machineRoomPort,      0, "consolePort: set the Operator Console port number", NULL, NULL},
-    {"MACHINEROOMPW",       machineRoomPW,        0, "consolePW: set the Operator Console port password", NULL, NULL},
+    {"MACHINEROOMPORT",     set_machine_room_port,    0, "machineroomport: set the machine room port number\n", NULL, NULL},
+    {"MACHINEROOMPW",       set_machine_room_pw,      0, "machineroompW: set the machine room port password\n", NULL, NULL},
 
 //
 // System contol
 //
 
-    {"SKIPBOOT",            bootSkip,             0, "skip forward on boot tape", NULL, NULL},
-    {"FNPSTART",            fnpStart,             0, "Force early FNP initialization", NULL, NULL},
-    {"MOUNT",               mountTape,            0, "Mount tape image and signal Mulitcs", NULL, NULL },
-    {"XF",                  doEXF,                0, "Execute fault: Press the execute fault button\n", NULL, NULL},
+    {"SKIPBOOT",            boot_skip,                0, "skipboot: Skip forward on boot tape\n", NULL, NULL},
+    {"FNPSTART",            fnp_start,                0, "fnpstart: Force immediate FNP initialization\n", NULL, NULL},
+    {"MOUNT",               mount_tape,               0, "mount: Mount tape image and signal Mulitcs\n", NULL, NULL },
+    {"XF",                  do_execute_fault,         0, "xf: Execute fault: Press the execute fault button\n", NULL, NULL},
 
 //
 // Debugging
 //
 
 #ifdef TESTING
-    {"DBGMMECNTDWN",        dps_debug_mme_cntdwn, 0, "dbgmmecntdwn Enable debug after n MMEs\n", NULL, NULL},
-    {"DBGSKIP",             dps_debug_skip,       0, "dbgskip Skip first n TRACE debugs\n", NULL, NULL},
-    {"DBGSTART",            dps_debug_start,      0, "dbgstart Limit debugging to N > Cycle count\n", NULL, NULL},
-    {"DBGSTOP",             dps_debug_stop,       0, "dbgstop Limit debugging to N < Cycle count\n", NULL, NULL},
-    {"DBGBREAK",            dps_debug_break,      0, "dbgstop Break when N >= Cycle count\n", NULL, NULL},
-    {"DBGSEGNO",            dps_debug_segno,      0, "dbgsegno Limit debugging to PSR == segno\n", NULL, NULL},
-    {"DBGRINGNO",           dps_debug_ringno,     0, "dbgsegno Limit debugging to PRR == ringno\n", NULL, NULL},
-    {"DBGBAR",              dps_debug_bar,        1, "dbgbar Limit debugging to BAR mode\n", NULL, NULL},
-    {"NODBGBAR",            dps_debug_bar,        0, "dbgbar Limit debugging to BAR mode\n", NULL, NULL},
+    {"DBGMMECNTDWN",        dps_debug_mme_cntdwn,     0, "dbgmmecntdwn: Enable debug after n MMEs\n", NULL, NULL},
+    {"DBGSKIP",             dps_debug_skip,           0, "dbgskip: Skip first n TRACE debugs\n", NULL, NULL},
+    {"DBGSTART",            dps_debug_start,          0, "dbgstart: Limit debugging to N > Cycle count\n", NULL, NULL},
+    {"DBGSTOP",             dps_debug_stop,           0, "dbgstop: Limit debugging to N < Cycle count\n", NULL, NULL},
+    {"DBGBREAK",            dps_debug_break,          0, "dbgstop: Break when N >= Cycle count\n", NULL, NULL},
+    {"DBGSEGNO",            dps_debug_segno,          0, "dbgsegno: Limit debugging to PSR == segno\n", NULL, NULL},
+    {"DBGRINGNO",           dps_debug_ringno,         0, "dbgsegno: Limit debugging to PRR == ringno\n", NULL, NULL},
+    {"DBGBAR",              dps_debug_bar,            1, "dbgbar: Limit debugging to BAR mode\n", NULL, NULL},
+    {"NODBGBAR",            dps_debug_bar,            0, "dbgbar: Limit debugging to BAR mode\n", NULL, NULL},
 #ifdef HDBG
-    {"HDBG",                hdbg_size,            0, "set hdbg size\n", NULL, NULL},
-    {"PHDBG",               hdbg_print,           0, "set hdbg size\n", NULL, NULL},
+    {"HDBG",                hdbg_size,                0, "hdbg: set history buffer size\n", NULL, NULL},
+    {"PHDBG",               hdbg_print,               0, "phdbg: display history size\n", NULL, NULL},
 #endif
-    {"ABSOLUTE",            absAddr,              0, "abs: Compute the absolute address of segno:offset\n", NULL, NULL},
-    {"STK",                 stackTrace,           0, "stk: print a stack trace\n", NULL, NULL},
-    {"LIST",                listSourceAt,         0, "list segno:offet: list source for an address\n", NULL, NULL},
-    {"LD_SYSTEM_BOOK",      loadSystemBook,       0, "load_system_book: Load a Multics system book for symbolic debugging\n", NULL, NULL},
-    {"ASBE",                addSystemBookEntry,   0, "asbe: Add an entry to the system book\n", NULL, NULL},
-    {"LOOKUP_SYSTEM_BOOK",  lookupSystemBook,     0, "lookup_system_book: lookup an address or symbol in the Multics system book\n", NULL, NULL},
-    {"LSB",                 lookupSystemBook,     0, "lsb: lookup an address or symbol in the Multics system book\n", NULL, NULL},
-    {"VIRTUAL",             virtAddr,             0, "virtual: Compute the virtural address(es) of segno:offset\n", NULL, NULL},
-    {"SPATH",               setSearchPath,        0, "spath: Set source code search path\n", NULL, NULL},
-    {"BT2",                 boot2,                0, "boot2: boot 2nd cpu\n", NULL, NULL},
-    {"TEST",                brkbrk,               0, "test: internal testing\n", NULL, NULL},
+    {"ABSOLUTE",            abs_addr,                 0, "abs: Compute the absolute address of segno:offset\n", NULL, NULL},
+    {"STK",                 stack_trace,              0, "stk: Print a stack trace\n", NULL, NULL},
+    {"LIST",                list_source_at,           0, "list segno:offet: List source for an address\n", NULL, NULL},
+    {"LD_SYSTEM_BOOK",      load_system_book,         0, "load_system_book: Load a Multics system book for symbolic debugging\n", NULL, NULL},
+    {"ASBE",                add_system_book_entry,    0, "asbe: Add an entry to the system book\n", NULL, NULL},
+    {"LOOKUP_SYSTEM_BOOK",  lookup_system_book,       0, "lookup_system_book: Lookup an address or symbol in the Multics system book\n", NULL, NULL},
+    {"LSB",                 lookup_system_book,       0, "lsb: Lookup an address or symbol in the Multics system book\n", NULL, NULL},
+    {"VIRTUAL",             virt_address,             0, "virtual: Compute the virtural address(es) of segno:offset\n", NULL, NULL},
+    {"SPATH",               set_search_path,          0, "spath: Set source code search path\n", NULL, NULL},
+    {"BT2",                 boot2,                    0, "boot2: Boot CPU-B\n", NULL, NULL},
+    {"TEST",                brkbrk,                   0, "test: GDB hook\n", NULL, NULL},
 // copied from scp.c
 #define SSH_ST          0                               /* set */
 #define SSH_SH          1                               /* show */
@@ -3272,42 +3272,40 @@ static CTAB dps8_cmds[] =
     {"NOSBREAK",            sbreak,               SSH_CL, "nosbreak: Unset an SBREAK\n", NULL, NULL},
 #ifdef DVFDBG
     // dvf debugging
-    {"DFX1ENTRY",           dfx1entry,            0, "", NULL, NULL},
-    {"DFX2ENTRY",           dfx2entry,            0, "", NULL, NULL},
-    {"DFX1EXIT",            dfx1exit,             0, "", NULL, NULL},
-    {"DV2SCALE",            dv2scale,             0, "", NULL, NULL},
-    {"MDFX3ENTRY",          mdfx3entry,           0, "", NULL, NULL},
-    {"SMFX1ENTRY",          smfx1entry,           0, "", NULL, NULL},
+    {"DFX1ENTRY",           dfx1entry,                0, "\n", NULL, NULL},
+    {"DFX2ENTRY",           dfx2entry,                0, "\n", NULL, NULL},
+    {"DFX1EXIT",            dfx1exit,                 0, "\n", NULL, NULL},
+    {"DV2SCALE",            dv2scale,                 0, "\n", NULL, NULL},
+    {"MDFX3ENTRY",          mdfx3entry,               0, "\n", NULL, NULL},
+    {"SMFX1ENTRY",          smfx1entry,               0, "\n", NULL, NULL},
 #endif
     // doesn't work
-    //{"DUMPKST",             dumpKST,              0, "dumpkst: dump the Known Segment Table\n", NULL},
-    {"WATCH",               memWatch,             1, "watch: watch memory location\n", NULL, NULL},
-    {"NOWATCH",             memWatch,             0, "watch: watch memory location\n", NULL, NULL},
-    {"SEARCHMEMORY",        searchMemory,         0, "searchMemory: search memory for value\n", NULL, NULL},
-#ifdef EISTESTJIG
-    // invoke EIS test jig.......∫
-    {"ET",                  eisTest,              0, "invoke EIS test jig\n", NULL, NULL}, 
-#endif
-    {"DBGCPUMASK",          setDbgCPUMask,        0, "Set per CPU debug enable", NULL, NULL},
+    //{"DUMPKST",             dumpKST,                  0, "dumpkst: dump the Known Segment Table\n", NULL},
+    {"WATCH",               set_mem_watch,            1, "watch: Watch memory location\n", NULL, NULL},
+    {"NOWATCH",             set_mem_watch,            0, "watch: Unwatch memory location\n", NULL, NULL},
+    {"SEARCHMEMORY",        search_memory,            0, "searchmemory: Search memory for value\n", NULL, NULL},
+    {"DBGCPUMASK",          set_dbg_cpu_mask,         0, "dbgcpumask: Set per CPU debug enable", NULL, NULL},
 #endif // TESTING
 
 //
 // Statistics
 //
 
-    {"DISPLAYMATRIX",       displayTheMatrix,     0, "displaymatrix Display instruction usage counts\n", NULL, NULL},
+#ifdef MATRIX
+    {"DISPLAYMATRIX",       display_the_matrix,         0, "displaymatrix: Display instruction usage counts\n", NULL, NULL},
+#endif
 
 
 //
 // Console scripting
 //
 
-    {"AUTOINPUT",           opconAutoinput,       0, "set console auto-input\n", NULL, NULL},
-    {"AI",                  opconAutoinput,       0, "set console auto-input\n", NULL, NULL},
-    {"AUTOINPUT2",          opconAutoinput,       1, "set console auto-input\n", NULL, NULL},
-    {"AI2",                 opconAutoinput,       1, "set console auto-input\n", NULL, NULL},
-    {"CLRAUTOINPUT",        opconClearAutoinput,  0, "clear console auto-input\n", NULL, NULL},
-    {"CLRAUTOINPUT2",       opconClearAutoinput,  1, "clear console auto-input\n", NULL, NULL},
+    {"AUTOINPUT",           add_opcon_autoinput,      0, "autoinput: Set console auto-input\n", NULL, NULL},
+    {"AI",                  add_opcon_autoinput,      0, "ai: Set console auto-input\n", NULL, NULL},
+    {"AUTOINPUT2",          add_opcon_autoinput,      1, "autoinput2: Set CPU-B console auto-input\n", NULL, NULL},
+    {"AI2",                 add_opcon_autoinput,      1, "ai2: Set console CPU-B auto-input\n", NULL, NULL},
+    {"CLRAUTOINPUT",        clear_opcon_autoinput,    0, "clrautoinput: Clear console auto-input\n", NULL, NULL},
+    {"CLRAUTOINPUT2",       clear_opcon_autoinput,    1, "clrautoinput1: Clear CPU-B console auto-input\n", NULL, NULL},
 
 
 //
@@ -3315,17 +3313,17 @@ static CTAB dps8_cmds[] =
 //
 
 #ifdef LAUNCH
-    {"LAUNCH",              launch,               0, "start subprocess\n", NULL, NULL},
+    {"LAUNCH",              launch,                   0, "launch: Launch subprocess\n", NULL, NULL},
 #endif
 
 #ifdef PANEL
-    {"SCRAPER",             scraper,              0, "Control scraper", NULL, NULL},
+    {"SCRAPER",             scraper,                  0, "scraper: Control scraper\n", NULL, NULL},
 #endif
-    { NULL,                 NULL,                 0, NULL, NULL, NULL}
-};
+    { NULL,                 NULL,                     0, NULL, NULL, NULL}
+  }; // dps8_cmds
 
 #ifndef __MINGW64__
-static void usr1SignalHandler (UNUSED int sig)
+static void usr1_signal_handler (UNUSED int sig)
   {
     sim_printf ("USR1 signal caught; pressing the EXF button\n");
     // Assume the bootload CPU
@@ -3389,7 +3387,7 @@ static void dps8_init (void)
 
 #ifndef __MINGW64__
     // Wire the XF button to signal USR1
-    signal (SIGUSR1, usr1SignalHandler);
+    signal (SIGUSR1, usr1_signal_handler);
 #endif
 
     init_opcodes();
@@ -3422,7 +3420,7 @@ static void dps8_init (void)
 
 
 #ifdef TESTING 
-static struct PRtab
+static struct pr_table
   {
     char  * alias;    // pr alias
     int   n;          // number alias represents ....
@@ -3487,7 +3485,7 @@ static t_addr parse_addr (UNUSED DEVICE * dptr, const char *cptr,
         {
             // not numeric...
             // 1st, see if it's a PR or alias thereof
-            struct PRtab *prt = _prtab;
+            struct pr_table *prt = _prtab;
             while (prt->alias)
             {
                 if (strcasecmp(seg, prt->alias) == 0)
@@ -3542,19 +3540,19 @@ static t_addr parse_addr (UNUSED DEVICE * dptr, const char *cptr,
         // So, fetch the actual address given the segment & offset ...
         // ... and return this absolute, 24-bit address
         
-        word24 absAddr = (word24) getAddress(segno, (int) (offset + PRoffset));
+        word24 abs_addr = (word24) getAddress(segno, (int) (offset + PRoffset));
         
         // TODO: only luckily does this work FixMe
         *optr = endp;   //cptr + strlen(cptr);
         
-        return absAddr;
+        return abs_addr;
     }
     else
     {
         // a PR or alias thereof
         int segno = 0;
         word24 offset = 0;
-        struct PRtab *prt = _prtab;
+        struct pr_table *prt = _prtab;
         while (prt->alias)
         {
             if (strncasecmp(cptr, prt->alias, strlen(prt->alias)) == 0)
@@ -3568,10 +3566,10 @@ static t_addr parse_addr (UNUSED DEVICE * dptr, const char *cptr,
         }
         if (prt->alias)    // a PR or alias
         {
-            word24 absAddr = (word24) getAddress(segno, (int) offset);
+            word24 abs_addr = (word24) getAddress(segno, (int) offset);
             *optr = cptr + strlen(prt->alias);
         
-            return absAddr;
+            return abs_addr;
         }
     }
     
@@ -4092,9 +4090,9 @@ static unsigned char favicon [] = {
 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 
-#define W(x) accessStartWriteStr (sys_opts.machineRoomAccess.client, x)
+#define W(x) accessStartWriteStr (sys_opts.machine_room_access.client, x)
 
-static void httpDoGet (char * uri)
+static void http_do_get (char * uri)
   {
     char buf [4096];
     if (strcmp (uri, "/") == 0)
@@ -4167,32 +4165,32 @@ static void httpDoGet (char * uri)
       {
         W ("HTTP/1.1 200 OK\r\n");
         W ("\r\n");
-        accessStartWrite (sys_opts.machineRoomAccess.client, (char *) favicon, sizeof (favicon));
+        accessStartWrite (sys_opts.machine_room_access.client, (char *) favicon, sizeof (favicon));
       }
     else
-      sim_printf ("httpDoGet ? <%s>\r\n", uri);
-    accessCloseConnection ((uv_stream_t *) sys_opts.machineRoomAccess.client);
+      sim_printf ("http_do_get ? <%s>\r\n", uri);
+    accessCloseConnection ((uv_stream_t *) sys_opts.machine_room_access.client);
   }
 
-static void httpDo (void)
+static void http_do (void)
   {
     switch (sys_opts.httpRequest)
       {
         case hrGet:
           {
-            httpDoGet (sys_opts.httpGetURI);
+            http_do_get (sys_opts.http_get_URI);
           }
         break;
 
         default:
           {
-            sim_printf ("httpParse dazed and confused: %d\n", sys_opts.httpState);
+            sim_printf ("%s dazed and confused: %d\n", __func__, sys_opts.httpState);
           }
           break;
       }
   }
 
-static void httpParseGet (char * buf)
+static void http_parse_get (char * buf)
   {
     char * p = buf;
     while (* p == ' ')
@@ -4205,12 +4203,12 @@ static void httpParseGet (char * buf)
       return;
     if (l >= MR_BUFFER_SZ)
       l = MR_BUFFER_SZ - 1;
-    strncpy (sys_opts.httpGetURI, p, l);
-    sys_opts.httpGetURI[l] = 0;
-    //sim_printf ("uri <%s>\r\n", sys_opts.httpGetURI);
+    strncpy (sys_opts.http_get_URI, p, l);
+    sys_opts.http_get_URI[l] = 0;
+    //sim_printf ("uri <%s>\r\n", sys_opts.http_get_URI);
   }
 
-static void httpParse (char * buf)
+static void http_parse (char * buf)
   {
     char * p = buf;
     while (* p == ' ')
@@ -4227,12 +4225,12 @@ static void httpParse (char * buf)
             // Get header field name
             if (l == 3 && strncmp (buf, "GET", 3) == 0)
               {
-                httpParseGet (q);
+                http_parse_get (q);
                 sys_opts.httpRequest = hrGet;
                 sys_opts.httpState = hsFields;
               }
             else
-              sim_printf ("httpParse ignoring <%s>\n", buf);
+              sim_printf ("%s ignoring <%s>\n", __func__, buf);
           }
           break;
 
@@ -4242,7 +4240,7 @@ static void httpParse (char * buf)
             if (l == 0)
               {
                 //sim_printf ("end of fields");
-                httpDo ();
+                http_do ();
                 sys_opts.httpState = hsInitial;
               }
           }
@@ -4250,19 +4248,19 @@ static void httpParse (char * buf)
 
         default:
           {
-            sim_printf ("httpParse dazed and confused: %d\n", sys_opts.httpState);
+            sim_printf ("%s dazed and confused: %d\n", __func__, sys_opts.httpState);
           }
           break;
       }
   }
 
-static void machineRoomConnected (UNUSED uv_tcp_t * client)
+static void machine_room_connected (UNUSED uv_tcp_t * client)
   {
   }
 
-void machineRoomProcess (void)
+void machine_room_process (void)
   {
-    uv_access * access = & sys_opts.machineRoomAccess;
+    uv_access * access = & sys_opts.machine_room_access;
     //int c = accessGetChar (access);
     int c;
     while ((c = accessGetChar (access)) != SCPE_OK)
@@ -4281,10 +4279,10 @@ void machineRoomProcess (void)
 
         if (c == '\177' || c == '\010')  // backspace/del
           {
-            if (sys_opts.mrBufferCnt > 0)
+            if (sys_opts.mr_buffer_cnt > 0)
               {
-                sys_opts.mrBufferCnt --;
-                sys_opts.mrBuffer[sys_opts.mrBufferCnt] = 0;
+                sys_opts.mr_buffer_cnt --;
+                sys_opts.mr_buffer[sys_opts.mr_buffer_cnt] = 0;
                 //console_putstr (conUnitIdx,  "\b \b");
               }
             continue;
@@ -4293,27 +4291,27 @@ void machineRoomProcess (void)
         //if (c == '\022')  // ^R
         //  {
         //    console_putstr (conUnitIdx,  "^R\r\nSIMH> ");
-        //    for (int i = 0; i < sys_opts.mrBufferCnt; i ++)
-        //      console_putchar (conUnitIdx, (char) (access->mrBuffer[i]));
+        //    for (int i = 0; i < sys_opts.mr_buffer_cnt; i ++)
+        //      console_putchar (conUnitIdx, (char) (access->mr_buffer[i]));
         //    return;
         //  }
 
         if (c == '\025')  // ^U
           {
             //console_putstr (conUnitIdx,  "^U\r\nSIMH> ");
-            sys_opts.mrBufferCnt = 0;
+            sys_opts.mr_buffer_cnt = 0;
             continue;
           }
 
         //if (c == '\012' || c == '\015')  // CR/LF
         if (c == '\012')  // CR
           {
-            sys_opts.mrBuffer[sys_opts.mrBufferCnt] = 0;
-            //sim_printf ("recvd: <%s>\r\n", sys_opts.mrBuffer);
-            httpParse (sys_opts.mrBuffer);
+            sys_opts.mr_buffer[sys_opts.mr_buffer_cnt] = 0;
+            //sim_printf ("recvd: <%s>\r\n", sys_opts.mr_buffer);
+            http_parse (sys_opts.mr_buffer);
 
-            sys_opts.mrBufferCnt = 0;
-            sys_opts.mrBuffer[0] = 0;
+            sys_opts.mr_buffer_cnt = 0;
+            sys_opts.mr_buffer[0] = 0;
             //access->simh_attn_pressed = false;
             continue;
           }
@@ -4322,8 +4320,8 @@ void machineRoomProcess (void)
           {
             //console_putstr (conUnitIdx,  "\r\nSIMH cancel\r\n");
             // Empty input buffer
-            sys_opts.mrBufferCnt = 0;
-            sys_opts.mrBuffer[0] = 0;
+            sys_opts.mr_buffer_cnt = 0;
+            sys_opts.mr_buffer [0] = 0;
             //access->simh_attn_pressed = false;
             continue;
           }
@@ -4331,9 +4329,9 @@ void machineRoomProcess (void)
         if (isprint (c))
           {
             // silently drop buffer overrun
-            if (sys_opts.mrBufferCnt + 1 >= MR_BUFFER_SZ)
+            if (sys_opts.mr_buffer_cnt + 1 >= MR_BUFFER_SZ)
               continue;
-            sys_opts.mrBuffer[sys_opts.mrBufferCnt ++] = (char) c;
+            sys_opts.mr_buffer[sys_opts.mr_buffer_cnt ++] = (char) c;
             //console_putchar (conUnitIdx, (char) c);
             continue;
           }
@@ -4341,7 +4339,7 @@ void machineRoomProcess (void)
   }
 
 
-static void machineRoomConnectPrompt (uv_tcp_t * client)
+static void machine_room_connect_prompt (uv_tcp_t * client)
   {
     accessStartWriteStr (client, "password: \r\n");
     uv_access * access = (uv_access *) client->data;
@@ -4349,14 +4347,14 @@ static void machineRoomConnectPrompt (uv_tcp_t * client)
   }
 
 
-void startMachineRoom(void)
+void start_machine_room (void)
   {
-    sys_opts.machineRoomAccess.connectPrompt = machineRoomConnectPrompt;
-    sys_opts.machineRoomAccess.connected = machineRoomConnected;
-    sys_opts.machineRoomAccess.useTelnet = false;
-    sys_opts.mrBufferCnt = 0;
+    sys_opts.machine_room_access.connectPrompt = machine_room_connect_prompt;
+    sys_opts.machine_room_access.connected = machine_room_connected;
+    sys_opts.machine_room_access.useTelnet = false;
+    sys_opts.mr_buffer_cnt = 0;
     sys_opts.httpState = hsInitial;
     sys_opts.httpRequest = hrNone;
-    uv_open_access (& sys_opts.machineRoomAccess);
+    uv_open_access (& sys_opts.machine_room_access);
   }
 
