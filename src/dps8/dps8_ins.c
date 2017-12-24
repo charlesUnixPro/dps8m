@@ -6309,8 +6309,10 @@ static t_stat DoBasicInstruction (void)
           return CONT_XEC;
 
         case 0001:   // mme
+#ifdef TESTING
           if (sim_deb_mme_cntdwn > 0)
             sim_deb_mme_cntdwn --;
+#endif
           // Causes a fault that fetches and executes, in absolute mode, the
           // instruction pair at main memory location C+4. The value of C is
           // obtained from the FAULT VECTOR switches on the processor

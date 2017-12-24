@@ -107,7 +107,14 @@ typedef struct { int64_t h; uint64_t l; } __int128_t;
 // Experimential dial_out line disconnect delay
 // FNP polled ~100Hz; 10 secs. is 1000 polls
 #define DISC_DELAY 1000
+
+// Enable simh 'launch' command
+#define LAUNCH
+
+
+//
 // Dependencies
+//
 
 // ISOLTS requires multiple CPU support
 #ifdef ISOLTS
