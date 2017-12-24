@@ -126,24 +126,7 @@ t_stat sim_load (FILE *fileref, const char *cptr, const char *fnam, int flag)
 // System configuration commands
 //
 
-static void doIniLine (char * text)
-  {
-    //sim_printf ("<%s?\n", text);
-    char gbuf[257];
-    const char * cptr = get_glyph (text, gbuf, 0); /* get command glyph */
-    CTAB *cmdp;
-    if ((cmdp = find_cmd (gbuf)))            /* lookup command */
-      {
-        t_stat stat = cmdp->action (cmdp->arg, cptr); /* if found, exec */
-        if (stat != SCPE_OK)
-          sim_printf ("%s: %s\n", sim_error_text (SCPE_UNK), text);
-      }
-    else
-      sim_printf ("%s: %s\n", sim_error_text (SCPE_UNK), text);
-  }
-
-
-static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
+static char * default_base_system_script [] =
   {
     // ;
     // ; Configure test system
@@ -186,39 +169,39 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ; not a requirement.
 
     // ; Disconnect everything...
-    doIniLine ("cable_ripout");
+    "cable_ripout",
 
-    doIniLine ("set cpu nunits=7");
-    doIniLine ("set iom nunits=1");
+    "set cpu nunits=7",
+    "set iom nunits=1",
     // ; 16 drives plus the controller
-    doIniLine ("set tape nunits=17");
+    "set tape nunits=17",
     // ; 16 drives; no controller
-    doIniLine ("set disk nunits=16");
-    doIniLine ("set scu nunits=4");
-    doIniLine ("set opcon nunits=1");
-    doIniLine ("set fnp nunits=8");
-    doIniLine ("set urp nunits=3");
-    doIniLine ("set crdrdr nunits=1");
-    doIniLine ("set crdpun nunits=1");
-    doIniLine ("set prt nunits=17");
+    "set disk nunits=16",
+    "set scu nunits=4",
+    "set opcon nunits=1",
+    "set fnp nunits=8",
+    "set urp nunits=3",
+    "set crdrdr nunits=1",
+    "set crdpun nunits=1",
+    "set prt nunits=17",
 #ifndef __MINGW64__
-    doIniLine ("set absi nunits=1");
+    "set absi nunits=1",
 
     // ;Create card reader queue directory
-    doIniLine ("! if [ ! -e /tmp/rdra ]; then mkdir /tmp/rdra; fi");
+    "! if [ ! -e /tmp/rdra ]; then mkdir /tmp/rdra; fi",
 #else
-    doIniLine ("! mkdir %TEMP%\\rdra");
+    "! mkdir %TEMP%\\rdra",
 #endif
 
 
 // CPU0
 
-    doIniLine ("set cpu0 config=faultbase=Multics");
+    "set cpu0 config=faultbase=Multics",
 
-    doIniLine ("set cpu0 config=num=0");
+    "set cpu0 config=num=0",
     // ; As per GB61-01 Operators Guide, App. A
     // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
-    doIniLine ("set cpu0 config=data=024000717200");
+    "set cpu0 config=data=024000717200",
 
     // ; enable ports 0 and 1 (scu connections)
     // ; portconfig: ABCD
@@ -236,54 +219,54 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ;              6 - 2M
     // ;              7 - 4M  
 
-    doIniLine ("set cpu0 config=port=A");
-    doIniLine ("set cpu0   config=assignment=0");
-    doIniLine ("set cpu0   config=interlace=0");
-    doIniLine ("set cpu0   config=enable=1");
-    doIniLine ("set cpu0   config=init_enable=1");
-    doIniLine ("set cpu0   config=store_size=4M");
+    "set cpu0 config=port=A",
+    "set cpu0   config=assignment=0",
+    "set cpu0   config=interlace=0",
+    "set cpu0   config=enable=1",
+    "set cpu0   config=init_enable=1",
+    "set cpu0   config=store_size=4M",
  
-    doIniLine ("set cpu0 config=port=B");
-    doIniLine ("set cpu0   config=assignment=1");
-    doIniLine ("set cpu0   config=interlace=0");
-    doIniLine ("set cpu0   config=enable=1");
-    doIniLine ("set cpu0   config=init_enable=1");
-    doIniLine ("set cpu0   config=store_size=4M");
+    "set cpu0 config=port=B",
+    "set cpu0   config=assignment=1",
+    "set cpu0   config=interlace=0",
+    "set cpu0   config=enable=1",
+    "set cpu0   config=init_enable=1",
+    "set cpu0   config=store_size=4M",
 
-    doIniLine ("set cpu0 config=port=C");
-    doIniLine ("set cpu0   config=assignment=2");
-    doIniLine ("set cpu0   config=interlace=0");
-    doIniLine ("set cpu0   config=enable=1");
-    doIniLine ("set cpu0   config=init_enable=1");
-    doIniLine ("set cpu0   config=store_size=4M");
+    "set cpu0 config=port=C",
+    "set cpu0   config=assignment=2",
+    "set cpu0   config=interlace=0",
+    "set cpu0   config=enable=1",
+    "set cpu0   config=init_enable=1",
+    "set cpu0   config=store_size=4M",
 
-    doIniLine ("set cpu0 config=port=D");
-    doIniLine ("set cpu0   config=assignment=3");
-    doIniLine ("set cpu0   config=interlace=0");
-    doIniLine ("set cpu0   config=enable=1");
-    doIniLine ("set cpu0   config=init_enable=1");
-    doIniLine ("set cpu0   config=store_size=4M");
+    "set cpu0 config=port=D",
+    "set cpu0   config=assignment=3",
+    "set cpu0   config=interlace=0",
+    "set cpu0   config=enable=1",
+    "set cpu0   config=init_enable=1",
+    "set cpu0   config=store_size=4M",
 
     // ; 0 = GCOS 1 = VMS
-    doIniLine ("set cpu0 config=mode=Multics");
+    "set cpu0 config=mode=Multics",
     // ; 0 = 8/70
-    doIniLine ("set cpu0 config=speed=0");
+    "set cpu0 config=speed=0",
 
-    doIniLine ("set cpu0 config=dis_enable=enable");
-    doIniLine ("set cpu0 config=steady_clock=disable");
-    doIniLine ("set cpu0 config=halt_on_unimplemented=disable");
-    doIniLine ("set cpu0 config=disable_wam=disable");
-    doIniLine ("set cpu0 config=tro_enable=enable");
-    doIniLine ("set cpu0 config=y2k=disable");
+    "set cpu0 config=dis_enable=enable",
+    "set cpu0 config=steady_clock=disable",
+    "set cpu0 config=halt_on_unimplemented=disable",
+    "set cpu0 config=disable_wam=disable",
+    "set cpu0 config=tro_enable=enable",
+    "set cpu0 config=y2k=disable",
 
 // CPU1
 
-    doIniLine ("set cpu1 config=faultbase=Multics");
+    "set cpu1 config=faultbase=Multics",
 
-    doIniLine ("set cpu1 config=num=1");
+    "set cpu1 config=num=1",
     // ; As per GB61-01 Operators Guide, App. A
     // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
-    doIniLine ("set cpu1 config=data=024000717200");
+    "set cpu1 config=data=024000717200",
 
     // ; enable ports 0 and 1 (scu connections)
     // ; portconfig: ABCD
@@ -301,55 +284,55 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ;              6 - 2M
     // ;              7 - 4M  
 
-    doIniLine ("set cpu1 config=port=A");
-    doIniLine ("set cpu1   config=assignment=0");
-    doIniLine ("set cpu1   config=interlace=0");
-    doIniLine ("set cpu1   config=enable=1");
-    doIniLine ("set cpu1   config=init_enable=1");
-    doIniLine ("set cpu1   config=store_size=4M");
+    "set cpu1 config=port=A",
+    "set cpu1   config=assignment=0",
+    "set cpu1   config=interlace=0",
+    "set cpu1   config=enable=1",
+    "set cpu1   config=init_enable=1",
+    "set cpu1   config=store_size=4M",
  
-    doIniLine ("set cpu1 config=port=B");
-    doIniLine ("set cpu1   config=assignment=1");
-    doIniLine ("set cpu1   config=interlace=0");
-    doIniLine ("set cpu1   config=enable=1");
-    doIniLine ("set cpu1   config=init_enable=1");
-    doIniLine ("set cpu1   config=store_size=4M");
+    "set cpu1 config=port=B",
+    "set cpu1   config=assignment=1",
+    "set cpu1   config=interlace=0",
+    "set cpu1   config=enable=1",
+    "set cpu1   config=init_enable=1",
+    "set cpu1   config=store_size=4M",
 
-    doIniLine ("set cpu1 config=port=C");
-    doIniLine ("set cpu1   config=assignment=2");
-    doIniLine ("set cpu1   config=interlace=0");
-    doIniLine ("set cpu1   config=enable=1");
-    doIniLine ("set cpu1   config=init_enable=1");
-    doIniLine ("set cpu1   config=store_size=4M");
+    "set cpu1 config=port=C",
+    "set cpu1   config=assignment=2",
+    "set cpu1   config=interlace=0",
+    "set cpu1   config=enable=1",
+    "set cpu1   config=init_enable=1",
+    "set cpu1   config=store_size=4M",
 
-    doIniLine ("set cpu1 config=port=D");
-    doIniLine ("set cpu1   config=assignment=3");
-    doIniLine ("set cpu1   config=interlace=0");
-    doIniLine ("set cpu1   config=enable=1");
-    doIniLine ("set cpu1   config=init_enable=1");
-    doIniLine ("set cpu1   config=store_size=4M");
+    "set cpu1 config=port=D",
+    "set cpu1   config=assignment=3",
+    "set cpu1   config=interlace=0",
+    "set cpu1   config=enable=1",
+    "set cpu1   config=init_enable=1",
+    "set cpu1   config=store_size=4M",
 
     // ; 0 = GCOS 1 = VMS
-    doIniLine ("set cpu1 config=mode=Multics");
+    "set cpu1 config=mode=Multics",
     // ; 0 = 8/70
-    doIniLine ("set cpu1 config=speed=0");
+    "set cpu1 config=speed=0",
 
-    doIniLine ("set cpu1 config=dis_enable=enable");
-    doIniLine ("set cpu1 config=steady_clock=disable");
-    doIniLine ("set cpu1 config=halt_on_unimplemented=disable");
-    doIniLine ("set cpu1 config=disable_wam=disable");
-    doIniLine ("set cpu1 config=tro_enable=enable");
-    doIniLine ("set cpu1 config=y2k=disable");
+    "set cpu1 config=dis_enable=enable",
+    "set cpu1 config=steady_clock=disable",
+    "set cpu1 config=halt_on_unimplemented=disable",
+    "set cpu1 config=disable_wam=disable",
+    "set cpu1 config=tro_enable=enable",
+    "set cpu1 config=y2k=disable",
 
 
 // CPU2
 
-    doIniLine ("set cpu2 config=faultbase=Multics");
+    "set cpu2 config=faultbase=Multics",
 
-    doIniLine ("set cpu2 config=num=2");
+    "set cpu2 config=num=2",
     // ; As per GB61-01 Operators Guide, App. A
     // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
-    doIniLine ("set cpu2 config=data=024000717200");
+    "set cpu2 config=data=024000717200",
 
     // ; enable ports 0 and 1 (scu connections)
     // ; portconfig: ABCD
@@ -367,55 +350,55 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ;              6 - 2M
     // ;              7 - 4M  
 
-    doIniLine ("set cpu2 config=port=A");
-    doIniLine ("set cpu2   config=assignment=0");
-    doIniLine ("set cpu2   config=interlace=0");
-    doIniLine ("set cpu2   config=enable=1");
-    doIniLine ("set cpu2   config=init_enable=1");
-    doIniLine ("set cpu2   config=store_size=4M");
+    "set cpu2 config=port=A",
+    "set cpu2   config=assignment=0",
+    "set cpu2   config=interlace=0",
+    "set cpu2   config=enable=1",
+    "set cpu2   config=init_enable=1",
+    "set cpu2   config=store_size=4M",
  
-    doIniLine ("set cpu2 config=port=B");
-    doIniLine ("set cpu2   config=assignment=1");
-    doIniLine ("set cpu2   config=interlace=0");
-    doIniLine ("set cpu2   config=enable=1");
-    doIniLine ("set cpu2   config=init_enable=1");
-    doIniLine ("set cpu2   config=store_size=4M");
+    "set cpu2 config=port=B",
+    "set cpu2   config=assignment=1",
+    "set cpu2   config=interlace=0",
+    "set cpu2   config=enable=1",
+    "set cpu2   config=init_enable=1",
+    "set cpu2   config=store_size=4M",
 
-    doIniLine ("set cpu2 config=port=C");
-    doIniLine ("set cpu2   config=assignment=2");
-    doIniLine ("set cpu2   config=interlace=0");
-    doIniLine ("set cpu2   config=enable=1");
-    doIniLine ("set cpu2   config=init_enable=1");
-    doIniLine ("set cpu2   config=store_size=4M");
+    "set cpu2 config=port=C",
+    "set cpu2   config=assignment=2",
+    "set cpu2   config=interlace=0",
+    "set cpu2   config=enable=1",
+    "set cpu2   config=init_enable=1",
+    "set cpu2   config=store_size=4M",
 
-    doIniLine ("set cpu2 config=port=D");
-    doIniLine ("set cpu2   config=assignment=3");
-    doIniLine ("set cpu2   config=interlace=0");
-    doIniLine ("set cpu2   config=enable=1");
-    doIniLine ("set cpu2   config=init_enable=1");
-    doIniLine ("set cpu2   config=store_size=4M");
+    "set cpu2 config=port=D",
+    "set cpu2   config=assignment=3",
+    "set cpu2   config=interlace=0",
+    "set cpu2   config=enable=1",
+    "set cpu2   config=init_enable=1",
+    "set cpu2   config=store_size=4M",
 
     // ; 0 = GCOS 1 = VMS
-    doIniLine ("set cpu2 config=mode=Multics");
+    "set cpu2 config=mode=Multics",
     // ; 0 = 8/70
-    doIniLine ("set cpu2 config=speed=0");
+    "set cpu2 config=speed=0",
 
-    doIniLine ("set cpu2 config=dis_enable=enable");
-    doIniLine ("set cpu2 config=steady_clock=disable");
-    doIniLine ("set cpu2 config=halt_on_unimplemented=disable");
-    doIniLine ("set cpu2 config=disable_wam=disable");
-    doIniLine ("set cpu2 config=tro_enable=enable");
-    doIniLine ("set cpu2 config=y2k=disable");
+    "set cpu2 config=dis_enable=enable",
+    "set cpu2 config=steady_clock=disable",
+    "set cpu2 config=halt_on_unimplemented=disable",
+    "set cpu2 config=disable_wam=disable",
+    "set cpu2 config=tro_enable=enable",
+    "set cpu2 config=y2k=disable",
 
 
 // CPU3
 
-    doIniLine ("set cpu3 config=faultbase=Multics");
+    "set cpu3 config=faultbase=Multics",
 
-    doIniLine ("set cpu3 config=num=3");
+    "set cpu3 config=num=3",
     // ; As per GB61-01 Operators Guide, App. A
     // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
-    doIniLine ("set cpu3 config=data=024000717200");
+    "set cpu3 config=data=024000717200",
 
     // ; enable ports 0 and 1 (scu connections)
     // ; portconfig: ABCD
@@ -433,55 +416,55 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ;              6 - 2M
     // ;              7 - 4M  
 
-    doIniLine ("set cpu3 config=port=A");
-    doIniLine ("set cpu3   config=assignment=0");
-    doIniLine ("set cpu3   config=interlace=0");
-    doIniLine ("set cpu3   config=enable=1");
-    doIniLine ("set cpu3   config=init_enable=1");
-    doIniLine ("set cpu3   config=store_size=4M");
+    "set cpu3 config=port=A",
+    "set cpu3   config=assignment=0",
+    "set cpu3   config=interlace=0",
+    "set cpu3   config=enable=1",
+    "set cpu3   config=init_enable=1",
+    "set cpu3   config=store_size=4M",
  
-    doIniLine ("set cpu3 config=port=B");
-    doIniLine ("set cpu3   config=assignment=1");
-    doIniLine ("set cpu3   config=interlace=0");
-    doIniLine ("set cpu3   config=enable=1");
-    doIniLine ("set cpu3   config=init_enable=1");
-    doIniLine ("set cpu3   config=store_size=4M");
+    "set cpu3 config=port=B",
+    "set cpu3   config=assignment=1",
+    "set cpu3   config=interlace=0",
+    "set cpu3   config=enable=1",
+    "set cpu3   config=init_enable=1",
+    "set cpu3   config=store_size=4M",
 
-    doIniLine ("set cpu3 config=port=C");
-    doIniLine ("set cpu3   config=assignment=2");
-    doIniLine ("set cpu3   config=interlace=0");
-    doIniLine ("set cpu3   config=enable=1");
-    doIniLine ("set cpu3   config=init_enable=1");
-    doIniLine ("set cpu3   config=store_size=4M");
+    "set cpu3 config=port=C",
+    "set cpu3   config=assignment=2",
+    "set cpu3   config=interlace=0",
+    "set cpu3   config=enable=1",
+    "set cpu3   config=init_enable=1",
+    "set cpu3   config=store_size=4M",
 
-    doIniLine ("set cpu3 config=port=D");
-    doIniLine ("set cpu3   config=assignment=3");
-    doIniLine ("set cpu3   config=interlace=0");
-    doIniLine ("set cpu3   config=enable=1");
-    doIniLine ("set cpu3   config=init_enable=1");
-    doIniLine ("set cpu3   config=store_size=4M");
+    "set cpu3 config=port=D",
+    "set cpu3   config=assignment=3",
+    "set cpu3   config=interlace=0",
+    "set cpu3   config=enable=1",
+    "set cpu3   config=init_enable=1",
+    "set cpu3   config=store_size=4M",
 
     // ; 0 = GCOS 1 = VMS
-    doIniLine ("set cpu3 config=mode=Multics");
+    "set cpu3 config=mode=Multics",
     // ; 0 = 8/70
-    doIniLine ("set cpu3 config=speed=0");
+    "set cpu3 config=speed=0",
 
-    doIniLine ("set cpu3 config=dis_enable=enable");
-    doIniLine ("set cpu3 config=steady_clock=disable");
-    doIniLine ("set cpu3 config=halt_on_unimplemented=disable");
-    doIniLine ("set cpu3 config=disable_wam=disable");
-    doIniLine ("set cpu3 config=tro_enable=enable");
-    doIniLine ("set cpu3 config=y2k=disable");
+    "set cpu3 config=dis_enable=enable",
+    "set cpu3 config=steady_clock=disable",
+    "set cpu3 config=halt_on_unimplemented=disable",
+    "set cpu3 config=disable_wam=disable",
+    "set cpu3 config=tro_enable=enable",
+    "set cpu3 config=y2k=disable",
 
 
 // CPU4
 
-    doIniLine ("set cpu4 config=faultbase=Multics");
+    "set cpu4 config=faultbase=Multics",
 
-    doIniLine ("set cpu4 config=num=4");
+    "set cpu4 config=num=4",
     // ; As per GB61-01 Operators Guide, App. A
     // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
-    doIniLine ("set cpu4 config=data=024000717200");
+    "set cpu4 config=data=024000717200",
 
     // ; enable ports 0 and 1 (scu connections)
     // ; portconfig: ABCD
@@ -499,55 +482,55 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ;              6 - 2M
     // ;              7 - 4M  
 
-    doIniLine ("set cpu4 config=port=A");
-    doIniLine ("set cpu4   config=assignment=0");
-    doIniLine ("set cpu4   config=interlace=0");
-    doIniLine ("set cpu4   config=enable=1");
-    doIniLine ("set cpu4   config=init_enable=1");
-    doIniLine ("set cpu4   config=store_size=4M");
+    "set cpu4 config=port=A",
+    "set cpu4   config=assignment=0",
+    "set cpu4   config=interlace=0",
+    "set cpu4   config=enable=1",
+    "set cpu4   config=init_enable=1",
+    "set cpu4   config=store_size=4M",
  
-    doIniLine ("set cpu4 config=port=B");
-    doIniLine ("set cpu4   config=assignment=1");
-    doIniLine ("set cpu4   config=interlace=0");
-    doIniLine ("set cpu4   config=enable=1");
-    doIniLine ("set cpu4   config=init_enable=1");
-    doIniLine ("set cpu4   config=store_size=4M");
+    "set cpu4 config=port=B",
+    "set cpu4   config=assignment=1",
+    "set cpu4   config=interlace=0",
+    "set cpu4   config=enable=1",
+    "set cpu4   config=init_enable=1",
+    "set cpu4   config=store_size=4M",
 
-    doIniLine ("set cpu4 config=port=C");
-    doIniLine ("set cpu4   config=assignment=2");
-    doIniLine ("set cpu4   config=interlace=0");
-    doIniLine ("set cpu4   config=enable=1");
-    doIniLine ("set cpu4   config=init_enable=1");
-    doIniLine ("set cpu4   config=store_size=4M");
+    "set cpu4 config=port=C",
+    "set cpu4   config=assignment=2",
+    "set cpu4   config=interlace=0",
+    "set cpu4   config=enable=1",
+    "set cpu4   config=init_enable=1",
+    "set cpu4   config=store_size=4M",
 
-    doIniLine ("set cpu4 config=port=D");
-    doIniLine ("set cpu4   config=assignment=3");
-    doIniLine ("set cpu4   config=interlace=0");
-    doIniLine ("set cpu4   config=enable=1");
-    doIniLine ("set cpu4   config=init_enable=1");
-    doIniLine ("set cpu4   config=store_size=4M");
+    "set cpu4 config=port=D",
+    "set cpu4   config=assignment=3",
+    "set cpu4   config=interlace=0",
+    "set cpu4   config=enable=1",
+    "set cpu4   config=init_enable=1",
+    "set cpu4   config=store_size=4M",
 
     // ; 0 = GCOS 1 = VMS
-    doIniLine ("set cpu4 config=mode=Multics");
+    "set cpu4 config=mode=Multics",
     // ; 0 = 8/70
-    doIniLine ("set cpu4 config=speed=0");
+    "set cpu4 config=speed=0",
 
-    doIniLine ("set cpu4 config=dis_enable=enable");
-    doIniLine ("set cpu4 config=steady_clock=disable");
-    doIniLine ("set cpu4 config=halt_on_unimplemented=disable");
-    doIniLine ("set cpu4 config=disable_wam=disable");
-    doIniLine ("set cpu4 config=tro_enable=enable");
-    doIniLine ("set cpu4 config=y2k=disable");
+    "set cpu4 config=dis_enable=enable",
+    "set cpu4 config=steady_clock=disable",
+    "set cpu4 config=halt_on_unimplemented=disable",
+    "set cpu4 config=disable_wam=disable",
+    "set cpu4 config=tro_enable=enable",
+    "set cpu4 config=y2k=disable",
 
 
 // CPU5
 
-    doIniLine ("set cpu5 config=faultbase=Multics");
+    "set cpu5 config=faultbase=Multics",
 
-    doIniLine ("set cpu5 config=num=5");
+    "set cpu5 config=num=5",
     // ; As per GB61-01 Operators Guide, App. A
     // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
-    doIniLine ("set cpu5 config=data=024000717200");
+    "set cpu5 config=data=024000717200",
 
     // ; enable ports 0 and 1 (scu connections)
     // ; portconfig: ABCD
@@ -565,55 +548,55 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ;              6 - 2M
     // ;              7 - 4M  
 
-    doIniLine ("set cpu5 config=port=A");
-    doIniLine ("set cpu5   config=assignment=0");
-    doIniLine ("set cpu5   config=interlace=0");
-    doIniLine ("set cpu5   config=enable=1");
-    doIniLine ("set cpu5   config=init_enable=1");
-    doIniLine ("set cpu5   config=store_size=4M");
+    "set cpu5 config=port=A",
+    "set cpu5   config=assignment=0",
+    "set cpu5   config=interlace=0",
+    "set cpu5   config=enable=1",
+    "set cpu5   config=init_enable=1",
+    "set cpu5   config=store_size=4M",
  
-    doIniLine ("set cpu5 config=port=B");
-    doIniLine ("set cpu5   config=assignment=1");
-    doIniLine ("set cpu5   config=interlace=0");
-    doIniLine ("set cpu5   config=enable=1");
-    doIniLine ("set cpu5   config=init_enable=1");
-    doIniLine ("set cpu5   config=store_size=4M");
+    "set cpu5 config=port=B",
+    "set cpu5   config=assignment=1",
+    "set cpu5   config=interlace=0",
+    "set cpu5   config=enable=1",
+    "set cpu5   config=init_enable=1",
+    "set cpu5   config=store_size=4M",
 
-    doIniLine ("set cpu5 config=port=C");
-    doIniLine ("set cpu5   config=assignment=2");
-    doIniLine ("set cpu5   config=interlace=0");
-    doIniLine ("set cpu5   config=enable=1");
-    doIniLine ("set cpu5   config=init_enable=1");
-    doIniLine ("set cpu5   config=store_size=4M");
+    "set cpu5 config=port=C",
+    "set cpu5   config=assignment=2",
+    "set cpu5   config=interlace=0",
+    "set cpu5   config=enable=1",
+    "set cpu5   config=init_enable=1",
+    "set cpu5   config=store_size=4M",
 
-    doIniLine ("set cpu5 config=port=D");
-    doIniLine ("set cpu5   config=assignment=3");
-    doIniLine ("set cpu5   config=interlace=0");
-    doIniLine ("set cpu5   config=enable=1");
-    doIniLine ("set cpu5   config=init_enable=1");
-    doIniLine ("set cpu5   config=store_size=4M");
+    "set cpu5 config=port=D",
+    "set cpu5   config=assignment=3",
+    "set cpu5   config=interlace=0",
+    "set cpu5   config=enable=1",
+    "set cpu5   config=init_enable=1",
+    "set cpu5   config=store_size=4M",
 
     // ; 0 = GCOS 1 = VMS
-    doIniLine ("set cpu5 config=mode=Multics");
+    "set cpu5 config=mode=Multics",
     // ; 0 = 8/70
-    doIniLine ("set cpu5 config=speed=0");
+    "set cpu5 config=speed=0",
 
-    doIniLine ("set cpu5 config=dis_enable=enable");
-    doIniLine ("set cpu5 config=steady_clock=disable");
-    doIniLine ("set cpu5 config=halt_on_unimplemented=disable");
-    doIniLine ("set cpu5 config=disable_wam=disable");
-    doIniLine ("set cpu5 config=tro_enable=enable");
-    doIniLine ("set cpu5 config=y2k=disable");
+    "set cpu5 config=dis_enable=enable",
+    "set cpu5 config=steady_clock=disable",
+    "set cpu5 config=halt_on_unimplemented=disable",
+    "set cpu5 config=disable_wam=disable",
+    "set cpu5 config=tro_enable=enable",
+    "set cpu5 config=y2k=disable",
 
 
 // CPU6
 
-    doIniLine ("set cpu6 config=faultbase=Multics");
+    "set cpu6 config=faultbase=Multics",
 
-    doIniLine ("set cpu6 config=num=6");
+    "set cpu6 config=num=6",
     // ; As per GB61-01 Operators Guide, App. A
     // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
-    doIniLine ("set cpu6 config=data=024000717200");
+    "set cpu6 config=data=024000717200",
 
     // ; enable ports 0 and 1 (scu connections)
     // ; portconfig: ABCD
@@ -631,57 +614,57 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ;              6 - 2M
     // ;              7 - 4M  
 
-    doIniLine ("set cpu6 config=port=A");
-    doIniLine ("set cpu6   config=assignment=0");
-    doIniLine ("set cpu6   config=interlace=0");
-    doIniLine ("set cpu6   config=enable=1");
-    doIniLine ("set cpu6   config=init_enable=1");
-    doIniLine ("set cpu6   config=store_size=4M");
+    "set cpu6 config=port=A",
+    "set cpu6   config=assignment=0",
+    "set cpu6   config=interlace=0",
+    "set cpu6   config=enable=1",
+    "set cpu6   config=init_enable=1",
+    "set cpu6   config=store_size=4M",
  
-    doIniLine ("set cpu6 config=port=B");
-    doIniLine ("set cpu6   config=assignment=1");
-    doIniLine ("set cpu6   config=interlace=0");
-    doIniLine ("set cpu6   config=enable=1");
-    doIniLine ("set cpu6   config=init_enable=1");
-    doIniLine ("set cpu6   config=store_size=4M");
+    "set cpu6 config=port=B",
+    "set cpu6   config=assignment=1",
+    "set cpu6   config=interlace=0",
+    "set cpu6   config=enable=1",
+    "set cpu6   config=init_enable=1",
+    "set cpu6   config=store_size=4M",
 
-    doIniLine ("set cpu6 config=port=C");
-    doIniLine ("set cpu6   config=assignment=2");
-    doIniLine ("set cpu6   config=interlace=0");
-    doIniLine ("set cpu6   config=enable=1");
-    doIniLine ("set cpu6   config=init_enable=1");
-    doIniLine ("set cpu6   config=store_size=4M");
+    "set cpu6 config=port=C",
+    "set cpu6   config=assignment=2",
+    "set cpu6   config=interlace=0",
+    "set cpu6   config=enable=1",
+    "set cpu6   config=init_enable=1",
+    "set cpu6   config=store_size=4M",
 
-    doIniLine ("set cpu6 config=port=D");
-    doIniLine ("set cpu6   config=assignment=3");
-    doIniLine ("set cpu6   config=interlace=0");
-    doIniLine ("set cpu6   config=enable=1");
-    doIniLine ("set cpu6   config=init_enable=1");
-    doIniLine ("set cpu6   config=store_size=4M");
+    "set cpu6 config=port=D",
+    "set cpu6   config=assignment=3",
+    "set cpu6   config=interlace=0",
+    "set cpu6   config=enable=1",
+    "set cpu6   config=init_enable=1",
+    "set cpu6   config=store_size=4M",
 
     // ; 0 = GCOS 1 = VMS
-    doIniLine ("set cpu6 config=mode=Multics");
+    "set cpu6 config=mode=Multics",
     // ; 0 = 8/70
-    doIniLine ("set cpu6 config=speed=0");
+    "set cpu6 config=speed=0",
 
-    doIniLine ("set cpu6 config=dis_enable=enable");
-    doIniLine ("set cpu6 config=steady_clock=disable");
-    doIniLine ("set cpu6 config=halt_on_unimplemented=disable");
-    doIniLine ("set cpu6 config=disable_wam=disable");
-    doIniLine ("set cpu6 config=tro_enable=enable");
-    doIniLine ("set cpu6 config=y2k=disable");
+    "set cpu6 config=dis_enable=enable",
+    "set cpu6 config=steady_clock=disable",
+    "set cpu6 config=halt_on_unimplemented=disable",
+    "set cpu6 config=disable_wam=disable",
+    "set cpu6 config=tro_enable=enable",
+    "set cpu6 config=y2k=disable",
 
 
 #if 0 // Until the port expander code is working
 
 // CPU7
 
-    doIniLine ("set cpu7 config=faultbase=Multics");
+    "set cpu7 config=faultbase=Multics",
 
-    doIniLine ("set cpu7 config=num=7");
+    "set cpu7 config=num=7",
     // ; As per GB61-01 Operators Guide, App. A
     // ; switches: 4, 6, 18, 19, 20, 23, 24, 25, 26, 28
-    doIniLine ("set cpu7 config=data=024000717200");
+    "set cpu7 config=data=024000717200",
 
     // ; enable ports 0 and 1 (scu connections)
     // ; portconfig: ABCD
@@ -699,377 +682,377 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ;              6 - 2M
     // ;              7 - 4M  
 
-    doIniLine ("set cpu7 config=port=A");
-    doIniLine ("set cpu7   config=assignment=0");
-    doIniLine ("set cpu7   config=interlace=0");
-    doIniLine ("set cpu7   config=enable=1");
-    doIniLine ("set cpu7   config=init_enable=1");
-    doIniLine ("set cpu7   config=store_size=4M");
+    "set cpu7 config=port=A",
+    "set cpu7   config=assignment=0",
+    "set cpu7   config=interlace=0",
+    "set cpu7   config=enable=1",
+    "set cpu7   config=init_enable=1",
+    "set cpu7   config=store_size=4M",
  
-    doIniLine ("set cpu7 config=port=B");
-    doIniLine ("set cpu7   config=assignment=1");
-    doIniLine ("set cpu7   config=interlace=0");
-    doIniLine ("set cpu7   config=enable=1");
-    doIniLine ("set cpu7   config=init_enable=1");
-    doIniLine ("set cpu7   config=store_size=4M");
+    "set cpu7 config=port=B",
+    "set cpu7   config=assignment=1",
+    "set cpu7   config=interlace=0",
+    "set cpu7   config=enable=1",
+    "set cpu7   config=init_enable=1",
+    "set cpu7   config=store_size=4M",
 
-    doIniLine ("set cpu7 config=port=C");
-    doIniLine ("set cpu7   config=assignment=2");
-    doIniLine ("set cpu7   config=interlace=0");
-    doIniLine ("set cpu7   config=enable=1");
-    doIniLine ("set cpu7   config=init_enable=1");
-    doIniLine ("set cpu7   config=store_size=4M");
+    "set cpu7 config=port=C",
+    "set cpu7   config=assignment=2",
+    "set cpu7   config=interlace=0",
+    "set cpu7   config=enable=1",
+    "set cpu7   config=init_enable=1",
+    "set cpu7   config=store_size=4M",
 
-    doIniLine ("set cpu7 config=port=D");
-    doIniLine ("set cpu7   config=assignment=3");
-    doIniLine ("set cpu7   config=interlace=0");
-    doIniLine ("set cpu7   config=enable=1");
-    doIniLine ("set cpu7   config=init_enable=1");
-    doIniLine ("set cpu7   config=store_size=4M");
+    "set cpu7 config=port=D",
+    "set cpu7   config=assignment=3",
+    "set cpu7   config=interlace=0",
+    "set cpu7   config=enable=1",
+    "set cpu7   config=init_enable=1",
+    "set cpu7   config=store_size=4M",
 
     // ; 0 = GCOS 1 = VMS
-    doIniLine ("set cpu7 config=mode=Multics");
+    "set cpu7 config=mode=Multics",
     // ; 0 = 8/70
-    doIniLine ("set cpu7 config=speed=0");
+    "set cpu7 config=speed=0",
 
-    doIniLine ("set cpu7 config=dis_enable=enable");
-    doIniLine ("set cpu7 config=steady_clock=disable");
-    doIniLine ("set cpu7 config=halt_on_unimplemented=disable");
-    doIniLine ("set cpu7 config=disable_wam=disable");
-    doIniLine ("set cpu7 config=tro_enable=enable");
-    doIniLine ("set cpu7 config=y2k=disable");
+    "set cpu7 config=dis_enable=enable",
+    "set cpu7 config=steady_clock=disable",
+    "set cpu7 config=halt_on_unimplemented=disable",
+    "set cpu7 config=disable_wam=disable",
+    "set cpu7 config=tro_enable=enable",
+    "set cpu7 config=y2k=disable",
 #endif
 
 
 // IOM0
 
-    doIniLine ("set iom0 config=iom_base=Multics");
-    doIniLine ("set iom0 config=multiplex_base=0120");
-    doIniLine ("set iom0 config=os=Multics");
-    doIniLine ("set iom0 config=boot=tape");
-    doIniLine ("set iom0 config=tapechan=012");
-    doIniLine ("set iom0 config=cardchan=011");
-    doIniLine ("set iom0 config=scuport=0");
+    "set iom0 config=iom_base=Multics",
+    "set iom0 config=multiplex_base=0120",
+    "set iom0 config=os=Multics",
+    "set iom0 config=boot=tape",
+    "set iom0 config=tapechan=012",
+    "set iom0 config=cardchan=011",
+    "set iom0 config=scuport=0",
 
-    doIniLine ("set iom0 config=port=0");
-    doIniLine ("set iom0   config=addr=0");
-    doIniLine ("set iom0   config=interlace=0");
-    doIniLine ("set iom0   config=enable=1");
-    doIniLine ("set iom0   config=initenable=0");
-    doIniLine ("set iom0   config=halfsize=0");
-    doIniLine ("set iom0   config=store_size=4M");
+    "set iom0 config=port=0",
+    "set iom0   config=addr=0",
+    "set iom0   config=interlace=0",
+    "set iom0   config=enable=1",
+    "set iom0   config=initenable=0",
+    "set iom0   config=halfsize=0",
+    "set iom0   config=store_size=4M",
 
-    doIniLine ("set iom0 config=port=1");
-    doIniLine ("set iom0   config=addr=1");
-    doIniLine ("set iom0   config=interlace=0");
-    doIniLine ("set iom0   config=enable=1");
-    doIniLine ("set iom0   config=initenable=0");
-    doIniLine ("set iom0   config=halfsize=0");
-    doIniLine ("set iom0   config=store_size=4M");
+    "set iom0 config=port=1",
+    "set iom0   config=addr=1",
+    "set iom0   config=interlace=0",
+    "set iom0   config=enable=1",
+    "set iom0   config=initenable=0",
+    "set iom0   config=halfsize=0",
+    "set iom0   config=store_size=4M",
 
-    doIniLine ("set iom0 config=port=2");
-    doIniLine ("set iom0   config=addr=2");
-    doIniLine ("set iom0   config=interlace=0");
-    doIniLine ("set iom0   config=enable=1");
-    doIniLine ("set iom0   config=initenable=0");
-    doIniLine ("set iom0   config=halfsize=0");
-    doIniLine ("set iom0   config=store_size=4M");
+    "set iom0 config=port=2",
+    "set iom0   config=addr=2",
+    "set iom0   config=interlace=0",
+    "set iom0   config=enable=1",
+    "set iom0   config=initenable=0",
+    "set iom0   config=halfsize=0",
+    "set iom0   config=store_size=4M",
 
-    doIniLine ("set iom0 config=port=3");
-    doIniLine ("set iom0   config=addr=3");
-    doIniLine ("set iom0   config=interlace=0");
-    doIniLine ("set iom0   config=enable=1");
-    doIniLine ("set iom0   config=initenable=0");
-    doIniLine ("set iom0   config=halfsize=0");
-    doIniLine ("set iom0   config=store_size=4M");
+    "set iom0 config=port=3",
+    "set iom0   config=addr=3",
+    "set iom0   config=interlace=0",
+    "set iom0   config=enable=1",
+    "set iom0   config=initenable=0",
+    "set iom0   config=halfsize=0",
+    "set iom0   config=store_size=4M",
 
-    doIniLine ("set iom0 config=port=4");
-    doIniLine ("set iom0   config=enable=0");
+    "set iom0 config=port=4",
+    "set iom0   config=enable=0",
 
-    doIniLine ("set iom0 config=port=5");
-    doIniLine ("set iom0   config=enable=0");
+    "set iom0 config=port=5",
+    "set iom0   config=enable=0",
 
-    doIniLine ("set iom0 config=port=6");
-    doIniLine ("set iom0   config=enable=0");
+    "set iom0 config=port=6",
+    "set iom0   config=enable=0",
 
-    doIniLine ("set iom0 config=port=7");
-    doIniLine ("set iom0   config=enable=0");
+    "set iom0 config=port=7",
+    "set iom0   config=enable=0",
 
 #if 0
 // IOM1
 
-    doIniLine ("set iom1 config=iom_base=Multics2");
-    doIniLine ("set iom1 config=multiplex_base=0121");
-    doIniLine ("set iom1 config=os=Multics");
-    doIniLine ("set iom1 config=boot=tape");
-    doIniLine ("set iom1 config=tapechan=012");
-    doIniLine ("set iom1 config=cardchan=011");
-    doIniLine ("set iom1 config=scuport=0");
+    "set iom1 config=iom_base=Multics2",
+    "set iom1 config=multiplex_base=0121",
+    "set iom1 config=os=Multics",
+    "set iom1 config=boot=tape",
+    "set iom1 config=tapechan=012",
+    "set iom1 config=cardchan=011",
+    "set iom1 config=scuport=0",
 
-    doIniLine ("set iom1 config=port=0");
-    doIniLine ("set iom1   config=addr=0");
-    doIniLine ("set iom1   config=interlace=0");
-    doIniLine ("set iom1   config=enable=1");
-    doIniLine ("set iom1   config=initenable=0");
-    doIniLine ("set iom1   config=halfsize=0;");
+    "set iom1 config=port=0",
+    "set iom1   config=addr=0",
+    "set iom1   config=interlace=0",
+    "set iom1   config=enable=1",
+    "set iom1   config=initenable=0",
+    "set iom1   config=halfsize=0;",
 
-    doIniLine ("set iom1 config=port=1");
-    doIniLine ("set iom1   config=addr=1");
-    doIniLine ("set iom1   config=interlace=0");
-    doIniLine ("set iom1   config=enable=1");
-    doIniLine ("set iom1   config=initenable=0");
-    doIniLine ("set iom1   config=halfsize=0;");
+    "set iom1 config=port=1",
+    "set iom1   config=addr=1",
+    "set iom1   config=interlace=0",
+    "set iom1   config=enable=1",
+    "set iom1   config=initenable=0",
+    "set iom1   config=halfsize=0;",
 
-    doIniLine ("set iom1 config=port=2");
-    doIniLine ("set iom1   config=enable=0");
-    doIniLine ("set iom1 config=port=3");
-    doIniLine ("set iom1   config=enable=0");
-    doIniLine ("set iom1 config=port=4");
-    doIniLine ("set iom1   config=enable=0");
-    doIniLine ("set iom1 config=port=5");
-    doIniLine ("set iom1   config=enable=0");
-    doIniLine ("set iom1 config=port=6");
-    doIniLine ("set iom1   config=enable=0");
-    doIniLine ("set iom1 config=port=7");
-    doIniLine ("set iom1   config=enable=0");
+    "set iom1 config=port=2",
+    "set iom1   config=enable=0",
+    "set iom1 config=port=3",
+    "set iom1   config=enable=0",
+    "set iom1 config=port=4",
+    "set iom1   config=enable=0",
+    "set iom1 config=port=5",
+    "set iom1   config=enable=0",
+    "set iom1 config=port=6",
+    "set iom1   config=enable=0",
+    "set iom1 config=port=7",
+    "set iom1   config=enable=0",
 
 
 // IOM2
 
-    doIniLine ("set iom2 config=iom_base=Multics2");
-    doIniLine ("set iom2 config=multiplex_base=0121");
-    doIniLine ("set iom2 config=os=Multics");
-    doIniLine ("set iom2 config=boot=tape");
-    doIniLine ("set iom2 config=tapechan=012");
-    doIniLine ("set iom2 config=cardchan=011");
-    doIniLine ("set iom2 config=scuport=0");
+    "set iom2 config=iom_base=Multics2",
+    "set iom2 config=multiplex_base=0121",
+    "set iom2 config=os=Multics",
+    "set iom2 config=boot=tape",
+    "set iom2 config=tapechan=012",
+    "set iom2 config=cardchan=011",
+    "set iom2 config=scuport=0",
 
-    doIniLine ("set iom2 config=port=0");
-    doIniLine ("set iom2   config=addr=0");
-    doIniLine ("set iom2   config=interlace=0");
-    doIniLine ("set iom2   config=enable=1");
-    doIniLine ("set iom2   config=initenable=0");
-    doIniLine ("set iom2   config=halfsize=0;");
+    "set iom2 config=port=0",
+    "set iom2   config=addr=0",
+    "set iom2   config=interlace=0",
+    "set iom2   config=enable=1",
+    "set iom2   config=initenable=0",
+    "set iom2   config=halfsize=0;",
 
-    doIniLine ("set iom2 config=port=1");
-    doIniLine ("set iom2   config=addr=1");
-    doIniLine ("set iom2   config=interlace=0");
-    doIniLine ("set iom2   config=enable=1");
-    doIniLine ("set iom2   config=initenable=0");
-    doIniLine ("set iom2   config=halfsize=0;");
+    "set iom2 config=port=1",
+    "set iom2   config=addr=1",
+    "set iom2   config=interlace=0",
+    "set iom2   config=enable=1",
+    "set iom2   config=initenable=0",
+    "set iom2   config=halfsize=0;",
 
-    doIniLine ("set iom2 config=port=2");
-    doIniLine ("set iom2   config=enable=0");
-    doIniLine ("set iom2 config=port=3");
-    doIniLine ("set iom2   config=enable=0");
-    doIniLine ("set iom2 config=port=4");
-    doIniLine ("set iom2   config=enable=0");
-    doIniLine ("set iom2 config=port=5");
-    doIniLine ("set iom2   config=enable=0");
-    doIniLine ("set iom2 config=port=6");
-    doIniLine ("set iom2   config=enable=0");
-    doIniLine ("set iom2 config=port=7");
-    doIniLine ("set iom2   config=enable=0");
+    "set iom2 config=port=2",
+    "set iom2   config=enable=0",
+    "set iom2 config=port=3",
+    "set iom2   config=enable=0",
+    "set iom2 config=port=4",
+    "set iom2   config=enable=0",
+    "set iom2 config=port=5",
+    "set iom2   config=enable=0",
+    "set iom2 config=port=6",
+    "set iom2   config=enable=0",
+    "set iom2 config=port=7",
+    "set iom2   config=enable=0",
 
 
 // IOM3
 
-    doIniLine ("set iom3 config=iom_base=Multics2");
-    doIniLine ("set iom3 config=multiplex_base=0121");
-    doIniLine ("set iom3 config=os=Multics");
-    doIniLine ("set iom3 config=boot=tape");
-    doIniLine ("set iom3 config=tapechan=012");
-    doIniLine ("set iom3 config=cardchan=011");
-    doIniLine ("set iom3 config=scuport=0");
+    "set iom3 config=iom_base=Multics2",
+    "set iom3 config=multiplex_base=0121",
+    "set iom3 config=os=Multics",
+    "set iom3 config=boot=tape",
+    "set iom3 config=tapechan=012",
+    "set iom3 config=cardchan=011",
+    "set iom3 config=scuport=0",
 
-    doIniLine ("set iom3 config=port=0");
-    doIniLine ("set iom3   config=addr=0");
-    doIniLine ("set iom3   config=interlace=0");
-    doIniLine ("set iom3   config=enable=1");
-    doIniLine ("set iom3   config=initenable=0");
-    doIniLine ("set iom3   config=halfsize=0;");
+    "set iom3 config=port=0",
+    "set iom3   config=addr=0",
+    "set iom3   config=interlace=0",
+    "set iom3   config=enable=1",
+    "set iom3   config=initenable=0",
+    "set iom3   config=halfsize=0;",
 
-    doIniLine ("set iom3 config=port=1");
-    doIniLine ("set iom3   config=addr=1");
-    doIniLine ("set iom3   config=interlace=0");
-    doIniLine ("set iom3   config=enable=1");
-    doIniLine ("set iom3   config=initenable=0");
-    doIniLine ("set iom3   config=halfsize=0;");
+    "set iom3 config=port=1",
+    "set iom3   config=addr=1",
+    "set iom3   config=interlace=0",
+    "set iom3   config=enable=1",
+    "set iom3   config=initenable=0",
+    "set iom3   config=halfsize=0;",
 
-    doIniLine ("set iom3 config=port=2");
-    doIniLine ("set iom3   config=enable=0");
-    doIniLine ("set iom3 config=port=3");
-    doIniLine ("set iom3   config=enable=0");
-    doIniLine ("set iom3 config=port=4");
-    doIniLine ("set iom3   config=enable=0");
-    doIniLine ("set iom3 config=port=5");
-    doIniLine ("set iom3   config=enable=0");
-    doIniLine ("set iom3 config=port=6");
-    doIniLine ("set iom3   config=enable=0");
-    doIniLine ("set iom3 config=port=7");
-    doIniLine ("set iom3   config=enable=0");
+    "set iom3 config=port=2",
+    "set iom3   config=enable=0",
+    "set iom3 config=port=3",
+    "set iom3   config=enable=0",
+    "set iom3 config=port=4",
+    "set iom3   config=enable=0",
+    "set iom3 config=port=5",
+    "set iom3   config=enable=0",
+    "set iom3 config=port=6",
+    "set iom3   config=enable=0",
+    "set iom3 config=port=7",
+    "set iom3   config=enable=0",
 #endif
 
 // SC0
 
-    doIniLine ("set scu0 config=mode=program");
-    doIniLine ("set scu0 config=port0=enable");
-    doIniLine ("set scu0 config=port1=enable");
-    doIniLine ("set scu0 config=port2=enable");
-    doIniLine ("set scu0 config=port3=enable");
-    doIniLine ("set scu0 config=port4=enable");
-    doIniLine ("set scu0 config=port5=enable");
-    doIniLine ("set scu0 config=port6=enable");
-    doIniLine ("set scu0 config=port7=enable");
-    doIniLine ("set scu0 config=maska=7");
-    doIniLine ("set scu0 config=maskb=off");
-    doIniLine ("set scu0 config=lwrstoresize=7");
-    doIniLine ("set scu0 config=cyclic=0040");
-    doIniLine ("set scu0 config=nea=0200");
-    doIniLine ("set scu0 config=onl=014");
-    doIniLine ("set scu0 config=int=0");
-    doIniLine ("set scu0 config=lwr=0");
+    "set scu0 config=mode=program",
+    "set scu0 config=port0=enable",
+    "set scu0 config=port1=enable",
+    "set scu0 config=port2=enable",
+    "set scu0 config=port3=enable",
+    "set scu0 config=port4=enable",
+    "set scu0 config=port5=enable",
+    "set scu0 config=port6=enable",
+    "set scu0 config=port7=enable",
+    "set scu0 config=maska=7",
+    "set scu0 config=maskb=off",
+    "set scu0 config=lwrstoresize=7",
+    "set scu0 config=cyclic=0040",
+    "set scu0 config=nea=0200",
+    "set scu0 config=onl=014",
+    "set scu0 config=int=0",
+    "set scu0 config=lwr=0",
 
 // SCU1
 
-    doIniLine ("set scu1 config=mode=program");
-    doIniLine ("set scu1 config=port0=enable");
-    doIniLine ("set scu1 config=port1=enable");
-    doIniLine ("set scu1 config=port2=enable");
-    doIniLine ("set scu1 config=port3=enable");
-    doIniLine ("set scu1 config=port4=enable");
-    doIniLine ("set scu1 config=port5=enable");
-    doIniLine ("set scu1 config=port6=enable");
-    doIniLine ("set scu1 config=port7=enable");
-    doIniLine ("set scu1 config=maska=off");
-    doIniLine ("set scu1 config=maskb=off");
-    doIniLine ("set scu1 config=lwrstoresize=7");
-    doIniLine ("set scu1 config=cyclic=0040");
-    doIniLine ("set scu1 config=nea=0200");
-    doIniLine ("set scu1 config=onl=014");
-    doIniLine ("set scu1 config=int=0");
-    doIniLine ("set scu1 config=lwr=0");
+    "set scu1 config=mode=program",
+    "set scu1 config=port0=enable",
+    "set scu1 config=port1=enable",
+    "set scu1 config=port2=enable",
+    "set scu1 config=port3=enable",
+    "set scu1 config=port4=enable",
+    "set scu1 config=port5=enable",
+    "set scu1 config=port6=enable",
+    "set scu1 config=port7=enable",
+    "set scu1 config=maska=off",
+    "set scu1 config=maskb=off",
+    "set scu1 config=lwrstoresize=7",
+    "set scu1 config=cyclic=0040",
+    "set scu1 config=nea=0200",
+    "set scu1 config=onl=014",
+    "set scu1 config=int=0",
+    "set scu1 config=lwr=0",
 
 // SCU2
 
-    doIniLine ("set scu2 config=mode=program");
-    doIniLine ("set scu2 config=port0=enable");
-    doIniLine ("set scu2 config=port1=enable");
-    doIniLine ("set scu2 config=port2=enable");
-    doIniLine ("set scu2 config=port3=enable");
-    doIniLine ("set scu2 config=port4=enable");
-    doIniLine ("set scu2 config=port5=enable");
-    doIniLine ("set scu2 config=port6=enable");
-    doIniLine ("set scu2 config=port7=enable");
-    doIniLine ("set scu2 config=maska=off");
-    doIniLine ("set scu2 config=maskb=off");
-    doIniLine ("set scu2 config=lwrstoresize=7");
-    doIniLine ("set scu2 config=cyclic=0040");
-    doIniLine ("set scu2 config=nea=0200");
-    doIniLine ("set scu2 config=onl=014");
-    doIniLine ("set scu2 config=int=0");
-    doIniLine ("set scu2 config=lwr=0");
+    "set scu2 config=mode=program",
+    "set scu2 config=port0=enable",
+    "set scu2 config=port1=enable",
+    "set scu2 config=port2=enable",
+    "set scu2 config=port3=enable",
+    "set scu2 config=port4=enable",
+    "set scu2 config=port5=enable",
+    "set scu2 config=port6=enable",
+    "set scu2 config=port7=enable",
+    "set scu2 config=maska=off",
+    "set scu2 config=maskb=off",
+    "set scu2 config=lwrstoresize=7",
+    "set scu2 config=cyclic=0040",
+    "set scu2 config=nea=0200",
+    "set scu2 config=onl=014",
+    "set scu2 config=int=0",
+    "set scu2 config=lwr=0",
 
 // SCU3
 
-    doIniLine ("set scu3 config=mode=program");
-    doIniLine ("set scu3 config=port0=enable");
-    doIniLine ("set scu3 config=port1=enable");
-    doIniLine ("set scu3 config=port2=enable");
-    doIniLine ("set scu3 config=port3=enable");
-    doIniLine ("set scu3 config=port4=enable");
-    doIniLine ("set scu3 config=port5=enable");
-    doIniLine ("set scu3 config=port6=enable");
-    doIniLine ("set scu3 config=port7=enable");
-    doIniLine ("set scu3 config=maska=off");
-    doIniLine ("set scu3 config=maskb=off");
-    doIniLine ("set scu3 config=lwrstoresize=7");
-    doIniLine ("set scu3 config=cyclic=0040");
-    doIniLine ("set scu3 config=nea=0200");
-    doIniLine ("set scu3 config=onl=014");
-    doIniLine ("set scu3 config=int=0");
-    doIniLine ("set scu3 config=lwr=0");
+    "set scu3 config=mode=program",
+    "set scu3 config=port0=enable",
+    "set scu3 config=port1=enable",
+    "set scu3 config=port2=enable",
+    "set scu3 config=port3=enable",
+    "set scu3 config=port4=enable",
+    "set scu3 config=port5=enable",
+    "set scu3 config=port6=enable",
+    "set scu3 config=port7=enable",
+    "set scu3 config=maska=off",
+    "set scu3 config=maskb=off",
+    "set scu3 config=lwrstoresize=7",
+    "set scu3 config=cyclic=0040",
+    "set scu3 config=nea=0200",
+    "set scu3 config=onl=014",
+    "set scu3 config=int=0",
+    "set scu3 config=lwr=0",
 
 #if 0
 // SCU4
 
-    doIniLine ("set scu4 config=mode=program");
-    doIniLine ("set scu4 config=port0=enable");
-    doIniLine ("set scu4 config=port1=enable");
-    doIniLine ("set scu4 config=port2=enable");
-    doIniLine ("set scu4 config=port3=enable");
-    doIniLine ("set scu4 config=port4=enable");
-    doIniLine ("set scu4 config=port5=enable");
-    doIniLine ("set scu4 config=port6=enable");
-    doIniLine ("set scu4 config=port7=enable");
-    doIniLine ("set scu4 config=maska=off");
-    doIniLine ("set scu4 config=maskb=off");
-    doIniLine ("set scu4 config=lwrstoresize=7");
-    doIniLine ("set scu4 config=cyclic=0040");
-    doIniLine ("set scu4 config=nea=0200");
-    doIniLine ("set scu4 config=onl=014");
-    doIniLine ("set scu4 config=int=0");
-    doIniLine ("set scu4 config=lwr=0");
+    "set scu4 config=mode=program",
+    "set scu4 config=port0=enable",
+    "set scu4 config=port1=enable",
+    "set scu4 config=port2=enable",
+    "set scu4 config=port3=enable",
+    "set scu4 config=port4=enable",
+    "set scu4 config=port5=enable",
+    "set scu4 config=port6=enable",
+    "set scu4 config=port7=enable",
+    "set scu4 config=maska=off",
+    "set scu4 config=maskb=off",
+    "set scu4 config=lwrstoresize=7",
+    "set scu4 config=cyclic=0040",
+    "set scu4 config=nea=0200",
+    "set scu4 config=onl=014",
+    "set scu4 config=int=0",
+    "set scu4 config=lwr=0",
 
 // SCU5
 
-    doIniLine ("set scu5 config=mode=program");
-    doIniLine ("set scu5 config=port0=enable");
-    doIniLine ("set scu5 config=port1=enable");
-    doIniLine ("set scu5 config=port2=enable");
-    doIniLine ("set scu5 config=port3=enable");
-    doIniLine ("set scu5 config=port4=enable");
-    doIniLine ("set scu5 config=port5=enable");
-    doIniLine ("set scu5 config=port6=enable");
-    doIniLine ("set scu5 config=port7=enable");
-    doIniLine ("set scu5 config=maska=off");
-    doIniLine ("set scu5 config=maskb=off");
-    doIniLine ("set scu5 config=lwrstoresize=7");
-    doIniLine ("set scu5 config=cyclic=0040");
-    doIniLine ("set scu5 config=nea=0200");
-    doIniLine ("set scu5 config=onl=014");
-    doIniLine ("set scu5 config=int=0");
-    doIniLine ("set scu5 config=lwr=0");
+    "set scu5 config=mode=program",
+    "set scu5 config=port0=enable",
+    "set scu5 config=port1=enable",
+    "set scu5 config=port2=enable",
+    "set scu5 config=port3=enable",
+    "set scu5 config=port4=enable",
+    "set scu5 config=port5=enable",
+    "set scu5 config=port6=enable",
+    "set scu5 config=port7=enable",
+    "set scu5 config=maska=off",
+    "set scu5 config=maskb=off",
+    "set scu5 config=lwrstoresize=7",
+    "set scu5 config=cyclic=0040",
+    "set scu5 config=nea=0200",
+    "set scu5 config=onl=014",
+    "set scu5 config=int=0",
+    "set scu5 config=lwr=0",
 
 // SCU6
 
-    doIniLine ("set scu6 config=mode=program");
-    doIniLine ("set scu6 config=port0=enable");
-    doIniLine ("set scu6 config=port1=enable");
-    doIniLine ("set scu6 config=port2=enable");
-    doIniLine ("set scu6 config=port3=enable");
-    doIniLine ("set scu6 config=port4=enable");
-    doIniLine ("set scu6 config=port5=enable");
-    doIniLine ("set scu6 config=port6=enable");
-    doIniLine ("set scu6 config=port7=enable");
-    doIniLine ("set scu6 config=maska=off");
-    doIniLine ("set scu6 config=maskb=off");
-    doIniLine ("set scu6 config=lwrstoresize=7");
-    doIniLine ("set scu6 config=cyclic=0040");
-    doIniLine ("set scu6 config=nea=0200");
-    doIniLine ("set scu6 config=onl=014");
-    doIniLine ("set scu6 config=int=0");
-    doIniLine ("set scu6 config=lwr=0");
+    "set scu6 config=mode=program",
+    "set scu6 config=port0=enable",
+    "set scu6 config=port1=enable",
+    "set scu6 config=port2=enable",
+    "set scu6 config=port3=enable",
+    "set scu6 config=port4=enable",
+    "set scu6 config=port5=enable",
+    "set scu6 config=port6=enable",
+    "set scu6 config=port7=enable",
+    "set scu6 config=maska=off",
+    "set scu6 config=maskb=off",
+    "set scu6 config=lwrstoresize=7",
+    "set scu6 config=cyclic=0040",
+    "set scu6 config=nea=0200",
+    "set scu6 config=onl=014",
+    "set scu6 config=int=0",
+    "set scu6 config=lwr=0",
 
 // SCU7
 
-    doIniLine ("set scu7 config=mode=program");
-    doIniLine ("set scu7 config=port0=enable");
-    doIniLine ("set scu7 config=port1=enable");
-    doIniLine ("set scu7 config=port2=enable");
-    doIniLine ("set scu7 config=port3=enable");
-    doIniLine ("set scu7 config=port4=enable");
-    doIniLine ("set scu7 config=port5=enable");
-    doIniLine ("set scu7 config=port6=enable");
-    doIniLine ("set scu7 config=port7=enable");
-    doIniLine ("set scu7 config=maska=off");
-    doIniLine ("set scu7 config=maskb=off");
-    doIniLine ("set scu7 config=lwrstoresize=7");
-    doIniLine ("set scu7 config=cyclic=0040");
-    doIniLine ("set scu7 config=nea=0200");
-    doIniLine ("set scu7 config=onl=014");
-    doIniLine ("set scu7 config=int=0");
-    doIniLine ("set scu7 config=lwr=0");
+    "set scu7 config=mode=program",
+    "set scu7 config=port0=enable",
+    "set scu7 config=port1=enable",
+    "set scu7 config=port2=enable",
+    "set scu7 config=port3=enable",
+    "set scu7 config=port4=enable",
+    "set scu7 config=port5=enable",
+    "set scu7 config=port6=enable",
+    "set scu7 config=port7=enable",
+    "set scu7 config=maska=off",
+    "set scu7 config=maskb=off",
+    "set scu7 config=lwrstoresize=7",
+    "set scu7 config=cyclic=0040",
+    "set scu7 config=nea=0200",
+    "set scu7 config=onl=014",
+    "set scu7 config=int=0",
+    "set scu7 config=lwr=0",
 #endif
 
     // ; There are bugs in the FNP code that require sim unit number
@@ -1084,380 +1067,402 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     // ; fnp g 5600
     // ; fnp h 6100
 
-    doIniLine ("set fnp0 config=mailbox=03400");
-    doIniLine ("set fnp0 ipc_name=fnp-a");
-    doIniLine ("set fnp1 config=mailbox=03700");
-    doIniLine ("set fnp1 ipc_name=fnp-b");
-    doIniLine ("set fnp2 config=mailbox=04200");
-    doIniLine ("set fnp2 ipc_name=fnp-c");
-    doIniLine ("set fnp3 config=mailbox=04500");
-    doIniLine ("set fnp3 ipc_name=fnp-d");
-    doIniLine ("set fnp4 config=mailbox=05000");
-    doIniLine ("set fnp4 ipc_name=fnp-e");
-    doIniLine ("set fnp5 config=mailbox=05300");
-    doIniLine ("set fnp5 ipc_name=fnp-f");
-    doIniLine ("set fnp6 config=mailbox=05600");
-    doIniLine ("set fnp6 ipc_name=fnp-g");
-    doIniLine ("set fnp7 config=mailbox=06100");
-    doIniLine ("set fnp7 ipc_name=fnp-h");
+    "set fnp0 config=mailbox=03400",
+    "set fnp0 ipc_name=fnp-a",
+    "set fnp1 config=mailbox=03700",
+    "set fnp1 ipc_name=fnp-b",
+    "set fnp2 config=mailbox=04200",
+    "set fnp2 ipc_name=fnp-c",
+    "set fnp3 config=mailbox=04500",
+    "set fnp3 ipc_name=fnp-d",
+    "set fnp4 config=mailbox=05000",
+    "set fnp4 ipc_name=fnp-e",
+    "set fnp5 config=mailbox=05300",
+    "set fnp5 ipc_name=fnp-f",
+    "set fnp6 config=mailbox=05600",
+    "set fnp6 ipc_name=fnp-g",
+    "set fnp7 config=mailbox=06100",
+    "set fnp7 ipc_name=fnp-h",
 
 
-    doIniLine ("set tape0 boot_drive");
+    "set tape0 boot_drive",
 
     // ;cable ripout
 
     // ; Attach tape MPC to IOM 0, chan 012, dev_code 0
-    doIniLine ("cable tape,0,0,012,0");
-    doIniLine ("set tape0 device_name=mpca");
+    "cable tape,0,0,012,0",
+    "set tape0 device_name=mpca",
     // ; Attach TAPE unit 0 to IOM 0, chan 012, dev_code 1
-    doIniLine ("cable tape,1,0,012,1");
-    doIniLine ("set tape1 device_name=tapa_01");
-    doIniLine ("cable tape,2,0,012,2");
-    doIniLine ("set tape2 device_name=tapa_02");
-    doIniLine ("cable tape,3,0,012,3");
-    doIniLine ("set tape3 device_name=tapa_03");
-    doIniLine ("cable tape,4,0,012,4");
-    doIniLine ("set tape4 device_name=tapa_04");
-    doIniLine ("cable tape,5,0,012,5");
-    doIniLine ("set tape5 device_name=tapa_05");
-    doIniLine ("cable tape,6,0,012,6");
-    doIniLine ("set tape6 device_name=tapa_06");
-    doIniLine ("cable tape,7,0,012,7");
-    doIniLine ("set tape7 device_name=tapa_07");
-    doIniLine ("cable tape,8,0,012,8");
-    doIniLine ("set tape8 device_name=tapa_08");
-    doIniLine ("cable tape,9,0,012,9");
-    doIniLine ("set tape9 device_name=tapa_09");
-    doIniLine ("cable tape,10,0,012,10");
-    doIniLine ("set tape10 device_name=tapa_10");
-    doIniLine ("cable tape,11,0,012,11");
-    doIniLine ("set tape11 device_name=tapa_11");
-    doIniLine ("cable tape,12,0,012,12");
-    doIniLine ("set tape12 device_name=tapa_12");
-    doIniLine ("cable tape,13,0,012,13");
-    doIniLine ("set tape13 device_name=tapa_13");
-    doIniLine ("cable tape,14,0,012,14");
-    doIniLine ("set tape14 device_name=tapa_14");
-    doIniLine ("cable tape,15,0,012,15");
-    doIniLine ("set tape15 device_name=tapa_15");
-    doIniLine ("cable tape,16,0,012,16");
-    doIniLine ("set tape16 device_name=tapa_16");
+    "cable tape,1,0,012,1",
+    "set tape1 device_name=tapa_01",
+    "cable tape,2,0,012,2",
+    "set tape2 device_name=tapa_02",
+    "cable tape,3,0,012,3",
+    "set tape3 device_name=tapa_03",
+    "cable tape,4,0,012,4",
+    "set tape4 device_name=tapa_04",
+    "cable tape,5,0,012,5",
+    "set tape5 device_name=tapa_05",
+    "cable tape,6,0,012,6",
+    "set tape6 device_name=tapa_06",
+    "cable tape,7,0,012,7",
+    "set tape7 device_name=tapa_07",
+    "cable tape,8,0,012,8",
+    "set tape8 device_name=tapa_08",
+    "cable tape,9,0,012,9",
+    "set tape9 device_name=tapa_09",
+    "cable tape,10,0,012,10",
+    "set tape10 device_name=tapa_10",
+    "cable tape,11,0,012,11",
+    "set tape11 device_name=tapa_11",
+    "cable tape,12,0,012,12",
+    "set tape12 device_name=tapa_12",
+    "cable tape,13,0,012,13",
+    "set tape13 device_name=tapa_13",
+    "cable tape,14,0,012,14",
+    "set tape14 device_name=tapa_14",
+    "cable tape,15,0,012,15",
+    "set tape15 device_name=tapa_15",
+    "cable tape,16,0,012,16",
+    "set tape16 device_name=tapa_16",
 
-    // ; Attach DISK unit 0 to IOM 0, chan 013, dev_code 0");
-    doIniLine ("cable disk,0,0,013,0");
-    // ; Attach DISK unit 1 to IOM 0, chan 013, dev_code 1");
-    doIniLine ("cable disk,1,0,013,1");
-    // ; Attach DISK unit 2 to IOM 0, chan 013, dev_code 2");
-    doIniLine ("cable disk,2,0,013,2");
-    // ; Attach DISK unit 3 to IOM 0, chan 013, dev_code 3");
-    doIniLine ("cable disk,3,0,013,3");
-    // ; Attach DISK unit 4 to IOM 0, chan 013, dev_code 4");
-    doIniLine ("cable disk,4,0,013,4");
-    // ; Attach DISK unit 5 to IOM 0, chan 013, dev_code 5");
-    doIniLine ("cable disk,5,0,013,5");
-    // ; Attach DISK unit 6 to IOM 0, chan 013, dev_code 6");
-    doIniLine ("cable disk,6,0,013,6");
-    // ; Attach DISK unit 7 to IOM 0, chan 013, dev_code 7");
-    doIniLine ("cable disk,7,0,013,7");
-    // ; Attach DISK unit 8 to IOM 0, chan 013, dev_code 8");
-    doIniLine ("cable disk,8,0,013,8");
-    // ; Attach DISK unit 9 to IOM 0, chan 013, dev_code 9");
-    doIniLine ("cable disk,9,0,013,9");
-    // ; Attach DISK unit 10 to IOM 0, chan 013, dev_code 10");
-    doIniLine ("cable disk,10,0,013,10");
-    // ; Attach DISK unit 11 to IOM 0, chan 013, dev_code 11");
-    doIniLine ("cable disk,11,0,013,11");
-    // ; Attach DISK unit 12 to IOM 0, chan 013, dev_code 12");
-    doIniLine ("cable disk,12,0,013,12");
-    // ; Attach DISK unit 13 to IOM 0, chan 013, dev_code 13");
-    doIniLine ("cable disk,13,0,013,13");
-    // ; Attach DISK unit 14 to IOM 0, chan 013, dev_code 14");
-    doIniLine ("cable disk,14,0,013,14");
-    // ; Attach DISK unit 15 to IOM 0, chan 013, dev_code 15");
-    doIniLine ("cable disk,15,0,013,15");
+    // ; Attach DISK unit 0 to IOM 0, chan 013, dev_code 0",
+    "cable disk,0,0,013,0",
+    // ; Attach DISK unit 1 to IOM 0, chan 013, dev_code 1",
+    "cable disk,1,0,013,1",
+    // ; Attach DISK unit 2 to IOM 0, chan 013, dev_code 2",
+    "cable disk,2,0,013,2",
+    // ; Attach DISK unit 3 to IOM 0, chan 013, dev_code 3",
+    "cable disk,3,0,013,3",
+    // ; Attach DISK unit 4 to IOM 0, chan 013, dev_code 4",
+    "cable disk,4,0,013,4",
+    // ; Attach DISK unit 5 to IOM 0, chan 013, dev_code 5",
+    "cable disk,5,0,013,5",
+    // ; Attach DISK unit 6 to IOM 0, chan 013, dev_code 6",
+    "cable disk,6,0,013,6",
+    // ; Attach DISK unit 7 to IOM 0, chan 013, dev_code 7",
+    "cable disk,7,0,013,7",
+    // ; Attach DISK unit 8 to IOM 0, chan 013, dev_code 8",
+    "cable disk,8,0,013,8",
+    // ; Attach DISK unit 9 to IOM 0, chan 013, dev_code 9",
+    "cable disk,9,0,013,9",
+    // ; Attach DISK unit 10 to IOM 0, chan 013, dev_code 10",
+    "cable disk,10,0,013,10",
+    // ; Attach DISK unit 11 to IOM 0, chan 013, dev_code 11",
+    "cable disk,11,0,013,11",
+    // ; Attach DISK unit 12 to IOM 0, chan 013, dev_code 12",
+    "cable disk,12,0,013,12",
+    // ; Attach DISK unit 13 to IOM 0, chan 013, dev_code 13",
+    "cable disk,13,0,013,13",
+    // ; Attach DISK unit 14 to IOM 0, chan 013, dev_code 14",
+    "cable disk,14,0,013,14",
+    // ; Attach DISK unit 15 to IOM 0, chan 013, dev_code 15",
+    "cable disk,15,0,013,15",
 
     // ; Attach OPCON unit 0 to IOM A, chan 036, dev_code 0
-    doIniLine ("cable opcon,0,0,036,0");
+    "cable opcon,0,0,036,0",
 
     // ;;;
     // ;;; FNP
     // ;;;
 
     // ; Attach FNP unit 3 (d) to IOM A, chan 020, dev_code 0
-    doIniLine ("cable fnp,3,0,020,0");
+    "cable fnp,3,0,020,0",
 
     // ; Attach FNP unit 0 (a) to IOM A, chan 021, dev_code 0
-    doIniLine ("cable fnp,0,0,021,0");
+    "cable fnp,0,0,021,0",
 
     // ; Attach FNP unit 1 (b) to IOM A, chan 022, dev_code 0
-    doIniLine ("cable fnp,1,0,022,0");
+    "cable fnp,1,0,022,0",
 
     // ; Attach FNP unit 2 (c) to IOM A, chan 023, dev_code 0
-    doIniLine ("cable fnp,2,0,023,0");
+    "cable fnp,2,0,023,0",
 
     // ; Attach FNP unit 4 (e) to IOM A, chan 024, dev_code 0
-    doIniLine ("cable fnp,4,0,024,0");
+    "cable fnp,4,0,024,0",
 
     // ; Attach FNP unit 5 (f) to IOM A, chan 025, dev_code 0
-    doIniLine ("cable fnp,5,0,025,0");
+    "cable fnp,5,0,025,0",
 
     // ; Attach FNP unit 6 (g) to IOM A, chan 026, dev_code 0
-    doIniLine ("cable fnp,6,0,026,0");
+    "cable fnp,6,0,026,0",
 
     // ; Attach FNP unit 7 (h) to IOM A, chan 027, dev_code 0
-    doIniLine ("cable fnp,7,0,027,0");
+    "cable fnp,7,0,027,0",
 
     // ;;;
     // ;;; MPC
     // ;;;
 
     // ; Attach MPC unit 0 to IOM 0, char 015, dev_code 0
-    doIniLine ("cable urp,0,0,015, 0");
-    doIniLine ("set urp0 device_name=urpa");
+    "cable urp,0,0,015, 0",
+    "set urp0 device_name=urpa",
 
     // ; Attach CRDRDR unit 0 to IOM 0, chan 015, dev_code 1
-    doIniLine ("cable crdrdr,0,0,015,1");
-    doIniLine ("set crdrdr0 device_name=rdra");
+    "cable crdrdr,0,0,015,1",
+    "set crdrdr0 device_name=rdra",
 
     // ; Attach MPC unit 1 to IOM 0, char 016, dev_code 0
-    doIniLine ("cable urp,1,0,016, 0");
-    doIniLine ("set urp1 device_name=urpb");
+    "cable urp,1,0,016, 0",
+    "set urp1 device_name=urpb",
 
     // ; Attach CRDPUN unit 0 to IOM 0, chan 016, dev_code 1
-    doIniLine ("cable crdpun,0,0,016,1");
-    doIniLine ("set crdpun0 device_name=puna");
+    "cable crdpun,0,0,016,1",
+    "set crdpun0 device_name=puna",
 
     // ; Attach MPC unit 2 to IOM 0, char 017, dev_code 0
-    doIniLine ("cable urp,2,0,017,0");
-    doIniLine ("set urp2 device_name=urpc");
+    "cable urp,2,0,017,0",
+    "set urp2 device_name=urpc",
 
     // ; Attach PRT unit 0 to IOM 0, chan 017, dev_code 1
-    doIniLine ("cable prt,0,0,017,1");
-    doIniLine ("set prt0 device_name=prta");
+    "cable prt,0,0,017,1",
+    "set prt0 device_name=prta",
 
     // ; Attach PRT unit 1 to IOM 0, chan 017, dev_code 2
-    doIniLine ("cable prt,1,0,017,2");
-    doIniLine ("set prt1 device_name=prtb");
+    "cable prt,1,0,017,2",
+    "set prt1 device_name=prtb",
 
     // ; Attach PRT unit 2 to IOM 0, chan 017, dev_code 3
-    doIniLine ("cable prt,2,0,017,3");
-    doIniLine ("set prt2 device_name=prtc");
+    "cable prt,2,0,017,3",
+    "set prt2 device_name=prtc",
 
     // ; Attach PRT unit 3 to IOM 0, chan 017, dev_code 4
-    doIniLine ("cable prt,3,0,017,4");
-    doIniLine ("set prt3 device_name=prtd");
+    "cable prt,3,0,017,4",
+    "set prt3 device_name=prtd",
 
     // ; Attach PRT unit 4 to IOM 0, chan 017, dev_code 5
-    doIniLine ("cable prt,4,0,017,5");
-    doIniLine ("set prt4 device_name=prte");
+    "cable prt,4,0,017,5",
+    "set prt4 device_name=prte",
 
     // ; Attach PRT unit 5 to IOM 0, chan 017, dev_code 6
-    doIniLine ("cable prt,5,0,017,6");
-    doIniLine ("set prt5 device_name=prtf");
+    "cable prt,5,0,017,6",
+    "set prt5 device_name=prtf",
 
     // ; Attach PRT unit 6 to IOM 0, chan 017, dev_code 7
-    doIniLine ("cable prt,6,0,017,7");
-    doIniLine ("set prt6 device_name=prtg");
+    "cable prt,6,0,017,7",
+    "set prt6 device_name=prtg",
 
     // ; Attach PRT unit 7 to IOM 0, chan 017, dev_code 8
-    doIniLine ("cable prt,7,0,017,8");
-    doIniLine ("set prt7 device_name=prth");
+    "cable prt,7,0,017,8",
+    "set prt7 device_name=prth",
 
     // ; Attach PRT unit 8 to IOM 0, chan 017, dev_code 9
-    doIniLine ("cable prt,8,0,017,9");
-    doIniLine ("set prt8 device_name=prti");
+    "cable prt,8,0,017,9",
+    "set prt8 device_name=prti",
 
     // ; Attach PRT unit 9 to IOM 0, chan 017, dev_code 10
-    doIniLine ("cable prt,9,0,017,10");
-    doIniLine ("set prt9 device_name=prtj");
+    "cable prt,9,0,017,10",
+    "set prt9 device_name=prtj",
 
     // ; Attach PRT unit 10 to IOM 0, chan 017, dev_code 11
-    doIniLine ("cable prt,10,0,017,11");
-    doIniLine ("set prt10 device_name=prtk");
+    "cable prt,10,0,017,11",
+    "set prt10 device_name=prtk",
 
     // ; Attach PRT unit 11 to IOM 0, chan 017, dev_code 12
-    doIniLine ("cable prt,11,0,017,12");
-    doIniLine ("set prt11 device_name=prtl");
+    "cable prt,11,0,017,12",
+    "set prt11 device_name=prtl",
 
     // ; Attach PRT unit 12 to IOM 0, chan 017, dev_code 13
-    doIniLine ("cable prt,12,0,017,13");
-    doIniLine ("set prt12 device_name=prtm");
+    "cable prt,12,0,017,13",
+    "set prt12 device_name=prtm",
 
     // ; Attach PRT unit 13 to IOM 0, chan 017, dev_code 14
-    doIniLine ("cable prt,13,0,017,14");
-    doIniLine ("set prt13 device_name=prtn");
+    "cable prt,13,0,017,14",
+    "set prt13 device_name=prtn",
 
     // ; Attach PRT unit 14 to IOM 0, chan 017, dev_code 15
-    doIniLine ("cable prt,14,0,017,15");
-    doIniLine ("set prt14 device_name=prto");
+    "cable prt,14,0,017,15",
+    "set prt14 device_name=prto",
 
     // ; Attach PRT unit 15 to IOM 0, chan 017, dev_code 16
-    doIniLine ("cable prt,15,0,017,16");
-    doIniLine ("set prt15 device_name=prtp");
+    "cable prt,15,0,017,16",
+    "set prt15 device_name=prtp",
 
     // ; Attach PRT unit 16 to IOM 0, chan 017, dev_code 17
-    doIniLine ("cable prt,16,0,017,17");
-    doIniLine ("set prt16 device_name=prtq");
+    "cable prt,16,0,017,17",
+    "set prt16 device_name=prtq",
 
 
     // ; Attach ABSI unit 0 to IOM 0, chan 032, dev_code 0
-    doIniLine ("cable absi,0,0,032,0");
+    "cable absi,0,0,032,0",
 
 
     // ; Attach IOM unit 0 port A (0) to SCU unit 0, port 0
-    doIniLine ("cable iom,0,0,0,0");
+    "cable iom,0,0,0,0",
 
     // ; Attach IOM unit 0 port B (1) to SCU unit 1, port 0
-    doIniLine ("cable iom,0,1,1,0");
+    "cable iom,0,1,1,0",
 
     // ; Attach IOM unit 0 port C (2) to SCU unit 2, port 0
-    doIniLine ("cable iom,0,2,2,0");
+    "cable iom,0,2,2,0",
 
     // ; Attach IOM unit 0 port D (3) to SCU unit 3, port 0
-    doIniLine ("cable iom,0,3,3,0");
+    "cable iom,0,3,3,0",
 
     // ; Attach IOM unit 1 port A (0) to SCU unit 0, port 1
-    doIniLine ("cable iom,1,0,0,1");
+    "cable iom,1,0,0,1",
 
     // ; Attach IOM unit 1 port B (1) to SCU unit 1, port 1
-    doIniLine ("cable iom,1,1,1,1");
+    "cable iom,1,1,1,1",
 
     // ; Attach IOM unit 1 port C (2) to SCU unit 2, port 1
-    doIniLine ("cable iom,1,2,2,1");
+    "cable iom,1,2,2,1",
 
     // ; Attach IOM unit 1 port D (3) to SCU unit 3, port 1
-    doIniLine ("cable iom,1,3,3,1");
+    "cable iom,1,3,3,1",
 
 
 // SCU0 --> CPU0-7
 
     // ; Attach SCU unit 0 port 7 to CPU unit A (0), port 0
-    doIniLine ("cable scu,0,7,0,0");
+    "cable scu,0,7,0,0",
 
     // ; Attach SCU unit 0 port 6 to CPU unit B (1), port 0
-    doIniLine ("cable scu,0,6,1,0");
+    "cable scu,0,6,1,0",
 
     // ; Attach SCU unit 0 port 5 to CPU unit C (2), port 0
-    doIniLine ("cable scu,0,5,2,0");
+    "cable scu,0,5,2,0",
 
     // ; Attach SCU unit 0 port 4 to CPU unit D (3), port 0
-    doIniLine ("cable scu,0,4,3,0");
+    "cable scu,0,4,3,0",
 
     // ; Attach SCU unit 0 port 3 to CPU unit E (4), port 0
-    doIniLine ("cable scu,0,3,4,0");
+    "cable scu,0,3,4,0",
 
     // ; Attach SCU unit 0 port 2 to CPU unit F (5), port 0
-    doIniLine ("cable scu,0,2,5,0");
+    "cable scu,0,2,5,0",
 
     // ; Attach SCU unit 0 port 1 to CPU unit G (6), port 0
-    doIniLine ("cable scu,0,1,6,0");
+    "cable scu,0,1,6,0",
 
 // SCU1 --> CPU0-7
 
     // ; Attach SCU unit 1 port 7 to CPU unit A (0), port 1
-    doIniLine ("cable scu,1,7,0,1");
+    "cable scu,1,7,0,1",
 
     // ; Attach SCU unit 1 port 6 to CPU unit B (1), port 1
-    doIniLine ("cable scu,1,6,1,1");
+    "cable scu,1,6,1,1",
 
     // ; Attach SCU unit 1 port 5 to CPU unit C (2), port 1
-    doIniLine ("cable scu,1,5,2,1");
+    "cable scu,1,5,2,1",
 
     // ; Attach SCU unit 1 port 4 to CPU unit D (3), port 1
-    doIniLine ("cable scu,1,4,3,1");
+    "cable scu,1,4,3,1",
 
     // ; Attach SCU unit 1 port 3 to CPU unit E (4), port 0
-    doIniLine ("cable scu,1,3,4,1");
+    "cable scu,1,3,4,1",
 
     // ; Attach SCU unit 1 port 2 to CPU unit F (5), port 0
-    doIniLine ("cable scu,1,2,5,1");
+    "cable scu,1,2,5,1",
 
     // ; Attach SCU unit 0 port 1 to CPU unit G (6), port 0
-    doIniLine ("cable scu,1,1,6,1");
+    "cable scu,1,1,6,1",
 
 
 // SCU2 --> CPU0-7
 
     // ; Attach SCU unit 2 port 7 to CPU unit A (0), port 2
-    doIniLine ("cable scu,2,7,0,2");
+    "cable scu,2,7,0,2",
 
     // ; Attach SCU unit 2 port 6 to CPU unit B (1), port 2
-    doIniLine ("cable scu,2,6,1,2");
+    "cable scu,2,6,1,2",
 
     // ; Attach SCU unit 2 port 5 to CPU unit C (2), port 2
-    doIniLine ("cable scu,2,5,2,2");
+    "cable scu,2,5,2,2",
 
     // ; Attach SCU unit 2 port 4 to CPU unit D (3), port 2
-    doIniLine ("cable scu,2,4,3,2");
+    "cable scu,2,4,3,2",
 
     // ; Attach SCU unit 2 port 3 to CPU unit E (4), port 0
-    doIniLine ("cable scu,2,3,4,2");
+    "cable scu,2,3,4,2",
 
     // ; Attach SCU unit 2 port 2 to CPU unit F (5), port 0
-    doIniLine ("cable scu,2,2,5,2");
+    "cable scu,2,2,5,2",
 
     // ; Attach SCU unit 2 port 1 to CPU unit G (6), port 0
-    doIniLine ("cable scu,2,1,6,2");
+    "cable scu,2,1,6,2",
 
 // SCU3 --> CPU0-7
 
     // ; Attach SCU unit 3 port 7 to CPU unit A (0), port 3
-    doIniLine ("cable scu,3,7,0,3");
+    "cable scu,3,7,0,3",
 
     // ; Attach SCU unit 3 port 6 to CPU unit B (1), port 3
-    doIniLine ("cable scu,3,6,1,3");
+    "cable scu,3,6,1,3",
 
     // ; Attach SCU unit 3 port 5 to CPU unit C (2), port 3
-    doIniLine ("cable scu,3,5,2,3");
+    "cable scu,3,5,2,3",
 
     // ; Attach SCU unit 3 port 4 to CPU unit D (3), port 3
-    doIniLine ("cable scu,3,4,3,3");
+    "cable scu,3,4,3,3",
 
     // ; Attach SCU unit 3 port 3 to CPU unit E (4), port 0
-    doIniLine ("cable scu,3,3,4,3");
+    "cable scu,3,3,4,3",
 
     // ; Attach SCU unit 3 port 2 to CPU unit F (5), port 0
-    doIniLine ("cable scu,3,2,5,3");
+    "cable scu,3,2,5,3",
 
     // ; Attach SCU unit 3 port 1 to CPU unit G (6), port 0
-    doIniLine ("cable scu,3,1,6,3");
+    "cable scu,3,1,6,3",
 
 
 
 
 
 
-    doIniLine ("set cpu0 reset");
-    doIniLine ("set scu0 reset");
-    doIniLine ("set scu1 reset");
-    doIniLine ("set scu2 reset");
-    doIniLine ("set scu3 reset");
-    doIniLine ("set iom0 reset");
+    "set cpu0 reset",
+    "set scu0 reset",
+    "set scu1 reset",
+    "set scu2 reset",
+    "set scu3 reset",
+    "set iom0 reset",
 
 #ifdef THREADZ
-    doIniLine ("set cpu nunits=7");
+    "set cpu nunits=7",
 #else
 #ifdef ISOTLTS
-    doIniLine ("set cpu nunits=2");
+    "set cpu nunits=2",
 #else
-    doIniLine ("set cpu nunits=1");
+    "set cpu nunits=1",
 #endif // ISOLTS
 #endif // THREADZ
-    // doIniLine ("set sys config=activate_time=8");
-    // doIniLine ("set sys config=terminate_time=8");
+    // "set sys config=activate_time=8",
+    // "set sys config=terminate_time=8",
 #ifdef FNPDBG
-    doIniLine ("set sys config=connect_time=4000");
+    "set sys config=connect_time=4000",
 #else
-    doIniLine ("set sys config=connect_time=-1");
+    "set sys config=connect_time=-1",
 #endif
 
 #if 0
-    doIniLine ("fnpload Devices.txt");
+    "fnpload Devices.txt",
 #endif
-    doIniLine ("fnpserverport 6180");
-    return SCPE_OK;
-  } // defaultBaseSystem
+    "fnpserverport 6180"
+  }; // default_base_system_script
 
+static void do_ini_line (char * text)
+  {
+    //sim_printf ("<%s?\n", text);
+    char gbuf[257];
+    const char * cptr = get_glyph (text, gbuf, 0); /* get command glyph */
+    CTAB *cmdp;
+    if ((cmdp = find_cmd (gbuf)))            /* lookup command */
+      {
+        t_stat stat = cmdp->action (cmdp->arg, cptr); /* if found, exec */
+        if (stat != SCPE_OK)
+          sim_printf ("%s: %s\n", sim_error_text (SCPE_UNK), text);
+      }
+    else
+      sim_printf ("%s: %s\n", sim_error_text (SCPE_UNK), text);
+  }
+
+static t_stat set_default_base_system (UNUSED int32 arg, UNUSED const char * buf)
+  {
+    int n_lines = sizeof (default_base_system_script) / sizeof (char *);
+    for (int line = 0; line < n_lines; line ++)
+      do_ini_line (default_base_system_script [line]);
+    return SCPE_OK;
+  }
 
 static t_stat machineRoomPort (UNUSED int32 arg, const char * buf)
   {
@@ -3203,7 +3208,7 @@ static CTAB dps8_cmds[] =
 // System configuration
 //
 
-    {"DEFAULT_BASE_SYSTEM", defaultBaseSystem,    0, "Set configuration to defaults", NULL, NULL},
+    {"DEFAULT_BASE_SYSTEM", set_default_base_system, 0, "Set configuration to defaults", NULL, NULL},
 
     {"CABLE",               sys_cable,            0, "cable String a cable\n" , NULL, NULL},
     {"UNCABLE",             sys_cable,            1, "uncable Unstring a cable\n" , NULL, NULL},
@@ -3404,7 +3409,7 @@ static void dps8_init (void)
 #ifndef __MINGW64__
     absi_init ();
 #endif
-    defaultBaseSystem (0, NULL);
+    set_default_base_system (0, NULL);
 #ifdef PANEL
     panelScraperInit ();
 #endif
