@@ -191,9 +191,9 @@ static int sk_cmd (uint iom_unit_idx, uint chan)
             sim_debug (DBG_DEBUG, & sk_dev,
                        "%s: Tally %d (%o)\n", __func__, tally, tally);
 
-            if (tally != 5)
+            if (tally != 6)
               {
-                sim_warn ("socket_dev socket call expected tally of 5; get %d\n", tally);
+                sim_warn ("socket_dev socket call expected tally of 6; get %d\n", tally);
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
                 return -1;
               }
@@ -208,8 +208,79 @@ static int sk_cmd (uint iom_unit_idx, uint chan)
 sim_printf ("socket() domain   %012llo\n", buffer [0]);
 sim_printf ("socket() type     %012llo\n", buffer [1]);
 sim_printf ("socket() protocol %012llo\n", buffer [2]);
+sim_printf ("socket() pid      %012llo\n", buffer [3]);
 
           }
+
+        case 02:               // CMD 01 -- bind()
+          {
+            sim_debug (DBG_DEBUG, & sk_dev,
+                       "%s: socket_dev_$socket\n", __func__);
+
+            bool ptro, send, uff;
+            int rc = iomListService (iom_unit_idx, chan, & ptro, & send, & uff);
+            if (rc < 0)
+              {
+                p->stati = 05001; // BUG: arbitrary error code; config switch
+                sim_warn ("%s list service failed\n", __func__);
+                return -1;
+              }
+            if (uff)
+              {
+                sim_warn ("%s ignoring uff\n", __func__); // XXX
+              }
+            if (! send)
+              {
+                sim_warn ("%s nothing to send\n", __func__);
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                return 1;
+              }
+            if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+              {
+                sim_warn ("%s expected DDCW\n", __func__);
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                return -1;
+              }
+
+            uint tally = p -> DDCW_TALLY;
+            if (tally == 0)
+              {
+                sim_debug (DBG_DEBUG, & sk_dev,
+                           "%s: Tally of zero interpreted as 010000(4096)\n",
+                           __func__);
+                tally = 4096;
+              }
+
+            sim_debug (DBG_DEBUG, & sk_dev,
+                       "%s: Tally %d (%o)\n", __func__, tally, tally);
+
+            if (tally != 6)
+              {
+                sim_warn ("socket_dev bind call expected tally of 6; get %d\n", tally);
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                return -1;
+              }
+
+            // Fetch parameters from core into buffer
+
+            word36 buffer [tally];
+            uint words_processed;
+            iomIndirectDataService (iom_unit_idx, chan, buffer,
+                                    & words_processed, false);
+
+sim_printf ("bind() sin_family %012llo\n", buffer [0]);
+sim_printf ("bind() port       %012o\n",   getbits36_16 (buffer [1], 0));
+//sim_printf ("bind() s_addr     %012llo\n", getibits36_32 (buffer [2], 0));
+//sim_printf ("bind() s_addr     %012llo\n", (buffer [2] >> 4) & MASK32);
+sim_printf ("bind() s_addr     %llu.%llu.%llu.%llu\n",
+  (buffer [2] >> (36 - 1 * 8)) & MASK8,
+  (buffer [2] >> (36 - 2 * 8)) & MASK8,
+  (buffer [2] >> (36 - 3 * 8)) & MASK8,
+  (buffer [2] >> (36 - 4 * 8)) & MASK8),
+sim_printf ("bind() pid        %012llo\n", buffer [3]);
+
+          }
+
         default:
           {
             p -> stati = 04501;
