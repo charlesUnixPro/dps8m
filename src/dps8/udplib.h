@@ -13,6 +13,8 @@
 #define PFLG_FINAL 00001
 int udp_create (const char * premote, int32_t * plink);
 int udp_release (int32_t link);
-int udp_send (int32_t link, uint16_t * pdata, uint16_t count, uint16_t flags);
-int udp_receive (int32_t link, uint16_t * pdata, uint16_t maxbufg);
+int imp_udp_send (int32_t link, uint16_t * pdata, uint16_t count, uint16_t flags);
+int imp_udp_receive (int32_t link, uint16_t * pdata, uint16_t maxbufg);
+int dn_udp_send (int32_t link, uint8_t * pdata, uint16_t count, uint16_t flags);
+int dn_udp_receive (int32_t link, uint8_t * pdata, uint16_t maxbufg);
 

@@ -14,7 +14,7 @@
 typedef enum devType
   {
      DEVT_NONE = 0, DEVT_TAPE, DEVT_CON, DEVT_DISK, 
-     DEVT_MPC, DEVT_DN355, DEVT_CRDRDR, DEVT_CRDPUN, DEVT_PRT, DEVT_URP, DEVT_ABSI
+     DEVT_MPC, DEVT_DN355, DEVT_CRDRDR, DEVT_CRDPUN, DEVT_PRT, DEVT_URP, DEVT_ABSI, DEVT_DN6600
   } devType;
 #ifdef THREADZ
 extern char * devTypeStrs [/* devType */];
@@ -83,6 +83,7 @@ struct cables_t
     struct cableFromIom cablesFromIomToCrdPun [N_CRDPUN_UNITS_MAX];
     struct cableFromIom cablesFromIomToPrt [N_PRT_UNITS_MAX];
     struct cableFromIom cablesFromIomToFnp [N_FNP_UNITS_MAX];
+    struct cableFromIom cables_from_iom_to_dn6600 [N_FNP_UNITS_MAX];
     struct cableFromIom cablesFromIomToDsk [N_DISK_UNITS_MAX];
     struct cableFromIom cablesFromIomToCon [N_OPCON_UNITS_MAX];
     struct cableFromIom cablesFromIomToTap [N_MT_UNITS_MAX];

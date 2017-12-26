@@ -243,15 +243,15 @@ void absiProcessEvent (void)
       {
         if (absi_state[unit].link == NOLINK)
           continue;
-        //int sz = udp_receive ((int) unit, pkt, psz);
-        int sz = udp_receive (absi_state[unit].link, pkt, psz);
+        //int sz = imp_udp_receive ((int) unit, pkt, psz);
+        int sz = imp_udp_receive (absi_state[unit].link, pkt, psz);
         if (sz < 0)
           {
-            printf ("udp_receive failed\n");
+            printf ("imp_udp_receive failed\n");
           }
         else if (sz == 0)
           {
-            //printf ("udp_receive 0\n");
+            //printf ("imp_udp_receive 0\n");
           }
         else
           {
@@ -264,11 +264,11 @@ void absiProcessEvent (void)
               }
             // Send a NOP reply
             //int16_t reply[2] = 0x0040
-            int rc = udp_send (absi_state[unit].link, pkt, (uint16_t) sz, 
+            int rc = imp_udp_send (absi_state[unit].link, pkt, (uint16_t) sz, 
                                PFLG_FINAL);
             if (rc < 0)
               {
-                printf ("udp_send failed\n");
+                printf ("imp_udp_send failed\n");
               }
           }
       }

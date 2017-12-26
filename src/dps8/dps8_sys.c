@@ -46,6 +46,7 @@
 #include "dps8_utils.h"
 #include "dps8_append.h"
 #include "dps8_fnp2.h"
+#include "dps8_dn6600.h"
 #include "dps8_crdrdr.h"
 #include "dps8_crdpun.h"
 #include "dps8_prt.h"
@@ -3895,6 +3896,7 @@ DEVICE * sim_devices[] =
     & iom_dev,
     & tape_dev,
     & fnpDev,
+    & dn6600_dev,
     & disk_dev,
     & scu_dev,
     // & mpc_dev,

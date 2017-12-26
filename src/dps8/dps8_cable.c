@@ -20,6 +20,7 @@
 #include "dps8_console.h"
 #include "dps8_disk.h"
 #include "dps8_fnp2.h"
+#include "dps8_dn6600.h"
 #include "dps8_urp.h"
 #include "dps8_crdrdr.h"
 #include "dps8_crdpun.h"
@@ -243,7 +244,7 @@ static t_stat cable_periph (int uncable, int unit_num, int iomUnitIdx,
       {
         if (from->iomUnitIdx != -1)
           {
-            sim_printf ("%s: Card reader socket in use; unit number %d. (%o); "
+            sim_printf ("%s: socket in use; unit number %d. (%o); "
                         "not cabling.\n", service, unit_num, unit_num);
             return SCPE_ARG;
           }
@@ -321,6 +322,17 @@ static t_stat cableFNP (int uncable, int fnpUnitNum, int iomUnitIdx,
                   "cableFNP", (int) fnpDev.numunits, 
                   & cables->cablesFromIomToFnp[fnpUnitNum], DEVT_DN355,
                   chanTypeDirect, & fnpDev, & fnp_unit[fnpUnitNum], fnpIOMCmd);
+    return SCPE_OK;
+  }
+ 
+static t_stat cable_dn6600 (int uncable, int dn6600_unit_num, int iom_unit_idx,
+                            int chan_num, int dev_code)
+  {
+sim_printf ("cable_dn6600 %o %o\r\n", chan_num, dev_code);
+    cable_periph (uncable, dn6600_unit_num, iom_unit_idx, chan_num, dev_code,
+                  "cable_dn6600", (int) dn6600_dev.numunits, 
+                  & cables->cables_from_iom_to_dn6600[dn6600_unit_num], DEVT_DN6600,
+                  chanTypeDirect, & dn6600_dev, & dn6600_unit[dn6600_unit_num], dn6600_iom_cmd);
     return SCPE_OK;
   }
  
@@ -721,6 +733,10 @@ t_stat sys_cable (int32 arg, const char * buf)
       {
         rc = cable_scu (arg, n1, n2, n3, n4);
       }
+    else if (strcasecmp (name, "DN") == 0)
+      {
+        rc = cable_dn6600 (arg, n1, n2, n3, n4);
+      }
     else if (strcasecmp (name, "FNP") == 0)
       {
         rc = cableFNP (arg, n1, n2, n3, n4);
@@ -787,6 +803,8 @@ static void cable_init (void)
       cables->cablesFromIomToAbsi[i].iomUnitIdx = -1;
     for (int i = 0; i < N_FNP_UNITS_MAX; i ++)
       cables->cablesFromIomToFnp[i].iomUnitIdx = -1;
+    for (int i = 0; i < N_DN6600_UNITS_MAX; i ++)
+      cables->cables_from_iom_to_dn6600[i].iomUnitIdx = -1;
   }
 
 t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
