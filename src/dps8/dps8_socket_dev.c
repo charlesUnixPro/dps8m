@@ -13,6 +13,7 @@
 
 #include <stdio.h>
 #include <ctype.h>
+#include <netdb.h>
 
 #include "dps8.h"
 #include "dps8_socket_dev.h"
@@ -193,7 +194,7 @@ static int sk_cmd (uint iom_unit_idx, uint chan)
 
             if (tally != 6)
               {
-                sim_warn ("socket_dev socket call expected tally of 6; get %d\n", tally);
+                sim_warn ("socket_dev socket call expected tally of 6; got %d\n", tally);
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
                 return -1;
               }
@@ -256,7 +257,7 @@ sim_printf ("socket() pid      %012llo\n", buffer [3]);
 
             if (tally != 6)
               {
-                sim_warn ("socket_dev bind call expected tally of 6; get %d\n", tally);
+                sim_warn ("socket_dev bind call expected tally of 6; got %d\n", tally);
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
                 return -1;
               }
@@ -323,16 +324,13 @@ sim_printf ("bind() pid        %012llo\n", buffer [3]);
             sim_debug (DBG_DEBUG, & sk_dev,
                        "%s: Tally %d (%o)\n", __func__, tally, tally);
 
-#if 0
-            if (tally != 6)
-              {
-                sim_warn ("socket_dev bind call expected tally of 6; get %d\n", tally);
-                p -> stati = 05001; // BUG: arbitrary error code; config switch
-                return -1;
-              }
-#endif
 sim_printf ("tally %d\n", tally);
-
+            if (tally != 67)
+              {
+                sim_warn ("socket_dev bind call expected tally of 67; got %d\n", tally);
+                //p -> stati = 05001; // BUG: arbitrary error code; config switch
+                //return -1;
+              }
             // Fetch parameters from core into buffer
 
             word36 buffer [tally];
@@ -354,7 +352,10 @@ sim_printf ("tally %d\n", tally);
 //
 //for (int i = 0; i < tally; i ++)
 //sim_printf ("%03d %012llo\n", i, buffer [i]);
+
             word9 cnt = getbits36_9 (buffer [0], 0);
+
+#if 0
             sim_printf ("strlen: %hu\n", cnt);
             sim_printf ("name: \"");
             for (uint i = 0; i < cnt; i ++)
@@ -368,6 +369,43 @@ sim_printf ("tally %d\n", tally);
                     sim_printf ("\\%03o", ch);
               }
             sim_printf ("\"\n");
+#endif
+
+            if (cnt > 256)
+              {
+                sim_warn ("socket$gethostbyname() clipping cnt from %u to 256\n", cnt);
+                cnt = 256;
+              }
+
+            unsigned char name [257];
+            for (uint i = 0; i < cnt; i ++)
+              {
+                 uint wordno = (i+1) / 4;
+                 uint offset = ((i+1) % 4) * 9;
+                 word9 ch = getbits36_9 (buffer[wordno], offset);
+                 name [i] = (unsigned char) (ch & 255);
+              }
+            name[cnt] = 0;
+
+            struct hostent * hostent = gethostbyname ((char *)name);
+sim_printf ("gethostbyname returned %p\n", hostent);
+            if (hostent)
+              {
+sim_printf ("addr_len %d\n", hostent->h_length);
+sim_printf ("%hhu.%hhu.%hhu.%hhu\n", hostent->h_addr_list[0][0],hostent->h_addr_list[0][1], hostent->h_addr_list[0][2],hostent->h_addr_list[0][3]);
+
+                buffer[65] = (* (uint32_t *) (hostent->h_addr_list[0])) << 4;
+                buffer[66] = 0; // code
+              }
+            else
+              {
+sim_printf ("errno %d\n", h_errno);
+
+                // sign extend int into word36
+                buffer[66] = ((word36) ((word36s) h_errno)) & MASK36; // code
+              }
+            iomIndirectDataService (iom_unit_idx, chan, buffer,
+                                    & words_processed, true);
           }
 
         case 040:               // CMD 040 -- Reset Status
