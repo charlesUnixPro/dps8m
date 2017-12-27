@@ -18,7 +18,8 @@ extern DEVICE dn6600_dev;
 // Indexed by sim unit number
 struct dn6600_unit_data
   {
-    uint mailboxAddress;
+    uint mailbox_address;
+    word24 l66_addr;
     int link;
   };
 

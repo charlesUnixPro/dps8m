@@ -32,6 +32,20 @@
 #include "threadz.h"
 #endif
 
+static inline void fnp_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
+  {
+#ifdef THREADZ
+    lock_mem ();
+#endif
+#ifdef SCUMEM
+    iom_core_read (addr, data, ctx);
+#else
+    * data = M [addr] & DMASK;
+#endif
+#ifdef THREADZ
+    unlock_mem ();
+#endif
+  }
 #define N_DN6600_UNITS 1 // default
 #define DN6600_UNIT_IDX(uptr) ((uptr) - dn6600_unit)
 
@@ -52,7 +66,7 @@ static t_stat set_config (UNIT * uptr, UNUSED int value, const char * cptr, UNUS
         return SCPE_ARG;
       }
 
-    struct dn6600_unit_data * fudp = dn6600_data.dn6600_unit_data + dn6600_unit_idx;
+    struct dn6600_unit_data * dudp = dn6600_data.dn6600_unit_data + dn6600_unit_idx;
 
     config_state_t cfg_state = { NULL, NULL };
 
@@ -70,7 +84,7 @@ static t_stat set_config (UNIT * uptr, UNUSED int value, const char * cptr, UNUS
               break;
 
             case 0: // mailbox
-              fudp -> mailboxAddress = (uint) v;
+              dudp -> mailbox_address = (uint) v;
               break;
 
             default:
@@ -99,9 +113,9 @@ static t_stat show_config (UNUSED FILE * st, UNIT * uptr, UNUSED int val,
       }
 
     sim_printf ("DN6600 unit number %ld\n", unit_idx);
-    struct dn6600_unit_data * fudp = dn6600_data.dn6600_unit_data + unit_idx;
+    struct dn6600_unit_data * dudp = dn6600_data.dn6600_unit_data + unit_idx;
 
-    sim_printf ("DN6600 Mailbox Address:         %04o(8)\n", fudp -> mailboxAddress);
+    sim_printf ("DN6600 Mailbox Address:         %04o(8)\n", dudp -> mailbox_address);
  
     return SCPE_OK;
   }
@@ -120,9 +134,9 @@ static t_stat show_status (UNUSED FILE * st, UNIT * uptr, UNUSED int val,
       }
 
     sim_printf ("DN6600 unit number %ld\n", dn6600_unit_idx);
-    struct dn6600_unit_data * fudp = dn6600_data.dn6600_unit_data + dn6600_unit_idx;
+    struct dn6600_unit_data * dudp = dn6600_data.dn6600_unit_data + dn6600_unit_idx;
 
-    sim_printf ("mailboxAddress:              %04o\n", fudp->mailboxAddress);
+    sim_printf ("mailbox_address:              %04o\n", dudp->mailbox_address);
     return SCPE_OK;
   }
 
@@ -440,9 +454,9 @@ static inline void l_putbits36_18 (word36 volatile * x, uint p, word18 val)
 
 
 #if 0
-static void setTIMW (uint mailboxAddress, int mbx)
+static void setTIMW (uint mailbox_address, int mbx)
   {
-    uint timwAddress = mailboxAddress + TERM_INPT_MPX_WD;
+    uint timwAddress = mailbox_address + TERM_INPT_MPX_WD;
     l_putbits36_1 (& M [timwAddress], (uint) mbx, 1);
   }
 #endif
@@ -477,6 +491,27 @@ static inline void fnp_core_write (word24 addr, word36 data, UNUSED const char *
 #endif
   }
 
+//
+// Convert virtual address to physical
+//
+
+static uint virtToPhys (uint ptPtr, uint l66Address)
+  {
+    uint pageTable = ptPtr * 64u;
+    uint l66AddressPage = l66Address / 1024u;
+
+    word36 ptw;
+#ifdef SCUMEM
+    uint iomUnitIdx = (uint) cables->cablesFromIomToFnp [decoded.devUnitIdx].iomUnitIdx;
+    iom_core_read (iomUnitIdx, pageTable + l66AddressPage, & ptw, "fnpIOMCmd get ptw");
+#else
+    fnp_core_read (pageTable + l66AddressPage, & ptw, "fnpIOMCmd get ptw");
+#endif
+    uint page = getbits36_14 (ptw, 4);
+    uint addr = page * 1024u + l66Address % 1024u;
+    return addr;
+  }
+
 #if 0
 //
 // Locate an available fnp_submailbox
@@ -484,9 +519,9 @@ static inline void fnp_core_write (word24 addr, word36 data, UNUSED const char *
 
 static int findMbx (uint dn6600_unit_idx)
   {
-    struct dn6600_unit_data * fudp = & dn6600_data.dn6600_unit_data [dn6600_unit_idx];
+    struct dn6600_unit_data * dudp = & dn6600_data.dn6600_unit_data [dn6600_unit_idx];
     for (uint i = 0; i < 4; i ++)
-      if (! fudp -> fnpMBXinUse [i])
+      if (! dudp -> fnpMBXinUse [i])
         return (int) i;
     return -1;
   }
@@ -498,15 +533,15 @@ static void notifyCS (int mbx, int fnpno, int lineno)
 #ifdef DN6600DBG
 sim_printf ("notifyCS mbx %d\n", mbx);
 #endif
-    struct dn6600_unit_data * fudp = & dn6600_data.dn6600_unit_data [fnpno];
+    struct dn6600_unit_data * dudp = & dn6600_data.dn6600_unit_data [fnpno];
 #ifdef SCUMEM
     uint iom_unit_idx = (uint) cables->cables_from_iom_to_dn6600 [fnpno].iom_unit_idx;
     word24 offset;
-    int scuUnitNum =  queryIomScbankMap (iom_unit_idx, fudp->mailboxAddress, & offset);
-    int scuUnitIdx = cables->cablesFromScus[iom_unit_idx][scuUnitNum].scuUnitIdx;
-    struct mailbox vol * mbxp = (struct mailbox vol *) & scu [scuUnitIdx].M[offset];
+    int scu_unit_num =  queryIomScbankMap (iom_unit_idx, dudp->mailbox_address, & offset);
+    int scu_unit_idx = cables->cablesFromScus[iom_unit_idx][scu_unit_num].scu_unit_idx;
+    struct mailbox vol * mbxp = (struct mailbox vol *) & scu [scu_unit_idx].M[offset];
 #else
-    struct mailbox vol * mbxp = (struct mailbox vol *) & M [fudp->mailboxAddress];
+    struct mailbox vol * mbxp = (struct mailbox vol *) & M [dudp->mailbox_address];
 #endif
     struct fnp_submailbox vol * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
@@ -516,8 +551,8 @@ sim_printf ("notifyCS mbx %d\n", mbx);
     l_putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
     l_putbits36_18 (& smbxp -> word1, 18, 256); // blocks available XXX
 
-    fudp->fnpMBXinUse [mbx] = true;
-    setTIMW (fudp->mailboxAddress, mbx + 8);
+    dudp->fnpMBXinUse [mbx] = true;
+    setTIMW (dudp->mailbox_address, mbx + 8);
     send_terminate_interrupt ((uint) cables -> cables_from_iom_to_dn6600 [fnpno] . iom_unit_idx, (uint) cables -> cables_from_iom_to_dn6600 [fnpno] . chan_num);
   }
 #endif
@@ -529,12 +564,30 @@ sim_printf ("notifyCS mbx %d\n", mbx);
 //     cmd 1 - bootload
 //
 
-static void cmd_bootload (uint unit)
+static void cmd_bootload (uint iom_unit_idx, uint dev_unit_idx, uint chan, word24 l66_addr)
   {
-    uint8_t pkt[1];
-    pkt [0] = 1;
+    
+    uint fnpno = dev_unit_idx; // XXX
+    //iomChanData_t * p = & iomChanData [iom_unit_idx] [chan];
+    struct dn6600_unit_data * dudp = & dn6600_data.dn6600_unit_data[fnpno];
+#ifdef SCUMEM
+    word24 offset;
+    int scu_unit_num =  queryIomScbankMap (iom_unit_idx, dudp->mailbox_address, & offset);
+    int scu_unit_idx = cables->cablesFromScus[iom_unit_idx][scu_unit_num].scu_unit_idx;
+    struct mailbox vol * mbxp = (struct mailbox *) & scu[scu_unit_idx].M[decoded.dudp->mailbox_address]; 
+#else
+    struct mailbox vol * mbxp = (struct mailbox vol *) & M[dudp->mailbox_address];
+#endif
+
+    dn6600_data.dn6600_unit_data[dev_unit_idx].l66_addr = l66_addr;
+
+    dn_bootload pkt;
+    pkt.cmd = dn_cmd_bootload;
+    //pkt.dia_pcw = mbxp->dia_pcw;
+
     //sim_printf ("XXXXXXXXXXXXXXXXXXXXXXXXXXX cmd_bootload\r\n");
-    int rc = dn_udp_send (dn6600_data.dn6600_unit_data[unit].link, pkt,
+    int rc = dn_udp_send (dn6600_data.dn6600_unit_data[dev_unit_idx].link,
+                          (uint8_t *) & pkt,
                           (uint16_t) sizeof (pkt), PFLG_FINAL);
     if (rc < 0)
       {
@@ -542,23 +595,22 @@ static void cmd_bootload (uint unit)
       }
   }
 
-static int interruptL66 (uint iomUnitIdx, uint chan)
+static int interruptL66 (uint iom_unit_idx, uint chan)
   {
-#if 0
-    decoded.p = & iomChanData [iomUnitIdx] [chan];
-    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
-      devices [chan] [decoded.p -> IDCW_DEV_CODE];
-    decoded.devUnitIdx = d -> devUnitIdx;
-    decoded.fudp = & fnpData.fnpUnitData [decoded.devUnitIdx];
+    iomChanData_t * p = & iomChanData[iom_unit_idx][chan];
+    struct device * d = & cables->cablesFromIomToDev[iom_unit_idx].
+      devices[chan][p->IDCW_DEV_CODE];
+    uint dev_unit_idx = d->devUnitIdx;
+    struct dn6600_unit_data * dudp = &dn6600_data.dn6600_unit_data[dev_unit_idx];
 #ifdef SCUMEM
     word24 offset;
-    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, decoded.fudp->mailboxAddress, & offset);
-    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
-    decoded.mbxp = (struct mailbox *) & scu [scuUnitIdx].M [decoded.fudp->mailboxAddress];
+    int scu_unit_num =  queryIomScbankMap (iom_unit_idx, dudp->mailbox_address, & offset);
+    int scu_unit_idx = cables->cablesFromScus[iom_unit_idx][scu_unit_num].scu_unit_idx;
+    struct mailbox vol * mbxp = (struct mailbox *) & scu[scu_unit_idx].M[dudp->mailbox_address];
 #else
-    decoded.mbxp = (struct mailbox vol *) & M [decoded.fudp -> mailboxAddress];
+    struct mailbox vol * mbxp = (struct mailbox vol *) & M[dudp->mailbox_address];
 #endif
-    word36 dia_pcw = decoded.mbxp -> dia_pcw;
+    word36 dia_pcw = mbxp -> dia_pcw;
 
 // AN85, pg 13-5
 // When the CS has control information or output data to send
@@ -594,39 +646,39 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
 //   8-11 Multics has updated mbx 8-11
 //   12-15 Multics is done with mbx 8-11  (n - 4).
 
-    decoded.cell = getbits36_6 (dia_pcw, 24);
+    word6 cell = getbits36_6 (dia_pcw, 24);
 #ifdef FNPDBG
-sim_printf ("CS interrupt %u\n", decoded.cell);
+sim_printf ("CS interrupt %u\n", cell);
 #endif
-    if (decoded.cell < 8)
+    if (cell < 8)
       {
-        interruptL66_CS_to_FNP ();
+        //interruptL66_CS_to_FNP ();
       }
-    else if (decoded.cell >= 8 && decoded.cell <= 11)
+    else if (cell >= 8 && cell <= 11)
       {
-        interruptL66_FNP_to_CS ();
+        //interruptL66_FNP_to_CS ();
       }
-    else if (decoded.cell >= 12 && decoded.cell <= 15)
+    else if (cell >= 12 && cell <= 15)
       {
-        interruptL66_CS_done ();
+        //interruptL66_CS_done ();
       }
     else
       {
-        sim_debug (DBG_ERR, & dn6600_dev, "fnp illegal cell number %d\n", decoded.cell);
-        sim_printf ("fnp illegal cell number %d\n", decoded.cell);
+        sim_debug (DBG_ERR, & dn6600_dev, "fnp illegal cell number %d\n", cell);
+        sim_printf ("fnp illegal cell number %d\n", cell);
         // doFNPfault (...) // XXX
         return -1;
       }
-#endif
     return 0;
   }
+
 static void processMBX (uint iom_unit_idx, uint chan)
   {
     iomChanData_t * p = & iomChanData[iom_unit_idx][chan];
     struct device * d = & cables->cablesFromIomToDev[iom_unit_idx].
       devices[chan][p->IDCW_DEV_CODE];
     uint dev_unit_idx = d->devUnitIdx;
-    struct dn6600_unit_data * fudp = &dn6600_data.dn6600_unit_data[dev_unit_idx];
+    struct dn6600_unit_data * dudp = &dn6600_data.dn6600_unit_data[dev_unit_idx];
 
 // 60132445 FEP Coupler EPS
 // 2.2.1 Control Intercommunication
@@ -636,11 +688,11 @@ static void processMBX (uint iom_unit_idx, uint chan)
 // mailbox and 7 Channel mailboxes."
 
     bool ok = true;
-    struct mailbox vol * mbxp = (struct mailbox vol *) & M [fudp -> mailboxAddress];
+    struct mailbox vol * mbxp = (struct mailbox vol *) & M [dudp -> mailbox_address];
 
     word36 dia_pcw;
     dia_pcw = mbxp -> dia_pcw;
-//sim_printf ("mbx %08o:%012"PRIo64"\n", fudp -> mailboxAddress, dia_pcw);
+//sim_printf ("mbx %08o:%012"PRIo64"\n", dudp -> mailbox_address, dia_pcw);
 
 // Mailbox word 0:
 //
@@ -756,8 +808,67 @@ sim_printf ("reset??\n");
       }
     else if (command == 072) // bootload
       {
-        cmd_bootload (dev_unit_idx);
-        //fudp -> fnpIsRunning = true;
+        // 60132445 pg 49
+        // Extract L66 address from dia_pcw
+
+// According to 60132445:
+        //word24 A = (word24) getbits36_18 (dia_pcw,  0);
+        //word24 B = (word24) getbits36_3  (dia_pcw, 24);
+        //word24 D = (word24) getbits36_3  (dia_pcw, 29);
+        //word24 l66_addr = (B << (24 - 3)) | (D << (24 - 3 - 3)) | A;
+// According to fnp_util.pl1:
+//     dcl  1 a_dia_pcw aligned based (mbxp),    /* better declaration than the one used when MCS is running */
+//            2 address fixed bin (18) unsigned unaligned,
+        word24 l66_addr = (word24) getbits36_18 (dia_pcw,  0);
+sim_printf ("l66_addr %08o\r\n", l66_addr);
+
+        uint phys_addr = virtToPhys (p->PCW_PAGE_TABLE_PTR, l66_addr);
+sim_printf ("phys_addr %08o\r\n", phys_addr);
+
+        word36 tcw;
+        fnp_core_read (phys_addr, & tcw, "tcw fetch");
+
+// Got 100000000517 as expected
+//sim_printf ("tcw %012llo\r\n", tcw);
+
+        //word36 tcw1;
+        //fnp_core_read (phys_addr + 1, & tcw1, "tcw fetch");
+
+// Got 100002060002, as expected (first word of gicb)
+//sim_printf ("tcw1 %012llo\r\n", tcw1);
+
+        // pg 50 4.1.1.2 Transfer control word
+        // "The transfer control word, which is pointed to by the
+        // mailbox word in L66 memory on Op Codes 72, 75, 76 contains
+        // a starting address which applies to L6 memory and a Tally
+        // of the number of 36 bit words to be transferred. The L66
+        // memory locations to/from which the transfers occur are 
+        // those immediately following the location where this word
+        // was obtained.
+        //
+        // 0-2: 001
+        // 3-17: L6 Address
+        // 18: P
+        // 19-23: MBZ
+        // 24-36: Tally
+        //
+        // The L6 Address field is interpreted as an effective L6 byte
+        // address as follows:
+        //
+        // If P = 0
+        //
+        // 0-7: 00000000
+        // 8-22: L6 Address field (bits 3-17)
+        // 23: 0
+        //
+        // If P = 1
+        //
+        // 0-14: L6 Address field (bits 3-17)
+        // 15-22: 0000000
+        // 23: 0
+
+        cmd_bootload (iom_unit_idx, dev_unit_idx, chan, l66_addr);
+        //dudp -> fnpIsRunning = true;
       }
     else if (command == 071) // interrupt L6
       {
@@ -848,22 +959,22 @@ sim_printf ("data xfer??\n");
     if (ok)
       {
 #ifdef FNPDBG
-//dmpmbx (fudp->mailboxAddress);
+//dmpmbx (dudp->mailbox_address);
 #endif
-        fnp_core_write (fudp -> mailboxAddress, 0, "dn6600_iom_cmd clear dia_pcw");
+        fnp_core_write (dudp -> mailbox_address, 0, "dn6600_iom_cmd clear dia_pcw");
         putbits36_1 (& bootloadStatus, 0, 1); // real_status = 1
         putbits36_3 (& bootloadStatus, 3, 0); // major_status = BOOTLOAD_OK;
         putbits36_8 (& bootloadStatus, 9, 0); // substatus = BOOTLOAD_OK;
         putbits36_17 (& bootloadStatus, 17, 0); // channel_no = 0;
-        fnp_core_write (fudp -> mailboxAddress + 6, bootloadStatus, "dn6600_iom_cmd set bootload status");
+        fnp_core_write (dudp -> mailbox_address + 6, bootloadStatus, "dn6600_iom_cmd set bootload status");
       }
     else
       {
-        //dmpmbx (fudp->mailboxAddress);
+        //dmpmbx (dudp->mailbox_address);
         sim_printf ("%s not ok\r\n", __func__);
 // 3 error bit (1) unaligned, /* set to "1"b if error on connect */
         putbits36_1 (& dia_pcw, 18, 1); // set bit 18
-        fnp_core_write (fudp -> mailboxAddress, dia_pcw, "dn6600_iom_cmd set error bit");
+        fnp_core_write (dudp -> mailbox_address, dia_pcw, "dn6600_iom_cmd set error bit");
       }
   }
 
