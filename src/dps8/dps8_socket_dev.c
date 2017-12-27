@@ -326,6 +326,6 @@ int sk_iom_cmd (uint iom_unit_idx, uint chan)
         sim_warn ("%s expected IDCW\n", __func__);
         return -1;
       }
-    return 3; // command pending, don't sent terminate interrupt
+    return 0; // command pending, don't sent terminate interrupt
   }
 
