@@ -281,6 +281,95 @@ sim_printf ("bind() pid        %012llo\n", buffer [3]);
 
           }
 
+        case 04:               // CMD 04 -- gethostbyname()
+          {
+            sim_debug (DBG_DEBUG, & sk_dev,
+                       "%s: socket_dev_$gethostbyname\n", __func__);
+
+            bool ptro, send, uff;
+            int rc = iomListService (iom_unit_idx, chan, & ptro, & send, & uff);
+            if (rc < 0)
+              {
+                p->stati = 05001; // BUG: arbitrary error code; config switch
+                sim_warn ("%s list service failed\n", __func__);
+                return -1;
+              }
+            if (uff)
+              {
+                sim_warn ("%s ignoring uff\n", __func__); // XXX
+              }
+            if (! send)
+              {
+                sim_warn ("%s nothing to send\n", __func__);
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                return 1;
+              }
+            if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+              {
+                sim_warn ("%s expected DDCW\n", __func__);
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                return -1;
+              }
+
+            uint tally = p -> DDCW_TALLY;
+            if (tally == 0)
+              {
+                sim_debug (DBG_DEBUG, & sk_dev,
+                           "%s: Tally of zero interpreted as 010000(4096)\n",
+                           __func__);
+                tally = 4096;
+              }
+
+            sim_debug (DBG_DEBUG, & sk_dev,
+                       "%s: Tally %d (%o)\n", __func__, tally, tally);
+
+#if 0
+            if (tally != 6)
+              {
+                sim_warn ("socket_dev bind call expected tally of 6; get %d\n", tally);
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                return -1;
+              }
+#endif
+sim_printf ("tally %d\n", tally);
+
+            // Fetch parameters from core into buffer
+
+            word36 buffer [tally];
+            uint words_processed;
+            iomIndirectDataService (iom_unit_idx, chan, buffer,
+                                    & words_processed, false);
+
+// dcl 1 SOCKETDEV_gethostbyname_data aligned,
+//       2 name char varying (256),
+//       3 addr fixed uns bin (32),
+//       3 code fixed bin (35);
+//
+//    {
+//       len:9, c1:9, c2: 9, c3: 9, // 0
+//      ...
+//       c26: 0, pad: 27,           // 64
+//       addr: 32, pad: 4,          // 65
+//       code: 36                   // 66
+//
+//for (int i = 0; i < tally; i ++)
+//sim_printf ("%03d %012llo\n", i, buffer [i]);
+            word9 cnt = getbits36_9 (buffer [0], 0);
+            sim_printf ("strlen: %hu\n", cnt);
+            sim_printf ("name: \"");
+            for (uint i = 0; i < cnt; i ++)
+              {
+                 uint wordno = (i+1) / 4;
+                 uint offset = ((i+1) % 4) * 9;
+                 word9 ch = getbits36_9 (buffer[wordno], offset);
+                 if (isgraph (ch))
+                    sim_printf ("%c", ch);
+                 else
+                    sim_printf ("\\%03o", ch);
+              }
+            sim_printf ("\"\n");
+          }
+
         case 040:               // CMD 040 -- Reset Status
           {
             p -> stati = 04000;
