@@ -281,6 +281,15 @@ sim_printf ("bind() pid        %012llo\n", buffer [3]);
 
           }
 
+        case 040:               // CMD 040 -- Reset Status
+          {
+            p -> stati = 04000;
+            sim_debug (DBG_DEBUG, & sk_dev,
+                       "%s: Reset status is %04o.\n",
+                       __func__, p -> stati);
+          }
+          break;
+
         default:
           {
             p -> stati = 04501;
