@@ -369,6 +369,11 @@ clean_dps8:
 dps8_sys.o : dps8.sha1.txt
 dps8_sys.d : dps8.sha1.txt
 
+dps8_socket_dev.c: errnos.h
+errnos.h:
+	echo '#include <errno.h>' > dump.c
+	$(CC) -E -dD dump.c | awk '/^#define E/ { printf "{\"%s\",%s},\n", $$2, $$2 }' > errnos.h
+	rm -f dump.c
 
 %.d: %.c
 	@set -e; rm -f $@; \

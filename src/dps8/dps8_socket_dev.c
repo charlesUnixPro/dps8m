@@ -24,6 +24,14 @@
 #include "dps8_iom.h"
 #include "dps8_cable.h"
 
+static struct {
+    const char *name;
+    int code;
+} errnos[] = {
+    #include "errnos.h"
+};
+
+
 #define N_SK_UNITS 1 // default
 
 static t_stat sk_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, 
@@ -120,6 +128,230 @@ void sk_init(void)
     //memset(sk_states, 0, sizeof(sk_states));
   }
 
+static void skt_socket (word36 * buffer)
+  {
+// /* Data block for socket() call */
+// dcl 1 SOCKETDEV_socket_data aligned,
+//       2 domain fixed bin,   // 0
+//       2 type fixed bin,     // 1
+//       2 protocol fixed bin; // 2
+//       2 pid fixed bin;      // 3
+//       2 fd fixed bin;       // 4
+//       2 errno fixed bin;    // 5
+
+    int domain =   (int) buffer[0];
+    int type =     (int) buffer[1];
+    int protocol = (int) buffer[2];
+    int pid =      (int) buffer[3];
+
+sim_printf ("socket() domain   %d\n", domain);
+sim_printf ("socket() type     %d\n", type);
+sim_printf ("socket() protocol %d\n", protocol);
+sim_printf ("socket() pid      %d\n", pid);
+
+    int _errno = 0;
+    int fd = -1;
+
+    if (domain != AF_INET)       // Only AF_INET
+      {
+        _errno = EAFNOSUPPORT;
+      }
+    else if (type != SOCK_STREAM && type != (SOCK_STREAM|SOCK_NONBLOCK)) // Only SOCK_STREAM or SOCK_STREAM + SOCK_NONBLOCK
+      {
+        _errno = EPROTOTYPE;
+      }
+    else if (protocol != 0) // Only IP
+      {
+        _errno = EPROTONOSUPPORT;
+      }
+    else 
+      {
+        fd = socket ((int) buffer[0], (int) buffer[1], (int) buffer[2]);
+sim_printf ("socket() returned %d\n", fd);
+        if (fd < 0)
+          {
+sim_printf ("errno %d\n", errno);
+            _errno = errno;
+          }
+      }
+    // sign extend int into word36
+    buffer[4] = ((word36) ((word36s) fd)) & MASK36; // fd
+    buffer[5] = ((word36) ((word36s) _errno)) & MASK36; // errno
+  }
+
+static void skt_gethostbyname (word36 * buffer)
+  {
+// dcl 1 SOCKETDEV_gethostbyname_data aligned,
+//       2 name char varying (255),
+//       3 addr fixed uns bin (32),
+//       3 errno fixed bin;
+//
+//
+//       len:36                    //  0
+//       c1: 9, c2: 9, c3:9, c4:9  //  1
+//       ...
+//       c253: 9, c254: 9, c255: 9, pad: 9, //63
+//       addr: 32, pad: 4,          // 65
+//       errno: 36                   // 66
+//
+
+    word9 cnt = getbits36_9 (buffer [0], 27);
+
+#if 0
+    sim_printf ("strlen: %hu\n", cnt);
+    sim_printf ("name: \"");
+    for (uint i = 0; i < cnt; i ++)
+      {
+         uint wordno = (i+4) / 4;
+         uint offset = ((i+4) % 4) * 9;
+         word9 ch = getbits36_9 (buffer[wordno], offset);
+         if (isgraph (ch))
+            sim_printf ("%c", ch);
+         else
+            sim_printf ("\\%03o", ch);
+      }
+    sim_printf ("\"\n");
+#endif
+
+    if (cnt > 256)
+      {
+        sim_warn ("socket$gethostbyname() clipping cnt from %u to 256\n", cnt);
+        cnt = 256;
+      }
+
+    unsigned char name [257];
+    for (uint i = 0; i < cnt; i ++)
+      {
+         uint wordno = (i+4) / 4;
+         uint offset = ((i+4) % 4) * 9;
+         word9 ch = getbits36_9 (buffer[wordno], offset);
+         name [i] = (unsigned char) (ch & 255);
+      }
+    name[cnt] = 0;
+
+    struct hostent * hostent = gethostbyname ((char *)name);
+sim_printf ("gethostbyname returned %p\n", hostent);
+    if (hostent)
+      {
+sim_printf ("addr_len %d\n", hostent->h_length);
+sim_printf ("%hhu.%hhu.%hhu.%hhu\n", hostent->h_addr_list[0][0],hostent->h_addr_list[0][1], hostent->h_addr_list[0][2],hostent->h_addr_list[0][3]);
+
+        //buffer[65] = (* (uint32_t *) (hostent->h_addr_list[0])) << 4;
+        // Get the octets in the right order 
+        putbits36_8 (& buffer[65],  0, (word8) (((unsigned char) (hostent->h_addr_list[0][0])) & 0xff));
+        putbits36_8 (& buffer[65],  8, (word8) (((unsigned char) (hostent->h_addr_list[0][1])) & 0xff));
+        putbits36_8 (& buffer[65], 16, (word8) (((unsigned char) (hostent->h_addr_list[0][2])) & 0xff));
+        putbits36_8 (& buffer[65], 24, (word8) (((unsigned char) (hostent->h_addr_list[0][3])) & 0xff));
+        buffer[66] = 0; // errno
+      }
+    else
+      {
+sim_printf ("errno %d\n", h_errno);
+
+        // sign extend int into word36
+        buffer[66] = ((word36) ((word36s) h_errno)) & MASK36; // errno
+      }
+  }
+
+static void skt_bind (word36 * buffer)
+  {
+// dcl 1 SOCKETDEV_bind_data aligned,
+//       2 socket fixed bin,              // 0
+//       2 sockaddr_in,
+//         3 sin_family fixed bin (36),   // 1
+//         3 sin_port fixed uns bin (16), // 2
+//         3 sin_addr,                    // 3
+//           4 octets (4) fixed bin(8) unsigned unal,
+//       2 pid fixed bin,                 // 4
+//       2 errno fixed bin;               // 5
+
+// /* Expecting tally to be 6 */
+// /* sockaddr is from the API parameter */
+// /* pid is the Process ID of the calling process */
+// /* errno, errno are the values returned by the host socket() call */
+
+//https://www.tutorialspoint.com/unix_sockets/socket_server_example.htm
+
+    int socket_fd = (int) buffer[0];
+    int sin_family = (int) buffer[1];
+    uint sin_port = (uint) getbits36_16 (buffer [2], 0);
+    word8 octet [4] = { getbits36_8 (buffer [3], 0),
+                        getbits36_8 (buffer [3], 8),
+                        getbits36_8 (buffer [3], 16),
+                        getbits36_8 (buffer [3], 24)};
+    uint32_t addr = (uint32_t) octet[0];
+    addr <<= 8;
+    addr |= (uint32_t) octet[1];
+    addr <<= 8;
+    addr |= (uint32_t) octet[2];
+    addr <<= 8;
+    addr |= (uint32_t) octet[3];
+
+sim_printf ("bind() socket     %d\n", socket_fd);
+sim_printf ("bind() sin_family %d\n", sin_family);
+sim_printf ("bind() sin_port   %u\n", sin_port);
+sim_printf ("bind() s_addr     %hhu.%hhu.%hhu.%hhu\n", octet[0], octet[1], octet[2], octet[3]);
+sim_printf ("bind() s_addr     %08x\n", addr);
+  //(buffer [3] >> (36 - 1 * 8)) & MASK8,
+  //(buffer [3] >> (36 - 2 * 8)) & MASK8,
+  //(buffer [3] >> (36 - 3 * 8)) & MASK8,
+  //(buffer [3] >> (36 - 4 * 8)) & MASK8),
+sim_printf ("bind() pid        %012llo\n", buffer [4]);
+
+    struct sockaddr_in serv_addr;
+    bzero ((char *) & serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = htonl (addr);
+    serv_addr.sin_port = htons (sin_port);
+
+    int _errno = 0;
+    int rc = bind (socket_fd, (struct sockaddr *) & serv_addr, sizeof (serv_addr));
+sim_printf ("bind() returned %d\n", rc);
+
+    if (rc < 0)
+      {
+sim_printf ("errno %d\n", errno);
+        _errno = errno;
+      }
+    buffer[5] = ((word36) ((word36s) _errno)) & MASK36; // errno
+  }
+
+static void skt_listen (word36 * buffer)
+  {
+// dcl 1 SOCKETDEV_listen_data aligned,
+//       2 sockfd fixed bin,  // 0
+//       3 backlog fixed bin, // 1
+//       2 pid fixed bin;     // 2
+//       2 rc fixed bin;      // 3
+//       2 errno fixed bin;   // 4
+// 
+// /* Tally 5 */
+// /* In: */
+// /*   sockfd */
+// /*   backlog */
+// /*   pid */
+// /* Out: */
+// /*   fd */
+// /*   errno */
+
+    int socket_fd = (int) buffer[0];
+    int backlog = (int) buffer[1];
+sim_printf ("listen() socket     %d\n", socket_fd);
+sim_printf ("listen() backlog    %d\n", backlog   );
+
+    int _errno = 0;
+    int rc = listen (socket_fd, backlog);
+sim_printf ("listen() returned %d\n", rc);
+
+    if (rc < 0)
+      {
+sim_printf ("errno %d\n", errno);
+        _errno = errno;
+      }
+    buffer[3] = ((word36) ((word36s) rc)) & MASK36; // rc
+    buffer[4] = ((word36) ((word36s) _errno)) & MASK36; // errno
+  }
+
 static int sk_cmd (uint iom_unit_idx, uint chan)
   {
     iomChanData_t * p = & iomChanData[iom_unit_idx][chan];
@@ -199,14 +431,14 @@ static int sk_cmd (uint iom_unit_idx, uint chan)
             iomIndirectDataService (iom_unit_idx, chan, buffer,
                                     & words_processed, false);
 
-sim_printf ("socket() domain   %012llo\n", buffer [0]);
-sim_printf ("socket() type     %012llo\n", buffer [1]);
-sim_printf ("socket() protocol %012llo\n", buffer [2]);
-sim_printf ("socket() pid      %012llo\n", buffer [3]);
+            skt_socket (buffer);
 
+            iomIndirectDataService (iom_unit_idx, chan, buffer,
+                                    & words_processed, true);
           }
+          break;
 
-        case 02:               // CMD 01 -- bind()
+        case 02:               // CMD 02 -- bind()
           {
             sim_debug (DBG_DEBUG, & sk_dev,
                        "%s: socket_dev_$socket\n", __func__);
@@ -262,25 +494,20 @@ sim_printf ("socket() pid      %012llo\n", buffer [3]);
             iomIndirectDataService (iom_unit_idx, chan, buffer,
                                     & words_processed, false);
 
-sim_printf ("bind() sin_family %012llo\n", buffer [0]);
-sim_printf ("bind() port       %012o\n",   getbits36_16 (buffer [1], 0));
-//sim_printf ("bind() s_addr     %012llo\n", getibits36_32 (buffer [2], 0));
-//sim_printf ("bind() s_addr     %012llo\n", (buffer [2] >> 4) & MASK32);
-sim_printf ("bind() s_addr     %llu.%llu.%llu.%llu\n",
-  (buffer [2] >> (36 - 1 * 8)) & MASK8,
-  (buffer [2] >> (36 - 2 * 8)) & MASK8,
-  (buffer [2] >> (36 - 3 * 8)) & MASK8,
-  (buffer [2] >> (36 - 4 * 8)) & MASK8),
-sim_printf ("bind() pid        %012llo\n", buffer [3]);
+            skt_bind (buffer);
+
+            iomIndirectDataService (iom_unit_idx, chan, buffer,
+                                    & words_processed, true);
 
           }
+          break;
 
         case 03:               // CMD 03 -- Debugging
           {
             sim_printf ("socket_dev received command 3\r\n");
             p -> stati = 04000;
           }
-          return 2; // don't continue down the dcw list
+          break;
 
         case 04:               // CMD 04 -- gethostbyname()
           {
@@ -331,6 +558,69 @@ sim_printf ("tally %d\n", tally);
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
                 return -1;
               }
+            // Fetch parameters from core into buffer
+
+            word36 buffer [tally];
+            uint words_processed;
+            iomIndirectDataService (iom_unit_idx, chan, buffer,
+                                    & words_processed, false);
+
+            skt_gethostbyname (buffer);
+
+            iomIndirectDataService (iom_unit_idx, chan, buffer,
+                                    & words_processed, true);
+
+          }
+          break;
+
+        case 05:               // CMD 02 -- listen()
+          {
+            sim_debug (DBG_DEBUG, & sk_dev,
+                       "%s: socket_dev_$listen\n", __func__);
+
+            bool ptro, send, uff;
+            int rc = iomListService (iom_unit_idx, chan, & ptro, & send, & uff);
+            if (rc < 0)
+              {
+                p->stati = 05001; // BUG: arbitrary error code; config switch
+                sim_warn ("%s list service failed\n", __func__);
+                return -1;
+              }
+            if (uff)
+              {
+                sim_warn ("%s ignoring uff\n", __func__); // XXX
+              }
+            if (! send)
+              {
+                sim_warn ("%s nothing to send\n", __func__);
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                return 1;
+              }
+            if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+              {
+                sim_warn ("%s expected DDCW\n", __func__);
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                return -1;
+              }
+
+            uint tally = p -> DDCW_TALLY;
+            if (tally == 0)
+              {
+                sim_debug (DBG_DEBUG, & sk_dev,
+                           "%s: Tally of zero interpreted as 010000(4096)\n",
+                           __func__);
+                tally = 4096;
+              }
+
+            sim_debug (DBG_DEBUG, & sk_dev,
+                       "%s: Tally %d (%o)\n", __func__, tally, tally);
+
+            if (tally != 5)
+              {
+                sim_warn ("socket_dev listen call expected tally of 5; got %d\n", tally);
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                return -1;
+              }
 
             // Fetch parameters from core into buffer
 
@@ -339,113 +629,21 @@ sim_printf ("tally %d\n", tally);
             iomIndirectDataService (iom_unit_idx, chan, buffer,
                                     & words_processed, false);
 
-// dcl 1 SOCKETDEV_gethostbyname_data aligned,
-//       2 name char varying (255),
-//       3 addr fixed uns bin (32),
-//       3 code fixed bin (35);
-//
-// Theory:
-//       len:9, c1:9, c2: 9, c3: 9, // 0
-//      ...
-//       c26: 0, pad: 27,           // 64
-//       addr: 32, pad: 4,          // 65
-//       code: 36                   // 66
-//
-// practice:
-//
-//       len:36                    //  0
-//       c1: 9, c2: 9, c3:9, c4:9  //  1
-//       ...
-//       c253: 9, c254: 9, c255: 9, pad: 9, //63
-//       addr: 32, pad: 4,          // 65
-//       code: 36                   // 66
-//
+            skt_listen (buffer);
 
-//for (int i = 0; i < tally; i ++)
-//sim_printf ("%03d %012llo\n", i, buffer [i]);
-
-#if 1
-            word9 cnt = getbits36_9 (buffer [0], 27);
-#else
-            word9 cnt = getbits36_9 (buffer [0], 0);
-#endif
-
-#if 0
-            sim_printf ("strlen: %hu\n", cnt);
-            sim_printf ("name: \"");
-            for (uint i = 0; i < cnt; i ++)
-              {
-#if 1
-                 uint wordno = (i+4) / 4;
-                 uint offset = ((i+4) % 4) * 9;
-#else
-                 uint wordno = (i+1) / 4;
-                 uint offset = ((i+1) % 4) * 9;
-#endif
-                 word9 ch = getbits36_9 (buffer[wordno], offset);
-                 if (isgraph (ch))
-                    sim_printf ("%c", ch);
-                 else
-                    sim_printf ("\\%03o", ch);
-              }
-            sim_printf ("\"\n");
-#endif
-
-            if (cnt > 256)
-              {
-                sim_warn ("socket$gethostbyname() clipping cnt from %u to 256\n", cnt);
-                cnt = 256;
-              }
-
-            unsigned char name [257];
-            for (uint i = 0; i < cnt; i ++)
-              {
-#if 1
-                 uint wordno = (i+4) / 4;
-                 uint offset = ((i+4) % 4) * 9;
-#else
-                 uint wordno = (i+1) / 4;
-                 uint offset = ((i+1) % 4) * 9;
-#endif
-                 word9 ch = getbits36_9 (buffer[wordno], offset);
-                 name [i] = (unsigned char) (ch & 255);
-              }
-            name[cnt] = 0;
-
-            struct hostent * hostent = gethostbyname ((char *)name);
-sim_printf ("gethostbyname returned %p\n", hostent);
-            if (hostent)
-              {
-sim_printf ("addr_len %d\n", hostent->h_length);
-sim_printf ("%hhu.%hhu.%hhu.%hhu\n", hostent->h_addr_list[0][0],hostent->h_addr_list[0][1], hostent->h_addr_list[0][2],hostent->h_addr_list[0][3]);
-
-                //buffer[65] = (* (uint32_t *) (hostent->h_addr_list[0])) << 4;
-                // Get the octets in the right order 
-                putbits36_8 (& buffer[65],  0, (word8) (((unsigned char) (hostent->h_addr_list[0][0])) & 0xff));
-                putbits36_8 (& buffer[65],  8, (word8) (((unsigned char) (hostent->h_addr_list[0][1])) & 0xff));
-                putbits36_8 (& buffer[65], 16, (word8) (((unsigned char) (hostent->h_addr_list[0][2])) & 0xff));
-                putbits36_8 (& buffer[65], 24, (word8) (((unsigned char) (hostent->h_addr_list[0][3])) & 0xff));
-                buffer[66] = 0; // code
-              }
-            else
-              {
-sim_printf ("errno %d\n", h_errno);
-
-                // sign extend int into word36
-                buffer[66] = ((word36) ((word36s) h_errno)) & MASK36; // code
-              }
             iomIndirectDataService (iom_unit_idx, chan, buffer,
                                     & words_processed, true);
-          }
 
+          }
+          break;
         case 040:               // CMD 040 -- Reset Status
           {
             p -> stati = 04000;
             sim_debug (DBG_DEBUG, & sk_dev,
                        "%s: Reset status is %04o.\n",
                        __func__, p -> stati);
+            return 0;
           }
-          break;
 
         default:
           {
@@ -474,15 +672,17 @@ int sk_iom_cmd (uint iom_unit_idx, uint chan)
     iomChanData_t * p = & iomChanData [iom_unit_idx] [chan];
 // Is it an IDCW?
 
+    int rc = 0;
     if (p -> DCW_18_20_CP == 7)
       {
-        sk_cmd (iom_unit_idx, chan);
+        rc = sk_cmd (iom_unit_idx, chan);
       }
     else // DDCW/TDCW
       {
         sim_warn ("%s expected IDCW\n", __func__);
         return -1;
       }
-    return 0; // command pending, don't sent terminate interrupt
+    return rc; //  don't contine down the dcw list.
+
   }
 
