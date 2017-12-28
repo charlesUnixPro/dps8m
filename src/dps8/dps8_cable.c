@@ -20,7 +20,7 @@
 #include "dps8_console.h"
 #include "dps8_disk.h"
 #include "dps8_fnp2.h"
-#include "dps8_dn6600.h"
+#include "dps8_dia.h"
 #include "dps8_urp.h"
 #include "dps8_crdrdr.h"
 #include "dps8_crdpun.h"
@@ -325,14 +325,14 @@ static t_stat cableFNP (int uncable, int fnpUnitNum, int iomUnitIdx,
     return SCPE_OK;
   }
  
-static t_stat cable_dn6600 (int uncable, int dn6600_unit_num, int iom_unit_idx,
+static t_stat cable_dia (int uncable, int dia_unit_num, int iom_unit_idx,
                             int chan_num, int dev_code)
   {
-sim_printf ("cable_dn6600 %o %o\r\n", chan_num, dev_code);
-    cable_periph (uncable, dn6600_unit_num, iom_unit_idx, chan_num, dev_code,
-                  "cable_dn6600", (int) dn6600_dev.numunits, 
-                  & cables->cables_from_iom_to_dn6600[dn6600_unit_num], DEVT_DN6600,
-                  chanTypeDirect, & dn6600_dev, & dn6600_unit[dn6600_unit_num], dn6600_iom_cmd);
+sim_printf ("cable_dia %o %o\r\n", chan_num, dev_code);
+    cable_periph (uncable, dia_unit_num, iom_unit_idx, chan_num, dev_code,
+                  "cable_dia", (int) dia_dev.numunits, 
+                  & cables->cables_from_iom_to_dia[dia_unit_num], DEVT_DIA,
+                  chanTypeDirect, & dia_dev, & dia_unit[dia_unit_num], dia_iom_cmd);
     return SCPE_OK;
   }
  
@@ -735,7 +735,7 @@ t_stat sys_cable (int32 arg, const char * buf)
       }
     else if (strcasecmp (name, "DN") == 0)
       {
-        rc = cable_dn6600 (arg, n1, n2, n3, n4);
+        rc = cable_dia (arg, n1, n2, n3, n4);
       }
     else if (strcasecmp (name, "FNP") == 0)
       {
@@ -803,8 +803,8 @@ static void cable_init (void)
       cables->cablesFromIomToAbsi[i].iomUnitIdx = -1;
     for (int i = 0; i < N_FNP_UNITS_MAX; i ++)
       cables->cablesFromIomToFnp[i].iomUnitIdx = -1;
-    for (int i = 0; i < N_DN6600_UNITS_MAX; i ++)
-      cables->cables_from_iom_to_dn6600[i].iomUnitIdx = -1;
+    for (int i = 0; i < N_DIA_UNITS_MAX; i ++)
+      cables->cables_from_iom_to_dia[i].iomUnitIdx = -1;
   }
 
 t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)

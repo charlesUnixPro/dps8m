@@ -53,10 +53,10 @@ enum { N_CRDPUN_UNITS_MAX = 16 };
 enum { N_FNP_UNITS_MAX = 16 };
 
 //
-// DN6600
+// DIA
 //
 
-enum { N_DN6600_UNITS_MAX = 16 };
+enum { N_DIA_UNITS_MAX = 16 };
 
 //
 // Disk

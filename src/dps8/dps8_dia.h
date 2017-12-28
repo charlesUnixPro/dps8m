@@ -12,23 +12,23 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
-extern UNIT dn6600_unit [N_FNP_UNITS_MAX];
-extern DEVICE dn6600_dev;
+extern UNIT dia_unit [N_DIA_UNITS_MAX];
+extern DEVICE dia_dev;
 
 // Indexed by sim unit number
-struct dn6600_unit_data
+struct dia_unit_data
   {
     uint mailbox_address;
     word24 l66_addr;
     int link;
   };
 
-typedef struct s_dn6600_data
+typedef struct s_dia_data
   {
-    struct dn6600_unit_data dn6600_unit_data [N_FNP_UNITS_MAX];
-  } t_dn6600_data;
+    struct dia_unit_data dia_unit_data [N_DIA_UNITS_MAX];
+  } t_dia_data;
 
-extern t_dn6600_data dn6600_data;
+extern t_dia_data dia_data;
 
 #if 0
 // dn355_mailbox.incl.pl1 
@@ -49,5 +49,6 @@ struct input_sub_mbx
   };
 #endif
 
-void dn6600_init(void);
-int dn6600_iom_cmd (uint iomUnitIdx, uint chan);
+void dia_init(void);
+int dia_iom_cmd (uint iomUnitIdx, uint chan);
+void dia_process_events (void);

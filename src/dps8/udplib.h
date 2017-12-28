@@ -18,7 +18,7 @@ int imp_udp_receive (int32_t link, uint16_t * pdata, uint16_t maxbufg);
 int dn_udp_send (int32_t link, uint8_t * pdata, uint16_t count, uint16_t flags);
 int dn_udp_receive (int32_t link, uint8_t * pdata, uint16_t maxbufg);
 
-enum { dn_cmd_bootload = 1, dn_cmd_ISB_IOLD = 2 };
+enum { dn_cmd_bootload = 1, dn_cmd_ISB_IOLD = 2, dn_cmd_buffer = 3 }; 
 
 // CS->DN Bootload
 
@@ -33,9 +33,16 @@ typedef struct _dn_bootload dn_bootload;
 
 struct _dn_isd_iold
   {
-    uint8_t cmd; // 1 dn_cmd_ISB_IOLD
-    //uint64_t /* word36*/  dia_pcw;
+    uint8_t cmd; // 2 dn_cmd_ISB_IOLD
   };
 typedef struct _dn_isd_iold dn_ids_iold;
 
+// DB<->CS Buffer contents
+
+struct _dn_buffer
+  {
+    uint8_t cmd; // 3 dn_cmd_buffer
+    uint64_t /* word36  */  buffer [0];
+  };
+typedef struct _dn_buffer dn_buffer;
 

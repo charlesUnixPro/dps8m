@@ -15,7 +15,7 @@
 #include <ctype.h>
 
 #include "dps8.h"
-#include "dps8_dn6600.h"
+#include "dps8_dia.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_faults.h"
@@ -46,10 +46,10 @@ static inline void fnp_core_read (word24 addr, word36 *data, UNUSED const char *
     unlock_mem ();
 #endif
   }
-#define N_DN6600_UNITS 1 // default
-#define DN6600_UNIT_IDX(uptr) ((uptr) - dn6600_unit)
+#define N_DIA_UNITS 1 // default
+#define DIA_UNIT_IDX(uptr) ((uptr) - dia_unit)
 
-static config_list_t dn6600_config_list [] =
+static config_list_t dia_config_list [] =
   {
     /*  0 */ { "mailbox", 0, 07777, NULL },
     { NULL, 0, 0, NULL }
@@ -57,23 +57,23 @@ static config_list_t dn6600_config_list [] =
 
 static t_stat set_config (UNIT * uptr, UNUSED int value, const char * cptr, UNUSED void * desc)
   {
-    uint dn6600_unit_idx = (uint) DN6600_UNIT_IDX (uptr);
-    //if (dn6600_unit_idx >= dn6600_dev . numunits)
-    if (dn6600_unit_idx >= N_DN6600_UNITS_MAX)
+    uint dia_unit_idx = (uint) DIA_UNIT_IDX (uptr);
+    //if (dia_unit_idx >= dia_dev.numunits)
+    if (dia_unit_idx >= N_DIA_UNITS_MAX)
       {
-        sim_debug (DBG_ERR, & dn6600_dev, "DN6600 SET CONFIG: Invalid unit number %d\n", dn6600_unit_idx);
-        sim_printf ("error: DN6600 SET CONFIG: invalid unit number %d\n", dn6600_unit_idx);
+        sim_debug (DBG_ERR, & dia_dev, "DIA SET CONFIG: Invalid unit number %d\n", dia_unit_idx);
+        sim_printf ("error: DIA SET CONFIG: invalid unit number %d\n", dia_unit_idx);
         return SCPE_ARG;
       }
 
-    struct dn6600_unit_data * dudp = dn6600_data.dn6600_unit_data + dn6600_unit_idx;
+    struct dia_unit_data * dudp = dia_data.dia_unit_data + dia_unit_idx;
 
     config_state_t cfg_state = { NULL, NULL };
 
     for (;;)
       {
         int64_t v;
-        int rc = cfgparse ("DN6600 SET CONFIG", cptr, dn6600_config_list, & cfg_state, & v);
+        int rc = cfgparse ("DIA SET CONFIG", cptr, dia_config_list, & cfg_state, & v);
         switch (rc)
           {
             case -2: // error
@@ -88,8 +88,8 @@ static t_stat set_config (UNIT * uptr, UNUSED int value, const char * cptr, UNUS
               break;
 
             default:
-              sim_debug (DBG_ERR, & dn6600_dev, "DN6600 SET CONFIG: Invalid cfgparse rc <%d>\n", rc);
-              sim_printf ("error: DN6600 SET CONFIG: invalid cfgparse rc <%d>\n", rc);
+              sim_debug (DBG_ERR, & dia_dev, "DIA SET CONFIG: Invalid cfgparse rc <%d>\n", rc);
+              sim_printf ("error: DIA SET CONFIG: invalid cfgparse rc <%d>\n", rc);
               cfgparse_done (& cfg_state);
               return SCPE_ARG; 
           } // switch
@@ -103,19 +103,19 @@ static t_stat set_config (UNIT * uptr, UNUSED int value, const char * cptr, UNUS
 static t_stat show_config (UNUSED FILE * st, UNIT * uptr, UNUSED int val, 
                            UNUSED const void * desc)
   {
-    long unit_idx = DN6600_UNIT_IDX (uptr);
-    if (unit_idx >= (long) N_DN6600_UNITS_MAX)
+    long unit_idx = DIA_UNIT_IDX (uptr);
+    if (unit_idx >= (long) N_DIA_UNITS_MAX)
       {
-        sim_debug (DBG_ERR, & dn6600_dev, 
-                   "DN6600 SHOW CONFIG: Invalid unit number %ld\n", unit_idx);
+        sim_debug (DBG_ERR, & dia_dev, 
+                   "DIA SHOW CONFIG: Invalid unit number %ld\n", unit_idx);
         sim_printf ("error: invalid unit number %ld\n", unit_idx);
         return SCPE_ARG;
       }
 
-    sim_printf ("DN6600 unit number %ld\n", unit_idx);
-    struct dn6600_unit_data * dudp = dn6600_data.dn6600_unit_data + unit_idx;
+    sim_printf ("DIA unit number %ld\n", unit_idx);
+    struct dia_unit_data * dudp = dia_data.dia_unit_data + unit_idx;
 
-    sim_printf ("DN6600 Mailbox Address:         %04o(8)\n", dudp -> mailbox_address);
+    sim_printf ("DIA Mailbox Address:         %04o(8)\n", dudp -> mailbox_address);
  
     return SCPE_OK;
   }
@@ -124,17 +124,17 @@ static t_stat show_config (UNUSED FILE * st, UNIT * uptr, UNUSED int val,
 static t_stat show_status (UNUSED FILE * st, UNIT * uptr, UNUSED int val, 
                              UNUSED const void * desc)
   {
-    long dn6600_unit_idx = DN6600_UNIT_IDX (uptr);
-    if (dn6600_unit_idx >= (long) dn6600_dev.numunits)
+    long dia_unit_idx = DIA_UNIT_IDX (uptr);
+    if (dia_unit_idx >= (long) dia_dev.numunits)
       {
-        sim_debug (DBG_ERR, & dn6600_dev, 
-                   "DN6600 SHOW STATUS: Invalid unit number %ld\n", dn6600_unit_idx);
-        sim_printf ("error: invalid unit number %ld\n", dn6600_unit_idx);
+        sim_debug (DBG_ERR, & dia_dev, 
+                   "DIA SHOW STATUS: Invalid unit number %ld\n", dia_unit_idx);
+        sim_printf ("error: invalid unit number %ld\n", dia_unit_idx);
         return SCPE_ARG;
       }
 
-    sim_printf ("DN6600 unit number %ld\n", dn6600_unit_idx);
-    struct dn6600_unit_data * dudp = dn6600_data.dn6600_unit_data + dn6600_unit_idx;
+    sim_printf ("DIA unit number %ld\n", dia_unit_idx);
+    struct dia_unit_data * dudp = dia_data.dia_unit_data + dia_unit_idx;
 
     sim_printf ("mailbox_address:              %04o\n", dudp->mailbox_address);
     return SCPE_OK;
@@ -143,7 +143,7 @@ static t_stat show_status (UNUSED FILE * st, UNIT * uptr, UNUSED int val,
 static t_stat show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, 
                            UNUSED int val, UNUSED const void * desc)
   {
-    sim_printf("Number of DN6600 units in system is %d\n", dn6600_dev.numunits);
+    sim_printf("Number of DIA units in system is %d\n", dia_dev.numunits);
     return SCPE_OK;
   }
 
@@ -151,13 +151,13 @@ static t_stat set_nunits (UNUSED UNIT * uptr, UNUSED int32 value,
                              const char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
-    if (n < 1 || n > N_DN6600_UNITS_MAX)
+    if (n < 1 || n > N_DIA_UNITS_MAX)
       return SCPE_ARG;
-    dn6600_dev.numunits = (uint32) n;
+    dia_dev.numunits = (uint32) n;
     return SCPE_OK;
   }
 
-static MTAB dn6600_mod [] =
+static MTAB dia_mod [] =
   {
     {
       MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_VALR, /* mask */
@@ -188,18 +188,18 @@ static MTAB dn6600_mod [] =
       "NUNITS",         /* match string */
       set_nunits, /* validation routine */
       show_nunits, /* display routine */
-      "Number of DN6600 units in the system", /* value descriptor */
+      "Number of DIA units in the system", /* value descriptor */
       NULL          // help
     },
     { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
   };
 
 
-UNIT dn6600_unit [N_DN6600_UNITS_MAX] = {
+UNIT dia_unit [N_DIA_UNITS_MAX] = {
     {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL}
 };
 
-static DEBTAB dn6600_DT [] =
+static DEBTAB dia_DT [] =
   {
     { "TRACE", DBG_TRACE, NULL },
     { "NOTIFY", DBG_NOTIFY, NULL },
@@ -219,7 +219,7 @@ static t_stat reset (UNUSED DEVICE * dptr)
 
 static t_stat attach (UNIT * uptr, const char * cptr)
   {
-    int unitno = (int) (uptr - dn6600_unit);
+    int unitno = (int) (uptr - dia_unit);
 
     // ATTACH DNn llll:w.x.y.z:rrrr - connect via UDP to a remote simh host
 
@@ -239,7 +239,7 @@ static t_stat attach (UNIT * uptr, const char * cptr)
     strncpy (pfn, cptr, CBUFSIZE);
 
     // Create the UDP connection.
-    ret = udp_create (cptr, & dn6600_data.dn6600_unit_data[unitno].link);
+    ret = udp_create (cptr, & dia_data.dia_unit_data[unitno].link);
     if (ret != SCPE_OK)
       {
         free (pfn);
@@ -254,17 +254,17 @@ static t_stat attach (UNIT * uptr, const char * cptr)
 // Detach (connect) ...
 static t_stat detach (UNIT * uptr)
   {
-    int unitno = (int) (uptr - dn6600_unit);
+    int unitno = (int) (uptr - dia_unit);
     t_stat ret;
     if ((uptr->flags & UNIT_ATT) == 0)
       return SCPE_OK;
-    if (dn6600_data.dn6600_unit_data[unitno].link == NOLINK)
+    if (dia_data.dia_unit_data[unitno].link == NOLINK)
       return SCPE_OK;
 
-    ret = udp_release (dn6600_data.dn6600_unit_data[unitno].link);
+    ret = udp_release (dia_data.dia_unit_data[unitno].link);
     if (ret != SCPE_OK)
       return ret;
-    dn6600_data.dn6600_unit_data[unitno].link = NOLINK;
+    dia_data.dia_unit_data[unitno].link = NOLINK;
     uptr->flags &= ~ (unsigned int) UNIT_ATT;
     free (uptr->filename);
     uptr->filename = NULL;
@@ -273,12 +273,12 @@ static t_stat detach (UNIT * uptr)
 
 
 
-DEVICE dn6600_dev = {
+DEVICE dia_dev = {
     "DN",           /* name */
-    dn6600_unit,          /* units */
+    dia_unit,          /* units */
     NULL,             /* registers */
-    dn6600_mod,           /* modifiers */
-    N_DN6600_UNITS,       /* #units */
+    dia_mod,           /* modifiers */
+    N_DIA_UNITS,       /* #units */
     10,               /* address radix */
     31,               /* address width */
     1,                /* address increment */
@@ -293,7 +293,7 @@ DEVICE dn6600_dev = {
     NULL,             /* context */
     DEV_DEBUG,        /* flags */
     0,                /* debug control flags */
-    dn6600_DT,            /* debug flag names */
+    dia_DT,            /* debug flag names */
     NULL,             /* memory size change */
     NULL,             /* logical name */
     NULL,             // attach help
@@ -303,7 +303,7 @@ DEVICE dn6600_dev = {
     NULL
 };
 
-t_dn6600_data dn6600_data;
+t_dia_data dia_data;
 
 struct dn355_submailbox
   {
@@ -466,13 +466,13 @@ static void setTIMW (uint mailbox_address, int mbx)
 // Once-only initialization
 //
 
-void dn6600_init (void)
+void dia_init (void)
   {
     // 0 sets set service to service_undefined
-    memset(& dn6600_data, 0, sizeof(dn6600_data));
-    for (int i = 0; i < N_DN6600_UNITS_MAX; i ++)
+    memset(& dia_data, 0, sizeof(dia_data));
+    for (int i = 0; i < N_DIA_UNITS_MAX; i ++)
       {
-        cables -> cables_from_iom_to_dn6600 [i].iomUnitIdx = -1;
+        cables -> cables_from_iom_to_dia [i].iomUnitIdx = -1;
       }
   }
 
@@ -517,9 +517,9 @@ static uint virtToPhys (uint ptPtr, uint l66Address)
 // Locate an available fnp_submailbox
 //
 
-static int findMbx (uint dn6600_unit_idx)
+static int findMbx (uint dia_unit_idx)
   {
-    struct dn6600_unit_data * dudp = & dn6600_data.dn6600_unit_data [dn6600_unit_idx];
+    struct dia_unit_data * dudp = & dia_data.dia_unit_data [dia_unit_idx];
     for (uint i = 0; i < 4; i ++)
       if (! dudp -> fnpMBXinUse [i])
         return (int) i;
@@ -530,12 +530,12 @@ static int findMbx (uint dn6600_unit_idx)
 #if 0
 static void notifyCS (int mbx, int fnpno, int lineno)
   {
-#ifdef DN6600DBG
+#ifdef DIADBG
 sim_printf ("notifyCS mbx %d\n", mbx);
 #endif
-    struct dn6600_unit_data * dudp = & dn6600_data.dn6600_unit_data [fnpno];
+    struct dia_unit_data * dudp = & dia_data.dia_unit_data [fnpno];
 #ifdef SCUMEM
-    uint iom_unit_idx = (uint) cables->cables_from_iom_to_dn6600 [fnpno].iom_unit_idx;
+    uint iom_unit_idx = (uint) cables->cables_from_iom_to_dia [fnpno].iom_unit_idx;
     word24 offset;
     int scu_unit_num =  queryIomScbankMap (iom_unit_idx, dudp->mailbox_address, & offset);
     int scu_unit_idx = cables->cablesFromScus[iom_unit_idx][scu_unit_num].scu_unit_idx;
@@ -553,7 +553,7 @@ sim_printf ("notifyCS mbx %d\n", mbx);
 
     dudp->fnpMBXinUse [mbx] = true;
     setTIMW (dudp->mailbox_address, mbx + 8);
-    send_terminate_interrupt ((uint) cables -> cables_from_iom_to_dn6600 [fnpno] . iom_unit_idx, (uint) cables -> cables_from_iom_to_dn6600 [fnpno] . chan_num);
+    send_terminate_interrupt ((uint) cables -> cables_from_iom_to_dia [fnpno] . iom_unit_idx, (uint) cables -> cables_from_iom_to_dia [fnpno] . chan_num);
   }
 #endif
 
@@ -569,7 +569,7 @@ static void cmd_bootload (uint iom_unit_idx, uint dev_unit_idx, uint chan, word2
     
     uint fnpno = dev_unit_idx; // XXX
     //iomChanData_t * p = & iomChanData [iom_unit_idx] [chan];
-    struct dn6600_unit_data * dudp = & dn6600_data.dn6600_unit_data[fnpno];
+    struct dia_unit_data * dudp = & dia_data.dia_unit_data[fnpno];
 #ifdef SCUMEM
     word24 offset;
     int scu_unit_num =  queryIomScbankMap (iom_unit_idx, dudp->mailbox_address, & offset);
@@ -579,14 +579,14 @@ static void cmd_bootload (uint iom_unit_idx, uint dev_unit_idx, uint chan, word2
     struct mailbox vol * mbxp = (struct mailbox vol *) & M[dudp->mailbox_address];
 #endif
 
-    dn6600_data.dn6600_unit_data[dev_unit_idx].l66_addr = l66_addr;
+    dia_data.dia_unit_data[dev_unit_idx].l66_addr = l66_addr;
 
     dn_bootload pkt;
     pkt.cmd = dn_cmd_bootload;
     //pkt.dia_pcw = mbxp->dia_pcw;
 
     //sim_printf ("XXXXXXXXXXXXXXXXXXXXXXXXXXX cmd_bootload\r\n");
-    int rc = dn_udp_send (dn6600_data.dn6600_unit_data[dev_unit_idx].link,
+    int rc = dn_udp_send (dia_data.dia_unit_data[dev_unit_idx].link,
                           (uint8_t *) & pkt,
                           (uint16_t) sizeof (pkt), PFLG_FINAL);
     if (rc < 0)
@@ -601,7 +601,7 @@ static int interruptL66 (uint iom_unit_idx, uint chan)
     struct device * d = & cables->cablesFromIomToDev[iom_unit_idx].
       devices[chan][p->IDCW_DEV_CODE];
     uint dev_unit_idx = d->devUnitIdx;
-    struct dn6600_unit_data * dudp = &dn6600_data.dn6600_unit_data[dev_unit_idx];
+    struct dia_unit_data * dudp = &dia_data.dia_unit_data[dev_unit_idx];
 #ifdef SCUMEM
     word24 offset;
     int scu_unit_num =  queryIomScbankMap (iom_unit_idx, dudp->mailbox_address, & offset);
@@ -664,7 +664,7 @@ sim_printf ("CS interrupt %u\n", cell);
       }
     else
       {
-        sim_debug (DBG_ERR, & dn6600_dev, "fnp illegal cell number %d\n", cell);
+        sim_debug (DBG_ERR, & dia_dev, "fnp illegal cell number %d\n", cell);
         sim_printf ("fnp illegal cell number %d\n", cell);
         // doFNPfault (...) // XXX
         return -1;
@@ -678,7 +678,7 @@ static void processMBX (uint iom_unit_idx, uint chan)
     struct device * d = & cables->cablesFromIomToDev[iom_unit_idx].
       devices[chan][p->IDCW_DEV_CODE];
     uint dev_unit_idx = d->devUnitIdx;
-    struct dn6600_unit_data * dudp = &dn6600_data.dn6600_unit_data[dev_unit_idx];
+    struct dia_unit_data * dudp = &dia_data.dia_unit_data[dev_unit_idx];
 
 // 60132445 FEP Coupler EPS
 // 2.2.1 Control Intercommunication
@@ -868,7 +868,10 @@ sim_printf ("phys_addr %08o\r\n", phys_addr);
         // 23: 0
 
         cmd_bootload (iom_unit_idx, dev_unit_idx, chan, l66_addr);
+
+        // Don't acknowledge the boot yet.
         //dudp -> fnpIsRunning = true;
+        return;
       }
     else if (command == 071) // interrupt L6
       {
@@ -936,7 +939,7 @@ sim_printf ("phys_addr %08o\r\n", phys_addr);
         //
         // So:
         //
-        //   dcl  1 dump_6670_control aligned based (data_ptr),          /* word used to supply DN6670 address and tally for fdump */
+        //   dcl  1 dump_6670_control aligned based (data_ptr),          /* word used to supply DIA address and tally for fdump */
         //          2 fnp_address fixed bin (18) unsigned unaligned,
         //          2 unpaged bit (1) unaligned,
         //          2 mbz bit (5) unaligned,
@@ -961,12 +964,12 @@ sim_printf ("data xfer??\n");
 #ifdef FNPDBG
 //dmpmbx (dudp->mailbox_address);
 #endif
-        fnp_core_write (dudp -> mailbox_address, 0, "dn6600_iom_cmd clear dia_pcw");
+        fnp_core_write (dudp -> mailbox_address, 0, "dia_iom_cmd clear dia_pcw");
         putbits36_1 (& bootloadStatus, 0, 1); // real_status = 1
         putbits36_3 (& bootloadStatus, 3, 0); // major_status = BOOTLOAD_OK;
         putbits36_8 (& bootloadStatus, 9, 0); // substatus = BOOTLOAD_OK;
         putbits36_17 (& bootloadStatus, 17, 0); // channel_no = 0;
-        fnp_core_write (dudp -> mailbox_address + 6, bootloadStatus, "dn6600_iom_cmd set bootload status");
+        fnp_core_write (dudp -> mailbox_address + 6, bootloadStatus, "dia_iom_cmd set bootload status");
       }
     else
       {
@@ -974,11 +977,11 @@ sim_printf ("data xfer??\n");
         sim_printf ("%s not ok\r\n", __func__);
 // 3 error bit (1) unaligned, /* set to "1"b if error on connect */
         putbits36_1 (& dia_pcw, 18, 1); // set bit 18
-        fnp_core_write (dudp -> mailbox_address, dia_pcw, "dn6600_iom_cmd set error bit");
+        fnp_core_write (dudp -> mailbox_address, dia_pcw, "dia_iom_cmd set error bit");
       }
   }
 
-static int dn6600_cmd (uint iom_unit_idx, uint chan)
+static int dia_cmd (uint iom_unit_idx, uint chan)
   {
     iomChanData_t * p = & iomChanData[iom_unit_idx][chan];
     p -> stati = 0;
@@ -997,14 +1000,14 @@ static int dn6600_cmd (uint iom_unit_idx, uint chan)
               p -> stati = 04000;
 #endif
             //disk_statep -> io_mode = no_mode;
-            sim_debug (DBG_NOTIFY, & dn6600_dev, "Request status\n");
+            sim_debug (DBG_NOTIFY, & dia_dev, "Request status\n");
           }
           break;
 
         default:
           {
             p -> stati = 04501;
-            sim_debug (DBG_ERR, & dn6600_dev,
+            sim_debug (DBG_ERR, & dia_dev,
                        "%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
 #ifdef FNPDBG
 sim_printf ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
@@ -1019,7 +1022,7 @@ sim_printf ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
   }
 
 /*
- * dn6600_iom_cmd()
+ * dia_iom_cmd()
  *
  */
 
@@ -1027,19 +1030,79 @@ sim_printf ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
 // 0 ok
 // -1 problem
 
-int dn6600_iom_cmd (uint iom_unit_idx, uint chan)
+int dia_iom_cmd (uint iom_unit_idx, uint chan)
   {
-sim_printf ("dn6600_iom_cmd %u %u\r\n", iom_unit_idx, chan);
+sim_printf ("dia_iom_cmd %u %u\r\n", iom_unit_idx, chan);
     iomChanData_t * p = & iomChanData[iom_unit_idx][chan];
 // Is it an IDCW?
 
     if (p -> DCW_18_20_CP == 7)
       {
-        return dn6600_cmd (iom_unit_idx, chan);
+        return dia_cmd (iom_unit_idx, chan);
       }
     // else // DDCW/TDCW
     sim_printf ("%s expected IDCW\n", __func__);
     return -1;
   }
 
+static void load_stored_boot (void)
+  {
+    sim_printf ("got load_stored_boot\n");
+  }
 
+#define psz 17000
+static uint8_t pkt[psz];
+
+// warning: returns ptr to static buffer
+static int poll_coupler (uint unitno, uint8_t * * pktp)
+  {
+    int sz = dn_udp_receive (dia_data.dia_unit_data[unitno].link, pkt, psz);
+    if (sz < 0)
+      {
+        sim_printf ("dn_udp_receive failed: %d\n", sz);
+        sz = 0;
+      }
+    * pktp = pkt;
+    return sz;
+  }
+
+
+void dia_unit_process_events (uint unit_num)
+  {
+// XXX rememeber
+// XXX        //dudp -> fnpIsRunning = true;
+// XXX when bootload complete!
+
+    uint8_t * pktp;
+    int sz = poll_coupler (unit_num, & pktp);
+//sim_printf ("poll_coupler return %d\n", sz);
+    if (! sz)
+      {
+        return;
+      }
+
+   uint8_t cmd = pktp [0];
+   switch (cmd)
+     {
+       // IO Load Stored Boot
+       case dn_cmd_ISB_IOLD:
+         {
+           load_stored_boot ();
+           break;
+         }
+
+       default:
+         {
+           sim_printf ("%s got unhandled cmd %u\n", __func__, cmd);
+           break;
+         }
+     }
+  }
+
+void dia_process_events (void)
+  {
+    for (uint unit_num = 0; unit_num < N_DIA_UNITS_MAX; unit_num ++)
+      {
+         dia_unit_process_events (unit_num);
+      }
+  }
