@@ -3454,6 +3454,7 @@ static void dps8_init (void)
     disk_init ();
     mt_init ();
     fnpInit ();
+    dia_init ();
     console_init (); // must come after fnpInit due to libuv initiailization
     //mpc_init ();
     scu_init ();

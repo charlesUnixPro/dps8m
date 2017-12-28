@@ -274,7 +274,7 @@ static t_stat detach (UNIT * uptr)
 
 
 DEVICE dia_dev = {
-    "DN",           /* name */
+    "DIA",           /* name */
     dia_unit,          /* units */
     NULL,             /* registers */
     dia_mod,           /* modifiers */
@@ -470,9 +470,10 @@ void dia_init (void)
   {
     // 0 sets set service to service_undefined
     memset(& dia_data, 0, sizeof(dia_data));
-    for (int i = 0; i < N_DIA_UNITS_MAX; i ++)
+    for (uint unit_num = 0; unit_num < N_DIA_UNITS_MAX; unit_num ++)
       {
-        cables -> cables_from_iom_to_dia [i].iomUnitIdx = -1;
+        cables -> cables_from_iom_to_dia [unit_num].iomUnitIdx = -1;
+        dia_data.dia_unit_data[unit_num].link = -1;
       }
   }
 
@@ -585,7 +586,7 @@ static void cmd_bootload (uint iom_unit_idx, uint dev_unit_idx, uint chan, word2
     pkt.cmd = dn_cmd_bootload;
     //pkt.dia_pcw = mbxp->dia_pcw;
 
-    //sim_printf ("XXXXXXXXXXXXXXXXXXXXXXXXXXX cmd_bootload\r\n");
+    sim_printf ("XXXXXXXXXXXXXXXXXXXXXXXXXXX cmd_bootload\r\n");
     int rc = dn_udp_send (dia_data.dia_unit_data[dev_unit_idx].link,
                           (uint8_t *) & pkt,
                           (uint16_t) sizeof (pkt), PFLG_FINAL);
@@ -869,9 +870,16 @@ sim_printf ("phys_addr %08o\r\n", phys_addr);
 
         cmd_bootload (iom_unit_idx, dev_unit_idx, chan, l66_addr);
 
+// My understanding is that the FNP shouldn't clear the MBX PCW until
+// the bootload is complete; but the timeout in fnp_util$connect_to_dia_paged
+// is short: 
+//   do i = 1 to 100000 while (unspec (a_dia_pcw) = old_pcw);
+// I am going ahead and acking, but it is unclear to me what the mechanism,
+// if any, is for FNP signaling completed successful bootload.
+
         // Don't acknowledge the boot yet.
         //dudp -> fnpIsRunning = true;
-        return;
+        //return;
       }
     else if (command == 071) // interrupt L6
       {
@@ -1047,6 +1055,25 @@ sim_printf ("dia_iom_cmd %u %u\r\n", iom_unit_idx, chan);
 
 static void load_stored_boot (void)
   {
+    // pg 45:
+
+    //  3.8 BOOTLOAD OF L6 BY L66
+    //...
+    // The receipt of the Input Stored Boot order causes the coupler,
+    // if the Stored Boot but is ONE, to input data into L6 memory as
+    // specified by the L66 Bootload order. On completion of this,
+    // the Stored Boot bit is cleared.
+    //
+    // ... the PROM program issues the Input Stored Boot IOLD order
+    // to the coupler..
+    //
+    // ... the L66 Bootload command specifies the L6 memory locations into
+    // which the load from L66 is to occur and the extent of the lod;
+    // location (0100)16 in L6 would always be the first location to be
+    // executed by L6 after the load from L66 assuming that the L66
+    // bootload is independent of the mechanization used in L66
+
+
     sim_printf ("got load_stored_boot\n");
   }
 
@@ -1103,6 +1130,7 @@ void dia_process_events (void)
   {
     for (uint unit_num = 0; unit_num < N_DIA_UNITS_MAX; unit_num ++)
       {
-         dia_unit_process_events (unit_num);
+         if (dia_data.dia_unit_data[unit_num].link >= 0)
+           dia_unit_process_events (unit_num);
       }
   }

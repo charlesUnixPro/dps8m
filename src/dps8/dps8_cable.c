@@ -733,7 +733,7 @@ t_stat sys_cable (int32 arg, const char * buf)
       {
         rc = cable_scu (arg, n1, n2, n3, n4);
       }
-    else if (strcasecmp (name, "DN") == 0)
+    else if (strcasecmp (name, "DIA") == 0)
       {
         rc = cable_dia (arg, n1, n2, n3, n4);
       }
