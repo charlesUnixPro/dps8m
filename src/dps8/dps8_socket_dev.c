@@ -143,13 +143,6 @@ static int sk_cmd (uint iom_unit_idx, uint chan)
           }
           break;
 
-        case 03:               // CMD 03 -- Debugging
-          {
-            sim_printf ("socket_dev received command 3\r\n");
-            p -> stati = 04000;
-          }
-         break;
-
         case 01:               // CMD 01 -- socket()
           {
             sim_debug (DBG_DEBUG, & sk_dev,
@@ -282,6 +275,13 @@ sim_printf ("bind() pid        %012llo\n", buffer [3]);
 
           }
 
+        case 03:               // CMD 03 -- Debugging
+          {
+            sim_printf ("socket_dev received command 3\r\n");
+            p -> stati = 04000;
+          }
+          return 2; // don't continue down the dcw list
+
         case 04:               // CMD 04 -- gethostbyname()
           {
             sim_debug (DBG_DEBUG, & sk_dev,
@@ -327,10 +327,11 @@ sim_printf ("bind() pid        %012llo\n", buffer [3]);
 sim_printf ("tally %d\n", tally);
             if (tally != 67)
               {
-                sim_warn ("socket_dev bind call expected tally of 67; got %d\n", tally);
-                //p -> stati = 05001; // BUG: arbitrary error code; config switch
-                //return -1;
+                sim_warn ("socket_dev gethostbyname call expected tally of 67; got %d\n", tally);
+                p -> stati = 05001; // BUG: arbitrary error code; config switch
+                return -1;
               }
+
             // Fetch parameters from core into buffer
 
             word36 buffer [tally];
@@ -394,7 +395,12 @@ sim_printf ("gethostbyname returned %p\n", hostent);
 sim_printf ("addr_len %d\n", hostent->h_length);
 sim_printf ("%hhu.%hhu.%hhu.%hhu\n", hostent->h_addr_list[0][0],hostent->h_addr_list[0][1], hostent->h_addr_list[0][2],hostent->h_addr_list[0][3]);
 
-                buffer[65] = (* (uint32_t *) (hostent->h_addr_list[0])) << 4;
+                //buffer[65] = (* (uint32_t *) (hostent->h_addr_list[0])) << 4;
+                // Get the octets in the right order 
+                putbits36_8 (& buffer[65],  0, (word8) (((unsigned char) (hostent->h_addr_list[0][0])) & 0xff));
+                putbits36_8 (& buffer[65],  8, (word8) (((unsigned char) (hostent->h_addr_list[0][1])) & 0xff));
+                putbits36_8 (& buffer[65], 16, (word8) (((unsigned char) (hostent->h_addr_list[0][2])) & 0xff));
+                putbits36_8 (& buffer[65], 24, (word8) (((unsigned char) (hostent->h_addr_list[0][3])) & 0xff));
                 buffer[66] = 0; // code
               }
             else
@@ -435,7 +441,7 @@ sim_printf ("errno %d\n", h_errno);
         send_marker_interrupt (iom_unit_idx, (int) chan);
       }
 #endif
-    return 0;
+    return 2; // don't contine down the dcw list.
   }
 
 
