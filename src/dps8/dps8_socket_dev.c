@@ -340,29 +340,48 @@ sim_printf ("tally %d\n", tally);
                                     & words_processed, false);
 
 // dcl 1 SOCKETDEV_gethostbyname_data aligned,
-//       2 name char varying (256),
+//       2 name char varying (255),
 //       3 addr fixed uns bin (32),
 //       3 code fixed bin (35);
 //
-//    {
+// Theory:
 //       len:9, c1:9, c2: 9, c3: 9, // 0
 //      ...
 //       c26: 0, pad: 27,           // 64
 //       addr: 32, pad: 4,          // 65
 //       code: 36                   // 66
 //
+// practice:
+//
+//       len:36                    //  0
+//       c1: 9, c2: 9, c3:9, c4:9  //  1
+//       ...
+//       c253: 9, c254: 9, c255: 9, pad: 9, //63
+//       addr: 32, pad: 4,          // 65
+//       code: 36                   // 66
+//
+
 //for (int i = 0; i < tally; i ++)
 //sim_printf ("%03d %012llo\n", i, buffer [i]);
 
+#if 1
+            word9 cnt = getbits36_9 (buffer [0], 27);
+#else
             word9 cnt = getbits36_9 (buffer [0], 0);
+#endif
 
 #if 0
             sim_printf ("strlen: %hu\n", cnt);
             sim_printf ("name: \"");
             for (uint i = 0; i < cnt; i ++)
               {
+#if 1
+                 uint wordno = (i+4) / 4;
+                 uint offset = ((i+4) % 4) * 9;
+#else
                  uint wordno = (i+1) / 4;
                  uint offset = ((i+1) % 4) * 9;
+#endif
                  word9 ch = getbits36_9 (buffer[wordno], offset);
                  if (isgraph (ch))
                     sim_printf ("%c", ch);
@@ -381,8 +400,13 @@ sim_printf ("tally %d\n", tally);
             unsigned char name [257];
             for (uint i = 0; i < cnt; i ++)
               {
+#if 1
+                 uint wordno = (i+4) / 4;
+                 uint offset = ((i+4) % 4) * 9;
+#else
                  uint wordno = (i+1) / 4;
                  uint offset = ((i+1) % 4) * 9;
+#endif
                  word9 ch = getbits36_9 (buffer[wordno], offset);
                  name [i] = (unsigned char) (ch & 255);
               }
