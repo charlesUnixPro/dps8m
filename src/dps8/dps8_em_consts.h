@@ -132,7 +132,7 @@ enum { N_MT_UNITS_MAX = 17 };
 //
 // Socket device
 //
-enum { N_SK_UNITS_MAX = 1 };
+enum { N_SK_UNITS_MAX = 64 };
 
 //
 // Printer

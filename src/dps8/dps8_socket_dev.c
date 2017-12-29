@@ -28,8 +28,10 @@ static struct {
     const char *name;
     int code;
 } errnos[] = {
+    {"        ", 0},
     #include "errnos.h"
 };
+#define N_ERRNOS (sizeof (errnos) / sizeof (errnos[0]))
 
 
 #define N_SK_UNITS 1 // default
@@ -37,7 +39,7 @@ static struct {
 static t_stat sk_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, 
                               UNUSED int val, UNUSED const void * desc)
   {
-    sim_printf("Number of TAPE units in system is %d\n", sk_dev.numunits);
+    sim_printf("Number of socket units in system is %d\n", sk_dev.numunits);
     return SCPE_OK;
   }
 
@@ -45,7 +47,7 @@ static t_stat sk_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value,
                              const char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
-    if (n < 1 || n > N_MT_UNITS_MAX)
+    if (n < 1 || n > N_SK_UNITS_MAX)
       return SCPE_ARG;
     sk_dev.numunits = (uint32) n;
     return SCPE_OK;
@@ -60,16 +62,20 @@ static MTAB sk_mod [] =
       "NUNITS",         /* match string */
       sk_set_nunits, /* validation routine */
       sk_show_nunits, /* display routine */
-      "Number of TAPE units in the system", /* value descriptor */
+      "Number of socket units in the system", /* value descriptor */
       NULL          // help
     },
     { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
   };
 
 
-UNIT sk_unit [N_SK_UNITS_MAX] = {
-    {UDATA ( NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-};
+UNIT sk_unit [N_SK_UNITS_MAX] =
+  {
+    [0 ... (N_SK_UNITS_MAX -1)] =
+      {
+        UDATA ( NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL
+      },
+  };
 
 static DEBTAB sk_dt [] =
   {
@@ -128,6 +134,41 @@ void sk_init(void)
     //memset(sk_states, 0, sizeof(sk_states));
   }
 
+static void set_error_str (word36 * error_str, const char * str)
+  {
+    char work [8];
+    strncpy (work, "        ", 8);
+    strncpy (work, str, 8);
+    error_str[0] = 0;
+    error_str[1] = 0;
+    putbits36_8 (error_str + 0,  1, (word8) work [0]);
+    putbits36_8 (error_str + 0, 10, (word8) work [1]);
+    putbits36_8 (error_str + 0, 19, (word8) work [2]);
+    putbits36_8 (error_str + 0, 28, (word8) work [3]);
+    putbits36_8 (error_str + 1,  1, (word8) work [4]);
+    putbits36_8 (error_str + 1, 10, (word8) work [5]);
+    putbits36_8 (error_str + 1, 19, (word8) work [6]);
+    putbits36_8 (error_str + 1, 28, (word8) work [7]);
+  }
+
+static void set_error (word36 * error_str, int _errno)
+  {
+    if (errno == 0)
+      return;
+    for (uint i = 0; i < N_ERRNOS; i ++)
+      {
+        if (errnos[i].code == _errno)
+          {
+            set_error_str (error_str, errnos[i].name);
+            return;
+          }
+      }
+    char huh [256];
+    sprintf (huh, "E%d", _errno);
+    huh[8] = 0;
+    set_error_str (error_str, huh);
+  }
+
 static void skt_socket (word36 * buffer)
   {
 // /* Data block for socket() call */
@@ -135,9 +176,8 @@ static void skt_socket (word36 * buffer)
 //       2 domain fixed bin,   // 0
 //       2 type fixed bin,     // 1
 //       2 protocol fixed bin; // 2
-//       2 pid fixed bin;      // 3
-//       2 fd fixed bin;       // 4
-//       2 errno fixed bin;    // 5
+//       2 fd fixed bin;       // 3
+//       2 errno char(8);      // 4,5
 
     int domain =   (int) buffer[0];
     int type =     (int) buffer[1];
@@ -175,16 +215,17 @@ sim_printf ("errno %d\n", errno);
           }
       }
     // sign extend int into word36
-    buffer[4] = ((word36) ((word36s) fd)) & MASK36; // fd
-    buffer[5] = ((word36) ((word36s) _errno)) & MASK36; // errno
+    buffer[3] = ((word36) ((word36s) fd)) & MASK36; // fd
+    //buffer[5] = ((word36) ((word36s) _errno)) & MASK36; // errno
+    set_error (& buffer[4], _errno);
   }
 
 static void skt_gethostbyname (word36 * buffer)
   {
 // dcl 1 SOCKETDEV_gethostbyname_data aligned,
-//       2 name char varying (255),
+//       2 name char varying (255),  
 //       3 addr fixed uns bin (32),
-//       3 errno fixed bin;
+//       3 errno char(8);
 //
 //
 //       len:36                    //  0
@@ -192,7 +233,7 @@ static void skt_gethostbyname (word36 * buffer)
 //       ...
 //       c253: 9, c254: 9, c255: 9, pad: 9, //63
 //       addr: 32, pad: 4,          // 65
-//       errno: 36                   // 66
+//       errno: 72                   // 66, 67
 //
 
     word9 cnt = getbits36_9 (buffer [0], 27);
@@ -242,14 +283,20 @@ sim_printf ("%hhu.%hhu.%hhu.%hhu\n", hostent->h_addr_list[0][0],hostent->h_addr_
         putbits36_8 (& buffer[65],  8, (word8) (((unsigned char) (hostent->h_addr_list[0][1])) & 0xff));
         putbits36_8 (& buffer[65], 16, (word8) (((unsigned char) (hostent->h_addr_list[0][2])) & 0xff));
         putbits36_8 (& buffer[65], 24, (word8) (((unsigned char) (hostent->h_addr_list[0][3])) & 0xff));
-        buffer[66] = 0; // errno
+        //buffer[66] = 0; // errno
+        set_error (& buffer[66], 0);
       }
     else
       {
-sim_printf ("errno %d\n", h_errno);
-
-        // sign extend int into word36
-        buffer[66] = ((word36) ((word36s) h_errno)) & MASK36; // errno
+sim_printf ("h_errno %d\n", h_errno);
+        switch (h_errno)
+          {
+            case HOST_NOT_FOUND: set_error_str (& buffer[66], "HOST_NOT_FOUND"); break;
+            case NO_DATA: set_error_str (& buffer[66], "NO_DATA"); break;
+            case NO_RECOVERY: set_error_str (& buffer[66], "NO_RECOVERY"); break;
+            case TRY_AGAIN: set_error_str (& buffer[66], "TRY_AGAIN"); break;
+            default: set_error_str (& buffer[66], "EHUH"); break;
+          }
       }
   }
 
@@ -258,12 +305,11 @@ static void skt_bind (word36 * buffer)
 // dcl 1 SOCKETDEV_bind_data aligned,
 //       2 socket fixed bin,              // 0
 //       2 sockaddr_in,
-//         3 sin_family fixed bin (36),   // 1
+//         3 sin_family fixed bin,        // 1
 //         3 sin_port fixed uns bin (16), // 2
 //         3 sin_addr,                    // 3
 //           4 octets (4) fixed bin(8) unsigned unal,
-//       2 pid fixed bin,                 // 4
-//       2 errno fixed bin;               // 5
+//       2 errno char(8);               // 4,5
 
 // /* Expecting tally to be 6 */
 // /* sockaddr is from the API parameter */
@@ -313,7 +359,8 @@ sim_printf ("bind() returned %d\n", rc);
 sim_printf ("errno %d\n", errno);
         _errno = errno;
       }
-    buffer[5] = ((word36) ((word36s) _errno)) & MASK36; // errno
+    //buffer[5] = ((word36) ((word36s) _errno)) & MASK36; // errno
+    set_error (& buffer[4], _errno);
   }
 
 static void skt_listen (word36 * buffer)
@@ -321,9 +368,8 @@ static void skt_listen (word36 * buffer)
 // dcl 1 SOCKETDEV_listen_data aligned,
 //       2 sockfd fixed bin,  // 0
 //       3 backlog fixed bin, // 1
-//       2 pid fixed bin;     // 2
 //       2 rc fixed bin;      // 3
-//       2 errno fixed bin;   // 4
+//       2 errno char(8);   // 4, 5
 // 
 // /* Tally 5 */
 // /* In: */
@@ -348,8 +394,8 @@ sim_printf ("listen() returned %d\n", rc);
 sim_printf ("errno %d\n", errno);
         _errno = errno;
       }
-    buffer[3] = ((word36) ((word36s) rc)) & MASK36; // rc
-    buffer[4] = ((word36) ((word36s) _errno)) & MASK36; // errno
+    buffer[2] = ((word36) ((word36s) rc)) & MASK36; // rc
+    set_error (& buffer[3], _errno);
   }
 
 static int sk_cmd (uint iom_unit_idx, uint chan)
@@ -360,10 +406,10 @@ static int sk_cmd (uint iom_unit_idx, uint chan)
     //struct device * d = & cables -> cablesFromIomToDev [iom_unit_idx].devices[chan][p->IDCW_DEV_CODE];
     //uint devUnitIdx = d->devUnitIdx;
     //UNIT * unitp = & sk_unit[devUnitIdx];
-
+sim_printf ("device %u\n", p->IDCW_DEV_CODE);
     switch (p -> IDCW_DEV_CMD)
       {
-        case 0: // CMD 00 Request status -- controler status, not tape drive
+        case 0: // CMD 00 Request status -- controller status, not tape drive
           {
             p -> stati = 04000; // have_status = 1
             sim_debug (DBG_DEBUG, & sk_dev,
@@ -552,9 +598,9 @@ static int sk_cmd (uint iom_unit_idx, uint chan)
                        "%s: Tally %d (%o)\n", __func__, tally, tally);
 
 sim_printf ("tally %d\n", tally);
-            if (tally != 67)
+            if (tally != 68)
               {
-                sim_warn ("socket_dev gethostbyname call expected tally of 67; got %d\n", tally);
+                sim_warn ("socket_dev gethostbyname call expected tally of 68; got %d\n", tally);
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
                 return -1;
               }

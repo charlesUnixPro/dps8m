@@ -2383,6 +2383,7 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("set crdrdr nunits=1");
     doIniLine ("set crdpun nunits=1");
     doIniLine ("set prt nunits=17");
+    doIniLine ("set sk nunits=64");
 #ifndef __MINGW64__
     doIniLine ("set absi nunits=1");
 
@@ -3178,8 +3179,14 @@ static t_stat defaultBaseSystem (UNUSED int32 arg, UNUSED const char * buf)
     doIniLine ("cable tape,16,0,012,16");
     doIniLine ("set tape16 device_name=tapa_16");
 
-    // ; Attach socket device 0 to IOM 0, chan 033, dev_code 0
-    doIniLine ("cable sk,0,0,033,0");
+    for (uint i = 0; i < N_SK_UNITS_MAX; i ++)
+      {
+        char line [128];
+        // ; Attach socket device i to IOM 0, chan 033, dev_code i
+        //doIniLine ("cable sk,0,0,033,0");
+        sprintf (line, "cable sk,%d,0,033,%d", i, i);
+        doIniLine (line);
+      }
 
     // ; Attach DISK unit 0 to IOM 0, chan 013, dev_code 0");
     doIniLine ("cable disk,0,0,013,0");
