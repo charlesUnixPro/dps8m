@@ -699,6 +699,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
                       devices [chan] [p -> IDCW_DEV_CODE];
+sim_debug (DBG_DEBUG, & disk_dev, "CAC DEV_CODE %u\n", p -> IDCW_DEV_CODE);
     uint devUnitIdx = d -> devUnitIdx;
     UNIT * unitp = & disk_unit [devUnitIdx];
     struct disk_state * disk_statep = & disk_states [devUnitIdx];

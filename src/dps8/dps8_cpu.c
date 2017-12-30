@@ -39,6 +39,7 @@
 #else
 #include "dps8_fnp.h"
 #endif
+#include "dps8_socket_dev.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
 #include "dps8_crdrdr.h"
@@ -893,6 +894,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
       }
     scpProcessEvent (); 
     fnpProcessEvent (); 
+    sk_process_event (); 
     consoleProcess ();
 #ifndef FNP2
     dequeue_fnp_command ();

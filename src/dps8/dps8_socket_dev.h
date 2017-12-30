@@ -15,3 +15,4 @@ extern UNIT sk_unit [N_SK_UNITS_MAX];
 extern DEVICE sk_dev;
 void sk_init(void);
 int sk_iom_cmd (uint iomUnitIdx, uint chan);
+void sk_process_event (void);

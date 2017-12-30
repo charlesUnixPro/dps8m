@@ -1294,6 +1294,7 @@ static void unpackDCW (uint iomUnitIdx, uint chan)
         p -> IDCW_CONTROL =      getbits36_2 (p -> DCW, 22);
         p -> IDCW_CHAN_CMD =     getbits36_6 (p -> DCW, 24);
         p -> IDCW_COUNT =        getbits36_6 (p -> DCW, 30);
+if (chan == 013) sim_debug (DBG_DEBUG, & iom_dev, "CAC DEV_CODE %u DEV_CMD %u CHAN_CMD %u\n", p -> IDCW_DEV_CODE, p -> IDCW_DEV_CMD, p -> IDCW_CHAN_CMD);
       }
     else // TDCW or DDCW
       {
