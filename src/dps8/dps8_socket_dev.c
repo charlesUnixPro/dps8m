@@ -46,10 +46,13 @@ static struct
         enum 
           {
             unit_idle = 0,
-            unit_accept
+            unit_accept,
+            unit_read
           } unit_state;
          //fd_set accept_fds;
          int accept_fd;
+         int read_fd;
+         uint read_buffer_sz;
       } unit_data[N_SK_UNITS_MAX];
   } sk_data;
 
@@ -544,7 +547,45 @@ done:
     set_error (& buffer[2], _errno);
   }
 
-static int get_ddcw (iomChanData_t * p, uint iom_unit_idx, uint chan, bool * ptro, uint expected_tally)
+static int skt_read8 (int unit_num, uint tally, word36 * buffer)
+  {
+// dcl 1 SOCKETDEV_read_data8 aligned,
+//       2 sockfd fixed bin,                    // 0
+//       2 count  fixed bin, /* buffer size */  // 1
+//       2 rc     fixed bin,                    // 2
+//       2 errno  char(8),                      // 3,4
+//       2 buffer char (0 refer (SOCKETDEV_read_data9.cont); // 5,....
+
+/* Tally >= 5 */
+/* In: */
+/*   sockfd */
+/*   count */
+/* Out: */
+/*   rc */
+/*   buffer */
+
+    int socket_fd = (int) buffer[0];
+sim_printf ("read8() socket     %d\n", socket_fd);
+
+    int rc = 0;
+    int _errno = 0;
+    // Does this socket belong to us?
+    if (sk_data.fd_unit[socket_fd] != unit_num)
+      {
+sim_printf ("read8() socket doesn't belong to us\n");
+        set_error (& buffer[4], EBADF);
+        return 2; // send terminate interrupt
+      }
+    sk_data.unit_data[unit_num].read_fd = socket_fd;
+    sk_data.unit_data[unit_num].read_buffer_sz = tally;
+    sk_data.unit_data[unit_num].unit_state = unit_read;
+    return 3; // don't send terminate interrupt
+
+    buffer[1] = ((word36) ((word36s) rc)) & MASK36; // rc
+    set_error (& buffer[2], _errno);
+  }
+
+static int get_ddcw (iomChanData_t * p, uint iom_unit_idx, uint chan, bool * ptro, uint expected_tally, uint * tally)
   {
     bool send, uff;
     int rc = iomListService (iom_unit_idx, chan, ptro, & send, & uff);
@@ -571,21 +612,21 @@ static int get_ddcw (iomChanData_t * p, uint iom_unit_idx, uint chan, bool * ptr
         return -1;
       }
 
-    uint tally = p -> DDCW_TALLY;
-    if (tally == 0)
+    * tally = p -> DDCW_TALLY;
+    if (* tally == 0)
       {
         sim_debug (DBG_DEBUG, & sk_dev,
                    "%s: Tally of zero interpreted as 010000(4096)\n",
                    __func__);
-        tally = 4096;
+        * tally = 4096;
       }
 
     sim_debug (DBG_DEBUG, & sk_dev,
-               "%s: Tally %d (%o)\n", __func__, tally, tally);
+               "%s: Tally %d (%o)\n", __func__, * tally, * tally);
 
-    if (tally != expected_tally)
+    if (* tally && * tally != expected_tally)
       {
-        sim_warn ("socket_dev socket call expected tally of %d; got %d\n", expected_tally, tally);
+        sim_warn ("socket_dev socket call expected tally of %d; got %d\n", expected_tally, * tally);
         p -> stati = 05001; // BUG: arbitrary error code; config switch
         return -1;
       }
@@ -621,7 +662,8 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
             sim_debug (DBG_DEBUG, & sk_dev,
                        "%s: socket_dev_$socket\n", __func__);
             const int expected_tally = 6;
-            int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally);
+            uint tally;
+            int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
               return rc;
 
@@ -642,10 +684,11 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
         case 02:               // CMD 02 -- bind()
           {
             sim_debug (DBG_DEBUG, & sk_dev,
-                       "%s: socket_dev_$socket\n", __func__);
+                       "%s: socket_dev_$bind\n", __func__);
 
             const int expected_tally = 6;
-            int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally);
+            uint tally;
+            int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
               return rc;
 
@@ -677,7 +720,8 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
                        "%s: socket_dev_$gethostbyname\n", __func__);
 
             const int expected_tally = 68;
-            int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally);
+            uint tally;
+            int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
               return rc;
 
@@ -702,7 +746,8 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
                        "%s: socket_dev_$listen\n", __func__);
 
             const int expected_tally = 5;
-            int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally);
+            uint tally;
+            int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
               return rc;
 
@@ -724,10 +769,11 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
         case 06:               // CMD 06 -- accept()
           {
             sim_debug (DBG_DEBUG, & sk_dev,
-                       "%s: socket_dev_$listen\n", __func__);
+                       "%s: socket_dev_$accept\n", __func__);
 
             const int expected_tally = 7;
-            int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally);
+            uint tally;
+            int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
               return rc;
 
@@ -754,7 +800,8 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
                        "%s: socket_dev_$close\n", __func__);
 
             const int expected_tally = 4;
-            int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally);
+            uint tally;
+            int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
               return rc;
 
@@ -766,6 +813,31 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
                                     & words_processed, false);
 
             skt_close ((int) p->IDCW_DEV_CODE, buffer);
+
+            iomIndirectDataService (iom_unit_idx, chan, buffer,
+                                    & words_processed, true);
+          }
+          break;
+
+        case 8:               // CMD 8 -- read8()
+          {
+            sim_debug (DBG_DEBUG, & sk_dev,
+                       "%s: socket_dev_$read8\n", __func__);
+
+            const int expected_tally = 0;
+            uint tally;
+            int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
+            if (rc)
+              return rc;
+
+            // Fetch parameters from core into buffer
+
+            word36 buffer [tally];
+            uint words_processed;
+            iomIndirectDataService (iom_unit_idx, chan, buffer,
+                                    & words_processed, false);
+
+            skt_read8 ((int) p->IDCW_DEV_CODE, tally, buffer);
 
             iomIndirectDataService (iom_unit_idx, chan, buffer,
                                     & words_processed, true);
@@ -824,21 +896,31 @@ int sk_iom_cmd (uint iom_unit_idx, uint chan)
 
 static void do_try_accept (uint unit_num)
   {
-#if 1
     struct sockaddr_in from;
     socklen_t size = sizeof (from);
     int _errno = 0;
-    int rc = accept (sk_data.unit_data[unit_num].accept_fd, (struct sockaddr *) & from, & size);
-    if (rc == -1)
+    int fd = accept (sk_data.unit_data[unit_num].accept_fd, (struct sockaddr *) & from, & size);
+    if (fd == -1)
       {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
           return;
         _errno = errno;
       }
+    else if (fd < N_FDS)
+      {
+        sk_data.fd_unit[fd] = (int) unit_num;
+        sk_data.fd_nonblock[fd] = false ; // !! (type & SOCK_NONBLOCK);
+      }
+    else
+      {
+        close (fd);
+        fd = -1;
+        _errno = EMFILE;
+      }
     word36 buffer [7];
     // sign extend int into word36
     buffer[0] = ((word36) ((word36s) sk_data.unit_data[unit_num].accept_fd)) & MASK36; 
-    buffer[1] = ((word36) ((word36s) rc)) & MASK36; 
+    buffer[1] = ((word36) ((word36s) fd)) & MASK36; 
     buffer[2] = ((word36) ((word36s) from.sin_family)) & MASK36; 
     uint16_t port = ntohs (from.sin_port);
     putbits36_16 (& buffer[3], 0, port);
@@ -853,7 +935,44 @@ static void do_try_accept (uint unit_num)
     iomIndirectDataService (iom_unit_idx, chan, buffer,
                             & words_processed, true);
     send_terminate_interrupt (iom_unit_idx, chan);
-#endif
+  }
+
+static void do_try_read (uint unit_num)
+  {
+    int _errno = 0;
+    uint tally = sk_data.unit_data[unit_num].read_buffer_sz;
+    uint tally_wds = (tally + 3) / 4;
+    word36 buffer [tally_wds];
+    uint8_t netdata [tally];
+    ssize_t nread = read (sk_data.unit_data[unit_num].read_fd, & netdata, tally);
+    if (nread == -1)
+      {
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+          return;
+        _errno = errno;
+      }
+
+    // sign extend int into word36
+    buffer[0] = ((word36) ((word36s) sk_data.unit_data[unit_num].read_fd)) & MASK36; 
+    buffer[1] = ((word36) (sk_data.unit_data[unit_num].read_buffer_sz)) & MASK36; 
+    buffer[2] = ((word36) ((word36s) nread)) & MASK36; 
+    set_error (& buffer[3], _errno);
+
+    for (ssize_t n = 0; n < nread; n ++)
+      {
+         uint wordno = (uint) n / 4;
+         uint charno = (uint) n & 4;
+         putbits36_9 (& buffer [5 + wordno], charno * 9, (word9) netdata [n]);
+      }
+
+    // This makes me nervous; it is assuming that the decoded channel control
+    // list data for the channel is intact, and that buffer is still in place.
+    uint iom_unit_idx = (uint) cables->cablesFromIomToSK[unit_num].iomUnitIdx;
+    uint chan = (uint) cables->cablesFromIomToSK[unit_num].chan_num;
+    uint words_processed;
+    iomIndirectDataService (iom_unit_idx, chan, buffer,
+                            & words_processed, true);
+    send_terminate_interrupt (iom_unit_idx, chan);
   }
 
 void sk_process_event (void)
@@ -864,6 +983,10 @@ void sk_process_event (void)
         if (sk_data.unit_data[unit_num].unit_state == unit_accept)
           {
             do_try_accept (unit_num);
+          }
+        else if (sk_data.unit_data[unit_num].unit_state == unit_read)
+          {
+            do_try_read (unit_num);
           }
       }
   }
