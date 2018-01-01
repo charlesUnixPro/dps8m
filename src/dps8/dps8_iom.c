@@ -451,6 +451,7 @@ typedef struct
     //   test/normal
     iomStat_t iomStatus;
 
+    bool is_imu;
     uint invokingScuUnitNum; // the unit number of the SCU that did the connect.
   } iomUnitData_t;
 
@@ -2421,7 +2422,7 @@ static void initMemoryIOM (uint iomUnitIdx)
     word36 dev = 0;            // 6 bits: drive number
     
     // Maybe an is-IMU flag; IMU is later version of IOM
-    word36 imu = 0;       // 1 bit
+    word36 imu = iomUnitData[iomUnitIdx].is_imu ? 1 : 0;       // 1 bit
     
     // Description of the bootload channel from 43A239854
     //    Legend
@@ -2741,6 +2742,7 @@ static t_stat iomShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val,
     for (i = 0; i < N_IOM_PORTS; i ++)
       sim_printf (" %3o", p -> configSwPortStoresize [i]);
     sim_printf ("\n");
+    sim_printf ("IMU Mode:                 %o\n", p->is_imu);
     
     return SCPE_OK;
   }
@@ -2829,7 +2831,7 @@ static config_list_t iom_config_list [] =
     /* 11 */ { "initenable", 0, 1, NULL },
     /* 12 */ { "halfsize", 0, 1, NULL },
     /* 13 */ { "store_size", 0, 7, cfg_size_list },
-
+    /* 14 */ { "imu", 0, 1, NULL },
     { NULL, 0, 0, NULL }
   };
 
@@ -2923,6 +2925,10 @@ static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, const char * cptr, UN
 
             case 13: // STORE_SIZE
               p -> configSwPortStoresize [port_num] = (uint) v;
+              break;
+
+            case 14: // IMU
+              p->is_imu = !! (uint) v;
               break;
 
             default:
