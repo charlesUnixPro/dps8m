@@ -519,7 +519,7 @@ static int diskRead (uint iomUnitIdx, uint chan)
         rc = (int) fread (diskBuffer, SECTOR_SZ_IN_BYTES,
                     tallySectors,
                     unitp -> fileref);
-
+        fflush (unitp->fileref);
         if (rc == 0) // eof; reading a sector beyond the high water mark.
           {
             // okay; buffer was zero, so just pretend that a zero filled
@@ -665,6 +665,7 @@ static int diskWrite (uint iomUnitIdx, uint chan)
         rc = (int) fwrite (diskBuffer, SECTOR_SZ_IN_BYTES,
                      tallySectors,
                      unitp -> fileref);
+        fflush (unitp->fileref);
 //sim_printf ("Disk write %8d %3d %08o\n",
 //disk_statep -> seekPosition, tallySectors, daddr);
               
