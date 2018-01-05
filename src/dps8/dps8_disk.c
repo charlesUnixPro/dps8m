@@ -74,8 +74,13 @@
 
 
 // assuming 512 word36  sectors; and seekPosition is seek512
-#define SECTOR_SZ_IN_W36 512
-#define SECTOR_SZ_IN_BYTES ((36 * SECTOR_SZ_IN_W36) / 8)
+#define SECTOR512_SZ_IN_W36 512
+#define SECTOR512_SZ_IN_BYTES ((36 * SECTOR512_SZ_IN_W36) / 8)
+#define SECTOR64_SZ_IN_W36 64
+#define SECTOR64_SZ_IN_BYTES ((36 * SECTOR64_SZ_IN_W36) / 8)
+
+#define SECTOR_SZ_IN_W36 (disk_statep->is512 ? SECTOR512_SZ_IN_W36 : SECTOR64_SZ_IN_W36)
+#define SECTOR_SZ_IN_BYTES (disk_statep->is512 ? SECTOR512_SZ_IN_BYTES : SECTOR64_SZ_IN_BYTES)
 
 #define M3381_SECTORS 6895616
 // records per subdev: 74930 (127 * 590)
@@ -257,8 +262,9 @@ DEVICE disk_dev = {
 
 static struct disk_state
   {
-    enum { no_mode, seek512_mode, seek_mode, read_mode, write_mode, request_status_mode } io_mode;
+    enum { no_mode, seek512_mode, seek_mode, read_mode, write_mode, request_status_mode, seek64_mode } io_mode;
     uint seekPosition;
+    bool is512;
   } disk_states [N_DISK_UNITS_MAX];
 
 #if 0
@@ -363,6 +369,72 @@ static int diskSeek512 (uint iomUnitIdx, uint chan)
 // suggests seeks are 21 bits.
 //  
     disk_statep -> seekPosition = seekData & MASK21;
+    disk_statep->is512 = true;
+//sim_printf ("seek seekPosition %d\n", disk_statep -> seekPosition);
+    p -> stati = 00000; // Channel ready
+    return 0;
+  }
+
+static int diskSeek64 (uint iomUnitIdx, uint chan)
+  {
+    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
+                      devices [chan] [p -> IDCW_DEV_CODE];
+    uint devUnitIdx = d -> devUnitIdx;
+    struct disk_state * disk_statep = & disk_states [devUnitIdx];
+    sim_debug (DBG_NOTIFY, & disk_dev, "Seek64 %d\n", devUnitIdx);
+//sim_printf ("disk seek64 [%"PRId64"]\n", sim_timell ());
+    disk_statep -> io_mode = seek64_mode;
+
+// Process DDCW
+
+    bool ptro, send, uff;
+    int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+    if (rc < 0)
+      {
+        sim_printf ("diskSeek64 list service failed\n");
+        return -1;
+      }
+    if (uff)
+      {
+        sim_printf ("diskSeek64 ignoring uff\n"); // XXX
+      }
+    if (! send)
+      {
+        sim_printf ("diskSeek64 nothing to send\n");
+        return 1;
+      }
+    if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+      {
+        sim_printf ("diskSeek64 expected DDCW\n");
+        return -1;
+      }
+
+
+    uint tally = p -> DDCW_TALLY;
+    sim_debug (DBG_DEBUG, & disk_dev,
+               "%s: Tally %d (%o)\n", __func__, tally, tally);
+
+    // Seek specific processing
+
+    if (tally != 1)
+      {
+        sim_printf ("disk seek dazed by tally %d != 1\n", tally);
+        p -> stati = 04510; // Cmd reject, invalid inst. seq.
+        p -> chanStatus = chanStatIncorrectDCW;
+        return -1;
+      }
+
+    word36 seekData;
+    iomDirectDataService (iomUnitIdx, chan, & seekData, false);
+
+
+// disk_control.pl1: 
+//   quentry.sector = bit (sector, 21);  /* Save the disk device address. */
+// suggests seeks are 21 bits.
+//  
+    disk_statep -> seekPosition = seekData & MASK21;
+    disk_statep->is512 = false;
 //sim_printf ("seek seekPosition %d\n", disk_statep -> seekPosition);
     p -> stati = 00000; // Channel ready
     return 0;
@@ -776,15 +848,19 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
 //exit(1);
           break;
 
-#if 0
-        case 034: // CMD 34 SEEK
+        case 034: // CMD 34 SEEK (64)
           {
-//sim_printf ("disk seek [%"PRId64"]\n", sim_timell ());
-            sim_debug (DBG_NOTIFY, & disk_dev, "Seek %d\n", devUnitIdx);
-            disk_statep -> io_mode = seek_mode;
+            // XXX is it correct to not process the DDCWs?
+            if (! unitp -> fileref)
+              {
+                p -> stati = 04240; // device offline
+                break;
+              }
+            int rc = diskSeek64 (iomUnitIdx, chan);
+            if (rc)
+              return -1;
           }
           break;
-#endif
 
         case 040: // CMD 40 Reset status
           {
