@@ -172,6 +172,8 @@
 static t_stat disk_reset (DEVICE * dptr);
 static t_stat disk_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat disk_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat disk_show_config (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat disk_set_config (UNIT * uptr, int32 value, const char * cptr, void * desc);
 
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE | DKUF_F_RAW)
@@ -225,6 +227,16 @@ static MTAB disk_mod [] =
       "Number of DISK units in the system", /* value descriptor */
       NULL // Help
     },
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_VALR, /* mask */
+      0,            /* match */
+      "CONFIG",     /* print string */
+      "CONFIG",         /* match string */
+      disk_set_config,         /* validation routine */
+      disk_show_config, /* display routine */
+      NULL,          /* value descriptor */
+      NULL   // help string
+    },
     { 0, 0, NULL, NULL, 0, 0, NULL, NULL }
   };
 
@@ -265,6 +277,8 @@ static struct disk_state
     enum { no_mode, seek512_mode, seek_mode, read_mode, write_mode, request_status_mode, seek64_mode } io_mode;
     uint seekPosition;
     bool is512;
+    //enum model_e { m3381 = 0, m501 } model; // 0 makes memset set default to 3381
+    bool isCtlr;
   } disk_states [N_DISK_UNITS_MAX];
 
 #if 0
@@ -776,6 +790,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
     UNIT * unitp = & disk_unit [devUnitIdx];
     struct disk_state * disk_statep = & disk_states [devUnitIdx];
 
+//if (devUnitIdx == 0) sim_printf ("cmd %d. %o\n", p -> IDCW_DEV_CMD, p -> IDCW_DEV_CMD);
     disk_statep -> io_mode = no_mode;
     p -> stati = 0;
 
@@ -784,7 +799,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
         case 000: // CMD 00 Request status
           {
             p -> stati = 04000;
-            if (! unitp -> fileref)
+            if ((! disk_statep->isCtlr) && (! unitp -> fileref))
               p -> stati = 04240; // device offline
 
             disk_statep -> io_mode = no_mode;
@@ -866,7 +881,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
         case 040: // CMD 40 Reset status
           {
             p -> stati = 04000;
-            if (! unitp -> fileref)
+            if ((! disk_statep->isCtlr) && (! unitp -> fileref))
               p -> stati = 04240; // device offline
             disk_statep -> io_mode = no_mode;
             sim_debug (DBG_NOTIFY, & disk_dev, "Reset status %d\n", devUnitIdx);
@@ -881,6 +896,25 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
               p -> stati = 04240; // device offline
           }
           break;
+
+
+        case 010: // CMD 010 Something to do with firmware load. 
+                  // See hc_load_mpc.pl1, line 297.
+          {
+            sim_debug (DBG_NOTIFY, & disk_dev, "firmware load 010%d\n", devUnitIdx);
+            p -> stati = 04000;
+          }
+          break;
+
+
+        case 011: // CM1 011 Something to do with firmware load. 
+                  // See hc_load_mpc.pl1, line 310.
+          {
+            sim_debug (DBG_NOTIFY, & disk_dev, "firmware load 011%d\n", devUnitIdx);
+            p -> stati = 04000;
+          }
+          break;
+
 
 
         default:
@@ -965,6 +999,99 @@ static t_stat disk_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, const cha
     if (n < 1 || n > N_DISK_UNITS_MAX)
       return SCPE_ARG;
     disk_dev . numunits = (uint32) n;
+    return SCPE_OK;
+  }
+
+static t_stat disk_show_config (UNUSED FILE * st, UNIT * uptr, UNUSED int val,
+                                UNUSED const void * desc)
+  {
+    long disk_unit_idx = DISK_UNIT_NUM (uptr);
+    if (disk_unit_idx >= (long) disk_dev.numunits)
+      {
+        sim_debug (DBG_ERR, & disk_dev, 
+                   "Disk show config: Invalid unit number %ld\n", disk_unit_idx);
+        sim_printf ("error: invalid unit number %ld\n", disk_unit_idx);
+        return SCPE_ARG;
+      }
+
+    sim_printf ("Disk unit number %ld\n", disk_unit_idx);
+    struct disk_state * dsp = disk_states + disk_unit_idx;
+
+    if (dsp->isCtlr)
+      sim_printf ("Disk controller\n");
+    else 
+      sim_printf ("Disk drive\n");
+#if 0
+    if (dsp->model == m501)
+      sim_printf ("Disk model:                  d501\n");
+    else if (dsp->model == m3381)
+      sim_printf ("Disk model:                  3381\n");
+    else 
+      sim_printf ("Disk model:                  unknown (%d)\n", dsp->model);
+#endif
+    return SCPE_OK;
+  }
+
+static config_value_list_t cfg_mode_list [] =
+  {
+#if 0
+    { "3381", m3381 },
+    { "d501", m501 },
+#endif
+    { "drive", 0 },
+    { "controller", 1 },
+    { NULL, 0 }
+  };
+
+static config_list_t cpu_config_list [] =
+  {
+    { "mode", 0, 1, cfg_mode_list },
+    { NULL, 0 }
+  };
+
+static t_stat disk_set_config (UNIT * uptr, UNUSED int32 value, const char * cptr,
+                              UNUSED void * desc)
+  {
+    long disk_unit_idx = DISK_UNIT_NUM (uptr);
+    if (disk_unit_idx >= (long) disk_dev.numunits)
+      {
+        sim_debug (DBG_ERR, & disk_dev, 
+                   "Disk show config: Invalid unit number %ld\n", disk_unit_idx);
+        sim_printf ("error: invalid unit number %ld\n", disk_unit_idx);
+        return SCPE_ARG;
+      }
+    struct disk_state * dsp = disk_states + disk_unit_idx;
+
+    config_state_t cfg_state = { NULL, NULL };
+
+    for (;;)
+      {
+        int64_t v;
+        int rc = cfgparse ("cpu_set_config", cptr, cpu_config_list, & cfg_state, & v);
+        switch (rc)
+          {
+            case -2: // error
+              cfgparse_done (& cfg_state);
+              return SCPE_ARG;
+
+            case -1: // done
+              break;
+
+            case 0: // MODE
+              dsp->isCtlr = !! v;
+              break;
+
+            default:
+              //sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: Invalid cfgparse rc <%d>\n", rc);
+              sim_printf ("error: cpu_set_config: invalid cfgparse rc <%d>\n", rc);
+              cfgparse_done (& cfg_state);
+              return SCPE_ARG;
+          } // switch
+        if (rc < 0)
+          break;
+      } // process statements
+    cfgparse_done (& cfg_state);
+
     return SCPE_OK;
   }
 
