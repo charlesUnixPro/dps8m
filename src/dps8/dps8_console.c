@@ -373,9 +373,9 @@ static void handleRCP (char * text)
                 & label, & with, & drive);
 #endif
     size_t len = strlen (text);
-    char label [len];
-    char with [len];
-    char drive [len];
+    char label [len + 1];
+    char with [len + 1];
+    char drive [len + 1];
     //char whom [len];
     int rc = sscanf (text, "%*d.%*d RCP: Mount Reel %s %s ring on %s",
                 label, with, drive);
@@ -397,7 +397,7 @@ sim_printf ("<%s>\n", labelDotTap);
       {
         //sim_printf ("label %s %s ring on %s\n", label, with, drive);
         bool withring = (strcmp (with, "with") == 0);
-        char labelDotTap [strlen (label) + 4];
+        char labelDotTap [strlen (label) + strlen (".tap") + 1];
         strcpy (labelDotTap, label);
         strcat (labelDotTap, ".tap");
 sim_printf ("<%s>\n", labelDotTap);
