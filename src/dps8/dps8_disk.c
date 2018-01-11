@@ -444,6 +444,7 @@ static int diskRead (uint iomUnitIdx, uint chan)
         sim_debug (DBG_TRACE, & disk_dev, "Disk read  %3d %8d %3d\n",
                    devUnitIdx, disk_statep -> seekPosition, tallySectors);
 
+        fflush (unitp->fileref);
         rc = (int) fread (diskBuffer, SECTOR_SZ_IN_BYTES,
                     tallySectors,
                     unitp -> fileref);
