@@ -180,6 +180,7 @@ static char * default_base_system_script [] =
     "set tape nunits=17",
 #ifdef NEW_CABLE
     "set mtp nunits=1",
+    "set ipc nunits=1",
 #endif
     // ; 16 drives; no controller
     "set disk nunits=16",
@@ -1187,6 +1188,27 @@ static char * default_base_system_script [] =
     "cable disk,14,0,013,14",
     // ; Attach DISK unit 15 to IOM 0, chan 013, dev_code 15",
     "cable disk,15,0,013,15",
+
+#ifdef NEW_CABLE
+    "set ipc0 device_name=IPC0",
+    "kable IOM0 013 IPC0",
+    "kable IPC0 0 DISK0",
+    "kable IPC0 1 DISK1",
+    "kable IPC0 2 DISK2",
+    "kable IPC0 3 DISK3",
+    "kable IPC0 4 DISK4",
+    "kable IPC0 5 DISK5",
+    "kable IPC0 6 DISK6",
+    "kable IPC0 7 DISK7",
+    "kable IPC0 8 DISK8",
+    "kable IPC0 9 DISK9",
+    "kable IPC0 10 DISK10",
+    "kable IPC0 11 DISK11",
+    "kable IPC0 12 DISK12",
+    "kable IPC0 13 DISK13",
+    "kable IPC0 14 DISK14",
+    "kable IPC0 15 DISK15",
+#endif
 
     // ; Attach OPC unit 0 to IOM A, chan 036, dev_code 0
     "cable opc,0,0,036,0",
@@ -3977,7 +3999,8 @@ DEVICE * sim_devices[] =
     & tape_dev,
     & mtp_dev,
     & fnpDev,
-    & disk_dev,
+    & dsk_dev,
+    & ipc_dev,
     & scu_dev,
     // & mpc_dev,
     & opc_dev,

@@ -56,7 +56,7 @@ enum { N_FNP_UNITS_MAX = 16 };
 // Disk
 //
 
-enum { N_DISK_UNITS_MAX = 64 };
+enum { N_DSK_UNITS_MAX = 64 };
 
 //
 // SCU
@@ -88,6 +88,12 @@ enum { N_MTP_UNITS_MAX = 16 };
 //
 
 enum { N_MSP_UNITS_MAX = 16 };
+
+//
+// IPC
+//
+
+enum { N_IPC_UNITS_MAX = 16 };
 
 //
 // DIA

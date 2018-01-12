@@ -330,14 +330,14 @@ static t_stat cableFNP (int uncable, int fnpUnitNum, int iomUnitIdx,
     return SCPE_OK;
   }
  
-static t_stat cable_disk (int uncable, int disk_unit_num, int iomUnitIdx,
+static t_stat cable_disk (int uncable, int dsk_unit_num, int iomUnitIdx,
                           int chan_num, int dev_code)
   {
-    cable_periph (uncable, disk_unit_num, iomUnitIdx, chan_num, dev_code,
-                  "cable_disk", (int) disk_dev.numunits, 
-                  & cables->cablesFromIomToDsk[disk_unit_num], DEVT_DISK,
-                  chanTypePSI, & disk_dev, & disk_unit[disk_unit_num],
-                  disk_iom_cmd);
+    cable_periph (uncable, dsk_unit_num, iomUnitIdx, chan_num, dev_code,
+                  "cable_disk", (int) dsk_dev.numunits, 
+                  & cables->cablesFromIomToDsk[dsk_unit_num], DEVT_DISK,
+                  chanTypePSI, & dsk_dev, & dsk_unit[dsk_unit_num],
+                  dsk_iom_cmd);
     return SCPE_OK;
   }
 
@@ -1118,34 +1118,34 @@ static t_stat kable_scu (int uncable, uint scu_unit_idx, char * name_save)
       }
   }
 
-static t_stat cable_ctlr_to_iom (int uncable, struct ctlr_to_iom_s * from,
+static t_stat cable_ctlr_to_iom (int uncable, struct ctlr_to_iom_s * there,
                                  uint iom_unit_idx, uint chan_num)
   {
     if (uncable)
       {
-        if (! from->in_use)
+        if (! there->in_use)
           {
             sim_printf ("error: UNCABLE: controller not cabled\n");
             return SCPE_ARG;
           }
-        if (from->iom_unit_idx != iom_unit_idx ||
-            from->chan_num != chan_num)
+        if (there->iom_unit_idx != iom_unit_idx ||
+            there->chan_num != chan_num)
           {
             sim_printf ("error: UNCABLE: wrong controller\n");
             return SCPE_ARG;
           }
-        from->in_use = false;
+        there->in_use = false;
       }
    else
       {
-        if (from->in_use)
+        if (there->in_use)
           {
             sim_printf ("error: CABLE: controller in use\n");
             return SCPE_ARG;
           }
-        from->in_use = true;
-        from->iom_unit_idx = iom_unit_idx;
-        from->chan_num = chan_num;
+        there->in_use = true;
+        there->iom_unit_idx = iom_unit_idx;
+        there->chan_num = chan_num;
       }
     return SCPE_OK;
   }
@@ -1155,7 +1155,7 @@ static t_stat kable_ctlr (int uncable,
                           uint ctlr_unit_idx, uint port_num,
                           char * service,
                           DEVICE * devp,
-                          struct ctlr_to_iom_s * from,
+                          struct ctlr_to_iom_s * there,
                           enum ctlr_type_e ctlr_type, enum chan_type_e chan_type,
                           UNIT * unitp, iomCmd * iomCmd)
   {
@@ -1184,7 +1184,7 @@ static t_stat kable_ctlr (int uncable,
           }
 
         // Unplug the other end of the cable
-        t_stat rc = cable_ctlr_to_iom (uncable, from,
+        t_stat rc = cable_ctlr_to_iom (uncable, there,
                                        iom_unit_idx, chan_num);
         if (rc)
           {
@@ -1202,7 +1202,7 @@ static t_stat kable_ctlr (int uncable,
           }
 
         // Plug the other end of the cable in
-        t_stat rc = cable_ctlr_to_iom (uncable, from,
+        t_stat rc = cable_ctlr_to_iom (uncable, there,
                                        iom_unit_idx, chan_num);
         if (rc)
           {
@@ -1255,6 +1255,36 @@ static t_stat kable_iom (int uncable, uint iom_unit_idx, char * name_save)
       }
     uint unit_idx;
 
+
+// IOMx IPCx
+    if (name_match (param, "IPC", & unit_idx))
+      {
+        if (unit_idx >= N_IPC_UNITS_MAX)
+          {
+            sim_printf ("error: CABLE IOM: IPC unit number out of range <%d>\n", unit_idx);
+            return SCPE_ARG;
+          }
+
+        // extract IPC port number
+        int ipc_port_num = 0;
+        param = strtok_r (NULL, ", ", & name_save);
+        if (param)
+          ipc_port_num = parseval (param);
+
+        if (ipc_port_num < 0 || ipc_port_num >= MAX_CTLR_PORTS)
+          {
+            sim_printf ("error: CABLE IOM: IPC port number out of range <%d>\n", ipc_port_num);
+            return SCPE_ARG;
+          }
+        return kable_ctlr (uncable,
+                           iom_unit_idx, (uint) chan_num,
+                           unit_idx, (uint) ipc_port_num,
+                           "CABLE IOMx IPCx",
+                           & ipc_dev,
+                           & kables->ipc_to_iom[unit_idx][ipc_port_num],
+                           DEV_T_IPC, chan_type_PSI,
+                           & ipc_unit [unit_idx], dsk_iom_cmd); // XXX mtp_iom_cmd?
+      }
 
 // IOMx MTPx
     if (name_match (param, "MTP", & unit_idx))
@@ -1316,34 +1346,34 @@ static t_stat kable_iom (int uncable, uint iom_unit_idx, char * name_save)
 
 static t_stat cable_periph_to_ctlr (int uncable,
                                     uint ctlr_unit_idx, uint dev_code,
-                                    struct dev_to_ctlr_s * from,
+                                    struct dev_to_ctlr_s * there,
                                     iomCmd * iom_cmd)
   {
     if (uncable)
       {
-        if (! from->in_use)
+        if (! there->in_use)
           {
             sim_printf ("error: UNCABLE: device not cabled\n");
             return SCPE_ARG;
           }
-        if (from->ctlr_unit_idx != ctlr_unit_idx ||
-            from->dev_code != dev_code)
+        if (there->ctlr_unit_idx != ctlr_unit_idx ||
+            there->dev_code != dev_code)
           {
             sim_printf ("error: UNCABLE: wrong controller\n");
             return SCPE_ARG;
           }
-        from->in_use = false;
+        there->in_use = false;
       }
    else
       {
-        if (from->in_use)
+        if (there->in_use)
           {
             sim_printf ("error: CABLE: device in use\n");
             return SCPE_ARG;
           }
-        from->in_use = true;
-        from->ctlr_unit_idx = ctlr_unit_idx;
-        from->dev_code = dev_code;
+        there->in_use = true;
+        there->ctlr_unit_idx = ctlr_unit_idx;
+        there->dev_code = dev_code;
       }
     return SCPE_OK;
   }
@@ -1351,15 +1381,15 @@ static t_stat cable_periph_to_ctlr (int uncable,
 static t_stat kable_periph (int uncable,
                             uint ctlr_unit_idx,
                             uint dev_code,
+                            struct ctlr_to_dev_s * here,
                             uint tape_unit_idx,
                             iomCmd * iom_cmd,
-                            struct dev_to_ctlr_s * from,
+                            struct dev_to_ctlr_s * there,
                             char * service)
   {
-    struct ctlr_to_dev_s * p = & kables->mtp_to_tape[ctlr_unit_idx][dev_code];
     if (uncable)
       {
-        if (! p->in_use)
+        if (! here->in_use)
           {
             sim_printf ("%s: socket not in use\n", service);
             return SCPE_ARG;
@@ -1367,18 +1397,18 @@ static t_stat kable_periph (int uncable,
         // Unplug the other end of the cable
         t_stat rc = cable_periph_to_ctlr (uncable,
                                           ctlr_unit_idx, dev_code,
-                                          from,
+                                          there,
                                           iom_cmd);
         if (rc)
           {
             return rc;
           }
 
-        from->in_use = false;
+        here->in_use = false;
       }
     else
       {
-        if (p->in_use)
+        if (here->in_use)
           {
             sim_printf ("%s: controller socket in use; unit number %u. dev_code %oo\n",
                         service, ctlr_unit_idx, dev_code);
@@ -1388,15 +1418,15 @@ static t_stat kable_periph (int uncable,
         // Plug the other end of the cable in
         t_stat rc = cable_periph_to_ctlr (uncable,
                                           ctlr_unit_idx, dev_code,
-                                          from,
+                                          there,
                                           iom_cmd);
         if (rc)
           {
             return rc;
           }
 
-        p->in_use = true;
-        p->iom_cmd = iom_cmd;
+        here->in_use = true;
+        here->iom_cmd = iom_cmd;
       }
 
     return SCPE_OK;
@@ -1444,6 +1474,7 @@ static t_stat kable_mtp (int uncable, uint ctlr_unit_idx, char * name_save)
         return kable_periph (uncable,
                              ctlr_unit_idx,
                              (uint) dev_code,
+                             & kables->mtp_to_tape[ctlr_unit_idx][dev_code],
                              mt_unit_idx,
                              mt_iom_cmd,
                              & kables->tape_to_mtp[mt_unit_idx],
@@ -1454,6 +1485,63 @@ static t_stat kable_mtp (int uncable, uint ctlr_unit_idx, char * name_save)
     else
       {
         sim_printf ("cable MTP: can't parse device name\n");
+        return SCPE_ARG;
+      }
+  }
+
+//     cable IPCx dev_code DISKx
+
+static t_stat kable_ipc (int uncable, uint ctlr_unit_idx, char * name_save)
+  {
+    if (ctlr_unit_idx >= ipc_dev.numunits)
+      {
+        sim_printf ("error: CABLE IPC: controller unit number out of range <%d>\n", 
+                    ctlr_unit_idx);
+        return SCPE_ARG;
+      }
+
+    int dev_code = getval (& name_save, "IPC device code");
+
+    if (dev_code < 0 || dev_code >= MAX_CHANNELS)
+      {
+        sim_printf ("error: CABLE IPC device code out of range <%d>\n", 
+                    dev_code);
+        return SCPE_ARG;
+      }
+
+    // extract tape index
+    char * param = strtok_r (NULL, ", ", & name_save);
+    if (! param)
+      {
+        sim_printf ("error: CABLE IOM can't parse device name\n");
+        return SCPE_ARG;
+      }
+    uint dsk_unit_idx;
+
+
+// MPCx DISKx
+    if (name_match (param, "DISK", & dsk_unit_idx))
+      {
+        if (dsk_unit_idx >= N_DSK_UNITS_MAX)
+          {
+            sim_printf ("error: CABLE IOM: DISK unit number out of range <%d>\n", dsk_unit_idx);
+            return SCPE_ARG;
+          }
+
+        return kable_periph (uncable,
+                             ctlr_unit_idx,
+                             (uint) dev_code,
+                             & kables->ipc_to_dsk[ctlr_unit_idx][dev_code],
+                             dsk_unit_idx,
+                             dsk_iom_cmd, // XXX
+                             & kables->dsk_to_ipc[dsk_unit_idx],
+                             "CABLE IPCx DISKx");
+      }
+
+
+    else
+      {
+        sim_printf ("cable IPC: can't parse device name\n");
         return SCPE_ARG;
       }
   }
@@ -1483,6 +1571,8 @@ t_stat sys_kable (int32 arg, const char * buf)
       rc = kable_iom (arg, unit_num, name_save);
     else if (name_match (name, "MTP", & unit_num))
       rc = kable_mtp (arg, unit_num, name_save);
+    else if (name_match (name, "IPC", & unit_num))
+      rc = kable_ipc (arg, unit_num, name_save);
     else
       {
         sim_printf ("error: cable: invalid name <%s>\n", name);
@@ -1510,7 +1600,7 @@ static void cable_init (void)
           cables->cablesFromCpus[u][p][s].cpuUnitIdx = -1; // not connected
     for (int i = 0; i < N_OPC_UNITS_MAX; i ++)
       cables->cablesFromIomToCon[i].iomUnitIdx = -1;
-    for (int i = 0; i < N_DISK_UNITS_MAX; i ++)
+    for (int i = 0; i < N_DSK_UNITS_MAX; i ++)
       cables->cablesFromIomToDsk[i].iomUnitIdx = -1;
     for (int i = 0; i < N_CRDRDR_UNITS_MAX; i ++)
       cables->cablesFromIomToCrdRdr[i].iomUnitIdx = -1;
@@ -1582,7 +1672,7 @@ t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
                         cables->cablesFromIomToTap[i].dev_code);
           }
       }
-    for (int i = 0; i < N_DISK_UNITS_MAX; i ++)
+    for (int i = 0; i < N_DSK_UNITS_MAX; i ++)
       {
         if (cables->cablesFromIomToDsk[i].iomUnitIdx != -1)
           {

@@ -83,7 +83,7 @@ struct cables_t
     struct cableFromIom cablesFromIomToCrdPun [N_CRDPUN_UNITS_MAX];
     struct cableFromIom cablesFromIomToPrt [N_PRT_UNITS_MAX];
     struct cableFromIom cablesFromIomToFnp [N_FNP_UNITS_MAX];
-    struct cableFromIom cablesFromIomToDsk [N_DISK_UNITS_MAX];
+    struct cableFromIom cablesFromIomToDsk [N_DSK_UNITS_MAX];
     struct cableFromIom cablesFromIomToCon [N_OPC_UNITS_MAX];
     struct cableFromIom cablesFromIomToTap [N_MT_UNITS_MAX];
     struct cableFromIom cablesFromIomToAbsi [N_ABSI_UNITS_MAX];
@@ -298,8 +298,10 @@ struct kables_s
     struct iom_to_ctlr_s iom_to_ctlr [N_IOM_UNITS_MAX] [MAX_CHANNELS];
     //   mtp
     struct ctlr_to_iom_s mtp_to_iom [N_MTP_UNITS_MAX] [MAX_CTLR_PORTS];
-    //   msp/ipc
+    //   msp
     struct ctlr_to_iom_s msp_to_iom [N_MSP_UNITS_MAX] [MAX_CTLR_PORTS];
+    //   ipc
+    struct ctlr_to_iom_s ipc_to_iom [N_IPC_UNITS_MAX] [MAX_CTLR_PORTS];
     //   urp
     struct ctlr_to_iom_s urp_to_iom [N_URP_UNITS_MAX] [MAX_CTLR_PORTS];
     //   dia
@@ -317,9 +319,12 @@ struct kables_s
     struct dev_to_ctlr_s tape_to_mtp [N_MT_UNITS_MAX];
 
     // CTLR->DEV
+    //   ipc->disk
+    struct ctlr_to_dev_s ipc_to_dsk [N_IPC_UNITS_MAX] [N_DEV_CODES];
+    struct dev_to_ctlr_s dsk_to_ipc [N_DSK_UNITS_MAX];
     //   msp->disk
-    struct ctlr_to_dev_s msp_to_disk [N_MSP_UNITS_MAX] [N_DEV_CODES];
-    struct dev_to_ctlr_s disk_to_msp [N_DISK_UNITS_MAX];
+    struct ctlr_to_dev_s msp_to_dsk [N_MSP_UNITS_MAX] [N_DEV_CODES];
+    struct dev_to_ctlr_s dsk_to_msp [N_DSK_UNITS_MAX];
   };
 
 extern struct kables_s * kables;
