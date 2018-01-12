@@ -174,6 +174,7 @@ static t_stat disk_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc)
 static t_stat disk_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
 static t_stat disk_show_config (FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat disk_set_config (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat disk_set_ready (UNIT * uptr, int32 value, const char * cptr, void * desc);
 
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE | DKUF_F_RAW)
@@ -234,6 +235,16 @@ static MTAB disk_mod [] =
       "CONFIG",         /* match string */
       disk_set_config,         /* validation routine */
       disk_show_config, /* display routine */
+      NULL,          /* value descriptor */
+      NULL   // help string
+    },
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_VALR, /* mask */
+      0,            /* match */
+      "READY",     /* print string */
+      "READY",         /* match string */
+      disk_set_ready,         /* validation routine */
+      NULL, /* display routine */
       NULL,          /* value descriptor */
       NULL   // help string
     },
@@ -1091,6 +1102,40 @@ static t_stat disk_set_config (UNIT * uptr, UNUSED int32 value, const char * cpt
           break;
       } // process statements
     cfgparse_done (& cfg_state);
+
+    return SCPE_OK;
+  }
+
+static t_stat disk_set_ready (UNIT * uptr, UNUSED int32 value, const char * cptr,
+                              UNUSED void * desc)
+  {
+    long disk_unit_idx = DISK_UNIT_NUM (uptr);
+    if (disk_unit_idx >= (long) disk_dev.numunits)
+      {
+        sim_debug (DBG_ERR, & disk_dev, 
+                   "Disk show config: Invalid unit number %ld\n", disk_unit_idx);
+        sim_printf ("error: invalid unit number %ld\n", disk_unit_idx);
+        return SCPE_ARG;
+      }
+    struct disk_state * dsp = disk_states + disk_unit_idx;
+
+// if substr (special_status_word, 20, 1) ^= "1"b | substr (special_status_word, 13, 6) ^= "00"b3
+// if substr (special_status_word, 34, 3) ^= "001"b
+// Note the 34,3 spans 34,35,36; therefore the bits are 1..36, not 0..35
+// 20,1 is bit 19
+// 13,6, is bits 12..17
+// status0 is 19..26
+// status1 is 28..35
+// so substr (w, 20, 1) is bit 0 of status0
+//    substr (w, 13, 6) is the low 6 bits of dev_no
+//    substr (w, 34, 3) is the low 3 bits of status 1
+    //sim_printf ("%s %d %o\n", tapeFilename, ro,  mt_unit [driveNumber] . flags);
+    //sim_printf ("special int %d %o\n", driveNumber, mt_unit [driveNumber] . flags);
+sim_printf ("sending disk ready\n");
+    send_special_interrupt ((uint) cables->cablesFromIomToDsk[disk_unit_idx].iomUnitIdx,
+                            (uint) cables->cablesFromIomToDsk[disk_unit_idx].chan_num,
+                            (uint) cables->cablesFromIomToDsk[disk_unit_idx].dev_code,
+                            0x40, 01 /* disk pack ready */);
 
     return SCPE_OK;
   }
