@@ -47,34 +47,34 @@
 
 //#define ASSUME0 0
 
-#define N_OPCON_UNITS 1 // default
+#define N_OPC_UNITS 1 // default
 
 // config switch -- The bootload console has a 30-second timer mechanism. When
 // reading from the console, if no character is typed within 30 seconds, the
 // read operation is terminated. The timer is controlled by an enable switch,
 // must be set to enabled during Multics and BCE 
 
-static t_stat opcon_reset (DEVICE * dptr);
-static t_stat opcon_show_nunits (FILE *st, UNIT *uptr, int val,
+static t_stat opc_reset (DEVICE * dptr);
+static t_stat opc_show_nunits (FILE *st, UNIT *uptr, int val,
                                  const void *desc);
-static t_stat opcon_set_nunits (UNIT * uptr, int32 value, const char * cptr,
+static t_stat opc_set_nunits (UNIT * uptr, int32 value, const char * cptr,
                                 void * desc);
-static int opcon_autoinput_set (UNIT *uptr, int32 val, const char *cptr,
+static int opc_autoinput_set (UNIT *uptr, int32 val, const char *cptr,
                                 void *desc);
-static int opcon_autoinput_show (FILE *st, UNIT *uptr, int val,
+static int opc_autoinput_show (FILE *st, UNIT *uptr, int val,
                                  const void *desc);
 
-static t_stat con_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
+static t_stat opc_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
                               const char * cptr, UNUSED void * desc);
-static t_stat con_show_config (UNUSED FILE * st, UNUSED UNIT * uptr,
+static t_stat opc_show_config (UNUSED FILE * st, UNUSED UNIT * uptr,
                                UNUSED int  val, UNUSED const void * desc);
-static MTAB opcon_mod[] = {
+static MTAB opc_mtab[] = {
     { MTAB_XTD | MTAB_VUN | MTAB_NC, /* mask */
         0,            /* match */
         "AUTOINPUT",  /* print string */
         "AUTOINPUT",  /* match pstring */
-        opcon_autoinput_set, 
-        opcon_autoinput_show, 
+        opc_autoinput_set, 
+        opc_autoinput_show, 
         NULL, 
         NULL },
     {
@@ -82,9 +82,9 @@ static MTAB opcon_mod[] = {
       0,            /* match */
       "NUNITS",     /* print string */
       "NUNITS",         /* match string */
-      opcon_set_nunits, /* validation routine */
-      opcon_show_nunits, /* display routine */
-      "Number of OPCON units in the system", /* value descriptor */
+      opc_set_nunits, /* validation routine */
+      opc_show_nunits, /* display routine */
+      "Number of OPC units in the system", /* value descriptor */
       NULL // Help
     },
     {
@@ -92,8 +92,8 @@ static MTAB opcon_mod[] = {
       0,            /* match */
       (char *) "CONFIG",     /* print string */
       (char *) "CONFIG",         /* match string */
-      con_set_config,         /* validation routine */
-      con_show_config, /* display routine */
+      opc_set_config,         /* validation routine */
+      opc_show_config, /* display routine */
       NULL,          /* value descriptor */
       NULL,            /* help */
     },
@@ -101,7 +101,7 @@ static MTAB opcon_mod[] = {
 };
 
 
-static DEBTAB opcon_dt[] =
+static DEBTAB opc_dt[] =
   {
     { "NOTIFY", DBG_NOTIFY, NULL },
     { "INFO", DBG_INFO, NULL },
@@ -116,33 +116,33 @@ static DEBTAB opcon_dt[] =
 // it is possible to run multiple Multics instances in a
 // cluster.
 
-#define N_OPCON_UNITS 1 // default
+#define N_OPC_UNITS 1 // default
 
-//#define OPCON_UNIT_NUM 0
-#define OPCON_UNIT_NUM(uptr) ((uptr) - opcon_unit)
+//#define OPC_UNIT_NUM 0
+#define OPC_UNIT_NUM(uptr) ((uptr) - opc_unit)
 
-static t_stat opcon_svc (UNIT * unitp);
+static t_stat opc_svc (UNIT * unitp);
 
-UNIT opcon_unit[N_OPCON_UNITS_MAX] =
+UNIT opc_unit[N_OPC_UNITS_MAX] =
   {
-    { UDATA (& opcon_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& opcon_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& opcon_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& opcon_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& opcon_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& opcon_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& opcon_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& opcon_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL }
+    { UDATA (& opc_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (& opc_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (& opc_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (& opc_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (& opc_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (& opc_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (& opc_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
+    { UDATA (& opc_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL }
   };
 
-#define OPCON_UNIT_NUM(uptr) ((uptr) - opcon_unit)
+#define OPC_UNIT_NUM(uptr) ((uptr) - opc_unit)
 
-DEVICE opcon_dev = {
-    "OPCON",       /* name */
-    opcon_unit,    /* units */
+DEVICE opc_dev = {
+    "OPC",       /* name */
+    opc_unit,    /* units */
     NULL,          /* registers */
-    opcon_mod,     /* modifiers */
-    N_OPCON_UNITS, /* #units */
+    opc_mtab,     /* modifiers */
+    N_OPC_UNITS, /* #units */
     10,            /* address radix */
     8,             /* address width */
     1,             /* address increment */
@@ -150,14 +150,14 @@ DEVICE opcon_dev = {
     8,             /* data width */
     NULL,          /* examine routine */
     NULL,          /* deposit routine */
-    opcon_reset,   /* reset routine */
+    opc_reset,   /* reset routine */
     NULL,          /* boot routine */
     NULL,          /* attach routine */
     NULL,          /* detach routine */
     NULL,          /* context */
     DEV_DEBUG,     /* flags */
     0,             /* debug control flags */
-    opcon_dt,      /* debug flag names */
+    opc_dt,      /* debug flag names */
     NULL,          /* memory size change */
     NULL,          /* logical name */
     NULL,          // help
@@ -177,7 +177,7 @@ DEVICE opcon_dev = {
  */
 
 #include <ctype.h>
-typedef struct con_state_t
+typedef struct opc_state_t
   {
     // Hangs off the device structure
     enum { no_mode, read_mode, write_mode } io_mode;
@@ -213,14 +213,14 @@ typedef struct con_state_t
 
     uv_access console_access;
 
- } con_state_t;
+ } opc_state_t;
 
-static con_state_t console_state[N_OPCON_UNITS_MAX];
+static opc_state_t console_state[N_OPC_UNITS_MAX];
 
 //-- #define N_LINES 4
 
 
-static t_stat opcon_reset (UNUSED DEVICE * dptr)
+static t_stat opc_reset (UNUSED DEVICE * dptr)
   {
     for (uint i = 0; i < dptr->numunits; i ++)
       {
@@ -247,9 +247,9 @@ static void quit_sig_hndlr (int UNUSED signum)
 
 int check_attn_key (void)
   {
-    for (uint i = 0; i < opcon_dev.numunits; i ++)
+    for (uint i = 0; i < opc_dev.numunits; i ++)
       {
-        con_state_t * csp = console_state + i;
+        opc_state_t * csp = console_state + i;
         if (csp->attn_pressed)
           {
              csp->attn_pressed = false;
@@ -263,10 +263,10 @@ int check_attn_key (void)
 
 void console_init (void)
 {
-    opcon_reset (& opcon_dev);
-    for (uint i = 0; i < opcon_dev.numunits; i ++)
+    opc_reset (& opc_dev);
+    for (uint i = 0; i < opc_dev.numunits; i ++)
       {
-        con_state_t * csp = console_state + i;
+        opc_state_t * csp = console_state + i;
         csp->auto_input = NULL;
         csp->autop = NULL;
 #ifdef ATTN_HACK
@@ -291,11 +291,11 @@ void console_init (void)
     //uv_open_console (ASSUME0, console_port);
 }
 
-static int opcon_autoinput_set (UNUSED UNIT * uptr, UNUSED int32 val,
+static int opc_autoinput_set (UNUSED UNIT * uptr, UNUSED int32 val,
                                 const char *  cptr, UNUSED void * desc)
   {
-    int devUnitIdx = (int) OPCON_UNIT_NUM (uptr);
-    con_state_t * csp = console_state + devUnitIdx;
+    int devUnitIdx = (int) OPC_UNIT_NUM (uptr);
+    opc_state_t * csp = console_state + devUnitIdx;
 
     if (cptr)
       {
@@ -313,7 +313,7 @@ static int opcon_autoinput_set (UNUSED UNIT * uptr, UNUSED int32 val,
         else
           csp->auto_input = new;
         //csp->auto_input = strdup (cptr);
-        sim_debug (DBG_NOTIFY, & opcon_dev,
+        sim_debug (DBG_NOTIFY, & opc_dev,
                    "%s: Auto-input now: %s\n", __func__, cptr);
       }
     else
@@ -321,27 +321,27 @@ static int opcon_autoinput_set (UNUSED UNIT * uptr, UNUSED int32 val,
         if (csp->auto_input)
           free (csp->auto_input);
         csp->auto_input = NULL;
-        sim_debug (DBG_NOTIFY, & opcon_dev, 
+        sim_debug (DBG_NOTIFY, & opc_dev, 
                    "%s: Auto-input disabled.\n", __func__);
       }
     csp->autop = csp->auto_input;
     return SCPE_OK;
   }
 
-int clear_opcon_autoinput (int32 flag, UNUSED const char * cptr)
+int clear_opc_autoinput (int32 flag, UNUSED const char * cptr)
   {
-    con_state_t * csp = console_state + flag;
+    opc_state_t * csp = console_state + flag;
     if (csp->auto_input)
       free (csp->auto_input);
     csp->auto_input = NULL;
-    sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Auto-input disabled.\n", __func__);
+    sim_debug (DBG_NOTIFY, & opc_dev, "%s: Auto-input disabled.\n", __func__);
     csp->autop = csp->auto_input;
     return SCPE_OK;
   }
 
-int add_opcon_autoinput (int32 flag, const char * cptr)
+int add_opc_autoinput (int32 flag, const char * cptr)
   {
-    con_state_t * csp = console_state + flag;
+    opc_state_t * csp = console_state + flag;
     unsigned char * new = (unsigned char *) strdupesc (cptr);
     if (csp->auto_input)
       {
@@ -356,27 +356,27 @@ int add_opcon_autoinput (int32 flag, const char * cptr)
     else
       csp->auto_input = new;
     //csp->auto_input = strdup (cptr);
-    sim_debug (DBG_NOTIFY, & opcon_dev,
+    sim_debug (DBG_NOTIFY, & opc_dev,
                "%s: Auto-input now: %s\n", __func__, cptr);
     csp->autop = csp->auto_input;
     return SCPE_OK;
   }
 
-static int opcon_autoinput_show (UNUSED FILE * st, UNIT * uptr, 
+static int opc_autoinput_show (UNUSED FILE * st, UNIT * uptr, 
                                  UNUSED int val, UNUSED const void * desc)
   {
-    int conUnitIdx = (int) OPCON_UNIT_NUM (uptr);
-    con_state_t * csp = console_state + conUnitIdx;
-    sim_debug (DBG_NOTIFY, & opcon_dev,
+    int conUnitIdx = (int) OPC_UNIT_NUM (uptr);
+    opc_state_t * csp = console_state + conUnitIdx;
+    sim_debug (DBG_NOTIFY, & opc_dev,
                "%s: FILE=%p, uptr=%p, val=%d,desc=%p\n",
                __func__, (void *) st, (void *) uptr, val, desc);
 
 #if 0
     if (csp->auto_input == NULL)
-      sim_debug (DBG_NOTIFY, & opcon_dev,
+      sim_debug (DBG_NOTIFY, & opc_dev,
                  "%s: No auto-input exists.\n", __func__);
     else
-      sim_debug (DBG_NOTIFY, & opcon_dev,
+      sim_debug (DBG_NOTIFY, & opc_dev,
         "%s: Auto-input is/was: %s\n", __func__, csp->auto_input);
  #endif
     if (csp->auto_input)
@@ -388,7 +388,7 @@ static int opcon_autoinput_show (UNUSED FILE * st, UNIT * uptr,
  
 static t_stat console_attn (UNUSED UNIT * uptr);
 
-static UNIT attn_unit[N_OPCON_UNITS_MAX] = 
+static UNIT attn_unit[N_OPC_UNITS_MAX] = 
   {
     { UDATA (& console_attn, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
     { UDATA (& console_attn, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
@@ -578,10 +578,10 @@ static void oscar (char * text)
 
 static void sendConsole (int conUnitIdx, word12 stati)
   {
-    con_state_t * csp = console_state + conUnitIdx;
+    opc_state_t * csp = console_state + conUnitIdx;
     uint tally = csp->tally;
     uint daddr = csp->daddr;
-    //int conUnitIdx = (int) OPCON_UNIT_NUM (csp->unitp);
+    //int conUnitIdx = (int) OPC_UNIT_NUM (csp->unitp);
     int iomUnitIdx = cables->cablesFromIomToCon[conUnitIdx].iomUnitIdx;
     
     int chan = csp->chan;
@@ -629,8 +629,8 @@ static void sendConsole (int conUnitIdx, word12 stati)
       }
     if (csp->readp < csp->tailp)
       {
-        sim_debug (DBG_WARN, & opcon_dev,
-                   "con_iom_io: discarding %d characters from end of line\n",
+        sim_debug (DBG_WARN, & opc_dev,
+                   "opc_iom_io: discarding %d characters from end of line\n",
                     (int) (csp->tailp - csp->readp));
       }
     csp->readp = csp->buf;
@@ -645,14 +645,14 @@ static void sendConsole (int conUnitIdx, word12 stati)
 static void console_putchar (int conUnitIdx, char ch);
 static void console_putstr (int conUnitIdx, char * str);
 
-static int con_cmd (uint iomUnitIdx, uint chan)
+static int opc_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData[iomUnitIdx][chan];
     struct device * d = & cables->cablesFromIomToDev[iomUnitIdx] .
                       devices[chan][p->IDCW_DEV_CODE];
     uint devUnitIdx = d->devUnitIdx;
-    UNIT * unitp = & opcon_unit[devUnitIdx];
-    con_state_t * csp = console_state + devUnitIdx;
+    UNIT * unitp = & opc_unit[devUnitIdx];
+    opc_state_t * csp = console_state + devUnitIdx;
 
     if (p->PCW_63_PTP)
       {
@@ -669,7 +669,7 @@ static int con_cmd (uint iomUnitIdx, uint chan)
       {
         case 0: // CMD 00 Request status
           {
-            sim_debug (DBG_NOTIFY, & opcon_dev,
+            sim_debug (DBG_NOTIFY, & opc_dev,
                        "%s: Status request cmd received",
                        __func__);
             p->stati = 04000;
@@ -679,11 +679,11 @@ static int con_cmd (uint iomUnitIdx, uint chan)
         case 023:               // Read ASCII
           {
             csp->io_mode = read_mode;
-            sim_debug (DBG_NOTIFY, & opcon_dev, 
+            sim_debug (DBG_NOTIFY, & opc_dev, 
                        "%s: Read ASCII command received\n", __func__);
             if (csp->tailp != csp->buf)
               {
-                sim_debug (DBG_WARN, & opcon_dev,
+                sim_debug (DBG_WARN, & opc_dev,
                            "%s: Discarding previously buffered input.\n",
                            __func__);
               }
@@ -766,12 +766,12 @@ sim_printf ("uncomfortable with this\n");
             p->isRead = false;
             csp->io_mode = write_mode;
 
-            sim_debug (DBG_NOTIFY, & opcon_dev,
+            sim_debug (DBG_NOTIFY, & opc_dev,
                        "%s: Write ASCII cmd received\n", __func__);
             if (csp->tailp != csp->buf)
               {
-                sim_debug (DBG_WARN, & opcon_dev,
-                           "con_iom_cmd: Might be discarding previously "
+                sim_debug (DBG_WARN, & opc_dev,
+                           "opc_iom_cmd: Might be discarding previously "
                            "buffered input.\n");
               }
 
@@ -985,7 +985,7 @@ sim_printf ("uncomfortable with this\n");
 
         case 040:               // Reset
           {
-            sim_debug (DBG_NOTIFY, & opcon_dev,
+            sim_debug (DBG_NOTIFY, & opc_dev,
                        "%s: Reset cmd received\n", __func__);
             csp->io_mode = no_mode;
             p->stati = 04000;
@@ -996,7 +996,7 @@ sim_printf ("uncomfortable with this\n");
           {
             p->isRead = false;
             console_putstr (conUnitIdx,  "CONSOLE: ALERT\r\n");
-            sim_debug (DBG_NOTIFY, & opcon_dev,
+            sim_debug (DBG_NOTIFY, & opc_dev,
                        "%s: Write Alert cmd received\n", __func__);
             console_putchar (conUnitIdx, '\a');
             p->stati = 04000;
@@ -1009,7 +1009,7 @@ sim_printf ("uncomfortable with this\n");
             //[CAC] Looking at the bootload console code, it seems more 
             // concerned about the device responding, rather then the actual
             // returned value. Make some thing up.
-            sim_debug (DBG_NOTIFY, & opcon_dev,
+            sim_debug (DBG_NOTIFY, & opc_dev,
                        "%s: Read ID received\n", __func__);
             p->stati = 04500;
           }
@@ -1018,7 +1018,7 @@ sim_printf ("uncomfortable with this\n");
         default:
           {
             p->stati = 04501; // command reject, invalid instruction code
-            sim_debug (DBG_ERR, & opcon_dev, "%s: Unknown command 0%o\n",
+            sim_debug (DBG_ERR, & opc_dev, "%s: Unknown command 0%o\n",
                        __func__, p->IDCW_DEV_CMD);
             p->chanStatus = chanStatIncorrectDCW;
 
@@ -1032,7 +1032,7 @@ static void consoleProcessIdx (int conUnitIdx)
   {
 // Simplifying logic here; if we have autoinput, then process it and skip
 // the keyboard checks, we'll get them on the next cycle.
-    con_state_t * csp = console_state + conUnitIdx;
+    opc_state_t * csp = console_state + conUnitIdx;
     if (csp->io_mode == read_mode &&
         csp->autop != NULL)
       {
@@ -1048,7 +1048,7 @@ static void consoleProcessIdx (int conUnitIdx)
           {
             if (csp->tailp >= csp->buf + sizeof (csp->buf))
              {
-                sim_debug (DBG_WARN, & opcon_dev,
+                sim_debug (DBG_WARN, & opc_dev,
                            "getConsoleInput: Buffer full; flushing "
                            "autoinput.\n");
                 sendConsole (conUnitIdx, 04000); // Normal status
@@ -1079,7 +1079,7 @@ static void consoleProcessIdx (int conUnitIdx)
                 free (csp->auto_input);
                 csp->auto_input = NULL;
                 csp->autop = NULL;
-                sim_debug (DBG_NOTIFY, & opcon_dev,
+                sim_debug (DBG_NOTIFY, & opc_dev,
                            "getConsoleInput: Got auto-input EOS\n");
                 goto eol;
               }
@@ -1091,17 +1091,17 @@ static void consoleProcessIdx (int conUnitIdx)
             csp->autop ++;
 
             if (isprint ((char) c))
-              sim_debug (DBG_NOTIFY, & opcon_dev,
+              sim_debug (DBG_NOTIFY, & opc_dev,
                          "getConsoleInput: Used auto-input char '%c'\n", c);
             else
-              sim_debug (DBG_NOTIFY, & opcon_dev,
+              sim_debug (DBG_NOTIFY, & opc_dev,
                          "getConsoleInput: Used auto-input char '\\%03o'\n", c);
 
             if (c == '\012' || c == '\015')
               {
 eol:
                 console_putstr (conUnitIdx,  "\r\n");
-                sim_debug (DBG_NOTIFY, & opcon_dev,
+                sim_debug (DBG_NOTIFY, & opc_dev,
                            "getConsoleInput: Got EOL\n");
                 sendConsole (conUnitIdx, 04000); // Normal status
                 return;
@@ -1329,12 +1329,12 @@ eol:
 
 void consoleProcess (void)
   {
-    for (int conUnitIdx = 0; conUnitIdx < (int) opcon_dev.numunits; conUnitIdx ++)
+    for (int conUnitIdx = 0; conUnitIdx < (int) opc_dev.numunits; conUnitIdx ++)
       consoleProcessIdx (conUnitIdx);
   }
 
 /*
- * con_iom_cmd ()
+ * opc_iom_cmd ()
  *
  * Handle a device command.  Invoked by the IOM while processing a PCW
  * or IDCW.
@@ -1342,43 +1342,43 @@ void consoleProcess (void)
 
 // The console is a CPI device; only the PCW command is executed.
 
-int con_iom_cmd (uint iomUnitIdx, uint chan)
+int opc_iom_cmd (uint iomUnitIdx, uint chan)
 
   {
     // Execute the command in the PCW.
 
     // uint chanloc = mbx_loc (iomUnitIdx, pcwp->chan);
 
-    con_cmd (iomUnitIdx, chan);
+    opc_cmd (iomUnitIdx, chan);
 
     //send_terminate_interrupt (iomUnitIdx, chan);
 
     return 2;
   }
 
-static t_stat opcon_svc (UNIT * unitp)
+static t_stat opc_svc (UNIT * unitp)
   {
-    int conUnitNum = (int) OPCON_UNIT_NUM (unitp);
+    int conUnitNum = (int) OPC_UNIT_NUM (unitp);
     int iomUnitIdx = cables->cablesFromIomToCon[conUnitNum].iomUnitIdx;
     int chan = cables->cablesFromIomToCon[conUnitNum].chan_num;
-    con_iom_cmd ((uint) iomUnitIdx, (uint) chan);
+    opc_iom_cmd ((uint) iomUnitIdx, (uint) chan);
     return SCPE_OK;
   }
 
-static t_stat opcon_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr,
+static t_stat opc_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr,
                                  UNUSED int val, UNUSED const void * desc)
   {
-    sim_printf ("Number of OPCON units in system is %d\n", opcon_dev.numunits);
+    sim_printf ("Number of OPC units in system is %d\n", opc_dev.numunits);
     return SCPE_OK;
   }
 
-static t_stat opcon_set_nunits (UNUSED UNIT * uptr, int32 UNUSED value,
+static t_stat opc_set_nunits (UNUSED UNIT * uptr, int32 UNUSED value,
                                 const char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
-    if (n < 1 || n > N_OPCON_UNITS_MAX)
+    if (n < 1 || n > N_OPC_UNITS_MAX)
       return SCPE_ARG;
-    opcon_dev.numunits = (uint32) n;
+    opc_dev.numunits = (uint32) n;
     return SCPE_OK;
   }
 
@@ -1395,7 +1395,7 @@ static config_value_list_t cfg_on_off[] =
   };
 #endif
 
-static config_list_t con_config_list[] =
+static config_list_t opc_config_list[] =
   {
 #ifdef ATTN_HACK
     /* 0 */ { "attn_hack", 0, 1, cfg_on_off },
@@ -1403,12 +1403,12 @@ static config_list_t con_config_list[] =
    { NULL, 0, 0, NULL }
   };
 
-static t_stat con_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
+static t_stat opc_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
                               const char * cptr, UNUSED void * desc)
   {
 #ifdef ATTN_HACK
-    int devUnitIdx = (int) OPCON_UNIT_NUM (uptr);
-    con_state_t * csp = console_state + devUnitIdx;
+    int devUnitIdx = (int) OPC_UNIT_NUM (uptr);
+    opc_state_t * csp = console_state + devUnitIdx;
 #endif
 // XXX Minor bug; this code doesn't check for trailing garbage
     config_state_t cfg_state = { NULL, NULL };
@@ -1416,7 +1416,7 @@ static t_stat con_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
     for (;;)
       {
         int64_t v;
-        int rc = cfgparse ("con_set_config", cptr, con_config_list,
+        int rc = cfgparse ("opc_set_config", cptr, opc_config_list,
                            & cfg_state, & v);
         switch (rc)
           {
@@ -1434,7 +1434,7 @@ static t_stat con_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
 #endif
     
             default:
-              sim_printf ("error: con_set_config: invalid cfgparse rc <%d>\n",
+              sim_printf ("error: opc_set_config: invalid cfgparse rc <%d>\n",
                           rc);
               cfgparse_done (& cfg_state);
               return SCPE_ARG;
@@ -1446,12 +1446,12 @@ static t_stat con_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
     return SCPE_OK;
   }
 
-static t_stat con_show_config (UNUSED FILE * st, UNUSED UNIT * uptr,
+static t_stat opc_show_config (UNUSED FILE * st, UNUSED UNIT * uptr,
                                UNUSED int  val, UNUSED const void * desc)
   {
 #ifdef ATTN_HACK
-    int devUnitIdx = (int) OPCON_UNIT_NUM (uptr);
-    con_state_t * csp = console_state + devUnitIdx;
+    int devUnitIdx = (int) OPC_UNIT_NUM (uptr);
+    opc_state_t * csp = console_state + devUnitIdx;
     sim_printf ("Attn hack:  %d\n", csp->attn_hack);
 #endif
     return SCPE_OK;
@@ -1462,7 +1462,7 @@ t_stat set_console_port (int32 arg, const char * buf)
     int n = atoi (buf);
     if (n < 0 || n > 65535) // 0 is 'disable'
       return SCPE_ARG;
-    if (arg < 0 || arg >= N_OPCON_UNITS_MAX)
+    if (arg < 0 || arg >= N_OPC_UNITS_MAX)
       return SCPE_ARG;
     console_state[arg].console_access.port = n;
     sim_printf ("Console %d port set to %d\n", arg, n);
@@ -1471,7 +1471,7 @@ t_stat set_console_port (int32 arg, const char * buf)
 
 t_stat set_console_pw (int32 arg, UNUSED const char * buf)
   {
-    if (arg < 0 || arg >= N_OPCON_UNITS_MAX)
+    if (arg < 0 || arg >= N_OPC_UNITS_MAX)
       return SCPE_ARG;
     if (strlen (buf) == 0)
       {
@@ -1479,7 +1479,7 @@ t_stat set_console_pw (int32 arg, UNUSED const char * buf)
         console_state[arg].console_access.pw[0] = 0;
         return SCPE_OK;
       }
-    if (arg < 0 || arg >= N_OPCON_UNITS_MAX)
+    if (arg < 0 || arg >= N_OPC_UNITS_MAX)
       return SCPE_ARG;
     char token[strlen (buf)];
     //sim_printf ("<%s>\n", buf);
@@ -1498,7 +1498,7 @@ static void console_putstr (int conUnitIdx, char * str)
     size_t l = strlen (str);
     for (size_t i = 0; i < l; i ++)
       sim_putchar (str[i]);
-    con_state_t * csp = console_state + conUnitIdx;
+    opc_state_t * csp = console_state + conUnitIdx;
     if (csp->console_access.loggedOn)
       accessStartWrite (csp->console_access.client, str,
                            (ssize_t) l);
@@ -1507,7 +1507,7 @@ static void console_putstr (int conUnitIdx, char * str)
 static void console_putchar (int conUnitIdx, char ch)
   {
     sim_putchar (ch);
-    con_state_t * csp = console_state + conUnitIdx;
+    opc_state_t * csp = console_state + conUnitIdx;
     if (csp->console_access.loggedOn)
       accessStartWrite (csp->console_access.client, & ch, 1);
   }
@@ -1521,7 +1521,7 @@ static void consoleConnectPrompt (uv_tcp_t * client)
 
 void startRemoteConsole (void)
   {
-    for (int conUnitIdx = 0; conUnitIdx < N_OPCON_UNITS_MAX; conUnitIdx ++)
+    for (int conUnitIdx = 0; conUnitIdx < N_OPC_UNITS_MAX; conUnitIdx ++)
       {
         console_state[conUnitIdx].console_access.connectPrompt = consoleConnectPrompt;
         console_state[conUnitIdx].console_access.connected = NULL;

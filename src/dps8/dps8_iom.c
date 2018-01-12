@@ -2250,16 +2250,29 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
       p -> PCW_21_MSK =         q -> PCW_21_MSK;
     }
 
+#ifdef NEW_CABLE
+    struct iom_to_ctlr_s * d = & kables->iom_to_ctlr[iomUnitIdx][chan];
+#else
     struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
                       devices [chan] [p -> IDCW_DEV_CODE];
+#endif
 
 // A device command of 051 in the PCW is only meaningful to the operator console;
 // all other channels should ignore it. We use (somewhat bogusly) a chanType of
 // chanTypeCPI to indicate the operator console.
+#ifdef NEW_CABLE
+    if (d->chan_type != chan_type_CPI && p -> IDCW_DEV_CMD == 051)
+      return 0;
+#else
     if (d -> ctype != chanTypeCPI && p -> IDCW_DEV_CMD == 051)
       return 0;
+#endif
 
+#ifdef NEW_CABLE
+    if (! d->iom_cmd)
+#else
     if (! d -> iomCmd)
+#endif
       {
 #if 0
         // XXX: no device connected; what's the appropriate fault code (s) ?
@@ -2294,7 +2307,11 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
 //sim_printf ("chan %d (%o) control %d\n", chan, chan, p -> IDCW_CONTROL);
 // Send the PCW's DCW
     //sim_printf ("PCW chan %d (%o) control %d\n", chan, chan, p -> IDCW_CONTROL);
+#ifdef NEW_CABLE
+    int rc = d->iom_cmd (iomUnitIdx, chan);
+#else
     int rc = d -> iomCmd (iomUnitIdx, chan);
+#endif
 
 //
 // iomCmd returns:
@@ -2394,15 +2411,27 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
 
 // The device code is per IDCW; look up the device for this IDCW
 
+#ifdef NEW_CABLE
+        d = & kables->iom_to_ctlr[iomUnitIdx][chan];
+#else
         d = & cables -> cablesFromIomToDev [iomUnitIdx] .  devices [chan] [p -> IDCW_DEV_CODE];
+#endif
+#ifdef NEW_CABLE
+        if (! d->iom_cmd)
+#else
         if (! d -> iomCmd)
+#endif
           {
             p -> stati = 06000; // t, power off/missing
             goto done;
           }
 // Send the DCW list's DCW
 
+#ifdef NEW_CABLE
+        rc2 = d->iom_cmd (iomUnitIdx, chan);
+#else
         rc2 = d -> iomCmd (iomUnitIdx, chan);
+#endif
 
         if (rc2 == 3) // handler still processing command, don't set
                      // terminate intrrupt.

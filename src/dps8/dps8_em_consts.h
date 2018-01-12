@@ -56,7 +56,7 @@ enum { N_FNP_UNITS_MAX = 16 };
 // Disk
 //
 
-enum { N_DISK_UNITS_MAX = 34 };
+enum { N_DISK_UNITS_MAX = 64 };
 
 //
 // SCU
@@ -69,7 +69,7 @@ enum { N_SCU_UNITS_MAX = 8 };
 // Operator console
 //
 
-enum { N_OPCON_UNITS_MAX = 8 };
+enum { N_OPC_UNITS_MAX = 8 };
 
 //
 // IOM
@@ -77,6 +77,29 @@ enum { N_OPCON_UNITS_MAX = 8 };
 
 enum { N_IOM_UNITS_MAX = 4 };
 
+//
+// MTP
+//
+
+enum { N_MTP_UNITS_MAX = 16 };
+
+//
+// MSP
+//
+
+enum { N_MSP_UNITS_MAX = 16 };
+
+//
+// DIA
+//
+
+enum { N_DIA_UNITS_MAX = 16 };
+
+//
+// Controller ports
+//
+
+enum { MAX_CTLR_PORTS = 8 };
 
 typedef struct pcw_t
   {

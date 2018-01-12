@@ -84,7 +84,7 @@ struct cables_t
     struct cableFromIom cablesFromIomToPrt [N_PRT_UNITS_MAX];
     struct cableFromIom cablesFromIomToFnp [N_FNP_UNITS_MAX];
     struct cableFromIom cablesFromIomToDsk [N_DISK_UNITS_MAX];
-    struct cableFromIom cablesFromIomToCon [N_OPCON_UNITS_MAX];
+    struct cableFromIom cablesFromIomToCon [N_OPC_UNITS_MAX];
     struct cableFromIom cablesFromIomToTap [N_MT_UNITS_MAX];
     struct cableFromIom cablesFromIomToAbsi [N_ABSI_UNITS_MAX];
 
@@ -102,7 +102,7 @@ t_stat sys_cable_ripout (UNUSED int32 arg, UNUSED const char * buf);
 t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf);
 void sysCableInit (void);
 
-#if 0
+#ifdef NEW_CABLE
 
 // New cables
 
@@ -133,7 +133,7 @@ void sysCableInit (void);
 //    MTP8022  mtp 611.
 //    MTP8023  mtp 611.
 //
-//   mpc mspx model -- mtp is disk controller
+//   mpc mspx model -- msp is disk controller
 //    MSP0400  msp 400.
 //    DSC0451  msp 451.
 //    MSP0451  msp 451.
@@ -155,92 +155,174 @@ void sysCableInit (void);
 //    URP0604  urp 604.
 //
 
-// Devices connected to an IOM (I/O multiplexer) (possibly indirectly)
+enum chan_type_e { chan_type_CPI, chan_type_PSI, chan_type_direct };
 // DEVT_NONE must be zero for memset to init it properly.
-typedef enum devType
+enum ctlr_type_e
   {
-     DEVT_NONE = 0,
+     DEV_T_NONE = 0,
      //, DEVT_TAPE, DEVT_CON, DEVT_DISK, 
-     ,
      // DEVT_DN355, DEVT_CRDRDR, DEVT_CRDPUN, DEVT_PRT, DEVT_URP, DEVT_ABSI
-     DEVT_MPC,
-     DEVT_IPC,
+     DEV_T_MTP,
+     DEV_T_MSP,
+     DEV_T_IPC,
+     DEV_T_OPC,
 
-  } devType;
+  };
 
-// Connect iom to controller
+// Connect SCU to IOM/CPU
 //
-//  cable MPC,iom#,chan#,ctlr#,port#
-//  cable IPC,iom#,chan#,ctlr#,port#
+//    (iom#, port#) = scu_to_iom (scu#, port#, subport#)
+//    (scu#, port#, subport#) = iom_to_scu (iom#, port#)
+//
+//    cable SCUx port# IOMx port#
+//    cable SCUx port# CPUx port#
+//
+
+struct scu_to_iom_s
+  {
+    bool in_use;
+    uint iom_unit_idx;
+    uint iom_port_num;
+  };
+
+struct iom_to_scu_s
+  {
+    bool in_use;
+    uint scu_unit_idx;
+    uint scu_port_num;
+    uint scu_subport_num;
+  };
+
+struct scu_to_cpu_s
+  {
+    bool in_use;
+    uint cpu_unit_idx;
+    uint cpu_port_num;
+  };
+
+struct cpu_to_scu_s
+  {
+    bool in_use;
+    uint scu_unit_idx;
+    uint scu_port_num;
+    uint scu_subport_num;
+  };
+
+//
+// Connect iom to controller
 //
 //    (ctrl#, port#) = iom_to_ctlr (iom#, chan#)
 //    (iom#, chan#) = ctlr_to_iom (ctlr#, port#)
-
+//
+//    cable IOMx chan# MTPx [port#]  // tape controller
+//    cable IOMx chan# MSPx [port#] // disk controller
+//    cable IOMx chah# IPCx [port#] // FIPS disk controller
+//    cable IOMx chan# OPCx       // Operator console
+//    cable IOMx chan# FNPx       // FNP 
+//    cable IOMx chan# ABSIx      // ABSI 
+//
 
 struct iom_to_ctlr_s
   {
-    uint dev_idx; // SIMH unit number ("ctrl#")
+    bool in_use;
+    uint ctlr_unit_idx; // SIMH unit number ("ctrl#")
     uint port_num; // port#
-    enum devType type; // TAPE, DISK, CON, ...
-    enum chanType ctype; // CPI, PSI, Direct
+    enum ctlr_type_e ctlr_type; // TAPE, DISK, CON, ...
+    enum chan_type_e chan_type; // CPI, PSI, Direct
     DEVICE * dev; // ctlr device
     UNIT * board; // points into iomUnit
-    iomCmd iom_cmd;
+    iomCmd * iom_cmd;
   };
 
 struct ctlr_to_iom_s
   {
-    uint iom_idx;
+    bool in_use;
+    uint iom_unit_idx;
     uint chan_num;
   };
 
-// Connect msp/ipc ctlr to disk
+// Connect controller to device
 //
-//   cable DISK,ctlr#,dev_code,disk#,unused
-//
-//    disk# = ctlr_to_dev (ctlr#, dev_code)
+//    device# = ctlr_to_dev (ctlr#, dev_code)
 //    (ctlr#, dev_code) = dev_to_ctlr (disk#)
+//
+//   msp ctlr to disk
+//
+//     cable MSPx dev_code DISKx 
+//
+//   ipc ctlr to disk
+//
+//     cable FIPSx dev_code DISKx
+//
+//   fnp doesn't have a device
+//
+//   absi doesn't have a device
+//
+//   opc doesn't have a device
+//
+//   mpt to tape
+//
+//     cable MTPx dev_code TAPEx
+//
+//   urp to  device
+//
+//     cable URPx dev_code CRDRDRx
+//     cable URPx dev_code CRDPUNx
+//     cable URPx dev_code PRTx
+
 
 struct ctlr_to_dev_s
   {
-    iomCmd iom_cmd;
+    bool in_use;
+    iomCmd * iom_cmd;
   };
 
 struct dev_to_ctlr_s
   {
-    uint ctlr_idx;
+    bool in_use;
+    uint ctlr_unit_idx;
     uint dev_code;
-  }
+  };
    
-struct new_cables_s
+struct kables_s
   {
+    // SCU->unit
+    //  IOM
+    struct scu_to_iom_s scu_to_iom [N_SCU_UNITS_MAX] [N_SCU_PORTS];
+    struct iom_to_scu_s iom_to_scu [N_IOM_UNITS_MAX] [N_IOM_PORTS];
+    //  CPU
+    struct scu_to_cpu_s scu_to_cpu [N_SCU_UNITS_MAX] [N_SCU_PORTS] [N_SCU_SUBPORTS];
+    struct cpu_to_scu_s cpu_to_scu [N_CPU_UNITS_MAX] [N_CPU_PORTS];
+
     // IOM->CTLR
+    struct iom_to_ctlr_s iom_to_ctlr [N_IOM_UNITS_MAX] [MAX_CHANNELS];
     //   mtp
-    struct iom_to_ctlr_s iom_to_mtp [N_IOM_UNITS_MAX] [MAX_CHANNELS];
-    struct ctlr_to_iom_s mtp_to_iom [N_MTP_UNITS_MAX] [MAX_PORTS];
+    struct ctlr_to_iom_s mtp_to_iom [N_MTP_UNITS_MAX] [MAX_CTLR_PORTS];
     //   msp/ipc
-    struct iom_to_ctlr_s iom_to_msp [N_IOM_UNITS_MAX] [MAX_CHANNELS];
-    struct ctlr_to_iom_s msp_to_iom [N_MSP_UNITS_MAX] [MAX_PORTS];
+    struct ctlr_to_iom_s msp_to_iom [N_MSP_UNITS_MAX] [MAX_CTLR_PORTS];
     //   urp
-    struct iom_to_ctlr_s iom_to_urp [N_IOM_UNITS_MAX] [MAX_CHANNELS];
-    struct ctlr_to_iom_s urp_to_iom [N_URP_UNITS_MAX] [MAX_PORTS];
+    struct ctlr_to_iom_s urp_to_iom [N_URP_UNITS_MAX] [MAX_CTLR_PORTS];
     //   dia
-    struct iom_to_ctlr_s iom_to_dia [N_IOM_UNITS_MAX] [MAX_CHANNELS];
-    struct ctlr_to_iom_s dia_to_iom [N_DIA_UNITS_MAX] [MAX_PORTS];
+    struct ctlr_to_iom_s dia_to_iom [N_DIA_UNITS_MAX] [MAX_CTLR_PORTS];
     //   fnp
-    struct iom_to_ctlr_s iom_to_fnp [N_IOM_UNITS_MAX] [MAX_CHANNELS];
-    struct ctlr_to_iom_s fnp_to_iom [N_FNP_UNITS_MAX] [MAX_PORTS];
+    struct ctlr_to_iom_s fnp_to_iom [N_FNP_UNITS_MAX] [MAX_CTLR_PORTS];
     //   absi
-    struct iom_to_ctlr_s iom_to_absi [N_IOM_UNITS_MAX] [MAX_CHANNELS];
-    struct ctlr_to_iom_s absi_to_iom [N_ABSI_UNITS_MAX] [MAX_PORTS];
+    struct ctlr_to_iom_s absi_to_iom [N_ABSI_UNITS_MAX] [MAX_CTLR_PORTS];
     //   console
-    struct iom_to_ctlr_s iom_to_opcon [N_IOM_UNITS_MAX] [MAX_CHANNELS];
-    struct ctlr_to_iom_s opcon_to_iom [N_UPCON_UNITS_MAX] [MAX_PORTS];
+    struct ctlr_to_iom_s opc_to_iom [N_OPC_UNITS_MAX] [MAX_CTLR_PORTS];
 
     // CTLR->DEV
-    struct ctlr_to_dev_s msp_to_disk [N_CTLR_UNITS_MAX] [MAX_CHANNELS];
-    struct dev_to_ctlr_s disk_to_msp [N_CTLR_UNITS_MAX] [MAX_CHANNELS];
-  }
+    //   mtp->tape
+    struct ctlr_to_dev_s mtp_to_tape [N_MTP_UNITS_MAX] [N_DEV_CODES];
+    struct dev_to_ctlr_s tape_to_mtp [N_MT_UNITS_MAX];
 
-extern struct new_cables_t * new_cables;
+    // CTLR->DEV
+    //   msp->disk
+    struct ctlr_to_dev_s msp_to_disk [N_MSP_UNITS_MAX] [N_DEV_CODES];
+    struct dev_to_ctlr_s disk_to_msp [N_DISK_UNITS_MAX];
+  };
+
+extern struct kables_s * kables;
+
+t_stat sys_kable (UNUSED int32 arg, const char * buf);
 #endif

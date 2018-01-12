@@ -1,7 +1,7 @@
 /*
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
- Copyright 2013-2016 by Charles Anthony
+ Copyright 2013-2018 by Charles Anthony
 
  All rights reserved.
 
@@ -111,26 +111,20 @@
 
 #include "sim_tape.h"
 
-struct tape_state tape_states [N_MT_UNITS_MAX];
+#define MT_UNIT_NUM(uptr) ((uptr) - mt_unit)
 
-static t_stat mt_rewind (UNIT * uptr, int32 value, const char * cptr, void * desc);
-static t_stat mt_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
-static t_stat mt_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
-static t_stat mt_show_boot_drive (FILE *st, UNIT *uptr, int val, const void *desc);
-static t_stat mt_set_boot_drive (UNIT * uptr, int32 value, const char * cptr, void * desc);
-static t_stat mt_show_device_name (FILE *st, UNIT *uptr, int val, const void *desc);
-static t_stat mt_set_device_name (UNIT * uptr, int32 value, const char * cptr, void * desc);
-static t_stat mt_show_tape_path (FILE *st, UNIT *uptr, int val, const void *desc);
-static t_stat mt_set_tape_path (UNIT * uptr, int32 value, const char * cptr, void * desc);
-static t_stat mt_set_capac (UNIT * uptr, int32 value, const char * cptr, void * desc);
-//static t_stat mt_show_device_length (FILE *st, UNIT *uptr, int val, void *desc);
-//static t_stat mt_set_device_length (UNIT * uptr, int32 value, char * cptr, void * desc);
+struct tape_state tape_states [N_MT_UNITS_MAX];
+static const char * simh_tape_msg (int code); // hack
+// XXX this assumes only one controller, needs to be indexed
+static int boot_drive = 1; // Drive number to boot from
+#define TAPE_PATH_LEN 4096
+static char tape_path [TAPE_PATH_LEN];
+
 
 #define N_MT_UNITS 1 // default
 
-//static t_stat mt_svc (UNIT *up);
-
-UNIT mt_unit [N_MT_UNITS_MAX] = {
+UNIT mt_unit [N_MT_UNITS_MAX] =
+   {
     // NOTE: other SIMH tape sims don't set UNIT_SEQ
     // CAC: Looking at SIMH source, the only place UNIT_SEQ is used
     // by the "run" command's reset sequence; units that have UNIT_SEQ
@@ -140,41 +134,13 @@ UNIT mt_unit [N_MT_UNITS_MAX] = {
     // Turning UNIT_SEQ off.
     // XXX Should we rewind on reset? What is the actual behavior?
 // Unit 0 is the controller
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA ( NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL}
-};
+      [0 ... N_MT_UNITS_MAX-1] =
+        {
+          UDATA (NULL, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE |
+                       UNIT_DISABLE | UNIT_IDLE, 0),
+          0, 0, 0, 0, 0, NULL, NULL, NULL, NULL
+        }
+  };
 
 static DEBTAB mt_dt [] =
   {
@@ -188,6 +154,108 @@ static DEBTAB mt_dt [] =
   };
 
 #define UNIT_WATCH (1 << MTUF_V_UF)
+
+static t_stat mt_rewind (UNIT * uptr, UNUSED int32 value, 
+                         UNUSED const char * cptr, UNUSED void * desc)
+  {
+    return sim_tape_rewind (uptr);
+  }
+
+static t_stat mt_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, 
+                              UNUSED int val, UNUSED const void * desc)
+  {
+    sim_printf("Number of TAPE units in system is %d\n", tape_dev . numunits);
+    return SCPE_OK;
+  }
+
+static t_stat mt_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, 
+                             const char * cptr, UNUSED void * desc)
+  {
+    int n = atoi (cptr);
+    if (n < 1 || n > N_MT_UNITS_MAX)
+      return SCPE_ARG;
+    tape_dev . numunits = (uint32) n;
+    return SCPE_OK;
+  }
+
+static t_stat mt_show_boot_drive (UNUSED FILE * st, UNUSED UNIT * uptr, 
+                              UNUSED int val, UNUSED const void * desc)
+  {
+    sim_printf("Tape drive to boot from is %d\n", boot_drive);
+    return SCPE_OK;
+  }
+
+static t_stat mt_set_boot_drive (UNUSED UNIT * uptr, UNUSED int32 value, 
+                             UNUSED const char * cptr, UNUSED void * desc)
+  {
+    int n = (int) MT_UNIT_NUM (uptr);
+    if (n < 0 || n >= N_MT_UNITS_MAX)
+      return SCPE_ARG;
+    boot_drive = n;
+    return SCPE_OK;
+  }
+
+static t_stat mt_show_device_name (UNUSED FILE * st, UNIT * uptr, 
+                                   UNUSED int val, UNUSED const void * desc)
+  {
+    int n = (int) MT_UNIT_NUM (uptr);
+    if (n < 0 || n >= N_MT_UNITS_MAX)
+      return SCPE_ARG;
+    sim_printf("Tape drive device name is %s\n", tape_states [n] . device_name);
+    return SCPE_OK;
+  }
+
+static t_stat mt_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value, 
+                                  UNUSED const char * cptr, UNUSED void * desc)
+  {
+    int n = (int) MT_UNIT_NUM (uptr);
+    if (n < 0 || n >= N_MT_UNITS_MAX)
+      return SCPE_ARG;
+    if (cptr)
+      {
+        strncpy (tape_states [n] . device_name, cptr, MAX_DEV_NAME_LEN - 1);
+        tape_states [n] . device_name [MAX_DEV_NAME_LEN - 1] = 0;
+      }
+    else
+      tape_states [n] . device_name [0] = 0;
+    return SCPE_OK;
+  }
+
+static t_stat mt_show_tape_path (UNUSED FILE * st, UNUSED UNIT * uptr, 
+                                 UNUSED int val, UNUSED const void * desc)
+  {
+    sim_printf("Tape path <%s>\n", tape_path);
+    return SCPE_OK;
+  }
+
+static t_stat mt_set_tape_path (UNUSED UNIT * uptr, UNUSED int32 value, 
+                             const char * cptr, UNUSED void * desc)
+  {
+    if (strlen (cptr) >= TAPE_PATH_LEN - 1)
+      {
+        sim_printf ("truncating tape path\n");
+      }
+    strncpy (tape_path, cptr, TAPE_PATH_LEN);
+    tape_path [TAPE_PATH_LEN - 1] = 0;
+    return SCPE_OK;
+  }
+
+static t_stat mt_set_capac (UNUSED UNIT * uptr, UNUSED int32 value, 
+                             const char * cptr, UNUSED void * desc)
+  {
+    t_stat rc;
+    int i;
+    // skip the boot tape drive; Multics doesn't use it, and this
+    // allows setting capacity even though the boot tape is attached. 
+    for (i = 1; i < N_MT_UNITS_MAX; i ++)
+      {
+        rc = sim_tape_set_capac (mt_unit + i, value, cptr, desc);
+        if (rc != SCPE_OK)
+          return rc;
+      }
+    return SCPE_OK;
+  }
+
 
 static MTAB mt_mod [] =
   {
@@ -260,17 +328,25 @@ static MTAB mt_mod [] =
       "CAPACITY_ALL",         /* match string */
       mt_set_capac, /* validation routine */
       NULL, /* display routine */
-      "Set the path to the directory containing tape images", /* value descriptor */
+      "Set the tape capacity of all drives", /* value descriptor */
       NULL          // help
     },
     { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
   };
 
-#define MT_UNIT_NUM(uptr) ((uptr) - mt_unit)
+static t_stat mt_reset (DEVICE * dptr)
+  {
+    for (int i = 0; i < (int) dptr -> numunits; i ++)
+      {
+        sim_tape_reset (& mt_unit [i]);
+        //sim_cancel (& mt_unit [i]);
+      }
+    return SCPE_OK;
+  }
 
-static t_stat mt_reset (DEVICE * dptr);
 
-DEVICE tape_dev = {
+DEVICE tape_dev =
+  {
     "TAPE",           /* name */
     mt_unit,          /* units */
     NULL,             /* registers */
@@ -298,59 +374,8 @@ DEVICE tape_dev = {
     NULL,             // help context
     NULL,             // device description
     NULL
-};
+  };
 
-//-- /* unfinished; copied from tape_dev */
-static const char * simh_tape_msg (int code); // hack
-//static const size_t bufsz = 4096 * 9 / 2;
-// XXX this assumes only one controller, needs to be indexed
-static int boot_drive = 1; // Drive number to boot from
-#define TAPE_PATH_LEN 4096
-static char tape_path [TAPE_PATH_LEN];
-
-#if 0
-t_stat rewindDone (UNIT * uptr)
-  {
-    int32 driveNumber = uptr -> u3;
-    send_special_interrupt (cables -> cablesFromIomToTap [driveNumber] . iomUnitIdx,
-                            cables -> cablesFromIomToTap [driveNumber] . chan_num,
-                            cables -> cablesFromIomToTap [driveNumber] . dev_code,
-                            0, 0100 /* rewind complete */);
-    return SCPE_OK;
-  }
-#endif
-
-#if 0
-static UNIT rewindDoneUnit =
-  { UDATA (& rewindDone, 0, 0), 0, 0, 0, 0, 0, NULL, NULL };
-#endif
-
-#if 0
-static int findTapeUnit (int iomUnitIdx, int chan_num, int dev_code)
-  {
-    for (int i = 0; i < N_MT_UNITS_MAX; i ++)
-      {
-        if (iomUnitIdx == cables -> cablesFromIomToTap [i] . iomUnitIdx &&
-            chan_num     == cables -> cablesFromIomToTap [i] . chan_num     &&
-            dev_code     == cables -> cablesFromIomToTap [i] . dev_code)
-          return i;
-      }
-    return -1;
-  }
-#endif 
-
-#if 0
-UNIT * getTapeUnit (uint driveNumber)
-  {
-    return mt_unit + driveNumber;
-  }
-
-void tape_send_special_interrupt (uint driveNumber)
-  {
-    send_special_interrupt (cables -> cablesFromIomToTap [driveNumber] . iomUnitIdx,
-                            cables -> cablesFromIomToTap [driveNumber] . chan_num);
-  }
-#endif
 
 void loadTape (uint driveNumber, char * tapeFilename, bool ro)
   {
@@ -395,16 +420,6 @@ void mt_init(void)
         mt_unit [i] . capac = 40000000;
       }
     boot_drive = 1;
-  }
-
-static t_stat mt_reset (DEVICE * dptr)
-  {
-    for (int i = 0; i < (int) dptr -> numunits; i ++)
-      {
-        sim_tape_reset (& mt_unit [i]);
-        //sim_cancel (& mt_unit [i]);
-      }
-    return SCPE_OK;
   }
 
 static int mtReadRecord (uint iomUnitIdx, uint chan)
@@ -1878,130 +1893,6 @@ static const char *simh_tape_msg(int code)
         return "Unknown SIMH tape error";
   }
 
-static t_stat mt_rewind (UNIT * uptr, UNUSED int32 value, 
-                         UNUSED const char * cptr, UNUSED void * desc)
-  {
-    return sim_tape_rewind (uptr);
-  }
-
-static t_stat mt_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                              UNUSED int val, UNUSED const void * desc)
-  {
-    sim_printf("Number of TAPE units in system is %d\n", tape_dev . numunits);
-    return SCPE_OK;
-  }
-
-static t_stat mt_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, 
-                             const char * cptr, UNUSED void * desc)
-  {
-    int n = atoi (cptr);
-    if (n < 1 || n > N_MT_UNITS_MAX)
-      return SCPE_ARG;
-    tape_dev . numunits = (uint32) n;
-    return SCPE_OK;
-  }
-
-static t_stat mt_show_boot_drive (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                              UNUSED int val, UNUSED const void * desc)
-  {
-    sim_printf("Tape drive to boot from is %d\n", boot_drive);
-    return SCPE_OK;
-  }
-
-static t_stat mt_set_boot_drive (UNUSED UNIT * uptr, UNUSED int32 value, 
-                             UNUSED const char * cptr, UNUSED void * desc)
-  {
-    int n = (int) MT_UNIT_NUM (uptr);
-    if (n < 0 || n >= N_MT_UNITS_MAX)
-      return SCPE_ARG;
-    boot_drive = n;
-    return SCPE_OK;
-  }
-
-static t_stat mt_show_device_name (UNUSED FILE * st, UNIT * uptr, 
-                                   UNUSED int val, UNUSED const void * desc)
-  {
-    int n = (int) MT_UNIT_NUM (uptr);
-    if (n < 0 || n >= N_MT_UNITS_MAX)
-      return SCPE_ARG;
-    sim_printf("Tape drive device name is %s\n", tape_states [n] . device_name);
-    return SCPE_OK;
-  }
-
-static t_stat mt_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value, 
-                                  UNUSED const char * cptr, UNUSED void * desc)
-  {
-    int n = (int) MT_UNIT_NUM (uptr);
-    if (n < 0 || n >= N_MT_UNITS_MAX)
-      return SCPE_ARG;
-    if (cptr)
-      {
-        strncpy (tape_states [n] . device_name, cptr, MAX_DEV_NAME_LEN - 1);
-        tape_states [n] . device_name [MAX_DEV_NAME_LEN - 1] = 0;
-      }
-    else
-      tape_states [n] . device_name [0] = 0;
-    return SCPE_OK;
-  }
-
-static t_stat mt_show_tape_path (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                                 UNUSED int val, UNUSED const void * desc)
-  {
-    sim_printf("Tape path <%s>\n", tape_path);
-    return SCPE_OK;
-  }
-
-static t_stat mt_set_tape_path (UNUSED UNIT * uptr, UNUSED int32 value, 
-                             const char * cptr, UNUSED void * desc)
-  {
-    if (strlen (cptr) >= TAPE_PATH_LEN - 1)
-      {
-        sim_printf ("truncating tape path\n");
-      }
-    strncpy (tape_path, cptr, TAPE_PATH_LEN);
-    tape_path [TAPE_PATH_LEN - 1] = 0;
-    return SCPE_OK;
-  }
-
-static t_stat mt_set_capac (UNUSED UNIT * uptr, UNUSED int32 value, 
-                             const char * cptr, UNUSED void * desc)
-  {
-    t_stat rc;
-    int i;
-    // skip the boot tape drive; Multics doesn't use it, and this
-    // allows setting capacity even though the boot tape is attached. 
-    for (i = 1; i < N_MT_UNITS_MAX; i ++)
-      {
-        rc = sim_tape_set_capac (mt_unit + i, value, cptr, desc);
-        if (rc != SCPE_OK)
-          return rc;
-      }
-    return SCPE_OK;
-  }
-
-#if 0
-static t_stat mt_show_device_length (UNUSED FILE *st, UNIT *uptr, UNUSED int val, UNUSED void *desc)
-  {
-    int n = MT_UNIT_NUM (uptr);
-    if (n < 0 || n >= N_MT_UNITS_MAX)
-      return SCPE_ARG;
-    sim_printf("Tape drive tape length is %d\n", tape_states [n] . tape_length);
-    return SCPE_OK;
-  }
-
-static t_stat mt_set_device_length (UNIT * uptr, UNUSED int32 value, char * cptr, UNUSED void * desc)
-  {
-    int n = MT_UNIT_NUM (uptr);
-    if (n < 0 || n >= N_MT_UNITS_MAX)
-      return SCPE_ARG;
-    if (cptr)
-      tape_states [n] . tape_length = atoi (cptr);
-    else
-      tape_states [n] . tape_length = 0;
-    return SCPE_OK;
-  }
-#endif
-
 t_stat attachTape (char * label, bool withring, char * drive)
   {
     //sim_printf ("%s %s %s\n", label, withring ? "rw" : "ro", drive);
@@ -2065,5 +1956,171 @@ t_stat detachTape (char * drive)
     return SCPE_OK;
   }
 
+//////////////
+//////////////
+//
+// MTP
+//
+
+#define MTP_UNIT_IDX(uptr) ((uptr) - mtp_unit)
+#define N_MTP_UNITS 1 // default
+
+static struct mtp_state_s
+  {
+    uint boot_drive;
+    char device_name [MAX_DEV_NAME_LEN];
+  } mtp_state [N_MTP_UNITS_MAX];
+
+static t_stat mtp_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, 
+                               UNUSED int val, UNUSED const void * desc)
+  {
+    sim_printf ("Number of MTP controllers in the system is %d\n",
+                mtp_dev.numunits);
+    return SCPE_OK;
+  }
+
+static t_stat mtp_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, 
+                              const char * cptr, UNUSED void * desc)
+  {
+    int n = atoi (cptr);
+    if (n < 0 || n > N_MTP_UNITS_MAX)
+      return SCPE_ARG;
+    mtp_dev.numunits = (uint32) n;
+    return SCPE_OK;
+  }
 
 
+static t_stat mtp_show_boot_drive (UNUSED FILE * st, UNIT * uptr, 
+                                   UNUSED int val, UNUSED const void * desc)
+  {
+    long mtp_unit_idx = MTP_UNIT_IDX (uptr);
+    if (mtp_unit_idx < 0 || mtp_unit_idx >= N_MTP_UNITS_MAX)
+      {
+        sim_printf ("Controller unit number out of range\n");
+        return SCPE_ARG;
+      }
+    sim_printf ("Tape drive dev_code to boot from is %u\n",
+                mtp_state[mtp_unit_idx].boot_drive);
+    return SCPE_OK;
+  }
+
+static t_stat mtp_set_boot_drive (UNIT * uptr, UNUSED int32 value, 
+                                 const char * cptr, UNUSED void * desc)
+  {
+    long mtp_unit_idx = MTP_UNIT_IDX (uptr);
+    if (mtp_unit_idx < 0 || mtp_unit_idx >= N_MTP_UNITS_MAX)
+      {
+        sim_printf ("Controller unit number out of range\n");
+        return SCPE_ARG;
+      }
+    int n = (int) atoi (cptr);
+    if (n < 0 || n >= N_DEV_CODES)
+      return SCPE_ARG;
+    mtp_state[mtp_unit_idx].boot_drive = (uint) n;
+    return SCPE_OK;
+  }
+
+UNIT mtp_unit [N_MTP_UNITS_MAX] =
+   {
+      [0 ... N_MTP_UNITS_MAX-1] =
+        {
+          UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL
+        }
+  };
+
+static t_stat mtp_show_device_name (UNUSED FILE * st, UNIT * uptr, 
+                                    UNUSED int val, UNUSED const void * desc)
+  {
+    int n = (int) MTP_UNIT_IDX (uptr);
+    if (n < 0 || n >= N_MTP_UNITS_MAX)
+      return SCPE_ARG;
+    sim_printf("Controller device name is %s\n", mtp_state [n].device_name);
+    return SCPE_OK;
+  }
+
+static t_stat mtp_set_device_name (UNIT * uptr, UNUSED int32 value, 
+                                   const char * cptr, UNUSED void * desc)
+  {
+    int n = (int) MTP_UNIT_IDX (uptr);
+    if (n < 0 || n >= N_MTP_UNITS_MAX)
+      return SCPE_ARG;
+    if (cptr)
+      {
+        strncpy (mtp_state[n].device_name, cptr, MAX_DEV_NAME_LEN-1);
+        mtp_state[n].device_name[MAX_DEV_NAME_LEN-1] = 0;
+      }
+    else
+      mtp_state[n].device_name[0] = 0;
+    return SCPE_OK;
+  }
+
+static MTAB mtp_mod [] =
+  {
+    {
+      MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
+      0,            /* match */
+      "NUNITS",     /* print string */
+      "NUNITS",         /* match string */
+      mtp_set_nunits, /* validation routine */
+      mtp_show_nunits, /* display routine */
+      "Number of TAPE units in the system", /* value descriptor */
+      NULL          // help
+    },
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_VALR, /* mask */
+      0,            /* match */
+      "BOOT_DRIVE",     /* print string */
+      "BOOT_DRIVE",         /* match string */
+      mtp_set_boot_drive, /* validation routine */
+      mtp_show_boot_drive, /* display routine */
+      "Select the boot drive", /* value descriptor */
+      NULL          // help
+    },
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */
+      0,            /* match */
+      "DEVICE_NAME",     /* print string */
+      "DEVICE_NAME",         /* match string */
+      mtp_set_device_name, /* validation routine */
+      mtp_show_device_name, /* display routine */
+      "Set the device name", /* value descriptor */
+      NULL          // help
+    },
+    { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
+  };
+
+static t_stat mtp_reset (UNUSED DEVICE * dptr)
+  {
+    return SCPE_OK;
+  }
+
+DEVICE mtp_dev =
+  {
+    "MTP",            /* name */
+    mtp_unit,         /* units */
+    NULL,             /* registers */
+    mtp_mod,          /* modifiers */
+    N_MTP_UNITS,      /* #units */
+    10,               /* address radix */
+    31,               /* address width */
+    1,                /* address increment */
+    8,                /* data radix */
+    9,                /* data width */
+    NULL,             /* examine routine */
+    NULL,             /* deposit routine */
+    mtp_reset,        /* reset routine */
+    NULL,             /* boot routine */
+    NULL,             /* attach routine */
+    NULL,             /* detach routine */
+    NULL,             /* context */
+    DEV_DEBUG,        /* flags */
+    0,                /* debug control flags */
+    mt_dt,            /* debug flag names */
+    NULL,             /* memory size change */
+    NULL,             /* logical name */
+    NULL,             // attach help
+    NULL,             // help
+    NULL,             // help context
+    NULL,             // device description
+    NULL
+  };

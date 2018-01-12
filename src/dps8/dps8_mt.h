@@ -33,6 +33,11 @@ extern struct tape_state tape_states [N_MT_UNITS_MAX];
 
 extern UNIT mt_unit [N_MT_UNITS_MAX];
 extern DEVICE tape_dev;
+#ifdef NEW_CABLE
+extern UNIT mtp_unit [N_MTP_UNITS_MAX];
+extern DEVICE mtp_dev;
+#endif
+
 void mt_init(void);
 int get_mt_numunits (void);
 //UNIT * getTapeUnit (uint driveNumber);
@@ -41,5 +46,8 @@ void loadTape (uint driveNumber, char * tapeFilename, bool ro);
 t_stat attachTape (char * label, bool withring, char * drive);
 t_stat detachTape (char * drive);
 int mt_iom_cmd (uint iomUnitIdx, uint chan);
+#ifdef NEW_CABLE
+//int mtp_iom_cmd (uint iomUnitIdx, uint chan);
+#endif
 t_stat mount_tape (int32 arg, const char * buf);
 

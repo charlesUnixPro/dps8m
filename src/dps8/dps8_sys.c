@@ -134,7 +134,7 @@ static char * default_base_system_script [] =
     // ;
     // ; Configure test system
     // ;
-    // ; CPU, IOM * 2, MPC, TAPE * 16, DISK * 16, SCU * 4, OPCON, FNP, URP * 3,
+    // ; CPU, IOM * 2, MPC, TAPE * 16, DISK * 16, SCU * 4, OPC, FNP, URP * 3,
     // ; PRT, RDR, PUN
     // ;
     // ;
@@ -176,12 +176,15 @@ static char * default_base_system_script [] =
 
     "set cpu nunits=7",
     "set iom nunits=1",
-    // ; 16 drives plus the controller
+    // ; 16 drives plus a placeholder for the controller
     "set tape nunits=17",
+#ifdef NEW_CABLE
+    "set mtp nunits=1",
+#endif
     // ; 16 drives; no controller
     "set disk nunits=16",
     "set scu nunits=4",
-    "set opcon nunits=1",
+    "set opc nunits=1",
     "set fnp nunits=8",
     "set urp nunits=3",
     "set crdrdr nunits=1",
@@ -1129,6 +1132,29 @@ static char * default_base_system_script [] =
     "cable tape,16,0,012,16",
     "set tape16 device_name=tapa_16",
 
+#ifdef NEW_CABLE
+    //XXX"set mtp0 boot_drive=1",
+    "set mtp0 boot_drive=0",
+    "set mtp0 device_name=MTP0",
+    "kable IOM0 012 MTP0",
+    "kable MTP0 1 TAPE1",
+    "kable MTP0 2 TAPE2",
+    "kable MTP0 3 TAPE3",
+    "kable MTP0 4 TAPE4",
+    "kable MTP0 5 TAPE5",
+    "kable MTP0 6 TAPE6",
+    "kable MTP0 7 TAPE7",
+    "kable MTP0 8 TAPE8",
+    "kable MTP0 9 TAPE9",
+    "kable MTP0 10 TAPE10",
+    "kable MTP0 11 TAPE11",
+    "kable MTP0 12 TAPE12",
+    "kable MTP0 13 TAPE13",
+    "kable MTP0 14 TAPE14",
+    "kable MTP0 15 TAPE15",
+    "kable MTP0 16 TAPE16",
+#endif
+
     // ; Attach DISK unit 0 to IOM 0, chan 013, dev_code 0",
     "cable disk,0,0,013,0",
     // ; Attach DISK unit 1 to IOM 0, chan 013, dev_code 1",
@@ -1162,8 +1188,13 @@ static char * default_base_system_script [] =
     // ; Attach DISK unit 15 to IOM 0, chan 013, dev_code 15",
     "cable disk,15,0,013,15",
 
-    // ; Attach OPCON unit 0 to IOM A, chan 036, dev_code 0
-    "cable opcon,0,0,036,0",
+    // ; Attach OPC unit 0 to IOM A, chan 036, dev_code 0
+    "cable opc,0,0,036,0",
+
+#ifdef NEW_CABLE
+    "kable IOMA 036 opc0",
+    // No devices for console, so no 'cable OPC0 # CONx'
+#endif
 
     // ;;;
     // ;;; FNP
@@ -1314,6 +1345,12 @@ static char * default_base_system_script [] =
     // ; Attach IOM unit 1 port D (3) to SCU unit 3, port 1
     "cable iom,1,3,3,1",
 
+#ifdef NEW_CABLE
+    "kable SCU0 0 IOM0 0", // SCU0 port 0 IOM0 port 0
+    "kable SCU1 0 IOM0 1", // SCU1 port 0 IOM0 port 1
+    "kable SCU2 0 IOM0 2", // SCU2 port 0 IOM0 port 2
+    "kable SCU3 0 IOM0 3", // SCU3 port 0 IOM0 port 3
+#endif
 
 // SCU0 --> CPU0-7
 
@@ -1338,6 +1375,16 @@ static char * default_base_system_script [] =
     // ; Attach SCU unit 0 port 1 to CPU unit G (6), port 0
     "cable scu,0,1,6,0",
 
+#ifdef NEW_CABLE
+    "kable SCU0 7 CPU0 0", // SCU0 port 7 to CPU0 port 0
+    "kable SCU0 6 CPU1 0", // SCU0 port 6 to CPU1 port 0
+    "kable SCU0 5 CPU2 0", // SCU0 port 5 to CPU2 port 0
+    "kable SCU0 4 CPU3 0", // SCU0 port 4 to CPU3 port 0
+    "kable SCU0 3 CPU4 0", // SCU0 port 3 to CPU4 port 0
+    "kable SCU0 2 CPU5 0", // SCU0 port 2 to CPU5 port 0
+    "kable SCU0 1 CPU6 0", // SCU0 port 1 to CPU6 port 0
+#endif
+
 // SCU1 --> CPU0-7
 
     // ; Attach SCU unit 1 port 7 to CPU unit A (0), port 1
@@ -1360,6 +1407,16 @@ static char * default_base_system_script [] =
 
     // ; Attach SCU unit 0 port 1 to CPU unit G (6), port 0
     "cable scu,1,1,6,1",
+
+#ifdef NEW_CABLE
+    "kable SCU1 7 CPU0 1", // SCU1 port 7 to CPU0 port 1
+    "kable SCU1 6 CPU1 1", // SCU1 port 6 to CPU1 port 1
+    "kable SCU1 5 CPU2 1", // SCU1 port 5 to CPU2 port 1
+    "kable SCU1 4 CPU3 1", // SCU1 port 4 to CPU3 port 1
+    "kable SCU1 3 CPU4 1", // SCU1 port 3 to CPU4 port 1
+    "kable SCU1 2 CPU5 1", // SCU1 port 2 to CPU5 port 1
+    "kable SCU1 1 CPU6 1", // SCU1 port 1 to CPU6 port 1
+#endif
 
 
 // SCU2 --> CPU0-7
@@ -1385,6 +1442,16 @@ static char * default_base_system_script [] =
     // ; Attach SCU unit 2 port 1 to CPU unit G (6), port 0
     "cable scu,2,1,6,2",
 
+#ifdef NEW_CABLE
+    "kable SCU2 7 CPU0 2", // SCU1 port 7 to CPU0 port 2
+    "kable SCU2 6 CPU1 2", // SCU1 port 6 to CPU1 port 2
+    "kable SCU2 5 CPU2 2", // SCU1 port 5 to CPU2 port 2
+    "kable SCU2 4 CPU3 2", // SCU1 port 4 to CPU3 port 2
+    "kable SCU2 3 CPU4 2", // SCU1 port 3 to CPU4 port 2
+    "kable SCU2 2 CPU5 2", // SCU1 port 2 to CPU5 port 2
+    "kable SCU2 1 CPU6 2", // SCU1 port 1 to CPU6 port 2
+#endif
+
 // SCU3 --> CPU0-7
 
     // ; Attach SCU unit 3 port 7 to CPU unit A (0), port 3
@@ -1407,6 +1474,16 @@ static char * default_base_system_script [] =
 
     // ; Attach SCU unit 3 port 1 to CPU unit G (6), port 0
     "cable scu,3,1,6,3",
+
+#ifdef NEW_CABLE
+    "kable SCU3 7 CPU0 3", // SCU3 port 7 to CPU0 port 3
+    "kable SCU3 6 CPU1 3", // SCU3 port 6 to CPU1 port 3
+    "kable SCU3 5 CPU2 3", // SCU3 port 5 to CPU2 port 3
+    "kable SCU3 4 CPU3 3", // SCU3 port 4 to CPU3 port 3
+    "kable SCU3 3 CPU4 3", // SCU3 port 3 to CPU4 port 3
+    "kable SCU3 2 CPU5 3", // SCU3 port 2 to CPU5 port 3
+    "kable SCU3 1 CPU6 3", // SCU3 port 1 to CPU6 port 3
+#endif
 
 
 
@@ -3269,6 +3346,10 @@ static CTAB dps8_cmds[] =
 
     {"CABLE",               sys_cable,                0, "cable: String a cable\n" , NULL, NULL},
     {"UNCABLE",             sys_cable,                1, "uncable: Unstring a cable\n" , NULL, NULL},
+#ifdef NEW_CABLE
+    {"KABLE",               sys_kable,                0, "cable: String a cable\n" , NULL, NULL},
+    {"UNKABLE",             sys_kable,                1, "uncable: Unstring a cable\n" , NULL, NULL},
+#endif
     {"CABLE_RIPOUT",        sys_cable_ripout,         0, "cable: Unstring all cables\n" , NULL, NULL},
     {"CABLE_SHOW",          sys_cable_show,           0, "cable: Show cables\n" , NULL, NULL},
 
@@ -3357,12 +3438,12 @@ static CTAB dps8_cmds[] =
 // Console scripting
 //
 
-    {"AUTOINPUT",           add_opcon_autoinput,      0, "autoinput: Set console auto-input\n", NULL, NULL},
-    {"AI",                  add_opcon_autoinput,      0, "ai: Set console auto-input\n", NULL, NULL},
-    {"AUTOINPUT2",          add_opcon_autoinput,      1, "autoinput2: Set CPU-B console auto-input\n", NULL, NULL},
-    {"AI2",                 add_opcon_autoinput,      1, "ai2: Set console CPU-B auto-input\n", NULL, NULL},
-    {"CLRAUTOINPUT",        clear_opcon_autoinput,    0, "clrautoinput: Clear console auto-input\n", NULL, NULL},
-    {"CLRAUTOINPUT2",       clear_opcon_autoinput,    1, "clrautoinput1: Clear CPU-B console auto-input\n", NULL, NULL},
+    {"AUTOINPUT",           add_opc_autoinput,      0, "autoinput: Set console auto-input\n", NULL, NULL},
+    {"AI",                  add_opc_autoinput,      0, "ai: Set console auto-input\n", NULL, NULL},
+    {"AUTOINPUT2",          add_opc_autoinput,      1, "autoinput2: Set CPU-B console auto-input\n", NULL, NULL},
+    {"AI2",                 add_opc_autoinput,      1, "ai2: Set console CPU-B auto-input\n", NULL, NULL},
+    {"CLRAUTOINPUT",        clear_opc_autoinput,    0, "clrautoinput: Clear console auto-input\n", NULL, NULL},
+    {"CLRAUTOINPUT2",       clear_opc_autoinput,    1, "clrautoinput1: Clear CPU-B console auto-input\n", NULL, NULL},
 
 
 //
@@ -3894,11 +3975,12 @@ DEVICE * sim_devices[] =
     & cpu_dev, // dev[0] is special to simh; it is the 'default device'
     & iom_dev,
     & tape_dev,
+    & mtp_dev,
     & fnpDev,
     & disk_dev,
     & scu_dev,
     // & mpc_dev,
-    & opcon_dev,
+    & opc_dev,
     & sys_dev,
     & urp_dev,
     & crdrdr_dev,
