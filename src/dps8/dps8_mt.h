@@ -33,10 +33,8 @@ extern struct tape_state tape_states [N_MT_UNITS_MAX];
 
 extern UNIT mt_unit [N_MT_UNITS_MAX];
 extern DEVICE tape_dev;
-#ifdef NEW_CABLE
 extern UNIT mtp_unit [N_MTP_UNITS_MAX];
 extern DEVICE mtp_dev;
-#endif
 
 void mt_init(void);
 int get_mt_numunits (void);
