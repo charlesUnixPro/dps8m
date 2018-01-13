@@ -376,10 +376,14 @@ static t_stat loadDisk (uint driveNumber, const char * diskFilename, UNUSED bool
         //sim_printf ("special int %d %o\n", driveNumber, mt_unit [driveNumber] . flags);
 
     // disk pack ready
-    send_special_interrupt ((uint) cables -> cablesFromIomToDsk [driveNumber] . iomUnitIdx,
-                            (uint) cables -> cablesFromIomToDsk [driveNumber] . chan_num,
-                            (uint) cables -> cablesFromIomToDsk [driveNumber] . dev_code,
-                            0x40, 01 /* disk pack ready */);
+    if (cables->cablesFromIomToDsk[driveNumber].iomUnitIdx != -1)
+      {
+        send_special_interrupt (
+          (uint) cables->cablesFromIomToDsk[driveNumber].iomUnitIdx,
+          (uint) cables->cablesFromIomToDsk[driveNumber].chan_num,
+          (uint) cables->cablesFromIomToDsk[driveNumber].dev_code,
+          0x40, 01 /* disk pack ready */);
+      }
 
 // controller ready
 //    send_special_interrupt ((uint) cables -> cablesFromIomToDsk [driveNumber] . iomUnitIdx,
@@ -446,12 +450,9 @@ void disk_init (void)
     memset (disk_states, 0, sizeof (disk_states));
   }
 
-static int diskSeek64 (uint iomUnitIdx, uint chan)
+static int diskSeek64 (uint devUnitIdx, uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
-                      devices [chan] [p -> IDCW_DEV_CODE];
-    uint devUnitIdx = d -> devUnitIdx;
     struct disk_state * disk_statep = & disk_states [devUnitIdx];
     sim_debug (DBG_NOTIFY, & dsk_dev, "Seek64 %d\n", devUnitIdx);
     disk_statep -> io_mode = seek64_mode;
@@ -516,12 +517,9 @@ static int diskSeek64 (uint iomUnitIdx, uint chan)
     return 0;
   }
 
-static int diskSeek512 (uint iomUnitIdx, uint chan)
+static int diskSeek512 (uint devUnitIdx, uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
-                      devices [chan] [p -> IDCW_DEV_CODE];
-    uint devUnitIdx = d -> devUnitIdx;
     struct disk_state * disk_statep = & disk_states [devUnitIdx];
     sim_debug (DBG_NOTIFY, & dsk_dev, "Seek512 %d\n", devUnitIdx);
 //sim_printf ("disk seek512 [%"PRId64"]\n", cpu.cycleCnt);
@@ -587,12 +585,9 @@ static int diskSeek512 (uint iomUnitIdx, uint chan)
     return 0;
   }
 
-static int diskRead (uint iomUnitIdx, uint chan)
+static int diskRead (uint devUnitIdx, uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
-                      devices [chan] [p -> IDCW_DEV_CODE];
-    uint devUnitIdx = d -> devUnitIdx;
     UNIT * unitp = & dsk_unit [devUnitIdx];
     struct disk_state * disk_statep = & disk_states [devUnitIdx];
     uint typeIdx = disk_statep->typeIdx;
@@ -713,12 +708,9 @@ static int diskRead (uint iomUnitIdx, uint chan)
     return 0;
   }
 
-static int diskWrite (uint iomUnitIdx, uint chan)
+static int diskWrite (uint devUnitIdx, uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
-                      devices [chan] [p -> IDCW_DEV_CODE];
-    uint devUnitIdx = d -> devUnitIdx;
     UNIT * unitp = & dsk_unit [devUnitIdx];
     struct disk_state * disk_statep = & disk_states [devUnitIdx];
     uint typeIdx = disk_statep->typeIdx;
@@ -839,12 +831,9 @@ static int diskWrite (uint iomUnitIdx, uint chan)
     return 0;
   }
 
-static int readStatusRegister (uint iomUnitIdx, uint chan)
+static int readStatusRegister (uint devUnitIdx, uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
-                      devices [chan] [p -> IDCW_DEV_CODE];
-    uint devUnitIdx = d -> devUnitIdx;
     UNIT * unitp = & dsk_unit [devUnitIdx];
     struct disk_state * disk_statep = & disk_states [devUnitIdx];
 
@@ -926,9 +915,17 @@ static int readStatusRegister (uint iomUnitIdx, uint chan)
 static int disk_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
-                      devices [chan] [p -> IDCW_DEV_CODE];
-    uint devUnitIdx = d -> devUnitIdx;
+    uint ctlr_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
+    uint devUnitIdx;
+    if (kables->iom_to_ctlr[iomUnitIdx][chan].ctlr_type == CTLR_T_IPC)
+       devUnitIdx = kables->ipc_to_dsk[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
+    else if (kables->iom_to_ctlr[iomUnitIdx][chan].ctlr_type == CTLR_T_MSP)
+       devUnitIdx = kables->msp_to_dsk[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
+    else
+      {
+        sim_err ("disk_cmd lost\n");
+        return -1;
+      }
     UNIT * unitp = & dsk_unit [devUnitIdx];
     struct disk_state * disk_statep = & disk_states [devUnitIdx];
 
@@ -950,7 +947,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
 
         case 022: // CMD 22 Read Status Resgister
           {
-            int rc = readStatusRegister (iomUnitIdx, chan);
+            int rc = readStatusRegister (devUnitIdx, iomUnitIdx, chan);
             if (rc)
               return -1;
           }
@@ -964,7 +961,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
                 p -> stati = 04240; // device offline
                 break;
               }
-            int rc = diskRead (iomUnitIdx, chan);
+            int rc = diskRead (devUnitIdx, iomUnitIdx, chan);
             if (rc)
               return -1;
           }
@@ -978,7 +975,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
                 p -> stati = 04240; // device offline
                 break;
               }
-            int rc = diskSeek512 (iomUnitIdx, chan);
+            int rc = diskSeek512 (devUnitIdx, iomUnitIdx, chan);
             if (rc)
               return -1;
           }
@@ -993,7 +990,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
                 break;
               }
             p -> isRead = false;
-            int rc = diskWrite (iomUnitIdx, chan);
+            int rc = diskWrite (devUnitIdx, iomUnitIdx, chan);
             if (rc)
               return -1;
 
@@ -1013,7 +1010,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
                 p -> stati = 04240; // device offline
                 break;
               }
-            int rc = diskSeek64 (iomUnitIdx, chan);
+            int rc = diskSeek64 (devUnitIdx, iomUnitIdx, chan);
             if (rc)
               return -1;
           }
@@ -1173,6 +1170,129 @@ DEVICE ipc_dev =
     NULL,         /* registers */
     ipc_mod,     /* modifiers */
     N_IPC_UNITS, /* #units */
+    10,           /* address radix */
+    24,           /* address width */
+    1,            /* address increment */
+    8,            /* data radix */
+    36,           /* data width */
+    NULL,         /* examine */
+    NULL,         /* deposit */ 
+    NULL,   /* reset */
+    NULL,         /* boot */
+    NULL,  /* attach */
+    NULL /*disk_detach*/,  /* detach */
+    NULL,         /* context */
+    0,    /* flags */
+    0,            /* debug control flags */
+    NULL,      /* debug flag names */
+    NULL,         /* memory size change */
+    NULL,         /* logical name */
+    NULL,         // help
+    NULL,         // attach help
+    NULL,         // attach context
+    NULL,         // description
+    NULL
+  };
+
+//////////
+//////////
+//////////
+///
+/// MSP
+///
+
+#define MSP_UNIT_IDX(uptr) ((uptr) - msp_unit)
+#define N_MSP_UNITS 1 // default
+
+static struct msp_state
+  {
+    char device_name [MAX_DEV_NAME_LEN];
+  } msp_states [N_MSP_UNITS_MAX];
+
+UNIT msp_unit [N_MSP_UNITS_MAX] =
+  {
+    [0 ... N_MSP_UNITS_MAX-1] =
+      {
+        UDATA (NULL, 0, 0),
+        0, 0, 0, 0, 0, NULL, NULL, NULL, NULL
+      }
+  };
+
+static t_stat msp_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr,
+                               UNUSED int val, UNUSED const void * desc)
+  {
+    sim_printf("Number of MSP units in system is %d\n", msp_dev.numunits);
+    return SCPE_OK;
+  }
+
+static t_stat msp_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value,
+                              const char * cptr, UNUSED void * desc)
+  {
+    int n = atoi (cptr);
+    if (n < 0 || n > N_DSK_UNITS_MAX)
+      return SCPE_ARG;
+    msp_dev.numunits = (uint32) n;
+    return SCPE_OK;
+  }
+
+static t_stat msp_show_device_name (UNUSED FILE * st, UNIT * uptr, 
+                                    UNUSED int val, UNUSED const void * desc)
+  {
+    int n = (int) MSP_UNIT_IDX (uptr);
+    if (n < 0 || n >= N_MSP_UNITS_MAX)
+      return SCPE_ARG;
+    sim_printf("Controller device name is %s\n", msp_states [n].device_name);
+    return SCPE_OK;
+  }
+
+static t_stat msp_set_device_name (UNIT * uptr, UNUSED int32 value, 
+                                   const char * cptr, UNUSED void * desc)
+  {
+    int n = (int) MSP_UNIT_IDX (uptr);
+    if (n < 0 || n >= N_MSP_UNITS_MAX)
+      return SCPE_ARG;
+    if (cptr)
+      {
+        strncpy (msp_states[n].device_name, cptr, MAX_DEV_NAME_LEN-1);
+        msp_states[n].device_name[MAX_DEV_NAME_LEN-1] = 0;
+      }
+    else
+      msp_states[n].device_name[0] = 0;
+    return SCPE_OK;
+  }
+
+static MTAB msp_mod [] =
+  {
+    {
+      MTAB_dev_value, /* mask */
+      0,            /* match */
+      "NUNITS",     /* print string */
+      "NUNITS",         /* match string */
+      msp_set_nunits, /* validation routine */
+      msp_show_nunits, /* display routine */
+      "Number of DISK units in the system", /* value descriptor */
+      NULL // Help
+    },
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */
+      0,            /* match */
+      "DEVICE_NAME",     /* print string */
+      "DEVICE_NAME",         /* match string */
+      msp_set_device_name, /* validation routine */
+      msp_show_device_name, /* display routine */
+      "Set the device name", /* value descriptor */
+      NULL          // help
+    },
+    MTAB_eol
+  };
+
+DEVICE msp_dev =
+   {
+    "MSP",       /*  name */
+    msp_unit,    /* units */
+    NULL,         /* registers */
+    msp_mod,     /* modifiers */
+    N_MSP_UNITS, /* #units */
     10,           /* address radix */
     24,           /* address width */
     1,            /* address increment */

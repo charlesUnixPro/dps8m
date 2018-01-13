@@ -422,16 +422,13 @@ void mt_init(void)
     boot_drive = 1;
   }
 
-static int mtReadRecord (uint iomUnitIdx, uint chan)
+static int mtReadRecord (uint devUnitIdx, uint iomUnitIdx, uint chan)
   {
 
 
 // If a tape read IDCW has multiple DDCWs, are additional records read?
 
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
-                      devices [chan] [p -> IDCW_DEV_CODE];
-    uint devUnitIdx = d -> devUnitIdx;
     UNIT * unitp = & mt_unit [devUnitIdx];
     struct tape_state * tape_statep = & tape_states [devUnitIdx];
 
@@ -610,15 +607,12 @@ ddcws:;
     return 0;
   }
 
-static int mtWriteRecord (uint iomUnitIdx, uint chan)
+static int mtWriteRecord (uint devUnitIdx, uint iomUnitIdx, uint chan)
   {
 
 // If a tape read IDCW has multiple DDCWs, are additional records read?
 
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
-                      devices [chan] [p -> IDCW_DEV_CODE];
-    uint devUnitIdx = d -> devUnitIdx;
     UNIT * unitp = & mt_unit [devUnitIdx];
     struct tape_state * tape_statep = & tape_states [devUnitIdx];
 
@@ -935,9 +929,8 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
 #endif
 
     sim_debug (DBG_DEBUG, & tape_dev, "IDCW_DEV_CODE %d\n", p -> IDCW_DEV_CODE);
-    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
-                      devices [chan] [p -> IDCW_DEV_CODE];
-    uint devUnitIdx = d -> devUnitIdx;
+    uint ctlr_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
+    uint devUnitIdx = kables->mtp_to_tape[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
     UNIT * unitp = & mt_unit [devUnitIdx];
     struct tape_state * tape_statep = & tape_states [devUnitIdx];
 
@@ -1070,7 +1063,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
         case 3: // CMD 03 -- Read 9 Record
         case 5: // CMD 05 -- Read Binary Record
           {
-            int rc = mtReadRecord (iomUnitIdx, chan);
+            int rc = mtReadRecord (devUnitIdx, iomUnitIdx, chan);
             if (rc)
               return -1;
           }
@@ -1196,7 +1189,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
         case 013: // CMD 013 -- Write tape 9
         case 015: // CMD 015 -- Write Binary Record
           {
-            int rc = mtWriteRecord (iomUnitIdx, chan);
+            int rc = mtWriteRecord (devUnitIdx, iomUnitIdx, chan);
             if (rc)
               return -1;
           }

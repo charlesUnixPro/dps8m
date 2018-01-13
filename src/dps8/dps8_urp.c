@@ -202,9 +202,8 @@ void urp_init (void)
 static int urp_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
-                      devices [chan] [p -> IDCW_DEV_CODE];
-    uint devUnitIdx = d -> devUnitIdx;
+    uint ctlr_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
+    uint devUnitIdx = kables->urp_to_urd[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
     UNIT * unitp = & urp_unit [devUnitIdx];
     int urp_unit_num = (int) URPUNIT_NUM (unitp);
     //int iomUnitIdx = cables -> cablesFromIomToPun [urp_unit_num] . iomUnitIdx;
@@ -592,7 +591,6 @@ int urp_iom_cmd (uint iomUnitIdx, uint chan)
 
     if (p -> DCW_18_20_CP == 7)
       {
-#ifdef NEW_CABLE
         uint dev_code = p->IDCW_DEV_CODE;
         if (dev_code == 0)
           return urp_cmd (iomUnitIdx, chan);
@@ -600,13 +598,10 @@ int urp_iom_cmd (uint iomUnitIdx, uint chan)
         iomCmd * cmd =  kables->urp_to_urd[urp_unit_idx][dev_code].iom_cmd;
         if (! cmd)
           {
-            sim_warn ("URP can't find command callback\n");
+            sim_warn ("URP can't find divice handler\n");
             return -1;
           }
         return cmd (iomUnitIdx, chan);
-#else
-        return urp_cmd (iomUnitIdx, chan);
-#endif
       }
     sim_printf ("%s expected IDCW\n", __func__);
     return -1;

@@ -1497,6 +1497,7 @@ static t_stat kable_periph (int uncable,
           }
 
         here->in_use = true;
+        here->unit_idx = unit_idx;
         here->iom_cmd = iom_cmd;
       }
 
@@ -1613,6 +1614,63 @@ static t_stat kable_ipc (int uncable, uint ctlr_unit_idx, char * name_save)
     else
       {
         sim_printf ("cable IPC: can't parse device name\n");
+        return SCPE_ARG;
+      }
+  }
+
+//     cable MSPx dev_code DISKx
+
+static t_stat kable_msp (int uncable, uint ctlr_unit_idx, char * name_save)
+  {
+    if (ctlr_unit_idx >= msp_dev.numunits)
+      {
+        sim_printf ("error: CABLE MSP: controller unit number out of range <%d>\n", 
+                    ctlr_unit_idx);
+        return SCPE_ARG;
+      }
+
+    int dev_code = getval (& name_save, "MSP device code");
+
+    if (dev_code < 0 || dev_code >= MAX_CHANNELS)
+      {
+        sim_printf ("error: CABLE MSP device code out of range <%d>\n", 
+                    dev_code);
+        return SCPE_ARG;
+      }
+
+    // extract tape index
+    char * param = strtok_r (NULL, ", ", & name_save);
+    if (! param)
+      {
+        sim_printf ("error: CABLE IOM can't parse device name\n");
+        return SCPE_ARG;
+      }
+    uint dsk_unit_idx;
+
+
+// MPCx DISKx
+    if (name_match (param, "DISK", & dsk_unit_idx))
+      {
+        if (dsk_unit_idx >= N_DSK_UNITS_MAX)
+          {
+            sim_printf ("error: CABLE IOM: DISK unit number out of range <%d>\n", dsk_unit_idx);
+            return SCPE_ARG;
+          }
+
+        return kable_periph (uncable,
+                             ctlr_unit_idx,
+                             (uint) dev_code,
+                             & kables->msp_to_dsk[ctlr_unit_idx][dev_code],
+                             dsk_unit_idx,
+                             dsk_iom_cmd, // XXX
+                             & kables->dsk_to_msp[dsk_unit_idx],
+                             "CABLE MSPx DISKx");
+      }
+
+
+    else
+      {
+        sim_printf ("cable MSP: can't parse device name\n");
         return SCPE_ARG;
       }
   }
@@ -1739,6 +1797,8 @@ t_stat sys_kable (int32 arg, const char * buf)
       rc = kable_mtp (arg, unit_num, name_save);
     else if (name_match (name, "IPC", & unit_num))
       rc = kable_ipc (arg, unit_num, name_save);
+    else if (name_match (name, "MSP", & unit_num))
+      rc = kable_msp (arg, unit_num, name_save);
     else if (name_match (name, "URP", & unit_num))
       rc = kable_urp (arg, unit_num, name_save);
     else

@@ -176,6 +176,9 @@ enum ctlr_type_e
 //    (iom#, port#) = scu_to_iom (scu#, port#, subport#)
 //    (scu#, port#, subport#) = iom_to_scu (iom#, port#)
 //
+//    (cpu#, port#) = scu_to_cpu (scu#, port#, subport#)
+//    (scu#, port#, subport#) = cpu_to_scu (cpu#, port#)
+//
 //    cable SCUx port# IOMx port#
 //    cable SCUx port# CPUx port#
 //
@@ -277,6 +280,7 @@ struct ctlr_to_iom_s
 struct ctlr_to_dev_s
   {
     bool in_use;
+    uint unit_idx;
     iomCmd * iom_cmd;
   };
 
@@ -336,4 +340,30 @@ struct kables_s
 extern struct kables_s * kables;
 
 t_stat sys_kable (UNUSED int32 arg, const char * buf);
+
+
+// Accessors
+
+// Get controller index from (IOM index, channel)
+
+#define get_ctlr_idx(iom_unit_idx, chan) \
+   (kables->iom_to_ctlr[iom_unit_idx][chan].ctlr_unit_idx)
+
+// Get controller in_use from (IOM index, channel)
+
+#define get_ctlr_in_use(iom_unit_idx, chan) \
+   (kables->iom_to_ctlr[iom_unit_idx][chan].in_use)
+
+// Get SCU index from (CPU index, port)
+
+#define get_scu_idx(cpu_unit_num, cpu_port_num) \
+   (kables->cpu_to_scu[cpu_unit_num][cpu_port_num].scu_unit_idx)
+
+
+// Get SCU in_use from (CPU index, port)
+
+#define get_scu_in_use(cpu_unit_num, cpu_port_num) \
+   (kables->cpu_to_scu[cpu_unit_num][cpu_port_num].in_use)
+
+
 #endif

@@ -1096,6 +1096,7 @@ static char * default_base_system_script [] =
 
     // ;cable ripout
 
+//#ifndef NEW_CABLE
     // ; Attach tape MPC to IOM 0, chan 012, dev_code 0
     "cable tape,0,0,012,0",
     "set tape0 device_name=mpca",
@@ -1132,6 +1133,7 @@ static char * default_base_system_script [] =
     "set tape15 device_name=tapa_15",
     "cable tape,16,0,012,16",
     "set tape16 device_name=tapa_16",
+//#endif
 
 #ifdef NEW_CABLE
     //XXX"set mtp0 boot_drive=1",
@@ -1139,23 +1141,40 @@ static char * default_base_system_script [] =
     "set mtp0 device_name=MTP0",
     "kable IOM0 012 MTP0",
     "kable MTP0 1 TAPE1",
+    "set tape1 device_name=tapa_01",
     "kable MTP0 2 TAPE2",
+    "set tape2 device_name=tapa_02",
     "kable MTP0 3 TAPE3",
+    "set tape3 device_name=tapa_03",
     "kable MTP0 4 TAPE4",
+    "set tape4 device_name=tapa_04",
     "kable MTP0 5 TAPE5",
+    "set tape5 device_name=tapa_05",
     "kable MTP0 6 TAPE6",
+    "set tape6 device_name=tapa_06",
     "kable MTP0 7 TAPE7",
+    "set tape7 device_name=tapa_07",
     "kable MTP0 8 TAPE8",
+    "set tape8 device_name=tapa_08",
     "kable MTP0 9 TAPE9",
+    "set tape9 device_name=tapa_09",
     "kable MTP0 10 TAPE10",
+    "set tape10 device_name=tapa_10",
     "kable MTP0 11 TAPE11",
+    "set tape11 device_name=tapa_11",
     "kable MTP0 12 TAPE12",
+    "set tape12 device_name=tapa_12",
     "kable MTP0 13 TAPE13",
+    "set tape13 device_name=tapa_13",
     "kable MTP0 14 TAPE14",
+    "set tape14 device_name=tapa_14",
     "kable MTP0 15 TAPE15",
+    "set tape15 device_name=tapa_15",
     "kable MTP0 16 TAPE16",
+    "set tape16 device_name=tapa_16",
 #endif
 
+//#ifndef NEW_CABLE
     // ; Attach DISK unit 0 to IOM 0, chan 013, dev_code 0",
     "cable disk,0,0,013,0",
     // ; Attach DISK unit 1 to IOM 0, chan 013, dev_code 1",
@@ -1188,6 +1207,7 @@ static char * default_base_system_script [] =
     "cable disk,14,0,013,14",
     // ; Attach DISK unit 15 to IOM 0, chan 013, dev_code 15",
     "cable disk,15,0,013,15",
+//#endif
 
 #ifdef NEW_CABLE
     "set ipc0 device_name=IPC0",
@@ -1226,8 +1246,10 @@ static char * default_base_system_script [] =
     "set disk15 type=3381",
 #endif
 
+//#ifndef NEW_CABLE
     // ; Attach OPC unit 0 to IOM A, chan 036, dev_code 0
     "cable opc,0,0,036,0",
+//#endif
 
 #ifdef NEW_CABLE
     "kable IOMA 036 opc0",
@@ -1238,6 +1260,7 @@ static char * default_base_system_script [] =
     // ;;; FNP
     // ;;;
 
+//#ifndef NEW_CABLE
     // ; Attach FNP unit 3 (d) to IOM A, chan 020, dev_code 0
     "cable fnp,3,0,020,0",
 
@@ -1261,6 +1284,7 @@ static char * default_base_system_script [] =
 
     // ; Attach FNP unit 7 (h) to IOM A, chan 027, dev_code 0
     "cable fnp,7,0,027,0",
+//#endif
 
 #ifdef NEW_CABLE
     "kable IOMA 020 FNPD",
@@ -1272,10 +1296,12 @@ static char * default_base_system_script [] =
     "kable IOMA 026 FNPG",
     "kable IOMA 027 FNPH",
 #endif
+
     // ;;;
     // ;;; MPC
     // ;;;
 
+//#ifndef NEW_CABLE
     // ; Attach MPC unit 0 to IOM 0, char 015, dev_code 0
     "cable urp,0,0,015, 0",
     "set urp0 device_name=urpa",
@@ -1363,39 +1389,63 @@ static char * default_base_system_script [] =
     // ; Attach PRT unit 16 to IOM 0, chan 017, dev_code 17
     "cable prt,16,0,017,17",
     "set prt16 device_name=prtq",
+//#endif
 
 #ifdef NEW_CABLE
     "kable IOM0 015 URP0",
+    "set urp0 device_name=urpa",
     "kable URP0 1 RDR0",
+    "set rdr0 device_name=rdra",
     "kable IOM0 016 URP1",
+    "set urp1 device_name=urpb",
     "kable URP1 1 PUN0",
+    "set pun0 device_name=puna",
     "kable IOM0 017 URP2",
+    "set urp2 device_name=urpc",
     "kable URP2 1 PRT0",
+    "set prt1 device_name=prta",
     "kable URP2 2 PRT1",
+    "set prt2 device_name=prtb",
     "kable URP2 3 PRT2",
+    "set prt3 device_name=prtc",
     "kable URP2 4 PRT3",
+    "set prt4 device_name=prtd",
     "kable URP2 5 PRT4",
+    "set prt5 device_name=prte",
     "kable URP2 6 PRT5",
+    "set prt6 device_name=prtf",
     "kable URP2 7 PRT6",
+    "set prt7 device_name=prtg",
     "kable URP2 8 PRT7",
+    "set prt8 device_name=prth",
     "kable URP2 9 PRT8",
+    "set prt9 device_name=prti",
     "kable URP2 10 PRT9",
+    "set prt10 device_name=prtj",
     "kable URP2 11 PRT10",
+    "set prt11 device_name=prtk",
     "kable URP2 12 PRT11",
+    "set prt12 device_name=prtl",
     "kable URP2 13 PRT12",
+    "set prt13 device_name=prtm",
     "kable URP2 14 PRT13",
+    "set prt14 device_name=prtn",
     "kable URP2 15 PRT14",
+    "set prt15 device_name=prto",
     "kable URP2 16 PRT15",
-    "kable URP2 17 PRT16",
+    "set prt16 device_name=prtp",
 #endif
 
     // ; Attach ABSI unit 0 to IOM 0, chan 032, dev_code 0
+//#ifndef NEW_CABLE
     "cable absi,0,0,032,0",
+//#endif
 
 #ifdef NEW_CABLE
     "kable IOM0 032 ABSI0",
 #endif
 
+//#ifndef NEW_CABLE
     // ; Attach IOM unit 0 port A (0) to SCU unit 0, port 0
     "cable iom,0,0,0,0",
 
@@ -1419,6 +1469,7 @@ static char * default_base_system_script [] =
 
     // ; Attach IOM unit 1 port D (3) to SCU unit 3, port 1
     "cable iom,1,3,3,1",
+//#endif
 
 #ifdef NEW_CABLE
     "kable SCU0 0 IOM0 0", // SCU0 port 0 IOM0 port 0
@@ -1429,6 +1480,7 @@ static char * default_base_system_script [] =
 
 // SCU0 --> CPU0-7
 
+//#ifndef NEW_CABLE
     // ; Attach SCU unit 0 port 7 to CPU unit A (0), port 0
     "cable scu,0,7,0,0",
 
@@ -1449,6 +1501,7 @@ static char * default_base_system_script [] =
 
     // ; Attach SCU unit 0 port 1 to CPU unit G (6), port 0
     "cable scu,0,1,6,0",
+//#endif
 
 #ifdef NEW_CABLE
     "kable SCU0 7 CPU0 0", // SCU0 port 7 to CPU0 port 0
@@ -1462,6 +1515,7 @@ static char * default_base_system_script [] =
 
 // SCU1 --> CPU0-7
 
+//#ifndef NEW_CABLE
     // ; Attach SCU unit 1 port 7 to CPU unit A (0), port 1
     "cable scu,1,7,0,1",
 
@@ -1482,6 +1536,7 @@ static char * default_base_system_script [] =
 
     // ; Attach SCU unit 0 port 1 to CPU unit G (6), port 0
     "cable scu,1,1,6,1",
+//#endif
 
 #ifdef NEW_CABLE
     "kable SCU1 7 CPU0 1", // SCU1 port 7 to CPU0 port 1
@@ -1496,6 +1551,7 @@ static char * default_base_system_script [] =
 
 // SCU2 --> CPU0-7
 
+//#ifndef NEW_CABLE
     // ; Attach SCU unit 2 port 7 to CPU unit A (0), port 2
     "cable scu,2,7,0,2",
 
@@ -1516,6 +1572,7 @@ static char * default_base_system_script [] =
 
     // ; Attach SCU unit 2 port 1 to CPU unit G (6), port 0
     "cable scu,2,1,6,2",
+//#endif
 
 #ifdef NEW_CABLE
     "kable SCU2 7 CPU0 2", // SCU1 port 7 to CPU0 port 2
@@ -1529,6 +1586,7 @@ static char * default_base_system_script [] =
 
 // SCU3 --> CPU0-7
 
+//#ifndef NEW_CABLE
     // ; Attach SCU unit 3 port 7 to CPU unit A (0), port 3
     "cable scu,3,7,0,3",
 
@@ -1549,6 +1607,7 @@ static char * default_base_system_script [] =
 
     // ; Attach SCU unit 3 port 1 to CPU unit G (6), port 0
     "cable scu,3,1,6,3",
+//#endif
 
 #ifdef NEW_CABLE
     "kable SCU3 7 CPU0 3", // SCU3 port 7 to CPU0 port 3
@@ -3419,8 +3478,10 @@ static CTAB dps8_cmds[] =
 
     {"DEFAULT_BASE_SYSTEM", set_default_base_system,  0, "default_base_system: Set configuration to defaults\n", NULL, NULL},
 
+//#ifndef NEW_CABLE
     {"CABLE",               sys_cable,                0, "cable: String a cable\n" , NULL, NULL},
     {"UNCABLE",             sys_cable,                1, "uncable: Unstring a cable\n" , NULL, NULL},
+//#endif
 #ifdef NEW_CABLE
     {"KABLE",               sys_kable,                0, "cable: String a cable\n" , NULL, NULL},
     {"UNKABLE",             sys_kable,                1, "uncable: Unstring a cable\n" , NULL, NULL},
@@ -4054,6 +4115,7 @@ DEVICE * sim_devices[] =
     & fnp_dev,
     & dsk_dev,
     & ipc_dev,
+    & msp_dev,
     & scu_dev,
     // & mpc_dev,
     & opc_dev,

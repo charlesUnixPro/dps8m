@@ -1711,15 +1711,13 @@ sim_printf ("  %d %d %d %d\n", decoded.fudp->fnpMBXinUse [0], decoded.fudp->fnpM
 static int interruptL66 (uint iomUnitIdx, uint chan)
   {
     decoded.p = & iomChanData [iomUnitIdx] [chan];
-    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
-      devices [chan] [decoded.p -> IDCW_DEV_CODE];
-    decoded.devUnitIdx = d -> devUnitIdx;
+    decoded.devUnitIdx = get_ctlr_idx (iomUnitIdx, chan);
     decoded.fudp = & fnpData.fnpUnitData [decoded.devUnitIdx];
 #ifdef SCUMEM
     word24 offset;
     int scuUnitNum =  queryIomScbankMap (iomUnitIdx, decoded.fudp->mailboxAddress, & offset);
     int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
-    decoded.mbxp = (struct mailbox *) & scu [scuUnitIdx].M [decoded.fudp->mailboxAddress];
+    decoded.mbxp = (struct mailbox vol *) & scu [scuUnitIdx].M [decoded.fudp->mailboxAddress];
 #else
     decoded.mbxp = (struct mailbox vol *) & M [decoded.fudp -> mailboxAddress];
 #endif
@@ -1826,10 +1824,7 @@ sim_printf ("3270 controller found at unit %u line %u\r\n", devUnitIdx, lineno);
 
 static void processMBX (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
-      devices [chan] [p -> IDCW_DEV_CODE];
-    uint devUnitIdx = d -> devUnitIdx;
+    uint devUnitIdx = get_ctlr_idx (iomUnitIdx, chan);
     struct fnpUnitData * fudp = & fnpData.fnpUnitData [devUnitIdx];
 
 // 60132445 FEP Coupler EPS

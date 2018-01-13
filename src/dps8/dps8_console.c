@@ -648,11 +648,9 @@ static void console_putstr (int conUnitIdx, char * str);
 static int opc_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData[iomUnitIdx][chan];
-    struct device * d = & cables->cablesFromIomToDev[iomUnitIdx] .
-                      devices[chan][p->IDCW_DEV_CODE];
-    uint devUnitIdx = d->devUnitIdx;
-    UNIT * unitp = & opc_unit[devUnitIdx];
-    opc_state_t * csp = console_state + devUnitIdx;
+    uint con_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
+    UNIT * unitp = & opc_unit[con_unit_idx];
+    opc_state_t * csp = console_state + con_unit_idx;
 
     if (p->PCW_63_PTP)
       {
@@ -663,7 +661,7 @@ static int opc_cmd (uint iomUnitIdx, uint chan)
     p->dev_code = p->IDCW_DEV_CODE;
     p->stati = 0;
 
-    int conUnitIdx = (int) d->devUnitIdx;
+    //int conUnitIdx = (int) d->devUnitIdx;
 
     switch (p->IDCW_DEV_CMD)
       {
@@ -872,10 +870,10 @@ sim_printf ("uncomfortable with this\n");
                       {
 #ifdef THREADZ
                         // 1K ~= 1 sec
-                        sim_activate (& attn_unit[devUnitIdx], 1000);
+                        sim_activate (& attn_unit[con_unit_idx], 1000);
 #else
                         // 4M ~= 1 sec
-                        sim_activate (& attn_unit[devUnitIdx], 4000000);
+                        sim_activate (& attn_unit[con_unit_idx], 4000000);
 #endif
                         csp->once_per_boot = true;
                       }
@@ -893,10 +891,10 @@ sim_printf ("uncomfortable with this\n");
                       {
 #ifdef THREADZ
                         // 1K ~= 1 sec
-                        sim_activate (& attn_unit[devUnitIdx], 1000);
+                        sim_activate (& attn_unit[con_unit_idx], 1000);
 #else
                         // 4M ~= 1 sec
-                        sim_activate (& attn_unit[devUnitIdx], 4000000);
+                        sim_activate (& attn_unit[con_unit_idx], 4000000);
 #endif
                         csp->once_per_boot = true;
                       }
@@ -933,7 +931,7 @@ sim_printf ("uncomfortable with this\n");
                         char ch = wide_char & 0x7f;
                         if (ch != 0177 && ch != 0)
                           {
-                            console_putchar (conUnitIdx, ch);
+                            console_putchar ((int) con_unit_idx, ch);
                             * textp ++ = ch;
                           }
                       }
@@ -959,10 +957,10 @@ sim_printf ("uncomfortable with this\n");
                         csp->autop += expl + 2;
 #ifdef THREADZ
                         // 1K ~= 1 sec
-                        sim_activate (& attn_unit[devUnitIdx], 1000);
+                        sim_activate (& attn_unit[con_unit_idx], 1000);
 #else
                         // 4M ~= 1 sec
-                        sim_activate (& attn_unit[devUnitIdx], 4000000);
+                        sim_activate (& attn_unit[con_unit_idx], 4000000);
 #endif
                       }
                   }
@@ -995,10 +993,10 @@ sim_printf ("uncomfortable with this\n");
         case 051:               // Write Alert -- Ring Bell
           {
             p->isRead = false;
-            console_putstr (conUnitIdx,  "CONSOLE: ALERT\r\n");
+            console_putstr ((int) con_unit_idx,  "CONSOLE: ALERT\r\n");
             sim_debug (DBG_NOTIFY, & opc_dev,
                        "%s: Write Alert cmd received\n", __func__);
-            console_putchar (conUnitIdx, '\a');
+            console_putchar ((int) con_unit_idx, '\a');
             p->stati = 04000;
           }
           break;

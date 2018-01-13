@@ -433,12 +433,10 @@ static int eoj (uint pun_unit_num, word36 * buffer, uint tally)
 static int pun_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
-                      devices [chan] [p -> IDCW_DEV_CODE];
-    uint devUnitIdx = d -> devUnitIdx;
+    uint ctlr_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
+    uint devUnitIdx = kables->urp_to_urd[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
     UNIT * unitp = & pun_unit [devUnitIdx];
     long pun_unit_num = PUN_UNIT_NUM (unitp);
-    //int iomUnitIdx = cables -> cablesFromIomToPun [pun_unit_num] . iomUnitIdx;
 
     switch (p -> IDCW_DEV_CMD)
       {

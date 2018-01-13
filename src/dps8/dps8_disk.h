@@ -17,6 +17,9 @@ extern UNIT dsk_unit [N_DSK_UNITS_MAX];
 extern DEVICE ipc_dev;
 extern UNIT ipc_unit [N_IPC_UNITS_MAX];
 
+extern DEVICE msp_dev;
+extern UNIT msp_unit [N_IPC_UNITS_MAX];
+
 void disk_init(void);
 t_stat attachDisk (char * label);
 int dsk_iom_cmd (uint iomUnitIdx, uint chan);

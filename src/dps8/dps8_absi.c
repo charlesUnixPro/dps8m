@@ -141,14 +141,8 @@ static t_stat absi_reset (UNUSED DEVICE * dptr)
 static int absi_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = &iomChanData[iomUnitIdx][chan];
-    //struct device * d = &cables->cablesFromIomToDev[iomUnitIdx].
-    //                  devices[chan][p->IDCW_DEV_CODE];
-    //uint devUnitIdx = d->devUnitIdx;
-    //UNIT * unitp = &absi_unit[devUnitIdx];
-    //int absi_unit_num = ABSIUNIT_NUM (unitp);
-
-sim_printf ("absi_cmd CHAN_CMD %o DEV_CODE %o DEV_CMD %o COUNT %o\n", 
-p->IDCW_CHAN_CMD, p->IDCW_DEV_CODE, p->IDCW_DEV_CMD, p->IDCW_COUNT);
+// sim_printf ("absi_cmd CHAN_CMD %o DEV_CODE %o DEV_CMD %o COUNT %o\n", 
+//p->IDCW_CHAN_CMD, p->IDCW_DEV_CODE, p->IDCW_DEV_CMD, p->IDCW_COUNT);
     sim_debug (DBG_TRACE, & absi_dev, 
                "absi_cmd CHAN_CMD %o DEV_CODE %o DEV_CMD %o COUNT %o\n", 
                p->IDCW_CHAN_CMD, p->IDCW_DEV_CODE, p->IDCW_DEV_CMD, 

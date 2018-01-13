@@ -55,7 +55,6 @@ __thread uint currentRunningCpuIdx;
 // XXX Use this when we assume there is only a single cpu unit
 #define ASSUME0 0
 
-static void cpu_init_array (void);
 static bool clear_TEMPORARY_ABSOLUTE_mode (void);
 static void set_TEMPORARY_ABSOLUTE_mode (void);
 static void setCpuCycle (cycles_t cycle);
@@ -357,10 +356,13 @@ void setup_scbank_map (void)
       {
         if (! cpu.switches.enable [port_num])
           continue;
-        // Simplifing assumption: simh SCU unit 0 is the SCU with the
-        // low 4MW of memory, etc...
-        int scu_unit_idx = cables ->
-          cablesFromScuToCpu[currentRunningCpuIdx].ports[port_num].scu_unit_idx;
+        if (! kables->cpu_to_scu[currentRunningCpuIdx][port_num].in_use)
+          {
+            sim_err ("%s SCU not cabled\n");
+            continue;
+          }
+        uint scu_unit_idx = kables->cpu_to_scu[currentRunningCpuIdx][port_num].scu_unit_idx;
+
         // Calculate the amount of memory in the SCU in words
         uint store_size = cpu.switches.store_size [port_num];
         // Map store size configuration switch (0-8) to memory size.
@@ -614,7 +616,6 @@ void cpu_init (void)
 
     memset (cpus, 0, sizeof (cpu_state_t) * N_CPU_UNITS_MAX);
     cpus [0].switches.FLT_BASE = 2; // Some of the UnitTests assume this
-    cpu_init_array ();
 
     getSerialNumber ();
 
@@ -650,12 +651,9 @@ static void cpuResetUnitIdx (UNUSED uint cpun, bool clearMem)
 #ifdef SCUMEM
         for (int cpu_port_num = 0; cpu_port_num < N_CPU_PORTS; cpu_port_num ++)
           {
-            int scuUnitIdx =
-                     queryScuUnitIdx ((int) currentRunningCpuIdx,
-                                      (int) cpu_port_num);
-
-            if (scuUnitIdx >= 0)
+            if (get_scu_in_use (currentRunningCpuIdx, cpu_port_num))
               {
+                uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
                 for (uint i = 0; i < SCU_MEM_SIZE; i ++)
                   scu [scuUnitIdx].M[i] = MEM_UNINITIALIZED;
               }
@@ -1043,28 +1041,7 @@ t_stat sim_instr (void)
             for (uint chnNum = 0; chnNum < MAX_CHANNELS; chnNum ++)
               {
                 uint devCnt = 0;
-#if 0
-                if (chnNum == IOM_CONNECT_CHAN)
-                  devCnt ++;
-                else
-                  {
-#endif
-                    devType dt = DEVT_NONE;
-                    for (uint devNum = 0; devNum < N_DEV_CODES; devNum ++)
-                      {
-                        struct device * d = & cables -> cablesFromIomToDev [iomNum] . devices [chnNum] [devNum];   
-                        //if (d->type)
-                          // sim_printf ("iom %u chn %u dev %u type %u\n", iomNum, chnNum, devNum, d->type);
-                        if (d->type)
-                          {
-                            devCnt ++;
-                            dt = d->type;
-                          }
-                      }
-#if 0
-                  }
-#endif
-                if (devCnt)
+                if (get_ctlr_in_use (iomUnitIdx, chan))
                   {
                     //sim_printf ("iom %u chn %u devCnt %u\n", iomNum, chnNum, devCnt);
                     createChnThread (iomNum, chnNum, devTypeStrs [dt]);
@@ -2376,6 +2353,19 @@ static void nem_check (word24 addr, char * context)
 #endif
 
 #ifndef SPEED
+static uint get_scu_unit_idx (word24 addr, word24 * offset)
+  {
+    int cpu_port_num = lookup_cpu_mem_map (addr, offset);
+    if (cpu_port_num < 0) // Can't happen, we passed nem_check above
+      { 
+        sim_err ("cpu_port_num < 0");
+        doFault (FAULT_STR, fst_str_nea,  __func__);
+      }
+    return kables->cpu_to_scu [currentRunningCpuIdx][cpu_port_num].scu_unit_idx;
+  }
+#endif
+
+#ifndef SPEED
 int32 core_read (word24 addr, word36 *data, const char * ctx)
   {
     PNL (cpu.portBusy = true;)
@@ -2410,10 +2400,9 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
 #endif
 #ifdef SCUMEM
     word24 offset;
-    int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
-    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    uint scu_unit_idx = get_scu_unit_idx (addr, & offset);
     LOCK_MEM;
-    *data = scu [scuUnitIdx].M[offset] & DMASK;
+    *data = scu [scu_unit_idx].M[offset] & DMASK;
     UNLOCK_MEM;
     if (watchBits [addr])
       {
@@ -2486,8 +2475,7 @@ int core_write (word24 addr, word36 data, const char * ctx)
 #endif
 #ifdef SCUMEM
     word24 offset;
-    int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
-    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    uint scuUnitIdx = get_scu_unit_idx (addr, & offset);
     LOCK_MEM;
     scu[scuUnitIdx].M[offset] = data & DMASK;
     UNLOCK_MEM;
@@ -2552,8 +2540,7 @@ int core_write_zone (word24 addr, word36 data, const char * ctx)
 #endif
 #ifdef SCUMEM
     word24 offset;
-    int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
-    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    uint scuUnitIdx = get_scu_unit_idx (addr, & offset);
     LOCK_MEM;
     scu[scuUnitIdx].M[addr] = (scu[scuUnitIdx].M[addr] & ~cpu.zone) |
                               (data & cpu.zone);
@@ -2631,8 +2618,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
 #endif
 #ifdef SCUMEM
     word24 offset;
-    int scuUnitNum = lookup_cpu_mem_map (addr, & offset);
-    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    uint scuUnitIdx = get_scu_unit_idx (addr, & offset);
     LOCK_MEM;
     *even = scu [scuUnitIdx].M[offset++] & DMASK;
     UNLOCK_MEM;
@@ -2752,8 +2738,7 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
 
 #ifdef SCUMEM
     word24 offset;
-    int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
-    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    uint scuUnitIdx = get_scu_unit_idx (addr, & offset);
     scu [scuUnitIdx].M[offset++] = even & DMASK;
     if (watchBits [addr])
       {
@@ -3077,24 +3062,6 @@ word18 getBARaddress (word18 addr)
   }
 
 //=============================================================================
-
-int queryScuUnitIdx (int cpu_unit_num, int cpu_port_num)
-  {
-    struct cpuPort * pp = 
-      & cables->cablesFromScuToCpu [cpu_unit_num].ports [cpu_port_num];
-    if (pp->inuse)
-      return pp->scu_unit_idx;
-    return -1;
-  }
-
-// XXX when multiple cpus are supported, merge this into simhCpuReset
-
-static void cpu_init_array (void)
-  {
-    for (int i = 0; i < N_CPU_UNITS_MAX; i ++)
-      for (int p = 0; p < N_CPU_PORTS; p ++)
-        cables->cablesFromScuToCpu [i].ports [p].inuse = false;
-  }
 
 static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr, 
                                UNUSED int val, UNUSED const void * desc)
