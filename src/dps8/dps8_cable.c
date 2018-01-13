@@ -1417,6 +1417,7 @@ static t_stat kable_iom (int uncable, uint iom_unit_idx, char * name_save)
 
 static t_stat cable_periph_to_ctlr (int uncable,
                                     uint ctlr_unit_idx, uint dev_code,
+                                    enum ctlr_type_e ctlr_type,
                                     struct dev_to_ctlr_s * there,
                                     iomCmd * iom_cmd)
   {
@@ -1445,6 +1446,7 @@ static t_stat cable_periph_to_ctlr (int uncable,
         there->in_use = true;
         there->ctlr_unit_idx = ctlr_unit_idx;
         there->dev_code = dev_code;
+        there->ctlr_type = ctlr_type;
       }
     return SCPE_OK;
   }
@@ -1452,6 +1454,7 @@ static t_stat cable_periph_to_ctlr (int uncable,
 static t_stat kable_periph (int uncable,
                             uint ctlr_unit_idx,
                             uint dev_code,
+                            enum ctlr_type_e ctlr_type,
                             struct ctlr_to_dev_s * here,
                             uint unit_idx,
                             iomCmd * iom_cmd,
@@ -1467,7 +1470,7 @@ static t_stat kable_periph (int uncable,
           }
         // Unplug the other end of the cable
         t_stat rc = cable_periph_to_ctlr (uncable,
-                                          ctlr_unit_idx, dev_code,
+                                          ctlr_unit_idx, dev_code, ctlr_type,
                                           there,
                                           iom_cmd);
         if (rc)
@@ -1488,7 +1491,7 @@ static t_stat kable_periph (int uncable,
 
         // Plug the other end of the cable in
         t_stat rc = cable_periph_to_ctlr (uncable,
-                                          ctlr_unit_idx, dev_code,
+                                          ctlr_unit_idx, dev_code, ctlr_type,
                                           there,
                                           iom_cmd);
         if (rc)
@@ -1546,6 +1549,7 @@ static t_stat kable_mtp (int uncable, uint ctlr_unit_idx, char * name_save)
         return kable_periph (uncable,
                              ctlr_unit_idx,
                              (uint) dev_code,
+                             CTLR_T_MTP,
                              & kables->mtp_to_tape[ctlr_unit_idx][dev_code],
                              mt_unit_idx,
                              mt_iom_cmd,
@@ -1603,6 +1607,7 @@ static t_stat kable_ipc (int uncable, uint ctlr_unit_idx, char * name_save)
         return kable_periph (uncable,
                              ctlr_unit_idx,
                              (uint) dev_code,
+                             CTLR_T_IPC,
                              & kables->ipc_to_dsk[ctlr_unit_idx][dev_code],
                              dsk_unit_idx,
                              dsk_iom_cmd, // XXX
@@ -1660,6 +1665,7 @@ static t_stat kable_msp (int uncable, uint ctlr_unit_idx, char * name_save)
         return kable_periph (uncable,
                              ctlr_unit_idx,
                              (uint) dev_code,
+                             CTLR_T_MSP,
                              & kables->msp_to_dsk[ctlr_unit_idx][dev_code],
                              dsk_unit_idx,
                              dsk_iom_cmd, // XXX
@@ -1717,6 +1723,7 @@ static t_stat kable_urp (int uncable, uint ctlr_unit_idx, char * name_save)
         return kable_periph (uncable,
                              ctlr_unit_idx,
                              (uint) dev_code,
+                             CTLR_T_URP,
                              & kables->urp_to_urd[ctlr_unit_idx][dev_code],
                              unit_idx,
                              rdr_iom_cmd, // XXX
@@ -1736,6 +1743,7 @@ static t_stat kable_urp (int uncable, uint ctlr_unit_idx, char * name_save)
         return kable_periph (uncable,
                              ctlr_unit_idx,
                              (uint) dev_code,
+                             CTLR_T_URP,
                              & kables->urp_to_urd[ctlr_unit_idx][dev_code],
                              unit_idx,
                              pun_iom_cmd, // XXX
@@ -1755,6 +1763,7 @@ static t_stat kable_urp (int uncable, uint ctlr_unit_idx, char * name_save)
         return kable_periph (uncable,
                              ctlr_unit_idx,
                              (uint) dev_code,
+                             CTLR_T_URP,
                              & kables->urp_to_urd[ctlr_unit_idx][dev_code],
                              unit_idx,
                              prt_iom_cmd, // XXX

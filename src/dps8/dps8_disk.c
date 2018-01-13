@@ -352,10 +352,10 @@ static t_stat disk_reset (UNUSED DEVICE * dptr)
     return SCPE_OK;
   }
 
-static t_stat loadDisk (uint driveNumber, const char * diskFilename, UNUSED bool ro)
+static t_stat loadDisk (uint dsk_unit_idx, const char * disk_filename, UNUSED bool ro)
   {
-    //sim_printf ("in loadTape %d %s\n", driveNumber, tapeFilename);
-    t_stat stat = attach_unit (& dsk_unit [driveNumber], diskFilename);
+    //sim_printf ("in loadTape %d %s\n", dsk_unit_idx, tapeFilename);
+    t_stat stat = attach_unit (& dsk_unit [dsk_unit_idx], disk_filename);
     if (stat != SCPE_OK)
       {
         sim_printf ("loadDisk sim_disk_attach returned %d\n", stat);
@@ -372,22 +372,57 @@ static t_stat loadDisk (uint driveNumber, const char * diskFilename, UNUSED bool
     // so substr (w, 20, 1) is bit 0 of status0
     //    substr (w, 13, 6) is the low 6 bits of dev_no
     //    substr (w, 34, 3) is the low 3 bits of status 1
-        //sim_printf ("%s %d %o\n", tapeFilename, ro,  mt_unit [driveNumber] . flags);
-        //sim_printf ("special int %d %o\n", driveNumber, mt_unit [driveNumber] . flags);
+        //sim_printf ("%s %d %o\n", tapeFilename, ro,  mt_unit [dsk_unit_idx] . flags);
+        //sim_printf ("special int %d %o\n", dsk_unit_idx, mt_unit [dsk_unit_idx] . flags);
 
-    // disk pack ready
-    if (cables->cablesFromIomToDsk[driveNumber].iomUnitIdx != -1)
+    uint ctlr_unit_idx = kables->dsk_to_msp [dsk_unit_idx].ctlr_unit_idx;
+    enum ctlr_type_e ctlr_type = kables->tape_to_mtp [dsk_unit_idx].ctlr_type;
+    if (ctlr_type != CTLR_T_MSP && ctlr_type != CTLR_T_IPC)
       {
-        send_special_interrupt (
-          (uint) cables->cablesFromIomToDsk[driveNumber].iomUnitIdx,
-          (uint) cables->cablesFromIomToDsk[driveNumber].chan_num,
-          (uint) cables->cablesFromIomToDsk[driveNumber].dev_code,
-          0x40, 01 /* disk pack ready */);
+        // If None, assume that the cabling hasn't happend yey.
+        if (ctlr_type != CTLR_T_NONE)
+          sim_warn ("loadDisk lost\n");
+        return SCPE_ARG;
+      }
+
+    // Which port should the controller send the interrupt to? All of them...
+    bool sent_one = false;
+    for (uint ctlr_port_num = 0; ctlr_port_num < MAX_CTLR_PORTS; ctlr_port_num ++)
+      {
+        if (ctlr_type == CTLR_T_MSP)
+          {
+            if (kables->msp_to_iom[ctlr_unit_idx][ctlr_port_num].in_use)
+              {
+                uint iom_unit_idx = kables->msp_to_iom[ctlr_unit_idx][ctlr_port_num].iom_unit_idx;
+                uint chan_num = kables->msp_to_iom[ctlr_unit_idx][ctlr_port_num].chan_num;
+                uint dev_code = kables->dsk_to_msp[dsk_unit_idx].dev_code;
+
+                send_special_interrupt (iom_unit_idx, chan_num, dev_code, 0x40, 01 /* disk pack ready */);
+                sent_one = true;
+              }
+          }
+        else
+          {
+            if (kables->ipc_to_iom[ctlr_unit_idx][ctlr_port_num].in_use)
+              {
+                uint iom_unit_idx = kables->ipc_to_iom[ctlr_unit_idx][ctlr_port_num].iom_unit_idx;
+                uint chan_num = kables->ipc_to_iom[ctlr_unit_idx][ctlr_port_num].chan_num;
+                uint dev_code = kables->dsk_to_ipc[dsk_unit_idx].dev_code;
+
+                send_special_interrupt (iom_unit_idx, chan_num, dev_code, 0x40, 01 /* disk pack ready */);
+                sent_one = true;
+              }
+          }
+      }
+    if (! sent_one)
+      {
+        sim_printf ("loadDisk can't find controller; dropping interrupt\n");
+        return SCPE_ARG;
       }
 
 // controller ready
-//    send_special_interrupt ((uint) cables -> cablesFromIomToDsk [driveNumber] . iomUnitIdx,
-//                            (uint) cables -> cablesFromIomToDsk [driveNumber] . chan_num,
+//    send_special_interrupt ((uint) cables -> cablesFromIomToDsk [dsk_unit_idx] . iomUnitIdx,
+//                            (uint) cables -> cablesFromIomToDsk [dsk_unit_idx] . chan_num,
 //                            0,
 //                            0x40, 00 /* controller ready */);
 
@@ -923,7 +958,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
        devUnitIdx = kables->msp_to_dsk[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
     else
       {
-        sim_err ("disk_cmd lost\n");
+        sim_warn ("disk_cmd lost\n");
         return -1;
       }
     UNIT * unitp = & dsk_unit [devUnitIdx];

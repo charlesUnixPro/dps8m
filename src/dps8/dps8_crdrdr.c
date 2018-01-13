@@ -179,18 +179,6 @@ static struct rdr_state
   } rdr_state [N_RDR_UNITS_MAX];
 
 
-static int findRdrUnit (int iomUnitIdx, int chan_num, int dev_code)
-  {
-    for (int i = 0; i < N_RDR_UNITS_MAX; i ++)
-      {
-        if (iomUnitIdx == cables -> cablesFromIomToRdr [i] . iomUnitIdx &&
-            chan_num     == cables -> cablesFromIomToRdr [i] . chan_num     &&
-            dev_code     == cables -> cablesFromIomToRdr [i] . dev_code)
-          return i;
-      }
-    return -1;
-  }
-
 /*
  * rdr_init()
  *
@@ -453,12 +441,14 @@ static int rdrReadRecord (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     sim_debug (DBG_NOTIFY, & rdr_dev, "Read binary\n");
-    int unitIdx = findRdrUnit ((int) iomUnitIdx, (int) chan, p -> IDCW_DEV_CODE);
-    if (unitIdx < 0)
-      {
-        sim_warn ("rdrReadRecord can't find unit\n");
-        return -1;
-      }
+    uint ctlr_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
+    uint unitIdx = kables->urp_to_urd[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
+    // XXX in_use not being checked?
+    //if (unitIdx < 0)
+    //  {
+    //    sim_warn ("rdrReadRecord can't find unit\n");
+    //    return -1;
+    //  }
 
     if (rdr_state [unitIdx] . deckfd < 0)
        {
@@ -736,12 +726,14 @@ sim_printf ("\n");
 static int rdr_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    int unitIdx = findRdrUnit ((int) iomUnitIdx, (int) chan, p -> IDCW_DEV_CODE);
-    if (unitIdx < 0)
-      {
-        sim_warn ("rdr_cmd can't find unit\n");
-        return -1;
-      }
+    uint ctlr_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
+    uint unitIdx = kables->urp_to_urd[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
+    // XXX in_use not being checked?
+    //if (unitIdx < 0)
+    //  {
+    //    sim_warn ("rdr_cmd can't find unit\n");
+    //    return -1;
+    //  }
     rdr_state [unitIdx] . running = true;
 
     sim_debug (DBG_TRACE, & rdr_dev, "IDCW_DEV_CMD %o\n", p -> IDCW_DEV_CMD);
@@ -870,10 +862,12 @@ void rdrProcessEvent ()
 
 void rdrCardReady (int unitNum)
   {
-    send_special_interrupt ((uint) cables -> cablesFromIomToRdr [unitNum] . iomUnitIdx,
-                            (uint) cables -> cablesFromIomToRdr [unitNum] . chan_num,
-                            (uint) cables -> cablesFromIomToRdr [unitNum] . dev_code,
-                            0377, 0377 /* tape drive to ready */);
+    uint ctlr_unit_idx = kables->rdr_to_urp [unitNum].ctlr_unit_idx;
+    uint ctlr_port_num = 0; // Single port device
+    uint iom_unit_idx = kables->urp_to_iom[ctlr_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = kables->urp_to_iom[ctlr_unit_idx][ctlr_port_num].chan_num;
+    uint dev_code = kables->rdr_to_urp[unitNum].dev_code;
+    send_special_interrupt (iom_unit_idx, chan_num, dev_code, 0377, 0377 /* tape drive to ready */);
   }
 
 int rdr_iom_cmd (uint iomUnitIdx, uint chan)

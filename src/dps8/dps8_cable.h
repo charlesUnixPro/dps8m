@@ -289,6 +289,8 @@ struct dev_to_ctlr_s
     bool in_use;
     uint ctlr_unit_idx;
     uint dev_code;
+    enum ctlr_type_e ctlr_type; // Used by disks to determine if the controler
+                                // is MSP or IPC
   };
    
 struct kables_s

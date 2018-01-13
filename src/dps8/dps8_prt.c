@@ -415,7 +415,6 @@ static int prt_cmd (uint iomUnitIdx, uint chan)
     uint devUnitIdx = kables->urp_to_urd[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
     UNIT * unitp = & prt_unit [devUnitIdx];
     int prt_unit_num = (int) PRT_UNIT_NUM (unitp);
-    //int iomUnitIdx = cables -> cablesFromIomToPrt [prt_unit_num] . iomUnitIdx;
 
     switch (p -> IDCW_DEV_CMD)
       {

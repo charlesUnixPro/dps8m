@@ -389,10 +389,25 @@ void loadTape (uint driveNumber, char * tapeFilename, bool ro)
       mt_unit [driveNumber] . flags |= MTUF_WRP;
     else
       mt_unit [driveNumber] . flags &= ~ MTUF_WRP;
-    send_special_interrupt ((uint) cables -> cablesFromIomToTap [driveNumber] . iomUnitIdx,
-                            (uint) cables -> cablesFromIomToTap [driveNumber] . chan_num,
-                            (uint) cables -> cablesFromIomToTap [driveNumber] . dev_code,
-                            0, 020 /* tape drive to ready */);
+
+    uint ctlr_unit_idx = kables->tape_to_mtp [driveNumber].ctlr_unit_idx;
+    // Which port should the controller send the interrupt to? All of them...
+    bool sent_one = false;
+    for (uint ctlr_port_num = 0; ctlr_port_num < MAX_CTLR_PORTS; ctlr_port_num ++)
+      if (kables->mtp_to_iom[ctlr_unit_idx][ctlr_port_num].in_use)
+        {
+          uint iom_unit_idx = kables->mtp_to_iom[ctlr_unit_idx][ctlr_port_num].iom_unit_idx;
+          uint chan_num = kables->mtp_to_iom[ctlr_unit_idx][ctlr_port_num].chan_num;
+          uint dev_code = kables->tape_to_mtp[driveNumber].dev_code;
+
+          send_special_interrupt (iom_unit_idx, chan_num, dev_code, 0, 020 /* tape drive to ready */);
+          sent_one = true;
+        }
+    if (! sent_one)
+      {
+        sim_printf ("loadTape can't find controller; dropping interrupt\n");
+        return;
+      }
   }
 
 static void unloadTape (uint driveNumber)
@@ -406,10 +421,23 @@ static void unloadTape (uint driveNumber)
             return;
           }
       }
-    send_special_interrupt ((uint) cables -> cablesFromIomToTap [driveNumber] . iomUnitIdx,
-                            (uint) cables -> cablesFromIomToTap [driveNumber] . chan_num,
-                            (uint) cables -> cablesFromIomToTap [driveNumber] . dev_code,
-                            0, 040 /* unload complere */);
+    uint ctlr_unit_idx = kables->tape_to_mtp [driveNumber].ctlr_unit_idx;
+    // Which port should the controller send the interrupt to?
+    // Find one that is connected...
+    uint ctlr_port_num;
+    for (ctlr_port_num = 0; ctlr_port_num < MAX_CTLR_PORTS; ctlr_port_num ++)
+      if (kables->mtp_to_iom[driveNumber][ctlr_port_num].in_use)
+        break;
+    if (ctlr_port_num >= MAX_CTLR_PORTS)
+      {
+        sim_printf ("loadTape can't file controller; dropping interrupt\n");
+        return;
+      }
+    uint iom_unit_idx = kables->mtp_to_iom[ctlr_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = kables->mtp_to_iom[ctlr_unit_idx][ctlr_port_num].chan_num;
+    uint dev_code = kables->tape_to_mtp[driveNumber].dev_code;
+
+    send_special_interrupt (iom_unit_idx, chan_num, dev_code, 0, 040 /* unload complere */);
   }
 
 void mt_init(void)
@@ -853,35 +881,39 @@ static int surveyDevices (uint iomUnitIdx, uint chan)
     for (uint i = 0; i < bufsz; i ++)
       buffer [i] = 0;
     
-    for (uint i = 1; i < /* N_MT_UNITS_MAX */ 17; i ++)
+    uint ctlr_idx = get_ctlr_idx (iomUnitIdx, chan);
+    // Walk the device codes
+    for (uint dev_code = 0; dev_code < N_DEV_CODES; dev_code ++)
       {
-// XXX this is wrong; it assumes a single string of tapes. It should be
-// if unit iom number, channel number match the calling context, and
-// if i == dev_code. find_dev_from_unit?
-        if (cables -> cablesFromIomToTap [i] . iomUnitIdx != -1)
+       if (cnt / 2 >= bufsz)
+          break;
+        // Which device on the string is connected to that device code
+        struct ctlr_to_dev_s * p = & kables->mtp_to_tape[ctlr_idx][dev_code];
+        if (! p -> in_use)
+          continue;
+        uint unit_idx = p->unit_idx;
+
+        word18 handler = 0;
+        handler |= 0100000; // operational
+        if (mt_unit [unit_idx].filename)
           {
-            word18 handler = 0;
-            handler |= 0100000; // operational
-            if (mt_unit [i] . filename)
-              {
-                handler |= 0040000; // ready
-              }
-            handler |= ((word18) cables -> cablesFromIomToTap [i] . dev_code & 037) << 9; // number
-            handler |= 0000040; // 200 ips
-            handler |= 0000020; // 9 track
-            handler |= 0000007; // 800/1600/6250
-            sim_debug (DBG_DEBUG, & tape_dev,
-                       "unit %d handler %06o\n", i, handler);
-            if (cnt % 2 == 0)
-              {
-                buffer [cnt / 2] = ((word36) handler) << 18;
-              }
-            else
-              {
-                buffer [cnt / 2] |= handler;
-              }
-            cnt ++;
+            handler |= 0040000; // ready
           }
+        handler |= ((word18) dev_code & 037) << 9; // number
+        handler |= 0000040; // 200 ips
+        handler |= 0000020; // 9 track
+        handler |= 0000007; // 800/1600/6250
+        sim_debug (DBG_DEBUG, & tape_dev,
+                   "unit %d handler %06o\n", unit_idx, handler);
+        if (cnt % 2 == 0)
+          {
+            buffer [cnt / 2] = ((word36) handler) << 18;
+          }
+        else
+          {
+            buffer [cnt / 2] |= handler;
+          }
+        cnt ++;
       }
     iomIndirectDataService (iomUnitIdx, chan, buffer, & bufsz, true);
     p -> stati = 04000;
@@ -938,16 +970,13 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
 //sim_printf ("mt cmd %d %o\n", p -> IDCW_DEV_CMD, p -> IDCW_DEV_CMD);
     switch (p -> IDCW_DEV_CMD)
       {
-        case 0: // CMD 00 Request status -- controler status, not tape drive
+        case 0: // CMD 00 Request status -- controller status, not tape drive
           {
             if (p -> IDCW_CHAN_CMD == 040) // If special controller command, then command 0 is 'suspend'
               {
                 sim_debug (DBG_DEBUG, & tape_dev,
                            "controller suspend\n");
-                send_special_interrupt ((uint) cables -> cablesFromIomToTap [devUnitIdx] . iomUnitIdx,
-                                        (uint) cables -> cablesFromIomToTap [devUnitIdx] . chan_num,
-                                        (uint) cables -> cablesFromIomToTap [devUnitIdx] . dev_code,
-                                        01, 0 /* suspended */);
+                send_special_interrupt (iomUnitIdx, chan, p->IDCW_DEV_CODE, 01, 0 /* suspended */);
                 p -> stati = 04000; // have_status = 1
               }
             else
@@ -1238,10 +1267,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
               {
                 sim_debug (DBG_DEBUG, & tape_dev,
                            "controller release\n");
-                send_special_interrupt ((uint) cables -> cablesFromIomToTap [devUnitIdx] . iomUnitIdx,
-                                        (uint) cables -> cablesFromIomToTap [devUnitIdx] . chan_num,
-                                        (uint) cables -> cablesFromIomToTap [devUnitIdx] . dev_code,
-                                        02, 0 /* released */);
+                send_special_interrupt (iomUnitIdx, chan, p->IDCW_DEV_CODE, 02, 0 /* released */);
                 p -> stati = 04000; // have_status = 1
               }
             else
@@ -1772,11 +1798,7 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
               //p -> stati |= 0340;
             //rewindDoneUnit . u3 = mt_unit_num;
             //sim_activate (& rewindDoneUnit, 4000000); // 4M ~= 1 sec
-            send_special_interrupt ((uint) cables -> cablesFromIomToTap [devUnitIdx] . iomUnitIdx,
-                                    (uint) cables -> cablesFromIomToTap [devUnitIdx] . chan_num,
-                                    (uint) cables -> cablesFromIomToTap [devUnitIdx] . dev_code,
-                                    0, 0100 /* rewind complete */);
-
+            send_special_interrupt (iomUnitIdx, chan, p->IDCW_DEV_CODE, 0, 0100 /* rewind complete */);
           }
           break;
    
@@ -1790,10 +1812,7 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
             sim_tape_detach (unitp);
             //tape_statep -> rec_num = 0;
             p -> stati = 04000;
-            send_special_interrupt ((uint) cables -> cablesFromIomToTap [devUnitIdx] . iomUnitIdx,
-                                    (uint) cables -> cablesFromIomToTap [devUnitIdx] . chan_num,
-                                    (uint) cables -> cablesFromIomToTap [devUnitIdx] . dev_code,
-                                    0, 0040 /* unload complete */);
+            send_special_interrupt (iomUnitIdx, chan, p->IDCW_DEV_CODE, 0, 0040 /* unload complete */);
           }
           break;
 

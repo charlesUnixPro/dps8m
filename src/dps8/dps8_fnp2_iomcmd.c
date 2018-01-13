@@ -1716,7 +1716,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
 #ifdef SCUMEM
     word24 offset;
     int scuUnitNum =  queryIomScbankMap (iomUnitIdx, decoded.fudp->mailboxAddress, & offset);
-    int scuUnitIdx = cables->cablesFromScus[iomUnitIdx][scuUnitNum].scuUnitIdx;
+    int scuUnitIdx = kables->iom_to_scu[iomUnitIdx][scuUnitNum].scu_unit_idx;
     decoded.mbxp = (struct mailbox vol *) & scu [scuUnitIdx].M [decoded.fudp->mailboxAddress];
 #else
     decoded.mbxp = (struct mailbox vol *) & M [decoded.fudp -> mailboxAddress];

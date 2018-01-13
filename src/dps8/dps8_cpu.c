@@ -356,9 +356,11 @@ void setup_scbank_map (void)
       {
         if (! cpu.switches.enable [port_num])
           continue;
+        // This will happen during SIMH early initialization before
+        // the cables are run.
         if (! kables->cpu_to_scu[currentRunningCpuIdx][port_num].in_use)
           {
-            sim_err ("%s SCU not cabled\n");
+            //sim_warn ("%s SCU not cabled\n", __func__);
             continue;
           }
         uint scu_unit_idx = kables->cpu_to_scu[currentRunningCpuIdx][port_num].scu_unit_idx;

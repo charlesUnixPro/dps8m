@@ -402,13 +402,13 @@ static UNIT attn_unit[N_OPC_UNITS_MAX] =
 
 static t_stat console_attn (UNUSED UNIT * uptr)
   {
-    int conUnitIdx = (int) (uptr - attn_unit);
-//  0 is okay as device number
-    send_special_interrupt ((uint) cables->cablesFromIomToCon[conUnitIdx].
-                              iomUnitIdx,
-                            (uint) cables->cablesFromIomToCon[conUnitIdx].
-                              chan_num, 
-                            0, 0, 0);
+    uint con_unit_idx = (uint) (uptr - attn_unit);
+    uint ctlr_port_num = 0; // Consoles are single ported
+    uint iom_unit_idx = kables->opc_to_iom[con_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = kables->opc_to_iom[con_unit_idx][ctlr_port_num].chan_num;
+    uint dev_code = 0; // Only a single console on the controller
+
+    send_special_interrupt (iom_unit_idx, chan_num, dev_code, 0, 0);
     return SCPE_OK;
   }
 
@@ -581,11 +581,11 @@ static void sendConsole (int conUnitIdx, word12 stati)
     opc_state_t * csp = console_state + conUnitIdx;
     uint tally = csp->tally;
     uint daddr = csp->daddr;
-    //int conUnitIdx = (int) OPC_UNIT_NUM (csp->unitp);
-    int iomUnitIdx = cables->cablesFromIomToCon[conUnitIdx].iomUnitIdx;
-    
-    int chan = csp->chan;
-    iomChanData_t * p = & iomChanData[iomUnitIdx][chan];
+    uint ctlr_port_num = 0; // Consoles are single ported
+    uint iomUnitIdx = kables->opc_to_iom[conUnitIdx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = kables->opc_to_iom[conUnitIdx][ctlr_port_num].chan_num;
+    iomChanData_t * p = & iomChanData[iomUnitIdx][chan_num];
+
 // XXX this should be iomIndirectDataService
     p->charPos = tally % 4;
 
@@ -612,9 +612,9 @@ static void sendConsole (int conUnitIdx, word12 stati)
             unsigned char c = (unsigned char) (* csp->readp ++);
 #ifdef SCUMEM
             word36 w;
-            iom_core_read ((uint) iomUnitIdx, daddr, & w, __func__);
+            iom_core_read (iomUnitIdx, daddr, & w, __func__);
             putbits36_9 (& w, charno * 9, c);
-            iom_core_write ((uint) iomUnitIdx, daddr, w, __func__);
+            iom_core_write (iomUnitIdx, daddr, w, __func__);
 #else
             word36 w;
             iom_core_read (daddr, & w, __func__);
@@ -638,7 +638,7 @@ static void sendConsole (int conUnitIdx, word12 stati)
     csp->io_mode = no_mode;
 
     p->stati = (word12) stati;
-    send_terminate_interrupt ((uint) iomUnitIdx, (uint) chan);
+    send_terminate_interrupt (iomUnitIdx, chan_num);
   }
 
 
@@ -1356,10 +1356,11 @@ int opc_iom_cmd (uint iomUnitIdx, uint chan)
 
 static t_stat opc_svc (UNIT * unitp)
   {
-    int conUnitNum = (int) OPC_UNIT_NUM (unitp);
-    int iomUnitIdx = cables->cablesFromIomToCon[conUnitNum].iomUnitIdx;
-    int chan = cables->cablesFromIomToCon[conUnitNum].chan_num;
-    opc_iom_cmd ((uint) iomUnitIdx, (uint) chan);
+    int con_unit_idx = (int) OPC_UNIT_NUM (unitp);
+    uint ctlr_port_num = 0; // Consoles are single ported
+    uint iom_unit_idx = kables->opc_to_iom[con_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = kables->opc_to_iom[con_unit_idx][ctlr_port_num].chan_num;
+    opc_iom_cmd (iom_unit_idx, chan_num);
     return SCPE_OK;
   }
 
