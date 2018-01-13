@@ -14,7 +14,7 @@
 typedef enum devType
   {
      DEVT_NONE = 0, DEVT_TAPE, DEVT_CON, DEVT_DISK, 
-     DEVT_MPC, DEVT_DN355, DEVT_CRDRDR, DEVT_CRDPUN, DEVT_PRT, DEVT_URP, DEVT_ABSI
+     DEVT_MPC, DEVT_DN355, DEVT_RDR, DEVT_PUN, DEVT_PRT, DEVT_URP, DEVT_ABSI
   } devType;
 #ifdef THREADZ
 extern char * devTypeStrs [/* devType */];
@@ -79,8 +79,8 @@ struct cables_t
 
     // IOM -> device
     struct cableFromIom cablesFromIomToUrp [N_URP_UNITS_MAX];
-    struct cableFromIom cablesFromIomToCrdRdr [N_CRDRDR_UNITS_MAX];
-    struct cableFromIom cablesFromIomToCrdPun [N_CRDPUN_UNITS_MAX];
+    struct cableFromIom cablesFromIomToRdr [N_RDR_UNITS_MAX];
+    struct cableFromIom cablesFromIomToPun [N_PUN_UNITS_MAX];
     struct cableFromIom cablesFromIomToPrt [N_PRT_UNITS_MAX];
     struct cableFromIom cablesFromIomToFnp [N_FNP_UNITS_MAX];
     struct cableFromIom cablesFromIomToDsk [N_DSK_UNITS_MAX];
@@ -159,13 +159,15 @@ enum chan_type_e { chan_type_CPI, chan_type_PSI, chan_type_direct };
 // DEVT_NONE must be zero for memset to init it properly.
 enum ctlr_type_e
   {
-     DEV_T_NONE = 0,
-     //, DEVT_TAPE, DEVT_CON, DEVT_DISK, 
-     // DEVT_DN355, DEVT_CRDRDR, DEVT_CRDPUN, DEVT_PRT, DEVT_URP, DEVT_ABSI
-     DEV_T_MTP,
-     DEV_T_MSP,
-     DEV_T_IPC,
-     DEV_T_OPC,
+     CTLR_T_NONE = 0,
+     // DEVT_DN355
+     CTLR_T_MTP,
+     CTLR_T_MSP,
+     CTLR_T_IPC,
+     CTLR_T_OPC,
+     CTLR_T_URP,
+     CTLR_T_FNP,
+     CTLR_T_ABSI
 
   };
 
@@ -220,6 +222,7 @@ struct cpu_to_scu_s
 //    cable IOMx chan# OPCx       // Operator console
 //    cable IOMx chan# FNPx       // FNP 
 //    cable IOMx chan# ABSIx      // ABSI 
+//    cable IOMx chan# URPx       // Unit record processor
 //
 
 struct iom_to_ctlr_s
@@ -266,8 +269,8 @@ struct ctlr_to_iom_s
 //
 //   urp to  device
 //
-//     cable URPx dev_code CRDRDRx
-//     cable URPx dev_code CRDPUNx
+//     cable URPx dev_code RDRx
+//     cable URPx dev_code PUNx
 //     cable URPx dev_code PRTx
 
 
@@ -317,14 +320,17 @@ struct kables_s
     //   mtp->tape
     struct ctlr_to_dev_s mtp_to_tape [N_MTP_UNITS_MAX] [N_DEV_CODES];
     struct dev_to_ctlr_s tape_to_mtp [N_MT_UNITS_MAX];
-
-    // CTLR->DEV
     //   ipc->disk
     struct ctlr_to_dev_s ipc_to_dsk [N_IPC_UNITS_MAX] [N_DEV_CODES];
     struct dev_to_ctlr_s dsk_to_ipc [N_DSK_UNITS_MAX];
     //   msp->disk
     struct ctlr_to_dev_s msp_to_dsk [N_MSP_UNITS_MAX] [N_DEV_CODES];
     struct dev_to_ctlr_s dsk_to_msp [N_DSK_UNITS_MAX];
+    //   urp->rdr/pun/prt
+    struct ctlr_to_dev_s urp_to_urd [N_URP_UNITS_MAX] [N_DEV_CODES];
+    struct dev_to_ctlr_s rdr_to_urp [N_RDR_UNITS_MAX];
+    struct dev_to_ctlr_s pun_to_urp [N_PUN_UNITS_MAX];
+    struct dev_to_ctlr_s prt_to_urp [N_PRT_UNITS_MAX];
   };
 
 extern struct kables_s * kables;

@@ -49,17 +49,17 @@
  */
 
 
-#define N_CRDPUN_UNITS 1 // default
+#define N_PUN_UNITS 1 // default
 
-static t_stat crdpun_reset (DEVICE * dptr);
-static t_stat crdpun_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
-static t_stat crdpun_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
-static t_stat crdpun_show_device_name (FILE *st, UNIT *uptr, int val, const void *desc);
-static t_stat crdpun_set_device_name (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat pun_reset (DEVICE * dptr);
+static t_stat pun_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat pun_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat pun_show_device_name (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat pun_set_device_name (UNIT * uptr, int32 value, const char * cptr, void * desc);
 
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE )
-UNIT crdpun_unit [N_CRDPUN_UNITS_MAX] =
+UNIT pun_unit [N_PUN_UNITS_MAX] =
   {
     {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
     {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
@@ -79,9 +79,9 @@ UNIT crdpun_unit [N_CRDPUN_UNITS_MAX] =
     {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL}
   };
 
-#define CRDPUN_UNIT_NUM(uptr) ((uptr) - crdpun_unit)
+#define PUN_UNIT_NUM(uptr) ((uptr) - pun_unit)
 
-static DEBTAB crdpun_dt [] =
+static DEBTAB pun_dt [] =
   {
     { "NOTIFY", DBG_NOTIFY, NULL },
     { "INFO", DBG_INFO, NULL },
@@ -94,7 +94,7 @@ static DEBTAB crdpun_dt [] =
 
 #define UNIT_WATCH UNIT_V_UF
 
-static MTAB crdpun_mod [] =
+static MTAB pun_mod [] =
   {
     { UNIT_WATCH, 1, "WATCH", "WATCH", 0, 0, NULL, NULL },
     { UNIT_WATCH, 0, "NOWATCH", "NOWATCH", 0, 0, NULL, NULL },
@@ -103,9 +103,9 @@ static MTAB crdpun_mod [] =
       0,            /* match */
       "NUNITS",     /* print string */
       "NUNITS",         /* match string */
-      crdpun_set_nunits, /* validation routine */
-      crdpun_show_nunits, /* display routine */
-      "Number of CRDPUN units in the system", /* value descriptor */
+      pun_set_nunits, /* validation routine */
+      pun_show_nunits, /* display routine */
+      "Number of PUN units in the system", /* value descriptor */
       NULL // Help
     },
     {
@@ -113,8 +113,8 @@ static MTAB crdpun_mod [] =
       0,            /* match */
       "DEVICE_NAME",     /* print string */
       "DEVICE_NAME",         /* match string */
-      crdpun_set_device_name, /* validation routine */
-      crdpun_show_device_name, /* display routine */
+      pun_set_device_name, /* validation routine */
+      pun_show_device_name, /* display routine */
       "Select the boot drive", /* value descriptor */
       NULL          // help
     },
@@ -123,12 +123,12 @@ static MTAB crdpun_mod [] =
   };
 
 
-DEVICE crdpun_dev = {
-    "CRDPUN",       /*  name */
-    crdpun_unit,    /* units */
+DEVICE pun_dev = {
+    "PUN",       /*  name */
+    pun_unit,    /* units */
     NULL,         /* registers */
-    crdpun_mod,     /* modifiers */
-    N_CRDPUN_UNITS, /* #units */
+    pun_mod,     /* modifiers */
+    N_PUN_UNITS, /* #units */
     10,           /* address radix */
     24,           /* address width */
     1,            /* address increment */
@@ -136,14 +136,14 @@ DEVICE crdpun_dev = {
     36,           /* data width */
     NULL,         /* examine */
     NULL,         /* deposit */ 
-    crdpun_reset,   /* reset */
+    pun_reset,   /* reset */
     NULL,         /* boot */
     NULL,         /* attach */
     NULL,         /* detach */
     NULL,         /* context */
     DEV_DEBUG,    /* flags */
     0,            /* debug control flags */
-    crdpun_dt,      /* debug flag names */
+    pun_dt,      /* debug flag names */
     NULL,         /* memory size change */
     NULL,         /* logical name */
     NULL,         // help
@@ -153,35 +153,35 @@ DEVICE crdpun_dev = {
     NULL
 };
 
-static struct crdpun_state
+static struct pun_state
   {
     char device_name [MAX_DEV_NAME_LEN];
-    int crdpunfile; // fd
+    int punfile; // fd
     // bool cachedBanner;
     bool sawEOD;
-  } crdpun_state [N_CRDPUN_UNITS_MAX];
+  } pun_state [N_PUN_UNITS_MAX];
 
 /*
- * crdpun_init()
+ * pun_init()
  *
  */
 
 // Once-only initialization
 
-void crdpun_init (void)
+void pun_init (void)
   {
-    memset (crdpun_state, 0, sizeof (crdpun_state));
-    for (int i = 0; i < N_CRDPUN_UNITS_MAX; i ++)
-      crdpun_state [i] . crdpunfile = -1;
+    memset (pun_state, 0, sizeof (pun_state));
+    for (int i = 0; i < N_PUN_UNITS_MAX; i ++)
+      pun_state [i] . punfile = -1;
   }
 
-static t_stat crdpun_reset (DEVICE * dptr)
+static t_stat pun_reset (DEVICE * dptr)
   {
 #if 0
     for (uint i = 0; i < dptr -> numunits; i ++)
       {
-        // sim_crdpun_reset (& crdpun_unit [i]);
-        //sim_cancel (& crdpun_unit [i]);
+        // sim_pun_reset (& pun_unit [i]);
+        //sim_cancel (& pun_unit [i]);
       }
 #endif
     return SCPE_OK;
@@ -190,9 +190,9 @@ static t_stat crdpun_reset (DEVICE * dptr)
 
 
 
-static void openPunFile (int crdpun_unit_num, UNUSED word36 * buffer, UNUSED uint tally)
+static void openPunFile (int pun_unit_num, UNUSED word36 * buffer, UNUSED uint tally)
   {
-    if (crdpun_state [crdpun_unit_num] . crdpunfile != -1)
+    if (pun_state [pun_unit_num] . punfile != -1)
       return;
 
 // Some brave person needs to parse the binary card image to extract
@@ -313,7 +313,7 @@ static void openPunFile (int crdpun_unit_num, UNUSED word36 * buffer, UNUSED uin
 
     if (tally == 27 && memcmp (buffer, bannerCard, sizeof (bannerCard)) == 0)
       {
-        crdpun_state [crdpun_unit_num] . cachedBanner = true;
+        pun_state [pun_unit_num] . cachedBanner = true;
         return;
       }
 
@@ -322,23 +322,23 @@ static void openPunFile (int crdpun_unit_num, UNUSED word36 * buffer, UNUSED uin
     int rc = parseID (buffer, tally, qno, name);
     char template [129 + LONGEST];
     if (rc == 0)
-      sprintf (template, "crdpun%c.spool.XXXXXX", 'a' + crdpun_unit_num);
+      sprintf (template, "pun%c.spool.XXXXXX", 'a' + pun_unit_num);
     else
-      sprintf (template, "crdpun%c.spool.%s.%s.XXXXXX", 'a' + crdpun_unit_num, qno, name);
+      sprintf (template, "pun%c.spool.%s.%s.XXXXXX", 'a' + pun_unit_num, qno, name);
 #else
     char template [129];
-    sprintf (template, "pun%c.spool.XXXXXX", 'a' + crdpun_unit_num);
-    crdpun_state [crdpun_unit_num] . crdpunfile = mkstemp (template);
+    sprintf (template, "pun%c.spool.XXXXXX", 'a' + pun_unit_num);
+    pun_state [pun_unit_num] . punfile = mkstemp (template);
 #endif
 #if 0
-    if (crdpun_state [crdpun_unit_num] . cachedBanner)
+    if (pun_state [pun_unit_num] . cachedBanner)
       {
         // 014 013 is slew to 013 (top of odd page?); just do a ff
         //char cache [2] = {014, 013};
-        //write (crdpun_state [crdpun_unit_num] . crdpunfile, & cache, 2);
+        //write (pun_state [pun_unit_num] . punfile, & cache, 2);
         char cache = '\f';
-        write (crdpun_state [crdpun_unit_num] . crdpunfile, & cache, 1);
-        crdpun_state [crdpun_unit_num] . cachedBanner = false;
+        write (pun_state [pun_unit_num] . punfile, & cache, 1);
+        pun_state [pun_unit_num] . cachedBanner = false;
       }
 #endif
   }
@@ -417,28 +417,28 @@ static word36 bannerCard [27] =
     0000000050000llu
   };
 
-static int eoj (uint crdpun_unit_num, word36 * buffer, uint tally)
+static int eoj (uint pun_unit_num, word36 * buffer, uint tally)
   {
     if (tally == 27 && memcmp (buffer, eodCard, sizeof (eodCard)) == 0)
       {
-        crdpun_state [crdpun_unit_num] . sawEOD = true;
+        pun_state [pun_unit_num] . sawEOD = true;
         return 0;
       }
-    if (crdpun_state [crdpun_unit_num] . sawEOD &&
+    if (pun_state [pun_unit_num] . sawEOD &&
        tally == 27 && memcmp (buffer, bannerCard, sizeof (bannerCard)) == 0)
       return 1;
     return 0;
   }
 
-static int crdpun_cmd (uint iomUnitIdx, uint chan)
+static int pun_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
                       devices [chan] [p -> IDCW_DEV_CODE];
     uint devUnitIdx = d -> devUnitIdx;
-    UNIT * unitp = & crdpun_unit [devUnitIdx];
-    long crdpun_unit_num = CRDPUN_UNIT_NUM (unitp);
-    //int iomUnitIdx = cables -> cablesFromIomToPun [crdpun_unit_num] . iomUnitIdx;
+    UNIT * unitp = & pun_unit [devUnitIdx];
+    long pun_unit_num = PUN_UNIT_NUM (unitp);
+    //int iomUnitIdx = cables -> cablesFromIomToPun [pun_unit_num] . iomUnitIdx;
 
     switch (p -> IDCW_DEV_CMD)
       {
@@ -535,16 +535,16 @@ for (uint row = 0; row < 12; row ++)
 sim_printf ("\n");
 #endif
 
-             if (crdpun_state [crdpun_unit_num] . crdpunfile == -1)
-               openPunFile ((int) crdpun_unit_num, buffer, p -> DDCW_TALLY);
+             if (pun_state [pun_unit_num] . punfile == -1)
+               openPunFile ((int) pun_unit_num, buffer, p -> DDCW_TALLY);
 
-            write (crdpun_state [crdpun_unit_num] . crdpunfile, buffer, sizeof (buffer));
+            write (pun_state [pun_unit_num] . punfile, buffer, sizeof (buffer));
 
-            if (eoj ((uint) crdpun_unit_num, buffer, p -> DDCW_TALLY))
+            if (eoj ((uint) pun_unit_num, buffer, p -> DDCW_TALLY))
               {
-                //sim_printf ("crdpun end of job\n");
-                close (crdpun_state [crdpun_unit_num] . crdpunfile);
-                crdpun_state [crdpun_unit_num] . crdpunfile = -1;
+                //sim_printf ("pun end of job\n");
+                close (pun_state [pun_unit_num] . punfile);
+                pun_state [pun_unit_num] . punfile = -1;
               }
             p -> stati = 04000; 
           }
@@ -554,20 +554,20 @@ sim_printf ("\n");
         case 031: // CMD 031 Set Diagnostic Mode (load_mpc.pl1)
           {
             p -> stati = 04000;
-            sim_debug (DBG_NOTIFY, & crdpun_dev, "Set Diagnostic Mode %ld\n", crdpun_unit_num);
+            sim_debug (DBG_NOTIFY, & pun_dev, "Set Diagnostic Mode %ld\n", pun_unit_num);
           }
           break;
 
         case 040: // CMD 40 Reset status
           {
             p -> stati = 04000;
-            sim_debug (DBG_NOTIFY, & crdpun_dev, "Reset status %ld\n", crdpun_unit_num);
+            sim_debug (DBG_NOTIFY, & pun_dev, "Reset status %ld\n", pun_unit_num);
           }
           break;
 
         default:
           {
-            sim_warn ("crdpun daze %o\n", p -> IDCW_DEV_CMD);
+            sim_warn ("pun daze %o\n", p -> IDCW_DEV_CMD);
             p -> stati = 04501; // cmd reject, invalid opcode
             p -> chanStatus = chanStatIncorrectDCW;
           }
@@ -584,14 +584,14 @@ sim_printf ("\n");
 // 1 ignored command
 // 0 ok
 // -1 problem
-int crdpun_iom_cmd (uint iomUnitIdx, uint chan)
+int pun_iom_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
 // Is it an IDCW?
 
     if (p -> DCW_18_20_CP == 7)
       {
-        crdpun_cmd (iomUnitIdx, chan);
+        pun_cmd (iomUnitIdx, chan);
       }
     else // DDCW/TDCW
       {
@@ -601,44 +601,44 @@ int crdpun_iom_cmd (uint iomUnitIdx, uint chan)
     return 0;
   }
 
-static t_stat crdpun_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)
+static t_stat pun_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)
   {
-    sim_printf("Number of CRDPUN units in system is %d\n", crdpun_dev . numunits);
+    sim_printf("Number of PUN units in system is %d\n", pun_dev . numunits);
     return SCPE_OK;
   }
 
-static t_stat crdpun_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, const char * cptr, UNUSED void * desc)
+static t_stat pun_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, const char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
-    if (n < 1 || n > N_CRDPUN_UNITS_MAX)
+    if (n < 1 || n > N_PUN_UNITS_MAX)
       return SCPE_ARG;
-    crdpun_dev . numunits = (uint32) n;
+    pun_dev . numunits = (uint32) n;
     return SCPE_OK;
   }
 
-static t_stat crdpun_show_device_name (UNUSED FILE * st, UNIT * uptr,
+static t_stat pun_show_device_name (UNUSED FILE * st, UNIT * uptr,
                                        UNUSED int val, UNUSED const void * desc)
   {
-    long n = CRDPUN_UNIT_NUM (uptr);
-    if (n < 0 || n >= N_CRDPUN_UNITS_MAX)
+    long n = PUN_UNIT_NUM (uptr);
+    if (n < 0 || n >= N_PUN_UNITS_MAX)
       return SCPE_ARG;
-    sim_printf("Card punch device name is %s\n", crdpun_state [n] . device_name);
+    sim_printf("Card punch device name is %s\n", pun_state [n] . device_name);
     return SCPE_OK;
   }
 
-static t_stat crdpun_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
+static t_stat pun_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
                                     UNUSED const char * cptr, UNUSED void * desc)
   {
-    long n = CRDPUN_UNIT_NUM (uptr);
-    if (n < 0 || n >= N_CRDPUN_UNITS_MAX)
+    long n = PUN_UNIT_NUM (uptr);
+    if (n < 0 || n >= N_PUN_UNITS_MAX)
       return SCPE_ARG;
     if (cptr)
       {
-        strncpy (crdpun_state [n] . device_name, cptr, MAX_DEV_NAME_LEN - 1);
-        crdpun_state [n] . device_name [MAX_DEV_NAME_LEN - 1] = 0;
+        strncpy (pun_state [n] . device_name, cptr, MAX_DEV_NAME_LEN - 1);
+        pun_state [n] . device_name [MAX_DEV_NAME_LEN - 1] = 0;
       }
     else
-      crdpun_state [n] . device_name [0] = 0;
+      pun_state [n] . device_name [0] = 0;
     return SCPE_OK;
   }
 

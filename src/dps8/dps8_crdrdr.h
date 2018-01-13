@@ -11,11 +11,11 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
-extern DEVICE crdrdr_dev;
-extern UNIT crdrdr_unit [N_CRDRDR_UNITS_MAX];
+extern DEVICE rdr_dev;
+extern UNIT rdr_unit [N_RDR_UNITS_MAX];
 
-void crdrdr_init(void);
-int crdrdr_iom_cmd (uint iomUnitIdx, uint chan);
-void crdrdrCardReady (int unitNum);
+void rdr_init(void);
+int rdr_iom_cmd (uint iomUnitIdx, uint chan);
+void rdrCardReady (int unitNum);
 void rdrProcessEvent (void);
 

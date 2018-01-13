@@ -188,8 +188,8 @@ static char * default_base_system_script [] =
     "set opc nunits=1",
     "set fnp nunits=8",
     "set urp nunits=3",
-    "set crdrdr nunits=1",
-    "set crdpun nunits=1",
+    "set rdr nunits=1",
+    "set pun nunits=1",
     "set prt nunits=17",
 #ifndef __MINGW64__
     "set absi nunits=1",
@@ -1262,6 +1262,16 @@ static char * default_base_system_script [] =
     // ; Attach FNP unit 7 (h) to IOM A, chan 027, dev_code 0
     "cable fnp,7,0,027,0",
 
+#ifdef NEW_CABLE
+    "kable IOMA 020 FNPD",
+    "kable IOMA 021 FNPA",
+    "kable IOMA 022 FNPB",
+    "kable IOMA 023 FNPC",
+    "kable IOMA 024 FNPE",
+    "kable IOMA 025 FNPF",
+    "kable IOMA 026 FNPG",
+    "kable IOMA 027 FNPH",
+#endif
     // ;;;
     // ;;; MPC
     // ;;;
@@ -1270,17 +1280,17 @@ static char * default_base_system_script [] =
     "cable urp,0,0,015, 0",
     "set urp0 device_name=urpa",
 
-    // ; Attach CRDRDR unit 0 to IOM 0, chan 015, dev_code 1
-    "cable crdrdr,0,0,015,1",
-    "set crdrdr0 device_name=rdra",
+    // ; Attach RDR unit 0 to IOM 0, chan 015, dev_code 1
+    "cable rdr,0,0,015,1",
+    "set rdr0 device_name=rdra",
 
     // ; Attach MPC unit 1 to IOM 0, char 016, dev_code 0
     "cable urp,1,0,016, 0",
     "set urp1 device_name=urpb",
 
-    // ; Attach CRDPUN unit 0 to IOM 0, chan 016, dev_code 1
-    "cable crdpun,0,0,016,1",
-    "set crdpun0 device_name=puna",
+    // ; Attach PUN unit 0 to IOM 0, chan 016, dev_code 1
+    "cable pun,0,0,016,1",
+    "set pun0 device_name=puna",
 
     // ; Attach MPC unit 2 to IOM 0, char 017, dev_code 0
     "cable urp,2,0,017,0",
@@ -1354,10 +1364,37 @@ static char * default_base_system_script [] =
     "cable prt,16,0,017,17",
     "set prt16 device_name=prtq",
 
+#ifdef NEW_CABLE
+    "kable IOM0 015 URP0",
+    "kable URP0 1 RDR0",
+    "kable IOM0 016 URP1",
+    "kable URP1 1 PUN0",
+    "kable IOM0 017 URP2",
+    "kable URP2 1 PRT0",
+    "kable URP2 2 PRT1",
+    "kable URP2 3 PRT2",
+    "kable URP2 4 PRT3",
+    "kable URP2 5 PRT4",
+    "kable URP2 6 PRT5",
+    "kable URP2 7 PRT6",
+    "kable URP2 8 PRT7",
+    "kable URP2 9 PRT8",
+    "kable URP2 10 PRT9",
+    "kable URP2 11 PRT10",
+    "kable URP2 12 PRT11",
+    "kable URP2 13 PRT12",
+    "kable URP2 14 PRT13",
+    "kable URP2 15 PRT14",
+    "kable URP2 16 PRT15",
+    "kable URP2 17 PRT16",
+#endif
 
     // ; Attach ABSI unit 0 to IOM 0, chan 032, dev_code 0
     "cable absi,0,0,032,0",
 
+#ifdef NEW_CABLE
+    "kable IOM0 032 ABSI0",
+#endif
 
     // ; Attach IOM unit 0 port A (0) to SCU unit 0, port 0
     "cable iom,0,0,0,0",
@@ -3576,8 +3613,8 @@ static void dps8_init (void)
     //mpc_init ();
     scu_init ();
     cpu_init ();
-    crdrdr_init ();
-    crdpun_init ();
+    rdr_init ();
+    pun_init ();
     prt_init ();
     urp_init ();
 #ifndef __MINGW64__
@@ -4014,7 +4051,7 @@ DEVICE * sim_devices[] =
     & iom_dev,
     & tape_dev,
     & mtp_dev,
-    & fnpDev,
+    & fnp_dev,
     & dsk_dev,
     & ipc_dev,
     & scu_dev,
@@ -4022,8 +4059,8 @@ DEVICE * sim_devices[] =
     & opc_dev,
     & sys_dev,
     & urp_dev,
-    & crdrdr_dev,
-    & crdpun_dev,
+    & rdr_dev,
+    & pun_dev,
     & prt_dev,
 #ifndef __MINGW64__
     & absi_dev,

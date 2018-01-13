@@ -312,8 +312,8 @@ static t_stat disk_set_type (UNUSED UNIT * uptr, UNUSED int32 value, const char 
       }
     disk_states[diskUnitIdx].typeIdx = i;
     dsk_unit[diskUnitIdx].capac = (t_addr) diskTypes[diskUnitIdx].capac;
-    sim_printf ("disk unit %d set to type %s\r\n",
-                diskUnitIdx, diskTypes[i].typename);
+    //sim_printf ("disk unit %d set to type %s\r\n",
+                //diskUnitIdx, diskTypes[i].typename);
     return SCPE_OK;
   }
 

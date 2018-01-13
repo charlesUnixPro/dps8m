@@ -275,26 +275,26 @@ static t_stat cable_periph (int uncable, int unit_num, int iomUnitIdx,
 
 
 
-static t_stat cable_crdrdr (int uncable, int crdrdr_unit_num, int iomUnitIdx,
+static t_stat cable_rdr (int uncable, int rdr_unit_num, int iomUnitIdx,
                             int chan_num, int dev_code)
   {
-    cable_periph (uncable, crdrdr_unit_num, iomUnitIdx, chan_num, dev_code,
-                  "cable_crdrdr", (int) crdrdr_dev.numunits, 
-                  & cables->cablesFromIomToCrdRdr[crdrdr_unit_num],
-                  DEVT_CRDRDR, chanTypePSI, & crdrdr_dev,
-                  & crdrdr_unit[crdrdr_unit_num], crdrdr_iom_cmd);
+    cable_periph (uncable, rdr_unit_num, iomUnitIdx, chan_num, dev_code,
+                  "cable_rdr", (int) rdr_dev.numunits, 
+                  & cables->cablesFromIomToRdr[rdr_unit_num],
+                  DEVT_RDR, chanTypePSI, & rdr_dev,
+                  & rdr_unit[rdr_unit_num], rdr_iom_cmd);
 
     return SCPE_OK;
   }
 
-static t_stat cable_crdpun (int uncable, int crdpun_unit_num, int iomUnitIdx,
+static t_stat cable_pun (int uncable, int pun_unit_num, int iomUnitIdx,
                             int chan_num, int dev_code)
   {
-    cable_periph (uncable, crdpun_unit_num, iomUnitIdx, chan_num, dev_code,
-                  "cable_crdpun", (int) crdpun_dev.numunits, 
-                  & cables->cablesFromIomToCrdPun[crdpun_unit_num],
-                  DEVT_CRDPUN, chanTypePSI, & crdrdr_dev,
-                  & crdpun_unit[crdpun_unit_num], crdpun_iom_cmd);
+    cable_periph (uncable, pun_unit_num, iomUnitIdx, chan_num, dev_code,
+                  "cable_pun", (int) pun_dev.numunits, 
+                  & cables->cablesFromIomToPun[pun_unit_num],
+                  DEVT_PUN, chanTypePSI, & rdr_dev,
+                  & pun_unit[pun_unit_num], pun_iom_cmd);
 
     return SCPE_OK;
   }
@@ -324,9 +324,9 @@ static t_stat cableFNP (int uncable, int fnpUnitNum, int iomUnitIdx,
                         int chan_num, int dev_code)
   {
     cable_periph (uncable, fnpUnitNum, iomUnitIdx, chan_num, dev_code,
-                  "cableFNP", (int) fnpDev.numunits, 
+                  "cableFNP", (int) fnp_dev.numunits, 
                   & cables->cablesFromIomToFnp[fnpUnitNum], DEVT_DN355,
-                  chanTypeDirect, & fnpDev, & fnp_unit[fnpUnitNum], fnpIOMCmd);
+                  chanTypeDirect, & fnp_dev, & fnp_unit[fnpUnitNum], fnp_iom_cmd);
     return SCPE_OK;
   }
  
@@ -738,13 +738,13 @@ t_stat sys_cable (int32 arg, const char * buf)
       {
         rc = cableFNP (arg, n1, n2, n3, n4);
       }
-    else if (strcasecmp (name, "CRDRDR") == 0)
+    else if (strcasecmp (name, "RDR") == 0)
       {
-        rc = cable_crdrdr (arg, n1, n2, n3, n4);
+        rc = cable_rdr (arg, n1, n2, n3, n4);
       }
-    else if (strcasecmp (name, "CRDPUN") == 0)
+    else if (strcasecmp (name, "PUN") == 0)
       {
-        rc = cable_crdpun (arg, n1, n2, n3, n4);
+        rc = cable_pun (arg, n1, n2, n3, n4);
       }
     else if (strcasecmp (name, "PRT") == 0)
       {
@@ -1282,7 +1282,7 @@ static t_stat kable_iom (int uncable, uint iom_unit_idx, char * name_save)
                            "CABLE IOMx IPCx",
                            & ipc_dev,
                            & kables->ipc_to_iom[unit_idx][ipc_port_num],
-                           DEV_T_IPC, chan_type_PSI,
+                           CTLR_T_IPC, chan_type_PSI,
                            & ipc_unit [unit_idx], dsk_iom_cmd); // XXX mtp_iom_cmd?
       }
 
@@ -1313,8 +1313,39 @@ static t_stat kable_iom (int uncable, uint iom_unit_idx, char * name_save)
                            "CABLE IOMx MTPx",
                            & mtp_dev,
                            & kables->mtp_to_iom[unit_idx][mtp_port_num],
-                           DEV_T_MTP, chan_type_PSI,
+                           CTLR_T_MTP, chan_type_PSI,
                            & mtp_unit [unit_idx], mt_iom_cmd); // XXX mtp_iom_cmd?
+      }
+
+// IOMx URPx
+    if (name_match (param, "URP", & unit_idx))
+      {
+        if (unit_idx >= N_URP_UNITS_MAX)
+          {
+            sim_printf ("error: CABLE IOM: URP unit number out of range <%d>\n", unit_idx);
+            return SCPE_ARG;
+          }
+
+        // extract URP port number
+        int urp_port_num = 0;
+        param = strtok_r (NULL, ", ", & name_save);
+        if (param)
+          urp_port_num = parseval (param);
+
+        if (urp_port_num < 0 || urp_port_num >= MAX_CTLR_PORTS)
+          {
+            sim_printf ("error: CABLE IOM: URP port number out of range <%d>\n", urp_port_num);
+            return SCPE_ARG;
+          }
+
+        return kable_ctlr (uncable,
+                           iom_unit_idx, (uint) chan_num,
+                           unit_idx, (uint) urp_port_num,
+                           "CABLE IOMx URPx",
+                           & urp_dev,
+                           & kables->urp_to_iom[unit_idx][urp_port_num],
+                           CTLR_T_URP, chan_type_PSI,
+                           & urp_unit [unit_idx], urp_iom_cmd);
       }
 
 // IOMx OPCx
@@ -1333,8 +1364,48 @@ static t_stat kable_iom (int uncable, uint iom_unit_idx, char * name_save)
                            "CABLE IOMx OPCx",
                            & opc_dev,
                            & kables->opc_to_iom[unit_idx][opc_port_num],
-                           DEV_T_OPC, chan_type_CPI,
-                           & opc_unit [unit_idx], opc_iom_cmd); // XXX mtp_iom_cmd?
+                           CTLR_T_OPC, chan_type_CPI,
+                           & opc_unit [unit_idx], opc_iom_cmd);
+      }
+
+// IOMx FNPx
+    if (name_match (param, "FNP", & unit_idx))
+      {
+        if (unit_idx >= N_FNP_UNITS_MAX)
+          {
+            sim_printf ("error: CABLE IOM: FNP unit number out of range <%d>\n", unit_idx);
+            return SCPE_ARG;
+          }
+
+        uint fnp_port_num = 0;
+        return kable_ctlr (uncable,
+                           iom_unit_idx, (uint) chan_num,
+                           unit_idx, fnp_port_num,
+                           "CABLE IOMx FNPx",
+                           & fnp_dev,
+                           & kables->fnp_to_iom[unit_idx][fnp_port_num],
+                           CTLR_T_FNP, chan_type_direct,
+                           & fnp_unit [unit_idx], fnp_iom_cmd);
+      }
+
+// IOMx ABSIx
+    if (name_match (param, "ABSI", & unit_idx))
+      {
+        if (unit_idx >= N_ABSI_UNITS_MAX)
+          {
+            sim_printf ("error: CABLE IOM: ABSI unit number out of range <%d>\n", unit_idx);
+            return SCPE_ARG;
+          }
+
+        uint absi_port_num = 0;
+        return kable_ctlr (uncable,
+                           iom_unit_idx, (uint) chan_num,
+                           unit_idx, absi_port_num,
+                           "CABLE IOMx ABSIx",
+                           & absi_dev,
+                           & kables->absi_to_iom[unit_idx][absi_port_num],
+                           CTLR_T_ABSI, chan_type_direct,
+                           & absi_unit [unit_idx], absi_iom_cmd);
       }
 
     else
@@ -1382,7 +1453,7 @@ static t_stat kable_periph (int uncable,
                             uint ctlr_unit_idx,
                             uint dev_code,
                             struct ctlr_to_dev_s * here,
-                            uint tape_unit_idx,
+                            uint unit_idx,
                             iomCmd * iom_cmd,
                             struct dev_to_ctlr_s * there,
                             char * service)
@@ -1546,6 +1617,101 @@ static t_stat kable_ipc (int uncable, uint ctlr_unit_idx, char * name_save)
       }
   }
 
+//     cable URPx dev_code [RDRx PUNx PRTx]
+
+static t_stat kable_urp (int uncable, uint ctlr_unit_idx, char * name_save)
+  {
+    if (ctlr_unit_idx >= urp_dev.numunits)
+      {
+        sim_printf ("error: CABLE URP: controller unit number out of range <%d>\n", 
+                    ctlr_unit_idx);
+        return SCPE_ARG;
+      }
+
+    int dev_code = getval (& name_save, "URP device code");
+
+    if (dev_code < 0 || dev_code >= MAX_CHANNELS)
+      {
+        sim_printf ("error: CABLE URP device code out of range <%d>\n", 
+                    dev_code);
+        return SCPE_ARG;
+      }
+
+    // extract tape index
+    char * param = strtok_r (NULL, ", ", & name_save);
+    if (! param)
+      {
+        sim_printf ("error: CABLE IOM can't parse device name\n");
+        return SCPE_ARG;
+      }
+    uint unit_idx;
+
+
+// URPx RDRx
+    if (name_match (param, "RDR", & unit_idx))
+      {
+        if (unit_idx >= N_RDR_UNITS_MAX)
+          {
+            sim_printf ("error: CABLE IOM: DISK unit number out of range <%d>\n", unit_idx);
+            return SCPE_ARG;
+          }
+
+        return kable_periph (uncable,
+                             ctlr_unit_idx,
+                             (uint) dev_code,
+                             & kables->urp_to_urd[ctlr_unit_idx][dev_code],
+                             unit_idx,
+                             rdr_iom_cmd, // XXX
+                             & kables->rdr_to_urp[unit_idx],
+                             "CABLE URPx RDRx");
+      }
+
+// URPx PUNx
+    if (name_match (param, "PUN", & unit_idx))
+      {
+        if (unit_idx >= N_PUN_UNITS_MAX)
+          {
+            sim_printf ("error: CABLE IOM: DISK unit number out of range <%d>\n", unit_idx);
+            return SCPE_ARG;
+          }
+
+        return kable_periph (uncable,
+                             ctlr_unit_idx,
+                             (uint) dev_code,
+                             & kables->urp_to_urd[ctlr_unit_idx][dev_code],
+                             unit_idx,
+                             pun_iom_cmd, // XXX
+                             & kables->pun_to_urp[unit_idx],
+                             "CABLE URPx PUNx");
+      }
+
+// URPx PRTx
+    if (name_match (param, "PRT", & unit_idx))
+      {
+        if (unit_idx >= N_PRT_UNITS_MAX)
+          {
+            sim_printf ("error: CABLE IOM: DISK unit number out of range <%d>\n", unit_idx);
+            return SCPE_ARG;
+          }
+
+        return kable_periph (uncable,
+                             ctlr_unit_idx,
+                             (uint) dev_code,
+                             & kables->urp_to_urd[ctlr_unit_idx][dev_code],
+                             unit_idx,
+                             prt_iom_cmd, // XXX
+                             & kables->prt_to_urp[unit_idx],
+                             "CABLE URPx PRTx");
+      }
+
+
+    else
+      {
+        sim_printf ("cable URP: can't parse device name\n");
+        return SCPE_ARG;
+      }
+  }
+
 t_stat sys_kable (int32 arg, const char * buf)
   {
     char * copy = strdup (buf);
@@ -1573,6 +1739,8 @@ t_stat sys_kable (int32 arg, const char * buf)
       rc = kable_mtp (arg, unit_num, name_save);
     else if (name_match (name, "IPC", & unit_num))
       rc = kable_ipc (arg, unit_num, name_save);
+    else if (name_match (name, "URP", & unit_num))
+      rc = kable_urp (arg, unit_num, name_save);
     else
       {
         sim_printf ("error: cable: invalid name <%s>\n", name);
@@ -1602,10 +1770,10 @@ static void cable_init (void)
       cables->cablesFromIomToCon[i].iomUnitIdx = -1;
     for (int i = 0; i < N_DSK_UNITS_MAX; i ++)
       cables->cablesFromIomToDsk[i].iomUnitIdx = -1;
-    for (int i = 0; i < N_CRDRDR_UNITS_MAX; i ++)
-      cables->cablesFromIomToCrdRdr[i].iomUnitIdx = -1;
-    for (int i = 0; i < N_CRDPUN_UNITS_MAX; i ++)
-      cables->cablesFromIomToCrdPun[i].iomUnitIdx = -1;
+    for (int i = 0; i < N_RDR_UNITS_MAX; i ++)
+      cables->cablesFromIomToRdr[i].iomUnitIdx = -1;
+    for (int i = 0; i < N_PUN_UNITS_MAX; i ++)
+      cables->cablesFromIomToPun[i].iomUnitIdx = -1;
     for (int i = 0; i < N_PRT_UNITS_MAX; i ++)
       cables->cablesFromIomToPrt[i].iomUnitIdx = -1;
     for (int i = 0; i < N_URP_UNITS_MAX; i ++)
@@ -1650,7 +1818,7 @@ t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
                char * dt [] =
                  {
                    "DEVT_NONE", "DEVT_TAPE", "DEVT_CON", "DEVT_DISK", 
-                   "DEVT_MPC", "DEVT_DN355", "DEVT_CRDRDR", "DEVT_CRDPUN",
+                   "DEVT_MPC", "DEVT_DN355", "DEVT_RDR", "DEVT_PUN",
                    "DEVT_PRT", "DEVT_URP", "DEVT_ABSI"};
                sim_printf ("iom %3o chan %3o dev %3o: %s unit %d devp %p "
                            "unitp %p cmdp %p\n", i, c, d,

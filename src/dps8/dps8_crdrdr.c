@@ -54,17 +54,17 @@
  */
 
 
-#define N_CRDRDR_UNITS 1 // default
+#define N_RDR_UNITS 1 // default
 
-static t_stat crdrdr_reset (DEVICE * dptr);
-static t_stat crdrdr_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
-static t_stat crdrdr_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
-static t_stat crdrdr_show_device_name (FILE *st, UNIT *uptr, int val, const void *desc);
-static t_stat crdrdr_set_device_name (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat rdr_reset (DEVICE * dptr);
+static t_stat rdr_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat rdr_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat rdr_show_device_name (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat rdr_set_device_name (UNIT * uptr, int32 value, const char * cptr, void * desc);
 
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE )
-UNIT crdrdr_unit [N_CRDRDR_UNITS_MAX] =
+UNIT rdr_unit [N_RDR_UNITS_MAX] =
   {
     {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
     {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
@@ -84,9 +84,9 @@ UNIT crdrdr_unit [N_CRDRDR_UNITS_MAX] =
     {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL}
   };
 
-#define CRDRDR_UNIT_NUM(uptr) ((uptr) - crdrdr_unit)
+#define RDR_UNIT_NUM(uptr) ((uptr) - rdr_unit)
 
-static DEBTAB crdrdr_dt [] =
+static DEBTAB rdr_dt [] =
   {
     { "NOTIFY", DBG_NOTIFY, NULL },
     { "INFO", DBG_INFO, NULL },
@@ -99,7 +99,7 @@ static DEBTAB crdrdr_dt [] =
 
 #define UNIT_WATCH UNIT_V_UF
 
-static MTAB crdrdr_mod [] =
+static MTAB rdr_mod [] =
   {
     { UNIT_WATCH, 1, "WATCH", "WATCH", 0, 0, NULL, NULL },
     { UNIT_WATCH, 0, "NOWATCH", "NOWATCH", 0, 0, NULL, NULL },
@@ -108,9 +108,9 @@ static MTAB crdrdr_mod [] =
       0,            /* match */
       "NUNITS",     /* print string */
       "NUNITS",         /* match string */
-      crdrdr_set_nunits, /* validation routine */
-      crdrdr_show_nunits, /* display routine */
-      "Number of CRDRDR units in the system", /* value descriptor */
+      rdr_set_nunits, /* validation routine */
+      rdr_show_nunits, /* display routine */
+      "Number of RDR units in the system", /* value descriptor */
       NULL // Help
     },
     {
@@ -118,8 +118,8 @@ static MTAB crdrdr_mod [] =
       0,            /* match */
       "DEVICE_NAME",     /* print string */
       "DEVICE_NAME",         /* match string */
-      crdrdr_set_device_name, /* validation routine */
-      crdrdr_show_device_name, /* display routine */
+      rdr_set_device_name, /* validation routine */
+      rdr_show_device_name, /* display routine */
       "Select the boot drive", /* value descriptor */
       NULL          // help
     },
@@ -128,13 +128,12 @@ static MTAB crdrdr_mod [] =
   };
 
 
-// No crdrdrs known to multics had more than 2^24 sectors...
-DEVICE crdrdr_dev = {
-    "CRDRDR",       /*  name */
-    crdrdr_unit,    /* units */
+DEVICE rdr_dev = {
+    "RDR",       /*  name */
+    rdr_unit,    /* units */
     NULL,         /* registers */
-    crdrdr_mod,     /* modifiers */
-    N_CRDRDR_UNITS, /* #units */
+    rdr_mod,     /* modifiers */
+    N_RDR_UNITS, /* #units */
     10,           /* address radix */
     24,           /* address width */
     1,            /* address increment */
@@ -142,14 +141,14 @@ DEVICE crdrdr_dev = {
     36,           /* data width */
     NULL,         /* examine */
     NULL,         /* deposit */ 
-    crdrdr_reset,   /* reset */
+    rdr_reset,   /* reset */
     NULL,         /* boot */
     NULL,         /* attach */
     NULL,         /* detach */
     NULL,         /* context */
     DEV_DEBUG,    /* flags */
     0,            /* debug control flags */
-    crdrdr_dt,      /* debug flag names */
+    rdr_dt,      /* debug flag names */
     NULL,         /* memory size change */
     NULL,         /* logical name */
     NULL,         // help
@@ -166,9 +165,9 @@ enum deckFormat { sevenDeck, cardDeck, streamDeck };
 
 // Windows cannot unlink an open file; rework the code to unlink the
 // submitted card deck after closing it.
-//  -- Add fname tp crdrdr_state
+//  -- Add fname tp rdr_state
 //  -- Add unlink calls at eof close
-static struct crdrdr_state
+static struct rdr_state
   {
     char device_name [MAX_DEV_NAME_LEN];
     //FILE * deckfd;
@@ -177,23 +176,23 @@ static struct crdrdr_state
     enum { deckStart = 0, eof1Sent, uid1Sent, inputSent, eof2Sent } deckState;
     enum deckFormat deckFormat;
     char fname [PATH_MAX+1];
-  } crdrdr_state [N_CRDRDR_UNITS_MAX];
+  } rdr_state [N_RDR_UNITS_MAX];
 
 
-static int findCrdrdrUnit (int iomUnitIdx, int chan_num, int dev_code)
+static int findRdrUnit (int iomUnitIdx, int chan_num, int dev_code)
   {
-    for (int i = 0; i < N_CRDRDR_UNITS_MAX; i ++)
+    for (int i = 0; i < N_RDR_UNITS_MAX; i ++)
       {
-        if (iomUnitIdx == cables -> cablesFromIomToCrdRdr [i] . iomUnitIdx &&
-            chan_num     == cables -> cablesFromIomToCrdRdr [i] . chan_num     &&
-            dev_code     == cables -> cablesFromIomToCrdRdr [i] . dev_code)
+        if (iomUnitIdx == cables -> cablesFromIomToRdr [i] . iomUnitIdx &&
+            chan_num     == cables -> cablesFromIomToRdr [i] . chan_num     &&
+            dev_code     == cables -> cablesFromIomToRdr [i] . dev_code)
           return i;
       }
     return -1;
   }
 
 /*
- * crdrdr_init()
+ * rdr_init()
  *
  */
 
@@ -201,29 +200,29 @@ static int findCrdrdrUnit (int iomUnitIdx, int chan_num, int dev_code)
 static void usr2signal (UNUSED int signum)
   {
 sim_printf ("crd rdr signal caught\n");
-    crdrdrCardReady (0);
+    rdrCardReady (0);
   }
 #endif
 
 // Once-only initialization
 
-void crdrdr_init (void)
+void rdr_init (void)
   {
-    memset (crdrdr_state, 0, sizeof (crdrdr_state));
-    for (uint i = 0; i < N_CRDRDR_UNITS_MAX; i ++)
-      crdrdr_state [i] . deckfd = -1;
+    memset (rdr_state, 0, sizeof (rdr_state));
+    for (uint i = 0; i < N_RDR_UNITS_MAX; i ++)
+      rdr_state [i] . deckfd = -1;
 #if 0
     signal (SIGUSR2, usr2signal);
 #endif
   }
 
-static t_stat crdrdr_reset (UNUSED DEVICE * dptr)
+static t_stat rdr_reset (UNUSED DEVICE * dptr)
   {
 #if 0
     for (uint i = 0; i < dptr -> numunits; i ++)
       {
-        // sim_crdrdr_reset (& crdrdr_unit [i]);
-        // sim_cancel (& crdrdr_unit [i]);
+        // sim_rdr_reset (& rdr_unit [i]);
+        // sim_cancel (& rdr_unit [i]);
       }
 #endif
     return SCPE_OK;
@@ -450,18 +449,18 @@ static int getRawCardData (int fd, uint8_t * buffer)
     return (int) rc;
   }
 
-static int crdrdrReadRecord (uint iomUnitIdx, uint chan)
+static int rdrReadRecord (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    sim_debug (DBG_NOTIFY, & crdrdr_dev, "Read binary\n");
-    int unitIdx = findCrdrdrUnit ((int) iomUnitIdx, (int) chan, p -> IDCW_DEV_CODE);
+    sim_debug (DBG_NOTIFY, & rdr_dev, "Read binary\n");
+    int unitIdx = findRdrUnit ((int) iomUnitIdx, (int) chan, p -> IDCW_DEV_CODE);
     if (unitIdx < 0)
       {
-        sim_warn ("crdrdrReadRecord can't find unit\n");
+        sim_warn ("rdrReadRecord can't find unit\n");
         return -1;
       }
 
-    if (crdrdr_state [unitIdx] . deckfd < 0)
+    if (rdr_state [unitIdx] . deckfd < 0)
        {
 empty:;
           p -> stati = 04201; // hopper empty
@@ -482,14 +481,14 @@ sim_printf ("hopper empty\n");
 
     static int jobNo = 0;
 
-    switch (crdrdr_state [unitIdx] . deckState)
+    switch (rdr_state [unitIdx] . deckState)
       {
         case deckStart:
           {
             strcpy ((char *) cardImage, "++EOF");
             l = strlen ((char *) cardImage);
             thisCard = cardDeck;
-            crdrdr_state [unitIdx] . deckState = eof1Sent;
+            rdr_state [unitIdx] . deckState = eof1Sent;
             jobNo ++;
           }
           break;
@@ -499,28 +498,28 @@ sim_printf ("hopper empty\n");
             sprintf ((char *) cardImage, "++UID %d", jobNo);
             l = strlen ((char *) cardImage);
             thisCard = cardDeck;
-            crdrdr_state [unitIdx] . deckState = uid1Sent;
+            rdr_state [unitIdx] . deckState = uid1Sent;
           }
           break;
 
         case uid1Sent:
           {
-            int rc = getCardLine (crdrdr_state [unitIdx] . deckfd, cardImage);
+            int rc = getCardLine (rdr_state [unitIdx] . deckfd, cardImage);
             if (rc)
               {
-                close (crdrdr_state [unitIdx] . deckfd);
+                close (rdr_state [unitIdx] . deckfd);
 // Windows can't unlink open files; do it now...
-                rc = unlink (crdrdr_state [unitIdx] . fname);
+                rc = unlink (rdr_state [unitIdx] . fname);
                 if (rc)
-                  perror ("crdrdr deck unlink\n");
-                crdrdr_state [unitIdx] . deckfd = -1;
-                crdrdr_state [unitIdx] . deckState = deckStart;
+                  perror ("card reader deck unlink\n");
+                rdr_state [unitIdx] . deckfd = -1;
+                rdr_state [unitIdx] . deckState = deckStart;
                 goto empty;
               }
             l = strlen ((char *) cardImage);
             thisCard = cardDeck;
             if (strncasecmp ((char *) cardImage, "++input", 7) == 0)
-              crdrdr_state [unitIdx] . deckState = inputSent;
+              rdr_state [unitIdx] . deckState = inputSent;
           }
           break;
 
@@ -528,15 +527,15 @@ sim_printf ("hopper empty\n");
 
         case inputSent:
           {
-            switch (crdrdr_state [unitIdx] . deckFormat)
+            switch (rdr_state [unitIdx] . deckFormat)
               {
                 case cardDeck:
                   {
-                    int rc = getCardLine (crdrdr_state [unitIdx] . deckfd, cardImage);
+                    int rc = getCardLine (rdr_state [unitIdx] . deckfd, cardImage);
                     if (rc)
                       {
                         strcpy ((char *) cardImage, "++EOF");
-                        crdrdr_state [unitIdx] . deckState = eof2Sent;
+                        rdr_state [unitIdx] . deckState = eof2Sent;
                       }
                     l = strlen ((char *) cardImage);
                   }
@@ -545,7 +544,7 @@ sim_printf ("hopper empty\n");
             
               case streamDeck:
                 {
-                  l = (size_t) getCardData (crdrdr_state [unitIdx] . deckfd, (char *) cardImage);
+                  l = (size_t) getCardData (rdr_state [unitIdx] . deckfd, (char *) cardImage);
                   if (l)
                     {
                       thisCard = streamDeck;
@@ -554,7 +553,7 @@ sim_printf ("hopper empty\n");
                     {
                       strcpy ((char *) cardImage, "++EOF");
                       l = strlen ((char *) cardImage);
-                      crdrdr_state [unitIdx] . deckState = eof2Sent;
+                      rdr_state [unitIdx] . deckState = eof2Sent;
                       thisCard = cardDeck;
                     }
                 }
@@ -562,7 +561,7 @@ sim_printf ("hopper empty\n");
 
               case sevenDeck:
                 {
-                  l = (size_t) getRawCardData (crdrdr_state [unitIdx] . deckfd, rawCardImage);
+                  l = (size_t) getRawCardData (rdr_state [unitIdx] . deckfd, rawCardImage);
                   if (l)
                     {
                       thisCard = sevenDeck;
@@ -571,7 +570,7 @@ sim_printf ("hopper empty\n");
                     {
                       strcpy ((char *) cardImage, "++EOF");
                       l = strlen ((char *) cardImage);
-                      crdrdr_state [unitIdx] . deckState = eof2Sent;
+                      rdr_state [unitIdx] . deckState = eof2Sent;
                       thisCard = cardDeck;
                     }
                 }
@@ -586,13 +585,13 @@ sim_printf ("hopper empty\n");
             sprintf ((char *) cardImage, "++UID %d", jobNo);
             l = strlen ((char *) cardImage);
             thisCard = cardDeck;
-            crdrdr_state [unitIdx] . deckState = deckStart;
-            close (crdrdr_state [unitIdx] . deckfd);
+            rdr_state [unitIdx] . deckState = deckStart;
+            close (rdr_state [unitIdx] . deckfd);
 // Windows can't unlink open files; do it now...
-            int rc = unlink (crdrdr_state [unitIdx] . fname);
+            int rc = unlink (rdr_state [unitIdx] . fname);
             if (rc)
-              perror ("crdrdr deck unlink\n");
-            crdrdr_state [unitIdx] . deckfd = -1;
+              perror ("card reader deck unlink\n");
+            rdr_state [unitIdx] . deckfd = -1;
           }
           break;
       }
@@ -643,7 +642,7 @@ sim_printf ("\n");
           {
             if (l > 80)
               {
-                sim_warn ("Whups. crdrdr l %lu > 80; truncating.\n", l);
+                sim_warn ("Whups. rdr l %lu > 80; truncating.\n", l);
                 l = 80;
                 //cardImage [l] = 0;
               }
@@ -659,7 +658,7 @@ sim_printf ("\n");
 
             if (tally > 27)
               {
-                sim_warn ("Whups. crdrdr tally %d > 27; truncating.\n", tally);
+                sim_warn ("Whups. rdr tally %d > 27; truncating.\n", tally);
                 tally = 27;
               }
 
@@ -734,30 +733,30 @@ sim_printf ("\n");
     return 0;
   }
 
-static int crdrdr_cmd (uint iomUnitIdx, uint chan)
+static int rdr_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    int unitIdx = findCrdrdrUnit ((int) iomUnitIdx, (int) chan, p -> IDCW_DEV_CODE);
+    int unitIdx = findRdrUnit ((int) iomUnitIdx, (int) chan, p -> IDCW_DEV_CODE);
     if (unitIdx < 0)
       {
-        sim_warn ("crdrdr_cmd can't find unit\n");
+        sim_warn ("rdr_cmd can't find unit\n");
         return -1;
       }
-    crdrdr_state [unitIdx] . running = true;
+    rdr_state [unitIdx] . running = true;
 
-    sim_debug (DBG_TRACE, & crdrdr_dev, "IDCW_DEV_CMD %o\n", p -> IDCW_DEV_CMD);
+    sim_debug (DBG_TRACE, & rdr_dev, "IDCW_DEV_CMD %o\n", p -> IDCW_DEV_CMD);
     switch (p -> IDCW_DEV_CMD)
       {
         case 000: // CMD 00 Request status
           {
             p -> stati = 04000;
-            sim_debug (DBG_NOTIFY, & crdrdr_dev, "Request status\n");
+            sim_debug (DBG_NOTIFY, & rdr_dev, "Request status\n");
           }
           break;
 
         case 001: // CMD 01 Read binary
           {
-            int rc = crdrdrReadRecord (iomUnitIdx, chan);
+            int rc = rdrReadRecord (iomUnitIdx, chan);
             if (rc)
               return rc;
           }
@@ -766,13 +765,13 @@ static int crdrdr_cmd (uint iomUnitIdx, uint chan)
         case 040: // CMD 40 Reset status
           {
             p -> stati = 04000;
-            sim_debug (DBG_NOTIFY, & crdrdr_dev, "Reset status\n");
+            sim_debug (DBG_NOTIFY, & rdr_dev, "Reset status\n");
           }
           break;
 
         default:
           {
-            sim_warn ("crdrdr daze %o\n", p -> IDCW_DEV_CMD);
+            sim_warn ("card reader daze %o\n", p -> IDCW_DEV_CMD);
             p -> stati = 04501; // cmd reject, invalid opcode
             p -> chanStatus = chanStatIncorrectDCW;
           }
@@ -786,16 +785,16 @@ static void submit (enum deckFormat fmt, char * fname)
     //FILE * deckfd = fopen (fname, "r");
     int deckfd = open (fname, O_RDONLY);
     if (deckfd < 0)
-      perror ("crdrdr deck open\n");
+      perror ("card reader deck open\n");
 // Windows can't unlink open files; save the file name and unlink on close.
     // int rc = unlink (fname); // this only works on UNIX
     sim_printf ("submit %s\n", fname);
-    strcpy (crdrdr_state [0 /* ASSUME0 */] . fname, fname);
-    crdrdr_state [0 /* ASSUME0 */] . deckfd = deckfd;
-    crdrdr_state [0 /* ASSUME0 */] . deckState = deckStart;
-    crdrdr_state [0 /* ASSUME0 */] . deckFormat = fmt;
+    strcpy (rdr_state [0 /* ASSUME0 */] . fname, fname);
+    rdr_state [0 /* ASSUME0 */] . deckfd = deckfd;
+    rdr_state [0 /* ASSUME0 */] . deckState = deckStart;
+    rdr_state [0 /* ASSUME0 */] . deckFormat = fmt;
     if (deckfd >= 0)
-      crdrdrCardReady (0 /*ASSUME0*/);
+      rdrCardReady (0 /*ASSUME0*/);
   }
 
 void rdrProcessEvent ()
@@ -807,10 +806,10 @@ void rdrProcessEvent ()
     strcpy(qdir,getenv("TEMP"));
     strcat(qdir,"/rdra");
 #endif
-    if (! crdrdr_state [0 /* ASSUME0 */] . running)
+    if (! rdr_state [0 /* ASSUME0 */] . running)
       return;
 #if 0
-    if (crdrdr_state [0 /* ASSUME0 */] . deckfd >= 0)
+    if (rdr_state [0 /* ASSUME0 */] . deckfd >= 0)
       return;
 #endif
     DIR * dp;
@@ -829,7 +828,7 @@ void rdrProcessEvent ()
         strcpy (fqname, qdir);
         strcat (fqname, "/");
         strcat (fqname, entry -> d_name);
-        if (crdrdr_state [0 /* ASSUME0 */] . deckfd < 0)
+        if (rdr_state [0 /* ASSUME0 */] . deckfd < 0)
           {
             if (strncmp (entry -> d_name, "cdeck.", 6) == 0)
               {
@@ -853,14 +852,14 @@ void rdrProcessEvent ()
             int rc = unlink (fqname);
             if (rc)
               perror ("crdrdr discard unlink\n");
-            if (crdrdr_state [0 /* ASSUME0 */] . deckfd >= 0)
+            if (rdr_state [0 /* ASSUME0 */] . deckfd >= 0)
               {
-                close (crdrdr_state [0 /* ASSUME0 */] . deckfd);
-                rc = unlink (crdrdr_state [0 /* ASSUME0 */] . fname);
+                close (rdr_state [0 /* ASSUME0 */] . deckfd);
+                rc = unlink (rdr_state [0 /* ASSUME0 */] . fname);
                 if (rc)
                   perror ("crdrdr deck unlink\n");
-                crdrdr_state [0 /* ASSUME0 */] . deckfd = -1;
-                crdrdr_state [0 /* ASSUME0 */] . deckState = deckStart;
+                rdr_state [0 /* ASSUME0 */] . deckfd = -1;
+                rdr_state [0 /* ASSUME0 */] . deckState = deckStart;
                 break;
              }
           }
@@ -869,65 +868,65 @@ void rdrProcessEvent ()
   }
 
 
-void crdrdrCardReady (int unitNum)
+void rdrCardReady (int unitNum)
   {
-    send_special_interrupt ((uint) cables -> cablesFromIomToCrdRdr [unitNum] . iomUnitIdx,
-                            (uint) cables -> cablesFromIomToCrdRdr [unitNum] . chan_num,
-                            (uint) cables -> cablesFromIomToCrdRdr [unitNum] . dev_code,
+    send_special_interrupt ((uint) cables -> cablesFromIomToRdr [unitNum] . iomUnitIdx,
+                            (uint) cables -> cablesFromIomToRdr [unitNum] . chan_num,
+                            (uint) cables -> cablesFromIomToRdr [unitNum] . dev_code,
                             0377, 0377 /* tape drive to ready */);
   }
 
-int crdrdr_iom_cmd (uint iomUnitIdx, uint chan)
+int rdr_iom_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
 
     // Is it an IDCW?
     if (p -> DCW_18_20_CP == 7)
       {
-        return crdrdr_cmd (iomUnitIdx, chan);
+        return rdr_cmd (iomUnitIdx, chan);
       }
     sim_printf ("%s expected IDCW\n", __func__);
     return -1;
   }
 
-static t_stat crdrdr_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)
+static t_stat rdr_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)
   {
-    sim_printf("Number of CRDRDR units in system is %d\n", crdrdr_dev . numunits);
+    sim_printf("Number of RDR units in system is %d\n", rdr_dev . numunits);
     return SCPE_OK;
   }
 
-static t_stat crdrdr_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, const char * cptr, UNUSED void * desc)
+static t_stat rdr_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, const char * cptr, UNUSED void * desc)
   {
     int n = atoi (cptr);
-    if (n < 1 || n > N_CRDRDR_UNITS_MAX)
+    if (n < 1 || n > N_RDR_UNITS_MAX)
       return SCPE_ARG;
-    crdrdr_dev . numunits = (uint32) n;
+    rdr_dev . numunits = (uint32) n;
     return SCPE_OK;
   }
 
-static t_stat crdrdr_show_device_name (UNUSED FILE * st, UNIT * uptr,
+static t_stat rdr_show_device_name (UNUSED FILE * st, UNIT * uptr,
                                        UNUSED int val, UNUSED const void * desc)
   {
-    long n = CRDRDR_UNIT_NUM (uptr);
-    if (n < 0 || n >= N_CRDRDR_UNITS_MAX)
+    long n = RDR_UNIT_NUM (uptr);
+    if (n < 0 || n >= N_RDR_UNITS_MAX)
       return SCPE_ARG;
-    sim_printf("Card reader device name is %s\n", crdrdr_state [n] . device_name);
+    sim_printf("Card reader device name is %s\n", rdr_state [n] . device_name);
     return SCPE_OK;
   }
 
-static t_stat crdrdr_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
+static t_stat rdr_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
                                     UNUSED const char * cptr, UNUSED void * desc)
   {
-    long n = CRDRDR_UNIT_NUM (uptr);
-    if (n < 0 || n >= N_CRDRDR_UNITS_MAX)
+    long n = RDR_UNIT_NUM (uptr);
+    if (n < 0 || n >= N_RDR_UNITS_MAX)
       return SCPE_ARG;
     if (cptr)
       {
-        strncpy (crdrdr_state [n] . device_name, cptr, MAX_DEV_NAME_LEN - 1);
-        crdrdr_state [n] . device_name [MAX_DEV_NAME_LEN - 1] = 0;
+        strncpy (rdr_state [n] . device_name, cptr, MAX_DEV_NAME_LEN - 1);
+        rdr_state [n] . device_name [MAX_DEV_NAME_LEN - 1] = 0;
       }
     else
-      crdrdr_state [n] . device_name [0] = 0;
+      rdr_state [n] . device_name [0] = 0;
     return SCPE_OK;
   }
 

@@ -51,32 +51,19 @@
 
 #define N_PRU_UNITS 1 // default
 
-static t_stat urp_reset (DEVICE * dptr);
-static t_stat urp_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
-static t_stat urp_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
-static t_stat urp_show_device_name (FILE *st, UNIT *uptr, int val, const void *desc);
-static t_stat urp_set_device_name (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static struct urp_state
+  {
+    char device_name [MAX_DEV_NAME_LEN];
+  } urp_state [N_URP_UNITS_MAX];
 
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE )
 UNIT urp_unit [N_URP_UNITS_MAX] =
   {
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL}
+    [0 ... N_URP_UNITS_MAX-1] =
+      {
+        UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL
+      }
   };
 
 #define URPUNIT_NUM(uptr) ((uptr) - urp_unit)
@@ -91,6 +78,47 @@ static DEBTAB urp_dt [] =
     { "ALL", DBG_ALL, NULL }, // don't move as it messes up DBG message
     { NULL, 0, NULL }
   };
+
+static t_stat urp_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)
+  {
+    sim_printf("Number of URPunits in system is %d\n", urp_dev . numunits);
+    return SCPE_OK;
+  }
+
+static t_stat urp_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, const char * cptr, UNUSED void * desc)
+  {
+    int n = atoi (cptr);
+    if (n < 1 || n > N_URP_UNITS_MAX)
+      return SCPE_ARG;
+    urp_dev . numunits = (uint32) n;
+    return SCPE_OK;
+  }
+
+static t_stat urp_show_device_name (UNUSED FILE * st, UNIT * uptr,
+                                       UNUSED int val, UNUSED const void * desc)
+  {
+    int n = (int) URPUNIT_NUM (uptr);
+    if (n < 0 || n >= N_URP_UNITS_MAX)
+      return SCPE_ARG;
+    sim_printf("Card punch device name is %s\n", urp_state [n] . device_name);
+    return SCPE_OK;
+  }
+
+static t_stat urp_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
+                                    UNUSED const char * cptr, UNUSED void * desc)
+  {
+    int n = (int) URPUNIT_NUM (uptr);
+    if (n < 0 || n >= N_URP_UNITS_MAX)
+      return SCPE_ARG;
+    if (cptr)
+      {
+        strncpy (urp_state [n] . device_name, cptr, MAX_DEV_NAME_LEN - 1);
+        urp_state [n] . device_name [MAX_DEV_NAME_LEN - 1] = 0;
+      }
+    else
+      urp_state [n] . device_name [0] = 0;
+    return SCPE_OK;
+  }
 
 #define UNIT_WATCH UNIT_V_UF
 
@@ -115,12 +143,17 @@ static MTAB urp_mod [] =
       "DEVICE_NAME",         /* match string */
       urp_set_device_name, /* validation routine */
       urp_show_device_name, /* display routine */
-      "Select the boot drive", /* value descriptor */
+      "Set the device name", /* value descriptor */
       NULL          // help
     },
 
     { 0, 0, NULL, NULL, 0, 0, NULL, NULL }
   };
+
+static t_stat urp_reset (UNUSED DEVICE * dptr)
+  {
+    return SCPE_OK;
+  }
 
 
 DEVICE urp_dev = {
@@ -153,11 +186,6 @@ DEVICE urp_dev = {
     NULL
 };
 
-static struct urp_state
-  {
-    char device_name [MAX_DEV_NAME_LEN];
-  } urp_state [N_URP_UNITS_MAX];
-
 /*
  * urp_init()
  *
@@ -168,32 +196,8 @@ static struct urp_state
 void urp_init (void)
   {
     memset (urp_state, 0, sizeof (urp_state));
-    //for (int i = 0; i < N_URP_UNITS_MAX; i ++)
-      //urp_state [i] . urpfile = -1;
   }
 
-static t_stat urp_reset (UNUSED DEVICE * dptr)
-  {
-#if 0
-    for (uint i = 0; i < dptr -> numunits; i ++)
-      {
-        // sim_urp_reset (& urp_unit [i]);
-        //sim_cancel (& urp_unit [i]);
-      }
-#endif
-    return SCPE_OK;
-  }
-
-#ifndef QUIET_UNUSED
-// Given an array of word36 and a 9bit char offset, return the char
-
-static word9 gc (word36 * b, uint os)
-  {
-    uint wordno = os / 4;
-    uint charno = os % 4;
-    return (word9) getbits36_9 (b [wordno], charno * 9);
-  }
-#endif
 
 static int urp_cmd (uint iomUnitIdx, uint chan)
   {
@@ -588,51 +592,24 @@ int urp_iom_cmd (uint iomUnitIdx, uint chan)
 
     if (p -> DCW_18_20_CP == 7)
       {
+#ifdef NEW_CABLE
+        uint dev_code = p->IDCW_DEV_CODE;
+        if (dev_code == 0)
+          return urp_cmd (iomUnitIdx, chan);
+        uint urp_unit_idx = kables->iom_to_ctlr[iomUnitIdx][chan].ctlr_unit_idx;
+        iomCmd * cmd =  kables->urp_to_urd[urp_unit_idx][dev_code].iom_cmd;
+        if (! cmd)
+          {
+            sim_warn ("URP can't find command callback\n");
+            return -1;
+          }
+        return cmd (iomUnitIdx, chan);
+#else
         return urp_cmd (iomUnitIdx, chan);
+#endif
       }
     sim_printf ("%s expected IDCW\n", __func__);
     return -1;
-  }
-
-static t_stat urp_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)
-  {
-    sim_printf("Number of URPunits in system is %d\n", urp_dev . numunits);
-    return SCPE_OK;
-  }
-
-static t_stat urp_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, const char * cptr, UNUSED void * desc)
-  {
-    int n = atoi (cptr);
-    if (n < 1 || n > N_URP_UNITS_MAX)
-      return SCPE_ARG;
-    urp_dev . numunits = (uint32) n;
-    return SCPE_OK;
-  }
-
-static t_stat urp_show_device_name (UNUSED FILE * st, UNIT * uptr,
-                                       UNUSED int val, UNUSED const void * desc)
-  {
-    int n = (int) URPUNIT_NUM (uptr);
-    if (n < 0 || n >= N_URP_UNITS_MAX)
-      return SCPE_ARG;
-    sim_printf("Card punch device name is %s\n", urp_state [n] . device_name);
-    return SCPE_OK;
-  }
-
-static t_stat urp_set_device_name (UNUSED UNIT * uptr, UNUSED int32 value,
-                                    UNUSED const char * cptr, UNUSED void * desc)
-  {
-    int n = (int) URPUNIT_NUM (uptr);
-    if (n < 0 || n >= N_URP_UNITS_MAX)
-      return SCPE_ARG;
-    if (cptr)
-      {
-        strncpy (urp_state [n] . device_name, cptr, MAX_DEV_NAME_LEN - 1);
-        urp_state [n] . device_name [MAX_DEV_NAME_LEN - 1] = 0;
-      }
-    else
-      urp_state [n] . device_name [0] = 0;
-    return SCPE_OK;
   }
 
 

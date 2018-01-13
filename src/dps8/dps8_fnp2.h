@@ -27,8 +27,7 @@
 #define noassoc -1
 
 extern UNIT fnp_unit [N_FNP_UNITS_MAX];
-extern DEVICE fnpDev;
-extern DEVICE mux_dev;
+extern DEVICE fnp_dev;
 
 #define MAX_LINES  64  /*  max number of FNP lines - hardware  */
 
@@ -257,7 +256,7 @@ int lookupFnpLink (int fnpUnitNum);
 void fnpProcessEvent (void); 
 t_stat diaCommand (int fnpUnitNum, char *arg3);
 void fnpToCpuQueueMsg (int fnpUnitNum, char * msg);
-int fnpIOMCmd (uint iomUnitIdx, uint chan);
+int fnp_iom_cmd (uint iomUnitIdx, uint chan);
 t_stat set_fnp_server_port (int32 arg, const char * buf);
 t_stat set_fnp_3270_server_port (int32 arg, const char * buf);
 t_stat fnp_start (UNUSED int32 arg, UNUSED const char * buf);

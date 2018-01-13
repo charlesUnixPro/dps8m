@@ -9,8 +9,8 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
-extern DEVICE crdpun_dev;
-extern UNIT crdpun_unit [N_CRDPUN_UNITS_MAX];
+extern DEVICE pun_dev;
+extern UNIT pun_unit [N_PUN_UNITS_MAX];
 
-void crdpun_init(void);
-int crdpun_iom_cmd (uint iomUnitIdx, uint chan);
+void pun_init(void);
+int pun_iom_cmd (uint iomUnitIdx, uint chan);

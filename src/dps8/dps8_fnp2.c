@@ -200,7 +200,7 @@ static MTAB fnpMod [] =
 
 static t_stat fnpReset (DEVICE * dptr);
 
-DEVICE fnpDev = {
+DEVICE fnp_dev = {
     "FNP",           /* name */
     fnp_unit,          /* units */
     NULL,             /* registers */
@@ -471,7 +471,7 @@ sim_printf ("notifyCS mbx %d\n", mbx);
 
 static void fnp_rcd_ack_echnego_init (int mbx, int fnpno, int lineno)
   {
-    sim_debug (DBG_TRACE, & fnpDev, "[%d]rcd ack_echnego_init\n", lineno);
+    sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd ack_echnego_init\n", lineno);
     struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
 #ifdef SCUMEM
@@ -495,7 +495,7 @@ static void fnp_rcd_ack_echnego_init (int mbx, int fnpno, int lineno)
 
 static void fnp_rcd_line_disconnected (int mbx, int fnpno, int lineno)
   {
-    sim_debug (DBG_TRACE, & fnpDev, "[%d]rcd line_disconnected\n", lineno);
+    sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd line_disconnected\n", lineno);
     struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
 #ifdef SCUMEM
@@ -519,7 +519,7 @@ static void fnp_rcd_line_disconnected (int mbx, int fnpno, int lineno)
 
 static void fnp_rcd_input_in_mailbox (int mbx, int fnpno, int lineno)
   {
-    sim_debug (DBG_TRACE, & fnpDev, "[%d]rcd input_in_mailbox\n", lineno);
+    sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd input_in_mailbox\n", lineno);
     struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
     struct t_line * linep = & fudp->MState.line[lineno];
 #ifdef SCUMEM
@@ -541,7 +541,7 @@ static void fnp_rcd_input_in_mailbox (int mbx, int fnpno, int lineno)
 // data goes in mystery [0..24]
 
 //sim_printf ("short in; line %d tally %d\n", lineno, linep->nPos);
-if_sim_debug (DBG_TRACE, & fnpDev) {
+if_sim_debug (DBG_TRACE, & fnp_dev) {
 { sim_printf ("[[%d]FNP emulator: short IN: '", lineno);
 for (int i = 0; i < linep->nPos; i ++)
 {
@@ -623,7 +623,7 @@ static void fnp_rcd_line_status  (int mbx, int fnpno, int lineno)
 
 static void fnp_rcd_accept_input (int mbx, int fnpno, int lineno)
   {
-    sim_debug (DBG_TRACE, & fnpDev, "[%d]rcd accept_input\n", lineno);
+    sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd accept_input\n", lineno);
     struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
     struct t_line * linep = & fudp->MState.line[lineno];
 #ifdef SCUMEM
@@ -662,7 +662,7 @@ static void fnp_rcd_accept_input (int mbx, int fnpno, int lineno)
 
 static void fnp_rcd_line_break (int mbx, int fnpno, int lineno)
   {
-    sim_debug (DBG_TRACE, & fnpDev, "[%d]rcd line_break\n", lineno);
+    sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd line_break\n", lineno);
     struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
 #ifdef SCUMEM
@@ -685,7 +685,7 @@ static void fnp_rcd_line_break (int mbx, int fnpno, int lineno)
 
 static void fnp_rcd_send_output (int mbx, int fnpno, int lineno)
   {
-    sim_debug (DBG_TRACE, & fnpDev, "[%d]rcd send_output\n", lineno);
+    sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd send_output\n", lineno);
 #ifdef FNPDBG
 sim_printf ("send_output\n");
 #endif
@@ -711,7 +711,7 @@ sim_printf ("send_output\n");
 
 static void fnp_rcd_acu_dial_failure (int mbx, int fnpno, int lineno)
   {
-    sim_debug (DBG_TRACE, & fnpDev, "[%d]rcd acu_dial_failure\n", lineno);
+    sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd acu_dial_failure\n", lineno);
     //sim_printf ("acu_dial_failure %d %d %d\n", mbx, fnpno, lineno);
     struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
@@ -735,7 +735,7 @@ static void fnp_rcd_acu_dial_failure (int mbx, int fnpno, int lineno)
 
 static void fnp_rcd_accept_new_terminal (int mbx, int fnpno, int lineno)
   {
-    sim_debug (DBG_TRACE, & fnpDev, "[%d]rcd accept_new_terminal\n", lineno);
+    sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd accept_new_terminal\n", lineno);
     //sim_printf ("accept_new_terminal %d %d %d\n", mbx, fnpno, lineno);
     struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
     struct t_line * linep = & fudp->MState.line[lineno];
@@ -802,7 +802,7 @@ static void fnp_rcd_accept_new_terminal (int mbx, int fnpno, int lineno)
 
 static void fnp_rcd_wru_timeout (int mbx, int fnpno, int lineno)
   {
-    sim_debug (DBG_TRACE, & fnpDev, "[%d]rcd wru_timeout\n", lineno);
+    sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd wru_timeout\n", lineno);
     //sim_printf ("wru_timeout %d %d %d\n", mbx, fnpno, lineno);
     struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpno];
     //struct t_line * linep = & fudp->MState.line[lineno];
@@ -1580,7 +1580,7 @@ nombx:;
 static t_stat fnpShowNUnits (UNUSED FILE * st, UNUSED UNIT * uptr, 
                               UNUSED int val, UNUSED const void * desc)
   {
-    sim_printf("Number of FNP units in system is %d\n", fnpDev . numunits);
+    sim_printf("Number of FNP units in system is %d\n", fnp_dev . numunits);
     return SCPE_OK;
   }
 
@@ -1590,7 +1590,7 @@ static t_stat fnpSetNUnits (UNUSED UNIT * uptr, UNUSED int32 value,
     int n = atoi (cptr);
     if (n < 1 || n > N_FNP_UNITS_MAX)
       return SCPE_ARG;
-    fnpDev . numunits = (uint32) n;
+    fnp_dev . numunits = (uint32) n;
     //return fnppSetNunits (uptr, value, cptr, desc);
     return SCPE_OK;
   }
@@ -1701,7 +1701,7 @@ static t_stat fnpShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val,
     long fnpUnitIdx = FNP_UNIT_IDX (uptr);
     if (fnpUnitIdx >= (long) N_FNP_UNITS_MAX)
       {
-        sim_debug (DBG_ERR, & fnpDev, 
+        sim_debug (DBG_ERR, & fnp_dev, 
                    "fnpShowConfig: Invalid unit number %ld\n", fnpUnitIdx);
         sim_printf ("error: invalid unit number %ld\n", fnpUnitIdx);
         return SCPE_ARG;
@@ -1720,9 +1720,9 @@ static t_stat fnpShowStatus (UNUSED FILE * st, UNIT * uptr, UNUSED int val,
                              UNUSED const void * desc)
   {
     long fnpUnitIdx = FNP_UNIT_IDX (uptr);
-    if (fnpUnitIdx >= (long) fnpDev.numunits)
+    if (fnpUnitIdx >= (long) fnp_dev.numunits)
       {
-        sim_debug (DBG_ERR, & fnpDev, 
+        sim_debug (DBG_ERR, & fnp_dev, 
                    "fnpShowStatus: Invalid unit number %ld\n", fnpUnitIdx);
         sim_printf ("error: invalid unit number %ld\n", fnpUnitIdx);
         return SCPE_ARG;
@@ -1776,10 +1776,10 @@ static config_list_t fnp_config_list [] =
 static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, const char * cptr, UNUSED void * desc)
   {
     uint fnpUnitIdx = (uint) FNP_UNIT_IDX (uptr);
-    //if (fnpUnitIdx >= fnpDev . numunits)
+    //if (fnpUnitIdx >= fnp_dev . numunits)
     if (fnpUnitIdx >= N_FNP_UNITS_MAX)
       {
-        sim_debug (DBG_ERR, & fnpDev, "fnpSetConfig: Invalid unit number %d\n", fnpUnitIdx);
+        sim_debug (DBG_ERR, & fnp_dev, "fnpSetConfig: Invalid unit number %d\n", fnpUnitIdx);
         sim_printf ("error: fnpSetConfig: invalid unit number %d\n", fnpUnitIdx);
         return SCPE_ARG;
       }
@@ -1806,7 +1806,7 @@ static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, const char * cptr, UN
               break;
 
             default:
-              sim_debug (DBG_ERR, & fnpDev, "fnpSetConfig: Invalid cfgparse rc <%d>\n", rc);
+              sim_debug (DBG_ERR, & fnp_dev, "fnpSetConfig: Invalid cfgparse rc <%d>\n", rc);
               sim_printf ("error: fnpSetConfig: invalid cfgparse rc <%d>\n", rc);
               cfgparse_done (& cfg_state);
               return SCPE_ARG; 

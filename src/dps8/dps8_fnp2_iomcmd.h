@@ -1,1 +1,1 @@
-int fnpIOMCmd (uint iomUnitIdx, uint chan);
+int fnp_iom_cmd (uint iomUnitIdx, uint chan);
