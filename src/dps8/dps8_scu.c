@@ -2380,7 +2380,8 @@ t_stat scu_rmcm (uint scuUnitIdx, uint cpuUnitIdx, word36 * rega,
       {
         for (int sn = 0; sn < N_SCU_SUBPORTS; sn ++)
           {
-            if (cables->scu_to_cpu[scuUnitIdx][pn][sn].cpu_unit_idx == (int) cpuUnitIdx)
+            if (cables->scu_to_cpu[scuUnitIdx][pn][sn].in_use &&
+                cables->scu_to_cpu[scuUnitIdx][pn][sn].cpu_unit_idx == cpuUnitIdx)
               {
                 scu_port_num = pn;
                 goto gotit;
@@ -2469,7 +2470,8 @@ t_stat scu_smcm (uint scuUnitIdx, uint cpuUnitIdx, word36 rega, word36 regq)
       {
         for (int sn = 0; sn < N_SCU_SUBPORTS; sn ++)
           {
-            if (cables->scu_to_cpu[scuUnitIdx][pn][sn].cpu_unit_idx == (int) cpuUnitIdx)
+            if (cables->scu_to_cpu[scuUnitIdx][pn][sn].in_use &&
+                cables->scu_to_cpu[scuUnitIdx][pn][sn].cpu_unit_idx == cpuUnitIdx)
               {
                 scu_port_num = pn;
                 goto gotit;
