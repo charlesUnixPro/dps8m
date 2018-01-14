@@ -1028,6 +1028,12 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
           }
           break;
 
+        case 024: // CMD 24 Read configuration
+          {
+// XXX missing. see poll_mpc.pl1, poll_mpc_data.incl.pl1
+            p -> stati = 04000;
+            return 0;
+          }
         case 025: // CMD 25 READ
           {
             // XXX is it correct to not process the DDCWs?
