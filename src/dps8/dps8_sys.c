@@ -218,7 +218,7 @@ static char * default_base_system_script [] =
     "set urp nunits=3",
     "set rdr nunits=1",
     "set pun nunits=1",
-    "set prt nunits=17",
+    "set prt nunits=1",
     "set absi nunits=1",
 
 #if 0
@@ -1192,36 +1192,36 @@ static char * default_base_system_script [] =
     "cable IOM1 014 MSP0 1",
 
     // ; Attach DISK unit 4 to MSP0 dev_code 0",
-    "cable IPC0 0 DISK4",
+    "cable MSP0 0 DISK4",
     "set disk4 type=d501",
     "set disk4 name=dskb_00",
     // ; Attach DISK unit 5 to MSP0 dev_code 1",
-    "cable IPC0 1 DISK5",
+    "cable MSP0 1 DISK5",
     "set disk5 type=d501",
     "set disk5 name=dskb_01",
     // ; Attach DISK unit 6 to MSP0 dev_code 2",
-    "cable IPC0 2 DISK6",
+    "cable MSP0 2 DISK6",
     "set disk6 type=d501",
     "set disk6 name=dskb_02",
     // ; Attach DISK unit 7 to MSP0 dev_code 3",
-    "cable IPC0 3 DISK7",
+    "cable MSP0 3 DISK7",
     "set disk7 type=d501",
     "set disk7 name=dskb_03",
 
     // ; Attach DISK unit 8 to MSP0 dev_code 4",
-    "cable IPC0 0 DISK4",
+    "cable MSP0 4 DISK8",
     "set disk8 type=d451",
     "set disk8 name=dskb_04",
     // ; Attach DISK unit 9 to MSP0 dev_code 5",
-    "cable IPC0 1 DISK5",
+    "cable MSP0 5 DISK9",
     "set disk9 type=d451",
     "set disk9 name=dskb_05",
     // ; Attach DISK unit 10 to MSP0 dev_code 6",
-    "cable IPC0 2 DISK6",
+    "cable MSP0 6 DISK10",
     "set disk10 type=d451",
     "set disk10 name=dskb_06",
     // ; Attach DISK unit 11 to MSP0 dev_code 7",
-    "cable IPC0 3 DISK7",
+    "cable MSP0 7 DISK11",
     "set disk11 type=d451",
     "set disk11 name=dskb_07",
 
@@ -1278,6 +1278,7 @@ static char * default_base_system_script [] =
     "set prt0 name=prta",
     "cable URP2 1 PRT0",
 
+#if 0
     // ; Attach PRT unit 1 to IOM 0, chan 017, dev_code 2
     "set prt1 name=prtb",
     "cable URP2 2 PRT1",
@@ -1339,7 +1340,7 @@ static char * default_base_system_script [] =
 
     // ; Attach PRT unit 16 to IOM 0, chan 017, dev_code 17
     "set prt16 name=prtq",
-
+#endif
 
     // ; Attach ABSI unit 0 to IOM 0, chan 032, dev_code 0
     "cable IOM0 032 ABSI0",
@@ -3694,8 +3695,8 @@ static void fprint_addr (FILE * stream, UNUSED DEVICE *  dptr, t_addr simh_addr)
 // simh "fprint_sym" – Based on the switch variable, symbolically output to
 // stream ofile the data in array val at the specified addr in unit uptr.
 
-t_stat fprint_sym (FILE * ofile, UNUSED t_addr  addr, t_value *val, 
-                   UNIT *uptr, int32 sw)
+t_stat fprint_sym (UNUSED FILE * ofile, UNUSED t_addr addr,
+                   UNUSED t_value *val, UNUSED UNIT *uptr, int32 UNUSED sw)
 {
 #ifdef TESTING
 // XXX Bug: assumes single cpu

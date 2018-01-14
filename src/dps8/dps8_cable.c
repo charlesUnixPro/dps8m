@@ -597,6 +597,36 @@ static t_stat cable_iom (int uncable, uint iom_unit_idx, char * name_save)
                            & ipc_unit [unit_idx], dsk_iom_cmd); // XXX mtp_iom_cmd?
       }
 
+// IOMx MSPx
+    if (name_match (param, "MSP", & unit_idx))
+      {
+        if (unit_idx >= N_MSP_UNITS_MAX)
+          {
+            sim_printf ("error: CABLE IOM: MSP unit number out of range <%d>\n", unit_idx);
+            return SCPE_ARG;
+          }
+
+        // extract MSP port number
+        int msp_port_num = 0;
+        param = strtok_r (NULL, ", ", & name_save);
+        if (param)
+          msp_port_num = parseval (param);
+
+        if (msp_port_num < 0 || msp_port_num >= MAX_CTLR_PORTS)
+          {
+            sim_printf ("error: CABLE IOM: MSP port number out of range <%d>\n", msp_port_num);
+            return SCPE_ARG;
+          }
+        return cable_ctlr (uncable,
+                           iom_unit_idx, (uint) chan_num,
+                           unit_idx, (uint) msp_port_num,
+                           "CABLE IOMx MSPx",
+                           & msp_dev,
+                           & cables->msp_to_iom[unit_idx][msp_port_num],
+                           CTLR_T_IPC, chan_type_PSI,
+                           & msp_unit [unit_idx], dsk_iom_cmd); // XXX mtp_iom_cmd?
+      }
+
 // IOMx MTPx
     if (name_match (param, "MTP", & unit_idx))
       {
@@ -617,7 +647,6 @@ static t_stat cable_iom (int uncable, uint iom_unit_idx, char * name_save)
             sim_printf ("error: CABLE IOM: MTP port number out of range <%d>\n", mtp_port_num);
             return SCPE_ARG;
           }
-        //return cable_iom_to_mtp (uncable, iom_unit_idx, (uint) chan_num, unit_idx, (uint) mtp_port_num);
         return cable_ctlr (uncable,
                            iom_unit_idx, (uint) chan_num,
                            unit_idx, (uint) mtp_port_num,
@@ -730,7 +759,7 @@ static t_stat cable_periph_to_ctlr (int uncable,
                                     uint ctlr_unit_idx, uint dev_code,
                                     enum ctlr_type_e ctlr_type,
                                     struct dev_to_ctlr_s * there,
-                                    iomCmd * iom_cmd)
+                                    UNUSED iomCmd * iom_cmd)
   {
     if (uncable)
       {
