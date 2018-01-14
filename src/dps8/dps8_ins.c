@@ -7148,7 +7148,6 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                 doFault (FAULT_CMD, fst_cmd_ctl, "(rscr)");
               }
             uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
-
 #ifdef PANEL
             {
                uint function = (cpu.iefpFinalAddress >> 3) & 07;

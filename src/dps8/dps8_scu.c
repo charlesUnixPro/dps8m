@@ -1449,7 +1449,6 @@ t_stat scu_rscr (uint scuUnitIdx, uint cpuUnitIdx, word18 addr,
             //    the RSCR instruction was received
             //
             //struct config_switches * sw = config_switches + scuUnitIdx;
-sim_printf ("rscr 1 %d\n", scuUnitIdx);
             sim_debug (DBG_DEBUG, & scu_dev, "rscr 1 %d\n", scuUnitIdx);
 #ifdef THREADZ
             lock_scu ();
@@ -1474,7 +1473,7 @@ sim_printf ("rscr 1 %d\n", scuUnitIdx);
               {
                 for (int sn = 0; sn < N_SCU_SUBPORTS; sn ++)
                   {
-                    if (kables->scu_to_cpu[scuUnitIdx][pn][sn].cpu_unit_idx == (int) cpuUnitIdx)
+                    if (kables->scu_to_cpu[scuUnitIdx][pn][sn].in_use && kables->scu_to_cpu[scuUnitIdx][pn][sn].cpu_unit_idx == cpuUnitIdx)
                      {
                         scu_port_num = pn;
                         goto gotit;
@@ -1482,9 +1481,6 @@ sim_printf ("rscr 1 %d\n", scuUnitIdx);
                   }
               }
 gotit:;
-
-            //sim_printf ("scu_port_num %d\n", scu_port_num);
-
             if (scu_port_num < 0)
               {
 #ifdef THREADZ
@@ -1535,7 +1531,6 @@ gotit:;
 #ifdef THREADZ
             unlock_scu ();
 #endif
-sim_printf ("rscr 1 %d A: %012"PRIo64" Q: %012"PRIo64"\n", scuUnitIdx, * rega, * regq);
             sim_debug (DBG_DEBUG, & scu_dev, "rscr 1 %d A: %012"PRIo64" Q: %012"PRIo64"\n", scuUnitIdx, * rega, * regq);
             break;
           }
