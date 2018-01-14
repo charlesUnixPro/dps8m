@@ -304,7 +304,6 @@ DEVICE mtp_dev =
 struct tape_state tape_states [N_MT_UNITS_MAX];
 static const char * simh_tape_msg (int code); // hack
 // XXX this assumes only one controller, needs to be indexed
-static int boot_drive = 1; // Drive number to boot from
 #define TAPE_PATH_LEN 4096
 static char tape_path [TAPE_PATH_LEN];
 
@@ -352,23 +351,6 @@ static t_stat mt_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value,
     if (n < 1 || n > N_MT_UNITS_MAX)
       return SCPE_ARG;
     tape_dev . numunits = (uint32) n;
-    return SCPE_OK;
-  }
-
-static t_stat mt_show_boot_drive (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                              UNUSED int val, UNUSED const void * desc)
-  {
-    sim_printf("Tape drive to boot from is %d\n", boot_drive);
-    return SCPE_OK;
-  }
-
-static t_stat mt_set_boot_drive (UNUSED UNIT * uptr, UNUSED int32 value, 
-                             UNUSED const char * cptr, UNUSED void * desc)
-  {
-    int n = (int) MT_UNIT_NUM (uptr);
-    if (n < 0 || n >= N_MT_UNITS_MAX)
-      return SCPE_ARG;
-    boot_drive = n;
     return SCPE_OK;
   }
 
@@ -456,16 +438,6 @@ static MTAB mt_mod [] =
       mt_set_nunits, /* validation routine */
       mt_show_nunits, /* display routine */
       "Number of TAPE units in the system", /* value descriptor */
-      NULL          // help
-    },
-    {
-      MTAB_XTD | MTAB_VUN | MTAB_VALR, /* mask */
-      0,            /* match */
-      "BOOT_DRIVE",     /* print string */
-      "BOOT_DRIVE",         /* match string */
-      mt_set_boot_drive, /* validation routine */
-      mt_show_boot_drive, /* display routine */
-      "Select the boot drive", /* value descriptor */
       NULL          // help
     },
     {
@@ -624,7 +596,6 @@ void mt_init(void)
       {
         mt_unit [i] . capac = 40000000;
       }
-    boot_drive = 1;
   }
 
 static int mtReadRecord (uint devUnitIdx, uint iomUnitIdx, uint chan)
@@ -1132,10 +1103,6 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
 // reporting 0 as a valid device.
 
 // Simplifying design decision: tapa_00 is hidden, always has the boot tape.
-#if 0
-    if (p -> IDCW_DEV_CODE == 0 /* && p -> IDCW_DEV_CMD == 05 */)
-        p -> IDCW_DEV_CODE = boot_drive;
-#endif
 
     uint ctlr_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
 
