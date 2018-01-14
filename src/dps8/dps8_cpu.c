@@ -1046,7 +1046,8 @@ t_stat sim_instr (void)
                 if (get_ctlr_in_use (iomUnitIdx, chan))
                   {
                     //sim_printf ("iom %u chn %u devCnt %u\n", iomNum, chnNum, devCnt);
-                    createChnThread (iomNum, chnNum, devTypeStrs [dt]);
+                    enum ctlr_type_e ctlr_type = kables->iom_to_ctlr.ctlr_type;
+                    createChnThread (iomNum, chnNum, ctlr_type_strs [dt]);
                     chnRdyWait (iomNum, chnNum);
                   }
               }

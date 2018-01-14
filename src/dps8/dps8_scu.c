@@ -1449,6 +1449,7 @@ t_stat scu_rscr (uint scuUnitIdx, uint cpuUnitIdx, word18 addr,
             //    the RSCR instruction was received
             //
             //struct config_switches * sw = config_switches + scuUnitIdx;
+sim_printf ("rscr 1 %d\n", scuUnitIdx);
             sim_debug (DBG_DEBUG, & scu_dev, "rscr 1 %d\n", scuUnitIdx);
 #ifdef THREADZ
             lock_scu ();
@@ -1473,7 +1474,7 @@ t_stat scu_rscr (uint scuUnitIdx, uint cpuUnitIdx, word18 addr,
               {
                 for (int sn = 0; sn < N_SCU_SUBPORTS; sn ++)
                   {
-                    if (cables -> cablesFromCpus [scuUnitIdx] [pn] [sn] . cpuUnitIdx == (int) cpuUnitIdx)
+                    if (kables->scu_to_cpu[scuUnitIdx][pn][sn].cpu_unit_idx == (int) cpuUnitIdx)
                      {
                         scu_port_num = pn;
                         goto gotit;
@@ -1534,6 +1535,7 @@ gotit:;
 #ifdef THREADZ
             unlock_scu ();
 #endif
+sim_printf ("rscr 1 %d A: %012"PRIo64" Q: %012"PRIo64"\n", scuUnitIdx, * rega, * regq);
             sim_debug (DBG_DEBUG, & scu_dev, "rscr 1 %d A: %012"PRIo64" Q: %012"PRIo64"\n", scuUnitIdx, * rega, * regq);
             break;
           }
@@ -1773,29 +1775,27 @@ int scu_cioc (uint cpuUnitIdx, uint scuUnitIdx, uint scu_port_num,
 
 #if 1
 // by subport_enables
-        int cpuUnitIdx = -1;
         if (portp->is_exp)
           {
             for (uint sn = 0; sn < N_SCU_SUBPORTS; sn ++)
               {
                 if (portp->subport_enables[sn])
                   {
-                    cpuUnitIdx = cables->cablesFromCpus[scuUnitIdx][scu_port_num][sn].cpuUnitIdx;
-                    if (cpuUnitIdx < 0)
+                    if (! kables->scu_to_cpu[scuUnitIdx][scu_port_num][sn].in_use)
                       {
                         sim_warn ("Can't find CPU to interrupt\n");
 //sim_printf ("scu_cioc: Connect from %o sent to unit %o port %o exp %o mask %03o\n", cpuUnitIdx, scuUnitIdx, scu_port_num, expander_command, sub_mask);
 //sim_printf ("is_exp %u xipmaskval %o\n", portp->is_exp, portp->xipmaskval);
                         continue;
                       }
+                    uint cpuUnitIdx = kables->scu_to_cpu[scuUnitIdx][scu_port_num][sn].cpu_unit_idx;
                     setG7fault ((uint) cpuUnitIdx, FAULT_CON, fst_zero);
                   }
               }
           }
         else
           {
-            cpuUnitIdx = cables ->cablesFromCpus[scuUnitIdx][scu_port_num][0].cpuUnitIdx;
-            if (cpuUnitIdx < 0)
+            if (! kables->scu_to_cpu[scuUnitIdx][scu_port_num][0].in_use)
               {
                 sim_warn ("Can't find CPU to interrupt\n");
 //sim_printf ("scu_cioc: Connect from %o sent to unit %o port %o exp %o mask %03o\n", cpuUnitIdx, scuUnitIdx, scu_port_num, expander_command, sub_mask);
@@ -1803,6 +1803,7 @@ int scu_cioc (uint cpuUnitIdx, uint scuUnitIdx, uint scu_port_num,
                 rc = 1;
                 goto done;
               }
+            uint cpuUnitIdx = kables->scu_to_cpu[scuUnitIdx][scu_port_num][0].cpu_unit_idx;
             setG7fault ((uint) cpuUnitIdx, FAULT_CON, fst_zero);
           }
 #else
@@ -1919,43 +1920,32 @@ static void deliverInterrupts (uint scuUnitIdx)
               continue;
             if ((mask & (1u << (31 - inum))) != 0)
               {
-                int cpuUnitIdx = -1;
+                uint sn = 0;
                 if (scu[scuUnitIdx].ports[port].is_exp)
-                  {
-                    cpuUnitIdx = cables->cablesFromCpus[scuUnitIdx][port][scu[scuUnitIdx].ports[port].xipmaskval].cpuUnitIdx;
-                  }
-                else
-                  {
-                    cpuUnitIdx = cables->cablesFromCpus[scuUnitIdx][port][0].cpuUnitIdx;
-                  }
-                //sim_debug (DBG_DEBUG, & scu_dev, "mask set; cpuUnitIdx %u\n", cpuUnitIdx);
-                if (cpuUnitIdx < 0 || cpuUnitIdx >= (int) cpu_dev . numunits)
-                  {
-                    sim_err ("bad cpuUnitIdx %u\n", cpuUnitIdx);
-                  }
-                else
-                  {
+                  sn = (uint) scu[scuUnitIdx].ports[port].xipmaskval;
+                if (! kables->scu_to_cpu[scuUnitIdx][port][sn].in_use)
+                  sim_err ("bad scuUnitIdx %u\n", scuUnitIdx);
+                uint cpuUnitIdx = kables->scu_to_cpu[scuUnitIdx][port][sn].cpu_unit_idx;
 #ifdef THREADZ
-                    cpus[cpuUnitIdx].events.XIP[scuUnitIdx] = true;
+                cpus[cpuUnitIdx].events.XIP[scuUnitIdx] = true;
 #ifdef HDBG
-                    hdbgIntrSet (inum, cpuUnitIdx, scuUnitIdx);
+                hdbgIntrSet (inum, cpuUnitIdx, scuUnitIdx);
 #endif
-                    setCPURun ((uint) cpuUnitIdx, true);
-                    wakeCPU ((uint) cpuUnitIdx);
-                    sim_debug (DBG_DEBUG, & scu_dev,
-                               "interrupt set for CPU %d SCU %d\n",
-                               cpuUnitIdx, scuUnitIdx);
+                setCPURun ((uint) cpuUnitIdx, true);
+                wakeCPU ((uint) cpuUnitIdx);
+                sim_debug (DBG_DEBUG, & scu_dev,
+                           "interrupt set for CPU %d SCU %d\n",
+                           cpuUnitIdx, scuUnitIdx);
 #else // ! THREADZ
 //if (cpuUnitIdx && ! cpu.isRunning) sim_printf ("starting CPU %c\n", cpuUnitIdx + 'A');
 #ifdef ROUND_ROBIN
-                    cpus[cpuUnitIdx].isRunning = true;
+                cpus[cpuUnitIdx].isRunning = true;
 #endif
-                    cpus[cpuUnitIdx].events.XIP[scuUnitIdx] = true;
+                cpus[cpuUnitIdx].events.XIP[scuUnitIdx] = true;
 sim_debug (DBG_DEBUG, & scu_dev, "interrupt set for CPU %d SCU %d\n", cpuUnitIdx, scuUnitIdx);
-                    sim_debug (DBG_INTR, & scu_dev,
-                               "XIP set for SCU %d\n", scuUnitIdx);
+                sim_debug (DBG_INTR, & scu_dev,
+                           "XIP set for SCU %d\n", scuUnitIdx);
 #endif // ! THREADZ
-                  }
               }
           }
       }
@@ -2395,7 +2385,7 @@ t_stat scu_rmcm (uint scuUnitIdx, uint cpuUnitIdx, word36 * rega,
       {
         for (int sn = 0; sn < N_SCU_SUBPORTS; sn ++)
           {
-            if (cables->cablesFromCpus[scuUnitIdx][pn][sn].cpuUnitIdx == (int) cpuUnitIdx)
+            if (kables->scu_to_cpu[scuUnitIdx][pn][sn].cpu_unit_idx == (int) cpuUnitIdx)
               {
                 scu_port_num = pn;
                 goto gotit;
@@ -2484,7 +2474,7 @@ t_stat scu_smcm (uint scuUnitIdx, uint cpuUnitIdx, word36 rega, word36 regq)
       {
         for (int sn = 0; sn < N_SCU_SUBPORTS; sn ++)
           {
-            if (cables->cablesFromCpus[scuUnitIdx][pn][sn].cpuUnitIdx == (int) cpuUnitIdx)
+            if (kables->scu_to_cpu[scuUnitIdx][pn][sn].cpu_unit_idx == (int) cpuUnitIdx)
               {
                 scu_port_num = pn;
                 goto gotit;

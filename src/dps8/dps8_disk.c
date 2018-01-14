@@ -381,8 +381,11 @@ static t_stat loadDisk (uint dsk_unit_idx, const char * disk_filename, UNUSED bo
       {
         // If None, assume that the cabling hasn't happend yey.
         if (ctlr_type != CTLR_T_NONE)
-          sim_warn ("loadDisk lost\n");
-        return SCPE_ARG;
+          {
+            sim_warn ("loadDisk lost\n");
+            return SCPE_ARG;
+          }
+        return SCPE_OK;
       }
 
     // Which port should the controller send the interrupt to? All of them...

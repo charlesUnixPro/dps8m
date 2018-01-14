@@ -16,9 +16,8 @@ typedef enum devType
      DEVT_NONE = 0, DEVT_TAPE, DEVT_CON, DEVT_DISK, 
      DEVT_MPC, DEVT_DN355, DEVT_RDR, DEVT_PUN, DEVT_PRT, DEVT_URP, DEVT_ABSI
   } devType;
-#ifdef THREADZ
-extern char * devTypeStrs [/* devType */];
-#endif
+extern char * ctlr_type_strs [/* *enum ctlr_type_e */];
+extern char * chan_type_strs [/* *enum chan_type_e */];
 
 typedef enum chanType { chanTypeCPI, chanTypePSI, chanTypeDirect } chanType;
 
@@ -95,8 +94,6 @@ struct cables_t
     struct cableFromIomToDev cablesFromIomToDev [N_IOM_UNITS_MAX];
   };
 
-extern struct cables_t * cables;
-
 t_stat sys_cable (UNUSED int32 arg, const char * buf);
 t_stat sys_cable_ripout (UNUSED int32 arg, UNUSED const char * buf);
 t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf);
@@ -160,7 +157,6 @@ enum chan_type_e { chan_type_CPI, chan_type_PSI, chan_type_direct };
 enum ctlr_type_e
   {
      CTLR_T_NONE = 0,
-     // DEVT_DN355
      CTLR_T_MTP,
      CTLR_T_MSP,
      CTLR_T_IPC,
@@ -168,6 +164,7 @@ enum ctlr_type_e
      CTLR_T_URP,
      CTLR_T_FNP,
      CTLR_T_ABSI
+     // DEVT_DN355
 
   };
 
@@ -358,14 +355,14 @@ t_stat sys_kable (UNUSED int32 arg, const char * buf);
 
 // Get SCU index from (CPU index, port)
 
-#define get_scu_idx(cpu_unit_num, cpu_port_num) \
-   (kables->cpu_to_scu[cpu_unit_num][cpu_port_num].scu_unit_idx)
+#define get_scu_idx(cpu_unit_idx, cpu_port_num) \
+   (kables->cpu_to_scu[cpu_unit_idx][cpu_port_num].scu_unit_idx)
 
 
 // Get SCU in_use from (CPU index, port)
 
-#define get_scu_in_use(cpu_unit_num, cpu_port_num) \
-   (kables->cpu_to_scu[cpu_unit_num][cpu_port_num].in_use)
+#define get_scu_in_use(cpu_unit_idx, cpu_port_num) \
+   (kables->cpu_to_scu[cpu_unit_idx][cpu_port_num].in_use)
 
 
 #endif
