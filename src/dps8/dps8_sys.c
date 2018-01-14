@@ -3304,8 +3304,8 @@ static CTAB dps8_cmds[] =
 
     {"DEFAULT_BASE_SYSTEM", set_default_base_system,  0, "default_base_system: Set configuration to defaults\n", NULL, NULL},
 
-    {"KABLE",               sys_cable,                0, "cable: String a cable\n" , NULL, NULL},
-    {"UNKABLE",             sys_cable,                1, "uncable: Unstring a cable\n" , NULL, NULL},
+    {"CABLE",               sys_cable,                0, "cable: String a cable\n" , NULL, NULL},
+    {"UNCABLE",             sys_cable,                1, "uncable: Unstring a cable\n" , NULL, NULL},
     {"CABLE_RIPOUT",        sys_cable_ripout,         0, "cable: Unstring all cables\n" , NULL, NULL},
     {"CABLE_SHOW",          sys_cable_show,           0, "cable: Show cables\n" , NULL, NULL},
 
