@@ -914,7 +914,8 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
     putbits36_1 (& word1, 16, p -> initiate ? 1 : 0);
     putbits36_1 (& word1, 17, 0); // software abort bit
     putbits36_3 (& word1, 18, p -> chanStatus);
-    putbits36_3 (& word1, 21, iomUnitData [iomUnitIdx] . iomStatus);
+    //putbits36_3 (& word1, 21, iomUnitData [iomUnitIdx] . iomStatus);
+    putbits36_3 (& word1, 21, 0);
 #if 0
     // BUG: Unimplemented status bits:
     putbits36_6 (& word1, 24, chan_status.addr_ext);

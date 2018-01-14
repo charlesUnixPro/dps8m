@@ -1491,12 +1491,17 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
         case 040:               // CMD 040 -- Reset Status
           {
             p -> stati = 04000;
-            if (sim_tape_wrp (unitp))
-              p -> stati |= 1;
-            if (sim_tape_bot (unitp))
-              p -> stati |= 2;
-            //if (sim_tape_eom (unitp))
-              //p -> stati |= 0340;
+            p -> initiate = false;
+            p -> isRead = false;
+            if (dev_code)
+              {
+                if (sim_tape_wrp (unitp))
+                  p -> stati |= 1;
+                if (sim_tape_bot (unitp))
+                  p -> stati |= 2;
+                //if (sim_tape_eom (unitp))
+                  //p -> stati |= 0340;
+              }
             sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Reset status is %04o.\n",
                        __func__, p -> stati);

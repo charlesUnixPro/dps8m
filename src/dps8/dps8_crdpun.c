@@ -175,7 +175,7 @@ void pun_init (void)
       pun_state [i] . punfile = -1;
   }
 
-static t_stat pun_reset (DEVICE * dptr)
+static t_stat pun_reset (UNUSED DEVICE * dptr)
   {
 #if 0
     for (uint i = 0; i < dptr -> numunits; i ++)
@@ -559,6 +559,8 @@ sim_printf ("\n");
         case 040: // CMD 40 Reset status
           {
             p -> stati = 04000;
+            p -> initiate = false;
+            p -> isRead = false;
             sim_debug (DBG_NOTIFY, & pun_dev, "Reset status %ld\n", pun_unit_num);
           }
           break;

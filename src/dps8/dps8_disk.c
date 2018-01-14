@@ -1094,8 +1094,10 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
         case 040: // CMD 40 Reset status
           {
             p -> stati = 04000;
-            if (! unitp -> fileref)
-              p -> stati = 04240; // device offline
+            p -> initiate = false;
+            p -> isRead = false;
+            //if (! unitp -> fileref)
+              //p -> stati = 04240; // device offline
             disk_statep -> io_mode = no_mode;
             sim_debug (DBG_NOTIFY, & dsk_dev, "Reset status %d\n", devUnitIdx);
           }

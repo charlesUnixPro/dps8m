@@ -2355,6 +2355,7 @@ static void nem_check (word24 addr, char * context)
   }
 #endif
 
+#ifdef SCUMEM
 #ifndef SPEED
 static uint get_scu_unit_idx (word24 addr, word24 * offset)
   {
@@ -2366,6 +2367,7 @@ static uint get_scu_unit_idx (word24 addr, word24 * offset)
       }
     return cables->cpu_to_scu [currentRunningCpuIdx][cpu_port_num].scu_unit_idx;
   }
+#endif
 #endif
 
 #ifndef SPEED

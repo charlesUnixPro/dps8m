@@ -757,6 +757,8 @@ static int rdr_cmd (uint iomUnitIdx, uint chan)
         case 040: // CMD 40 Reset status
           {
             p -> stati = 04000;
+            p -> initiate = false;
+            p -> isRead = false;
             sim_debug (DBG_NOTIFY, & rdr_dev, "Reset status\n");
           }
           break;

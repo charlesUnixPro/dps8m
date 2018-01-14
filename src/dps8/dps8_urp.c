@@ -558,6 +558,8 @@ sim_printf ("\n");
         case 040: // CMD 40 Reset status
           {
             p -> stati = 04000;
+            p -> initiate = false;
+            p -> isRead = false;
             sim_debug (DBG_NOTIFY, & urp_dev, "Reset status %d\n", urp_unit_num);
           }
           break;

@@ -623,7 +623,7 @@ static t_stat cable_iom (int uncable, uint iom_unit_idx, char * name_save)
                            "CABLE IOMx MSPx",
                            & msp_dev,
                            & cables->msp_to_iom[unit_idx][msp_port_num],
-                           CTLR_T_IPC, chan_type_PSI,
+                           CTLR_T_MSP, chan_type_PSI,
                            & msp_unit [unit_idx], dsk_iom_cmd); // XXX mtp_iom_cmd?
       }
 

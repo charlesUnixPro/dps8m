@@ -676,6 +676,8 @@ sim_printf ("\n");
         case 040: // CMD 40 Reset status
           {
             p -> stati = 04000;
+            p -> initiate = false;
+            p -> isRead = false;
             sim_debug (DBG_NOTIFY, & prt_dev, "Reset status %d\n", prt_unit_num);
           }
           break;

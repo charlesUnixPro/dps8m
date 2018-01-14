@@ -1357,98 +1357,104 @@ static char * default_base_system_script [] =
     // ; Attach IOM unit 0 port D (3) to SCU unit 3, port 0
     "cable SCU3 0 IOM0 3", // SCU3 port 0 IOM0 port 3
 
-// SCU0 --> CPU0-7
+    // ; Attach IOM unit 1 port A (0) to SCU unit 0, port 1
+    "cable SCU0 1 IOM1 0", // SCU0 port 0 IOM0 port 0
 
-    // ; Attach SCU unit 0 port 7 to CPU unit A (0), port 0
-    "cable SCU0 7 CPU0 0", // SCU0 port 7 to CPU0 port 0
+    // ; Attach IOM unit 1 port B (1) to SCU unit 1, port 1
+    "cable SCU1 1 IOM1 1", // SCU1 port 0 IOM0 port 1
+
+    // ; Attach IOM unit 1 port C (2) to SCU unit 2, port 1
+    "cable SCU2 1 IOM1 2", // SCU2 port 0 IOM0 port 2
+
+    // ; Attach IOM unit 1 port D (3) to SCU unit 3, port 1
+    "cable SCU3 1 IOM1 3", // SCU3 port 0 IOM0 port 3
+
+// SCU0 --> CPU0-6
+
+    // ; Attach SCU unit 0 port 7 to CPU unit A (1), port 0
+    "cable SCU0 7 CPU0 0",
 
     // ; Attach SCU unit 0 port 6 to CPU unit B (1), port 0
-    "cable SCU0 6 CPU1 0", // SCU0 port 6 to CPU1 port 0
+    "cable SCU0 6 CPU1 0",
 
     // ; Attach SCU unit 0 port 5 to CPU unit C (2), port 0
-    "cable SCU0 5 CPU2 0", // SCU0 port 5 to CPU2 port 0
+    "cable SCU0 5 CPU2 0",
 
     // ; Attach SCU unit 0 port 4 to CPU unit D (3), port 0
-    "cable SCU0 4 CPU3 0", // SCU0 port 4 to CPU3 port 0
+    "cable SCU0 4 CPU3 0",
 
     // ; Attach SCU unit 0 port 3 to CPU unit E (4), port 0
-    "cable SCU0 3 CPU4 0", // SCU0 port 3 to CPU4 port 0
+    "cable SCU0 3 CPU4 0",
 
     // ; Attach SCU unit 0 port 2 to CPU unit F (5), port 0
-    "cable SCU0 2 CPU5 0", // SCU0 port 2 to CPU5 port 0
+    "cable SCU0 2 CPU5 0",
 
-    // ; Attach SCU unit 0 port 1 to CPU unit G (6), port 0
-    "cable SCU0 1 CPU6 0", // SCU0 port 1 to CPU6 port 0
+// SCU1 --> CPU0-6
 
-// SCU1 --> CPU0-7
-
-    // ; Attach SCU unit 1 port 7 to CPU unit A (0), port 1
-    "cable SCU1 7 CPU0 1", // SCU1 port 7 to CPU0 port 1
+    // ; Attach SCU unit 1 port 7 to CPU unit A (1), port 1
+    "cable SCU1 7 CPU0 1",
 
     // ; Attach SCU unit 1 port 6 to CPU unit B (1), port 1
-    "cable SCU1 6 CPU1 1", // SCU1 port 6 to CPU1 port 1
+    "cable SCU1 6 CPU1 1",
 
     // ; Attach SCU unit 1 port 5 to CPU unit C (2), port 1
-    "cable SCU1 5 CPU2 1", // SCU1 port 5 to CPU2 port 1
+    "cable SCU1 5 CPU2 1",
 
     // ; Attach SCU unit 1 port 4 to CPU unit D (3), port 1
-    "cable SCU1 4 CPU3 1", // SCU1 port 4 to CPU3 port 1
+    "cable SCU1 4 CPU3 1",
 
     // ; Attach SCU unit 1 port 3 to CPU unit E (4), port 0
-    "cable SCU1 3 CPU4 1", // SCU1 port 3 to CPU4 port 1
+    "cable SCU1 3 CPU4 1",
 
     // ; Attach SCU unit 1 port 2 to CPU unit F (5), port 0
-    "cable SCU1 2 CPU5 1", // SCU1 port 2 to CPU5 port 1
+    "cable SCU1 2 CPU5 1",
 
-    // ; Attach SCU unit 0 port 1 to CPU unit G (6), port 0
-    "cable SCU1 1 CPU6 1", // SCU1 port 1 to CPU6 port 1
+// SCU2 --> CPU0-6
 
-// SCU2 --> CPU0-7
-
-    // ; Attach SCU unit 2 port 7 to CPU unit A (0), port 2
-    "cable SCU2 7 CPU0 2", // SCU1 port 7 to CPU0 port 2
+    // ; Attach SCU unit 2 port 7 to CPU unit A (1), port 2
+    "cable SCU2 7 CPU0 2", 
 
     // ; Attach SCU unit 2 port 6 to CPU unit B (1), port 2
-    "cable SCU2 6 CPU1 2", // SCU1 port 6 to CPU1 port 2
+    "cable SCU2 6 CPU1 2",
 
     // ; Attach SCU unit 2 port 5 to CPU unit C (2), port 2
-    "cable SCU2 5 CPU2 2", // SCU1 port 5 to CPU2 port 2
+    "cable SCU2 5 CPU2 2",
 
     // ; Attach SCU unit 2 port 4 to CPU unit D (3), port 2
-    "cable SCU2 4 CPU3 2", // SCU1 port 4 to CPU3 port 2
+    "cable SCU2 4 CPU3 2",
 
     // ; Attach SCU unit 2 port 3 to CPU unit E (4), port 0
-    "cable SCU2 3 CPU4 2", // SCU1 port 3 to CPU4 port 2
+    "cable SCU2 3 CPU4 2",
 
     // ; Attach SCU unit 2 port 2 to CPU unit F (5), port 0
-    "cable SCU2 2 CPU5 2", // SCU1 port 2 to CPU5 port 2
+    "cable SCU2 2 CPU5 2",
 
     // ; Attach SCU unit 2 port 1 to CPU unit G (6), port 0
-    "cable SCU2 1 CPU6 2", // SCU1 port 1 to CPU6 port 2
+    "cable SCU2 1 CPU6 2",
 
 
-// SCU3 --> CPU0-7
+// SCU3 --> CPU0-6
 
-    // ; Attach SCU unit 3 port 7 to CPU unit A (0), port 3
-    "cable SCU3 7 CPU0 3", // SCU3 port 7 to CPU0 port 3
+    // ; Attach SCU unit 3 port 7 to CPU unit A (1), port 3
+    "cable SCU3 7 CPU0 3",
 
     // ; Attach SCU unit 3 port 6 to CPU unit B (1), port 3
-    "cable SCU3 6 CPU1 3", // SCU3 port 6 to CPU1 port 3
+    "cable SCU3 6 CPU1 3",
 
     // ; Attach SCU unit 3 port 5 to CPU unit C (2), port 3
-    "cable SCU3 5 CPU2 3", // SCU3 port 5 to CPU2 port 3
+    "cable SCU3 5 CPU2 3",
 
     // ; Attach SCU unit 3 port 4 to CPU unit D (3), port 3
-    "cable SCU3 4 CPU3 3", // SCU3 port 4 to CPU3 port 3
+    "cable SCU3 4 CPU3 3",
 
     // ; Attach SCU unit 3 port 3 to CPU unit E (4), port 0
-    "cable SCU3 3 CPU4 3", // SCU3 port 3 to CPU4 port 3
+    "cable SCU3 3 CPU4 3",
 
     // ; Attach SCU unit 3 port 2 to CPU unit F (5), port 0
-    "cable SCU3 2 CPU5 3", // SCU3 port 2 to CPU5 port 3
+    "cable SCU3 2 CPU5 3",
 
     // ; Attach SCU unit 3 port 1 to CPU unit G (6), port 0
-    "cable SCU3 1 CPU6 3", // SCU3 port 1 to CPU6 port 3
+    "cable SCU3 1 CPU6 3",
 
 
     "set cpu0 reset",
