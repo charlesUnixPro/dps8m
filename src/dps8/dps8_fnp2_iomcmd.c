@@ -193,7 +193,7 @@ static uint virtToPhys (uint ptPtr, uint l66Address)
     word36 ptw;
 #ifdef SCUMEM
     uint ctlr_port_no = 0; // FNPs are single port
-    uint iomUnitIdx = kables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
+    uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
     iom_core_read (iomUnitIdx, pageTable + l66AddressPage, & ptw, "fnp_iom_cmd get ptw");
 #else
     fnp_core_read (pageTable + l66AddressPage, & ptw, "fnp_iom_cmd get ptw");
@@ -258,7 +258,7 @@ static int wcd (void)
   {
 #ifdef SCUMEM
     uint ctlr_port_no = 0; // FNPs are single port
-    uint iomUnitIdx = kables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
+    uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
 #endif
 
     struct t_line * linep = & decoded.fudp->MState.line[decoded.slot_no];
@@ -1228,7 +1228,7 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
              uint wordAddr = virtToPhys (ptPtr, dataAddr + wordOff);
 #ifdef SCUMEM
              uint ctlr_port_no = 0; // FNPs are single port
-             uint iomUnitIdx = kables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
+             uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
              iom_core_read (iomUnitIdx, wordAddr, & word, __func__);
 #else
              //word = M [wordAddr];
@@ -1304,7 +1304,7 @@ static int wtx (void)
 #ifdef SCUMEM
         word36 dcw;
         uint ctlr_port_no = 0; // FNPs are single port
-        uint iomUnitIdx = kables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
+        uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
         iom_core_read (iomUnitIdx, dcwAddrPhys, & dcw, __func__);
 #else
         //word36 dcw = M [dcwAddrPhys];
@@ -1388,7 +1388,7 @@ sim_printf ("']\n");
 }
 }
     uint ctlr_port_no = 0; // FNPs are single port
-    uint iomUnitIdx = kables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
+    uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
 //sim_printf ("long  in; line %d tally %d\n", decoded.slot_no, linep->nPos);
     for (int i = 0; i < tally0; i += 4)
       {
@@ -1459,7 +1459,7 @@ sim_printf ("']\n");
     setTIMW (decoded.fudp->mailboxAddress, (int) decoded.cell);
 
     uint ctlr_port_num = 0; // FNPs are single ported
-    uint chan_num = kables->fnp_to_iom[decoded.devUnitIdx][ctlr_port_num].chan_num;
+    uint chan_num = cables->fnp_to_iom[decoded.devUnitIdx][ctlr_port_num].chan_num;
     send_terminate_interrupt (iomUnitIdx, chan_num);
   }
 
@@ -1722,7 +1722,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
 #ifdef SCUMEM
     word24 offset;
     int scuUnitNum =  queryIomScbankMap (iomUnitIdx, decoded.fudp->mailboxAddress, & offset);
-    int scuUnitIdx = kables->iom_to_scu[iomUnitIdx][scuUnitNum].scu_unit_idx;
+    int scuUnitIdx = cables->iom_to_scu[iomUnitIdx][scuUnitNum].scu_unit_idx;
     decoded.mbxp = (struct mailbox vol *) & scu [scuUnitIdx].M [decoded.fudp->mailboxAddress];
 #else
     decoded.mbxp = (struct mailbox vol *) & M [decoded.fudp -> mailboxAddress];

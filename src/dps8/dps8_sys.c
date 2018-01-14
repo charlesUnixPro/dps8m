@@ -1099,94 +1099,94 @@ static char * default_base_system_script [] =
     "set mtp0 boot_drive=0",
     "set mtp0 device_name=MTP0",
     // ; Attach TAPE unit 0 to IOM 0, chan 012, dev_code 1
-    "kable IOM0 012 MTP0",
-    "kable MTP0 1 TAPE1",
+    "cable IOM0 012 MTP0",
+    "cable MTP0 1 TAPE1",
     "set tape1 device_name=tapa_01",
-    "kable MTP0 2 TAPE2",
+    "cable MTP0 2 TAPE2",
     "set tape2 device_name=tapa_02",
-    "kable MTP0 3 TAPE3",
+    "cable MTP0 3 TAPE3",
     "set tape3 device_name=tapa_03",
-    "kable MTP0 4 TAPE4",
+    "cable MTP0 4 TAPE4",
     "set tape4 device_name=tapa_04",
-    "kable MTP0 5 TAPE5",
+    "cable MTP0 5 TAPE5",
     "set tape5 device_name=tapa_05",
-    "kable MTP0 6 TAPE6",
+    "cable MTP0 6 TAPE6",
     "set tape6 device_name=tapa_06",
-    "kable MTP0 7 TAPE7",
+    "cable MTP0 7 TAPE7",
     "set tape7 device_name=tapa_07",
-    "kable MTP0 8 TAPE8",
+    "cable MTP0 8 TAPE8",
     "set tape8 device_name=tapa_08",
-    "kable MTP0 9 TAPE9",
+    "cable MTP0 9 TAPE9",
     "set tape9 device_name=tapa_09",
-    "kable MTP0 10 TAPE10",
+    "cable MTP0 10 TAPE10",
     "set tape10 device_name=tapa_10",
-    "kable MTP0 11 TAPE11",
+    "cable MTP0 11 TAPE11",
     "set tape11 device_name=tapa_11",
-    "kable MTP0 12 TAPE12",
+    "cable MTP0 12 TAPE12",
     "set tape12 device_name=tapa_12",
-    "kable MTP0 13 TAPE13",
+    "cable MTP0 13 TAPE13",
     "set tape13 device_name=tapa_13",
-    "kable MTP0 14 TAPE14",
+    "cable MTP0 14 TAPE14",
     "set tape14 device_name=tapa_14",
-    "kable MTP0 15 TAPE15",
+    "cable MTP0 15 TAPE15",
     "set tape15 device_name=tapa_15",
-    "kable MTP0 16 TAPE16",
+    "cable MTP0 16 TAPE16",
     "set tape16 device_name=tapa_16",
 
 
     "set ipc0 device_name=IPC0",
-    "kable IOM0 013 IPC0",
+    "cable IOM0 013 IPC0",
     // ; Attach DISK unit 0 to IOM 0, chan 013, dev_code 0",
-    "kable IPC0 0 DISK0",
+    "cable IPC0 0 DISK0",
     "set disk0 type=3381",
     // ; Attach DISK unit 1 to IOM 0, chan 013, dev_code 1",
-    "kable IPC0 1 DISK1",
+    "cable IPC0 1 DISK1",
     "set disk1 type=3381",
     // ; Attach DISK unit 2 to IOM 0, chan 013, dev_code 2",
-    "kable IPC0 2 DISK2",
+    "cable IPC0 2 DISK2",
     "set disk2 type=3381",
     // ; Attach DISK unit 3 to IOM 0, chan 013, dev_code 3",
-    "kable IPC0 3 DISK3",
+    "cable IPC0 3 DISK3",
     "set disk3 type=3381",
     // ; Attach DISK unit 4 to IOM 0, chan 013, dev_code 4",
-    "kable IPC0 4 DISK4",
+    "cable IPC0 4 DISK4",
     "set disk4 type=3381",
     // ; Attach DISK unit 5 to IOM 0, chan 013, dev_code 5",
-    "kable IPC0 5 DISK5",
+    "cable IPC0 5 DISK5",
     "set disk5 type=3381",
     // ; Attach DISK unit 6 to IOM 0, chan 013, dev_code 6",
-    "kable IPC0 6 DISK6",
+    "cable IPC0 6 DISK6",
     "set disk6 type=3381",
     // ; Attach DISK unit 7 to IOM 0, chan 013, dev_code 7",
-    "kable IPC0 7 DISK7",
+    "cable IPC0 7 DISK7",
     "set disk7 type=3381",
     // ; Attach DISK unit 8 to IOM 0, chan 013, dev_code 8",
-    "kable IPC0 8 DISK8",
+    "cable IPC0 8 DISK8",
     "set disk8 type=3381",
     // ; Attach DISK unit 9 to IOM 0, chan 013, dev_code 9",
-    "kable IPC0 9 DISK9",
+    "cable IPC0 9 DISK9",
     "set disk9 type=3381",
     // ; Attach DISK unit 10 to IOM 0, chan 013, dev_code 10",
-    "kable IPC0 10 DISK10",
+    "cable IPC0 10 DISK10",
     "set disk10 type=3381",
     // ; Attach DISK unit 11 to IOM 0, chan 013, dev_code 11",
-    "kable IPC0 11 DISK11",
+    "cable IPC0 11 DISK11",
     "set disk11 type=3381",
     // ; Attach DISK unit 12 to IOM 0, chan 013, dev_code 12",
-    "kable IPC0 12 DISK12",
+    "cable IPC0 12 DISK12",
     "set disk12 type=3381",
     // ; Attach DISK unit 13 to IOM 0, chan 013, dev_code 13",
-    "kable IPC0 13 DISK13",
+    "cable IPC0 13 DISK13",
     "set disk13 type=3381",
     // ; Attach DISK unit 14 to IOM 0, chan 013, dev_code 14",
-    "kable IPC0 14 DISK14",
+    "cable IPC0 14 DISK14",
     "set disk14 type=3381",
     // ; Attach DISK unit 15 to IOM 0, chan 013, dev_code 15",
-    "kable IPC0 15 DISK15",
+    "cable IPC0 15 DISK15",
     "set disk15 type=3381",
 
     // ; Attach OPC unit 0 to IOM A, chan 036, dev_code 0
-    "kable IOMA 036 opc0",
+    "cable IOMA 036 opc0",
     // No devices for console, so no 'cable OPC0 # CONx'
 
     // ;;;
@@ -1194,104 +1194,104 @@ static char * default_base_system_script [] =
     // ;;;
 
     // ; Attach FNP unit 3 (d) to IOM A, chan 020, dev_code 0
-    "kable IOMA 020 FNPD",
+    "cable IOMA 020 FNPD",
     // ; Attach FNP unit 0 (a) to IOM A, chan 021, dev_code 0
-    "kable IOMA 021 FNPA",
+    "cable IOMA 021 FNPA",
     // ; Attach FNP unit 1 (b) to IOM A, chan 022, dev_code 0
-    "kable IOMA 022 FNPB",
+    "cable IOMA 022 FNPB",
     // ; Attach FNP unit 2 (c) to IOM A, chan 023, dev_code 0
-    "kable IOMA 023 FNPC",
+    "cable IOMA 023 FNPC",
     // ; Attach FNP unit 4 (e) to IOM A, chan 024, dev_code 0
-    "kable IOMA 024 FNPE",
+    "cable IOMA 024 FNPE",
     // ; Attach FNP unit 5 (f) to IOM A, chan 025, dev_code 0
-    "kable IOMA 025 FNPF",
+    "cable IOMA 025 FNPF",
     // ; Attach FNP unit 6 (g) to IOM A, chan 026, dev_code 0
-    "kable IOMA 026 FNPG",
+    "cable IOMA 026 FNPG",
     // ; Attach FNP unit 7 (h) to IOM A, chan 027, dev_code 0
-    "kable IOMA 027 FNPH",
+    "cable IOMA 027 FNPH",
 
     // ;;;
     // ;;; MPC
     // ;;;
 
     // ; Attach MPC unit 0 to IOM 0, char 015, dev_code 0
-    "kable IOM0 015 URP0",
+    "cable IOM0 015 URP0",
     "set urp0 device_name=urpa",
 
     // ; Attach RDR unit 0 to IOM 0, chan 015, dev_code 1
-    "kable URP0 1 RDR0",
+    "cable URP0 1 RDR0",
     "set rdr0 device_name=rdra",
 
     // ; Attach MPC unit 1 to IOM 0, char 016, dev_code 0
-    "kable IOM0 016 URP1",
+    "cable IOM0 016 URP1",
     "set urp1 device_name=urpb",
 
     // ; Attach PUN unit 0 to IOM 0, chan 016, dev_code 1
-    "kable URP1 1 PUN0",
+    "cable URP1 1 PUN0",
     "set pun0 device_name=puna",
 
     // ; Attach MPC unit 2 to IOM 0, char 017, dev_code 0
-    "kable IOM0 017 URP2",
+    "cable IOM0 017 URP2",
     "set urp2 device_name=urpc",
 
     // ; Attach PRT unit 0 to IOM 0, chan 017, dev_code 1
     "set prt0 device_name=prta",
-    "kable URP2 1 PRT0",
+    "cable URP2 1 PRT0",
 
     // ; Attach PRT unit 1 to IOM 0, chan 017, dev_code 2
     "set prt1 device_name=prtb",
-    "kable URP2 2 PRT1",
+    "cable URP2 2 PRT1",
 
     // ; Attach PRT unit 2 to IOM 0, chan 017, dev_code 3
     "set prt2 device_name=prtc",
-    "kable URP2 3 PRT2",
+    "cable URP2 3 PRT2",
 
     // ; Attach PRT unit 3 to IOM 0, chan 017, dev_code 4
-    "kable URP2 4 PRT3",
+    "cable URP2 4 PRT3",
     "set prt3 device_name=prtd",
 
     // ; Attach PRT unit 4 to IOM 0, chan 017, dev_code 5
-    "kable URP2 5 PRT4",
+    "cable URP2 5 PRT4",
     "set prt4 device_name=prte",
 
     // ; Attach PRT unit 5 to IOM 0, chan 017, dev_code 6
-    "kable URP2 6 PRT5",
+    "cable URP2 6 PRT5",
     "set prt5 device_name=prtf",
 
     // ; Attach PRT unit 6 to IOM 0, chan 017, dev_code 7
-    "kable URP2 7 PRT6",
+    "cable URP2 7 PRT6",
     "set prt6 device_name=prtg",
 
     // ; Attach PRT unit 7 to IOM 0, chan 017, dev_code 8
-    "kable URP2 8 PRT7",
+    "cable URP2 8 PRT7",
     "set prt7 device_name=prth",
 
     // ; Attach PRT unit 8 to IOM 0, chan 017, dev_code 9
-    "kable URP2 9 PRT8",
+    "cable URP2 9 PRT8",
     "set prt8 device_name=prti",
 
     // ; Attach PRT unit 9 to IOM 0, chan 017, dev_code 10
-    "kable URP2 10 PRT9",
+    "cable URP2 10 PRT9",
     "set prt9 device_name=prtj",
 
     // ; Attach PRT unit 10 to IOM 0, chan 017, dev_code 11
-    "kable URP2 11 PRT10",
+    "cable URP2 11 PRT10",
     "set prt10 device_name=prtk",
 
     // ; Attach PRT unit 11 to IOM 0, chan 017, dev_code 12
-    "kable URP2 12 PRT11",
+    "cable URP2 12 PRT11",
     "set prt11 device_name=prtl",
 
     // ; Attach PRT unit 12 to IOM 0, chan 017, dev_code 13
-    "kable URP2 13 PRT12",
+    "cable URP2 13 PRT12",
     "set prt12 device_name=prtm",
 
     // ; Attach PRT unit 13 to IOM 0, chan 017, dev_code 14
-    "kable URP2 14 PRT13",
+    "cable URP2 14 PRT13",
     "set prt13 device_name=prtn",
 
     // ; Attach PRT unit 14 to IOM 0, chan 017, dev_code 15
-    "kable URP2 15 PRT14",
+    "cable URP2 15 PRT14",
     "set prt14 device_name=prto",
 
     // ; Attach PRT unit 15 to IOM 0, chan 017, dev_code 16
@@ -1302,112 +1302,112 @@ static char * default_base_system_script [] =
 
 
     // ; Attach ABSI unit 0 to IOM 0, chan 032, dev_code 0
-    "kable IOM0 032 ABSI0",
+    "cable IOM0 032 ABSI0",
 
     // ; Attach IOM unit 0 port A (0) to SCU unit 0, port 0
-    "kable SCU0 0 IOM0 0", // SCU0 port 0 IOM0 port 0
+    "cable SCU0 0 IOM0 0", // SCU0 port 0 IOM0 port 0
 
     // ; Attach IOM unit 0 port B (1) to SCU unit 1, port 0
-    "kable SCU1 0 IOM0 1", // SCU1 port 0 IOM0 port 1
+    "cable SCU1 0 IOM0 1", // SCU1 port 0 IOM0 port 1
 
     // ; Attach IOM unit 0 port C (2) to SCU unit 2, port 0
-    "kable SCU2 0 IOM0 2", // SCU2 port 0 IOM0 port 2
+    "cable SCU2 0 IOM0 2", // SCU2 port 0 IOM0 port 2
 
     // ; Attach IOM unit 0 port D (3) to SCU unit 3, port 0
-    "kable SCU3 0 IOM0 3", // SCU3 port 0 IOM0 port 3
+    "cable SCU3 0 IOM0 3", // SCU3 port 0 IOM0 port 3
 
 // SCU0 --> CPU0-7
 
     // ; Attach SCU unit 0 port 7 to CPU unit A (0), port 0
-    "kable SCU0 7 CPU0 0", // SCU0 port 7 to CPU0 port 0
+    "cable SCU0 7 CPU0 0", // SCU0 port 7 to CPU0 port 0
 
     // ; Attach SCU unit 0 port 6 to CPU unit B (1), port 0
-    "kable SCU0 6 CPU1 0", // SCU0 port 6 to CPU1 port 0
+    "cable SCU0 6 CPU1 0", // SCU0 port 6 to CPU1 port 0
 
     // ; Attach SCU unit 0 port 5 to CPU unit C (2), port 0
-    "kable SCU0 5 CPU2 0", // SCU0 port 5 to CPU2 port 0
+    "cable SCU0 5 CPU2 0", // SCU0 port 5 to CPU2 port 0
 
     // ; Attach SCU unit 0 port 4 to CPU unit D (3), port 0
-    "kable SCU0 4 CPU3 0", // SCU0 port 4 to CPU3 port 0
+    "cable SCU0 4 CPU3 0", // SCU0 port 4 to CPU3 port 0
 
     // ; Attach SCU unit 0 port 3 to CPU unit E (4), port 0
-    "kable SCU0 3 CPU4 0", // SCU0 port 3 to CPU4 port 0
+    "cable SCU0 3 CPU4 0", // SCU0 port 3 to CPU4 port 0
 
     // ; Attach SCU unit 0 port 2 to CPU unit F (5), port 0
-    "kable SCU0 2 CPU5 0", // SCU0 port 2 to CPU5 port 0
+    "cable SCU0 2 CPU5 0", // SCU0 port 2 to CPU5 port 0
 
     // ; Attach SCU unit 0 port 1 to CPU unit G (6), port 0
-    "kable SCU0 1 CPU6 0", // SCU0 port 1 to CPU6 port 0
+    "cable SCU0 1 CPU6 0", // SCU0 port 1 to CPU6 port 0
 
 // SCU1 --> CPU0-7
 
     // ; Attach SCU unit 1 port 7 to CPU unit A (0), port 1
-    "kable SCU1 7 CPU0 1", // SCU1 port 7 to CPU0 port 1
+    "cable SCU1 7 CPU0 1", // SCU1 port 7 to CPU0 port 1
 
     // ; Attach SCU unit 1 port 6 to CPU unit B (1), port 1
-    "kable SCU1 6 CPU1 1", // SCU1 port 6 to CPU1 port 1
+    "cable SCU1 6 CPU1 1", // SCU1 port 6 to CPU1 port 1
 
     // ; Attach SCU unit 1 port 5 to CPU unit C (2), port 1
-    "kable SCU1 5 CPU2 1", // SCU1 port 5 to CPU2 port 1
+    "cable SCU1 5 CPU2 1", // SCU1 port 5 to CPU2 port 1
 
     // ; Attach SCU unit 1 port 4 to CPU unit D (3), port 1
-    "kable SCU1 4 CPU3 1", // SCU1 port 4 to CPU3 port 1
+    "cable SCU1 4 CPU3 1", // SCU1 port 4 to CPU3 port 1
 
     // ; Attach SCU unit 1 port 3 to CPU unit E (4), port 0
-    "kable SCU1 3 CPU4 1", // SCU1 port 3 to CPU4 port 1
+    "cable SCU1 3 CPU4 1", // SCU1 port 3 to CPU4 port 1
 
     // ; Attach SCU unit 1 port 2 to CPU unit F (5), port 0
-    "kable SCU1 2 CPU5 1", // SCU1 port 2 to CPU5 port 1
+    "cable SCU1 2 CPU5 1", // SCU1 port 2 to CPU5 port 1
 
     // ; Attach SCU unit 0 port 1 to CPU unit G (6), port 0
-    "kable SCU1 1 CPU6 1", // SCU1 port 1 to CPU6 port 1
+    "cable SCU1 1 CPU6 1", // SCU1 port 1 to CPU6 port 1
 
 // SCU2 --> CPU0-7
 
     // ; Attach SCU unit 2 port 7 to CPU unit A (0), port 2
-    "kable SCU2 7 CPU0 2", // SCU1 port 7 to CPU0 port 2
+    "cable SCU2 7 CPU0 2", // SCU1 port 7 to CPU0 port 2
 
     // ; Attach SCU unit 2 port 6 to CPU unit B (1), port 2
-    "kable SCU2 6 CPU1 2", // SCU1 port 6 to CPU1 port 2
+    "cable SCU2 6 CPU1 2", // SCU1 port 6 to CPU1 port 2
 
     // ; Attach SCU unit 2 port 5 to CPU unit C (2), port 2
-    "kable SCU2 5 CPU2 2", // SCU1 port 5 to CPU2 port 2
+    "cable SCU2 5 CPU2 2", // SCU1 port 5 to CPU2 port 2
 
     // ; Attach SCU unit 2 port 4 to CPU unit D (3), port 2
-    "kable SCU2 4 CPU3 2", // SCU1 port 4 to CPU3 port 2
+    "cable SCU2 4 CPU3 2", // SCU1 port 4 to CPU3 port 2
 
     // ; Attach SCU unit 2 port 3 to CPU unit E (4), port 0
-    "kable SCU2 3 CPU4 2", // SCU1 port 3 to CPU4 port 2
+    "cable SCU2 3 CPU4 2", // SCU1 port 3 to CPU4 port 2
 
     // ; Attach SCU unit 2 port 2 to CPU unit F (5), port 0
-    "kable SCU2 2 CPU5 2", // SCU1 port 2 to CPU5 port 2
+    "cable SCU2 2 CPU5 2", // SCU1 port 2 to CPU5 port 2
 
     // ; Attach SCU unit 2 port 1 to CPU unit G (6), port 0
-    "kable SCU2 1 CPU6 2", // SCU1 port 1 to CPU6 port 2
+    "cable SCU2 1 CPU6 2", // SCU1 port 1 to CPU6 port 2
 
 
 // SCU3 --> CPU0-7
 
     // ; Attach SCU unit 3 port 7 to CPU unit A (0), port 3
-    "kable SCU3 7 CPU0 3", // SCU3 port 7 to CPU0 port 3
+    "cable SCU3 7 CPU0 3", // SCU3 port 7 to CPU0 port 3
 
     // ; Attach SCU unit 3 port 6 to CPU unit B (1), port 3
-    "kable SCU3 6 CPU1 3", // SCU3 port 6 to CPU1 port 3
+    "cable SCU3 6 CPU1 3", // SCU3 port 6 to CPU1 port 3
 
     // ; Attach SCU unit 3 port 5 to CPU unit C (2), port 3
-    "kable SCU3 5 CPU2 3", // SCU3 port 5 to CPU2 port 3
+    "cable SCU3 5 CPU2 3", // SCU3 port 5 to CPU2 port 3
 
     // ; Attach SCU unit 3 port 4 to CPU unit D (3), port 3
-    "kable SCU3 4 CPU3 3", // SCU3 port 4 to CPU3 port 3
+    "cable SCU3 4 CPU3 3", // SCU3 port 4 to CPU3 port 3
 
     // ; Attach SCU unit 3 port 3 to CPU unit E (4), port 0
-    "kable SCU3 3 CPU4 3", // SCU3 port 3 to CPU4 port 3
+    "cable SCU3 3 CPU4 3", // SCU3 port 3 to CPU4 port 3
 
     // ; Attach SCU unit 3 port 2 to CPU unit F (5), port 0
-    "kable SCU3 2 CPU5 3", // SCU3 port 2 to CPU5 port 3
+    "cable SCU3 2 CPU5 3", // SCU3 port 2 to CPU5 port 3
 
     // ; Attach SCU unit 3 port 1 to CPU unit G (6), port 0
-    "kable SCU3 1 CPU6 3", // SCU3 port 1 to CPU6 port 3
+    "cable SCU3 1 CPU6 3", // SCU3 port 1 to CPU6 port 3
 
 
     "set cpu0 reset",
@@ -3264,8 +3264,8 @@ static CTAB dps8_cmds[] =
 
     {"DEFAULT_BASE_SYSTEM", set_default_base_system,  0, "default_base_system: Set configuration to defaults\n", NULL, NULL},
 
-    {"KABLE",               sys_kable,                0, "cable: String a cable\n" , NULL, NULL},
-    {"UNKABLE",             sys_kable,                1, "uncable: Unstring a cable\n" , NULL, NULL},
+    {"KABLE",               sys_cable,                0, "cable: String a cable\n" , NULL, NULL},
+    {"UNKABLE",             sys_cable,                1, "uncable: Unstring a cable\n" , NULL, NULL},
     {"CABLE_RIPOUT",        sys_cable_ripout,         0, "cable: Unstring all cables\n" , NULL, NULL},
     {"CABLE_SHOW",          sys_cable_show,           0, "cable: Show cables\n" , NULL, NULL},
 

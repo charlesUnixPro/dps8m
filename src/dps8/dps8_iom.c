@@ -252,7 +252,7 @@ void iom_core_read (uint iomUnitIdx, word24 addr, word36 *data, UNUSED const cha
   {
     word24 offset;
     int scuUnitNum = queryIomScbankMap (iomUnitIdx, addr, & offset);
-    uint scuUnitIdx = kables->iom_to_scu[iomUnitIdx][scuUnitNum].scu_unit_idx;
+    uint scuUnitIdx = cables->iom_to_scu[iomUnitIdx][scuUnitNum].scu_unit_idx;
 #ifdef THREADZ
 #ifdef lockread
     lock_mem ();
@@ -270,7 +270,7 @@ void iom_core_read2 (uint iomUnitIdx, word24 addr, word36 *even, word36 *odd, UN
   {
     word24 offset;
     int scuUnitNum = queryIomScbankMap (iomUnitIdx, addr & PAEVEN, & offset);
-    uint scuUnitIdx = kables->iom_to_scu[iomUnitIdx][scuUnitNum].scu_unit_idx;
+    uint scuUnitIdx = cables->iom_to_scu[iomUnitIdx][scuUnitNum].scu_unit_idx;
 #ifdef THREADZ
 #ifdef lockread
     lock_mem ();
@@ -289,7 +289,7 @@ void iom_core_write (uint iomUnitIdx, word24 addr, word36 data, UNUSED const cha
   {
     word24 offset;
     int scuUnitNum = queryIomScbankMap (iomUnitIdx, addr, & offset);
-    uint scuUnitIdx = kables->iom_to_scu[iomUnitIdx][scuUnitNum].scu_unit_idx;
+    uint scuUnitIdx = cables->iom_to_scu[iomUnitIdx][scuUnitNum].scu_unit_idx;
 #ifdef THREADZ
 #ifdef lockread
     lock_mem ();
@@ -307,7 +307,7 @@ void iom_core_write2 (uint iomUnitIdx, word24 addr, word36 even, word36 odd, UNU
   {
     word24 offset;
     int scuUnitNum = queryIomScbankMap (iomUnitIdx, addr & PAEVEN, & offset);
-    uint scuUnitIdx = kables->iom_to_scu[iomUnitIdx][scuUnitNum].scu_unit_idx;
+    uint scuUnitIdx = cables->iom_to_scu[iomUnitIdx][scuUnitNum].scu_unit_idx;
 #ifdef THREADZ
 #ifdef lockread
     lock_mem ();
@@ -796,7 +796,7 @@ word36 * iomLookupAddress (uint iomUnitIdx, word24 addr)
         sim_printf ("IOM %d mem fail %08o\n", iomUnitIdx, addr); 
         return NULL;
       }
-    int scuUnitIdx = kables->iom_to_scu[iomUnitIdx][port].scu_unit_idx;
+    int scuUnitIdx = cables->iom_to_scu[iomUnitIdx][port].scu_unit_idx;
     return & scu[scuUnitIdx].M [offset];
   }
 #endif
@@ -2250,7 +2250,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
       p -> PCW_21_MSK =         q -> PCW_21_MSK;
     }
 
-    struct iom_to_ctlr_s * d = & kables->iom_to_ctlr[iomUnitIdx][chan];
+    struct iom_to_ctlr_s * d = & cables->iom_to_ctlr[iomUnitIdx][chan];
 
 // A device command of 051 in the PCW is only meaningful to the operator console;
 // all other channels should ignore it. We use (somewhat bogusly) a chanType of
@@ -2393,7 +2393,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
 
 // The device code is per IDCW; look up the device for this IDCW
 
-        d = & kables->iom_to_ctlr[iomUnitIdx][chan];
+        d = & cables->iom_to_ctlr[iomUnitIdx][chan];
         if (! d->iom_cmd)
           {
             p -> stati = 06000; // t, power off/missing
@@ -3018,9 +3018,9 @@ static t_stat bootSvc (UNIT * unitp)
     //scu_reset (NULL);
     for (int port_num = 0; port_num < N_SCU_PORTS; port_num ++)
       {
-        if (! kables->iom_to_scu[iomUnitIdx][port_num].in_use)
+        if (! cables->iom_to_scu[iomUnitIdx][port_num].in_use)
           continue;
-        uint scuUnitIdx = kables->iom_to_scu[iomUnitIdx][port_num].scu_unit_idx;
+        uint scuUnitIdx = cables->iom_to_scu[iomUnitIdx][port_num].scu_unit_idx;
         scuUnitReset ((int) scuUnitIdx);
       }
 
@@ -3039,9 +3039,9 @@ static t_stat bootSvc (UNIT * unitp)
     // simulate $CON
 // XXX XXX XXX
 // Making the assumption that low memory is connected to port 0, ..., high to 3
-    if (! kables->iom_to_scu[iomUnitIdx][0].in_use)
+    if (! cables->iom_to_scu[iomUnitIdx][0].in_use)
       sim_err ("boot iom can't find a SCU\n");
-    uint scuUnitIdx = kables->iom_to_scu[iomUnitIdx][0].scu_unit_idx;
+    uint scuUnitIdx = cables->iom_to_scu[iomUnitIdx][0].scu_unit_idx;
     iom_interrupt (scuUnitIdx, iomUnitIdx);
 
     sim_debug (DBG_DEBUG, &iom_dev, "%s finished\n", __func__);

@@ -393,11 +393,11 @@ static uint get_scu_unit_idx_iom (uint fnp_unit_idx, word24 addr, word24 * offse
   {
     struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
     uint ctlr_port_num = 0; // FNPs are single ported
-    uint iom_unit_idx = kables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
 // XXX can queryIomScbankMap return -1 here? if so, what to do?
 // The address is known to reside in the bootload SCU; we can't get to here unless that is working.
     uint scu_unit_num = (uint) queryIomScbankMap (iom_unit_idx, fudp->mailboxAddress, offset);
-    uint scu_unit_idx = kables->iom_to_scu[iom_unit_idx][scu_unit_num].scu_unit_idx;
+    uint scu_unit_idx = cables->iom_to_scu[iom_unit_idx][scu_unit_num].scu_unit_idx;
     return scu_unit_idx;
   }
 #endif
@@ -465,8 +465,8 @@ sim_printf ("notifyCS mbx %d\n", mbx);
     setTIMW (fudp->mailboxAddress, mbx + 8);
 
     uint ctlr_port_num = 0; // FNPs are single ported
-    uint iom_unit_idx = kables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
-    uint chan_num = kables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].chan_num;
+    uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].chan_num;
     send_terminate_interrupt (iom_unit_idx, chan_num);
   }
 

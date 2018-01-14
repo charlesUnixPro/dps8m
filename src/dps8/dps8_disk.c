@@ -375,8 +375,8 @@ static t_stat loadDisk (uint dsk_unit_idx, const char * disk_filename, UNUSED bo
         //sim_printf ("%s %d %o\n", tapeFilename, ro,  mt_unit [dsk_unit_idx] . flags);
         //sim_printf ("special int %d %o\n", dsk_unit_idx, mt_unit [dsk_unit_idx] . flags);
 
-    uint ctlr_unit_idx = kables->dsk_to_msp [dsk_unit_idx].ctlr_unit_idx;
-    enum ctlr_type_e ctlr_type = kables->tape_to_mtp [dsk_unit_idx].ctlr_type;
+    uint ctlr_unit_idx = cables->dsk_to_msp [dsk_unit_idx].ctlr_unit_idx;
+    enum ctlr_type_e ctlr_type = cables->tape_to_mtp [dsk_unit_idx].ctlr_type;
     if (ctlr_type != CTLR_T_MSP && ctlr_type != CTLR_T_IPC)
       {
         // If None, assume that the cabling hasn't happend yey.
@@ -394,11 +394,11 @@ static t_stat loadDisk (uint dsk_unit_idx, const char * disk_filename, UNUSED bo
       {
         if (ctlr_type == CTLR_T_MSP)
           {
-            if (kables->msp_to_iom[ctlr_unit_idx][ctlr_port_num].in_use)
+            if (cables->msp_to_iom[ctlr_unit_idx][ctlr_port_num].in_use)
               {
-                uint iom_unit_idx = kables->msp_to_iom[ctlr_unit_idx][ctlr_port_num].iom_unit_idx;
-                uint chan_num = kables->msp_to_iom[ctlr_unit_idx][ctlr_port_num].chan_num;
-                uint dev_code = kables->dsk_to_msp[dsk_unit_idx].dev_code;
+                uint iom_unit_idx = cables->msp_to_iom[ctlr_unit_idx][ctlr_port_num].iom_unit_idx;
+                uint chan_num = cables->msp_to_iom[ctlr_unit_idx][ctlr_port_num].chan_num;
+                uint dev_code = cables->dsk_to_msp[dsk_unit_idx].dev_code;
 
                 send_special_interrupt (iom_unit_idx, chan_num, dev_code, 0x40, 01 /* disk pack ready */);
                 sent_one = true;
@@ -406,11 +406,11 @@ static t_stat loadDisk (uint dsk_unit_idx, const char * disk_filename, UNUSED bo
           }
         else
           {
-            if (kables->ipc_to_iom[ctlr_unit_idx][ctlr_port_num].in_use)
+            if (cables->ipc_to_iom[ctlr_unit_idx][ctlr_port_num].in_use)
               {
-                uint iom_unit_idx = kables->ipc_to_iom[ctlr_unit_idx][ctlr_port_num].iom_unit_idx;
-                uint chan_num = kables->ipc_to_iom[ctlr_unit_idx][ctlr_port_num].chan_num;
-                uint dev_code = kables->dsk_to_ipc[dsk_unit_idx].dev_code;
+                uint iom_unit_idx = cables->ipc_to_iom[ctlr_unit_idx][ctlr_port_num].iom_unit_idx;
+                uint chan_num = cables->ipc_to_iom[ctlr_unit_idx][ctlr_port_num].chan_num;
+                uint dev_code = cables->dsk_to_ipc[dsk_unit_idx].dev_code;
 
                 send_special_interrupt (iom_unit_idx, chan_num, dev_code, 0x40, 01 /* disk pack ready */);
                 sent_one = true;
@@ -955,10 +955,10 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     uint ctlr_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
     uint devUnitIdx;
-    if (kables->iom_to_ctlr[iomUnitIdx][chan].ctlr_type == CTLR_T_IPC)
-       devUnitIdx = kables->ipc_to_dsk[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
-    else if (kables->iom_to_ctlr[iomUnitIdx][chan].ctlr_type == CTLR_T_MSP)
-       devUnitIdx = kables->msp_to_dsk[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
+    if (cables->iom_to_ctlr[iomUnitIdx][chan].ctlr_type == CTLR_T_IPC)
+       devUnitIdx = cables->ipc_to_dsk[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
+    else if (cables->iom_to_ctlr[iomUnitIdx][chan].ctlr_type == CTLR_T_MSP)
+       devUnitIdx = cables->msp_to_dsk[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
     else
       {
         sim_warn ("disk_cmd lost\n");

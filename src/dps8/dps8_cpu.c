@@ -358,12 +358,12 @@ void setup_scbank_map (void)
           continue;
         // This will happen during SIMH early initialization before
         // the cables are run.
-        if (! kables->cpu_to_scu[currentRunningCpuIdx][port_num].in_use)
+        if (! cables->cpu_to_scu[currentRunningCpuIdx][port_num].in_use)
           {
             //sim_warn ("%s SCU not cabled\n", __func__);
             continue;
           }
-        uint scu_unit_idx = kables->cpu_to_scu[currentRunningCpuIdx][port_num].scu_unit_idx;
+        uint scu_unit_idx = cables->cpu_to_scu[currentRunningCpuIdx][port_num].scu_unit_idx;
 
         // Calculate the amount of memory in the SCU in words
         uint store_size = cpu.switches.store_size [port_num];
@@ -1046,7 +1046,7 @@ t_stat sim_instr (void)
                 if (get_ctlr_in_use (iomUnitIdx, chan))
                   {
                     //sim_printf ("iom %u chn %u devCnt %u\n", iomNum, chnNum, devCnt);
-                    enum ctlr_type_e ctlr_type = kables->iom_to_ctlr.ctlr_type;
+                    enum ctlr_type_e ctlr_type = cables->iom_to_ctlr.ctlr_type;
                     createChnThread (iomNum, chnNum, ctlr_type_strs [dt]);
                     chnRdyWait (iomNum, chnNum);
                   }
@@ -2364,7 +2364,7 @@ static uint get_scu_unit_idx (word24 addr, word24 * offset)
         sim_err ("cpu_port_num < 0");
         doFault (FAULT_STR, fst_str_nea,  __func__);
       }
-    return kables->cpu_to_scu [currentRunningCpuIdx][cpu_port_num].scu_unit_idx;
+    return cables->cpu_to_scu [currentRunningCpuIdx][cpu_port_num].scu_unit_idx;
   }
 #endif
 

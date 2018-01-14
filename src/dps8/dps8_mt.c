@@ -567,15 +567,15 @@ void loadTape (uint driveNumber, char * tapeFilename, bool ro)
     else
       mt_unit [driveNumber] . flags &= ~ MTUF_WRP;
 
-    uint ctlr_unit_idx = kables->tape_to_mtp [driveNumber].ctlr_unit_idx;
+    uint ctlr_unit_idx = cables->tape_to_mtp [driveNumber].ctlr_unit_idx;
     // Which port should the controller send the interrupt to? All of them...
     bool sent_one = false;
     for (uint ctlr_port_num = 0; ctlr_port_num < MAX_CTLR_PORTS; ctlr_port_num ++)
-      if (kables->mtp_to_iom[ctlr_unit_idx][ctlr_port_num].in_use)
+      if (cables->mtp_to_iom[ctlr_unit_idx][ctlr_port_num].in_use)
         {
-          uint iom_unit_idx = kables->mtp_to_iom[ctlr_unit_idx][ctlr_port_num].iom_unit_idx;
-          uint chan_num = kables->mtp_to_iom[ctlr_unit_idx][ctlr_port_num].chan_num;
-          uint dev_code = kables->tape_to_mtp[driveNumber].dev_code;
+          uint iom_unit_idx = cables->mtp_to_iom[ctlr_unit_idx][ctlr_port_num].iom_unit_idx;
+          uint chan_num = cables->mtp_to_iom[ctlr_unit_idx][ctlr_port_num].chan_num;
+          uint dev_code = cables->tape_to_mtp[driveNumber].dev_code;
 
           send_special_interrupt (iom_unit_idx, chan_num, dev_code, 0, 020 /* tape drive to ready */);
           sent_one = true;
@@ -598,21 +598,21 @@ static void unloadTape (uint driveNumber)
             return;
           }
       }
-    uint ctlr_unit_idx = kables->tape_to_mtp [driveNumber].ctlr_unit_idx;
+    uint ctlr_unit_idx = cables->tape_to_mtp [driveNumber].ctlr_unit_idx;
     // Which port should the controller send the interrupt to?
     // Find one that is connected...
     uint ctlr_port_num;
     for (ctlr_port_num = 0; ctlr_port_num < MAX_CTLR_PORTS; ctlr_port_num ++)
-      if (kables->mtp_to_iom[driveNumber][ctlr_port_num].in_use)
+      if (cables->mtp_to_iom[driveNumber][ctlr_port_num].in_use)
         break;
     if (ctlr_port_num >= MAX_CTLR_PORTS)
       {
         sim_printf ("loadTape can't file controller; dropping interrupt\n");
         return;
       }
-    uint iom_unit_idx = kables->mtp_to_iom[ctlr_unit_idx][ctlr_port_num].iom_unit_idx;
-    uint chan_num = kables->mtp_to_iom[ctlr_unit_idx][ctlr_port_num].chan_num;
-    uint dev_code = kables->tape_to_mtp[driveNumber].dev_code;
+    uint iom_unit_idx = cables->mtp_to_iom[ctlr_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = cables->mtp_to_iom[ctlr_unit_idx][ctlr_port_num].chan_num;
+    uint dev_code = cables->tape_to_mtp[driveNumber].dev_code;
 
     send_special_interrupt (iom_unit_idx, chan_num, dev_code, 0, 040 /* unload complere */);
   }
@@ -1065,7 +1065,7 @@ static int surveyDevices (uint iomUnitIdx, uint chan)
        if (cnt / 2 >= bufsz)
           break;
         // Which device on the string is connected to that device code
-        struct ctlr_to_dev_s * p = & kables->mtp_to_tape[ctlr_idx][dev_code];
+        struct ctlr_to_dev_s * p = & cables->mtp_to_tape[ctlr_idx][dev_code];
         if (! p -> in_use)
           continue;
         uint unit_idx = p->unit_idx;
@@ -1145,7 +1145,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
       dev_code = mtp_state[ctlr_unit_idx].boot_drive;
     sim_debug (DBG_DEBUG, & tape_dev, "dev_code %d\n", dev_code);
 
-    uint devUnitIdx = kables->mtp_to_tape[ctlr_unit_idx][dev_code].unit_idx;
+    uint devUnitIdx = cables->mtp_to_tape[ctlr_unit_idx][dev_code].unit_idx;
     UNIT * unitp = & mt_unit [devUnitIdx];
     struct tape_state * tape_statep = & tape_states [devUnitIdx];
 

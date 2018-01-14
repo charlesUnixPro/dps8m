@@ -203,7 +203,7 @@ static int urp_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     uint ctlr_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
-    uint devUnitIdx = kables->urp_to_urd[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
+    uint devUnitIdx = cables->urp_to_urd[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
     UNIT * unitp = & urp_unit [devUnitIdx];
     int urp_unit_num = (int) URPUNIT_NUM (unitp);
     //int iomUnitIdx = cables -> cablesFromIomToPun [urp_unit_num] . iomUnitIdx;
@@ -594,8 +594,8 @@ int urp_iom_cmd (uint iomUnitIdx, uint chan)
         uint dev_code = p->IDCW_DEV_CODE;
         if (dev_code == 0)
           return urp_cmd (iomUnitIdx, chan);
-        uint urp_unit_idx = kables->iom_to_ctlr[iomUnitIdx][chan].ctlr_unit_idx;
-        iomCmd * cmd =  kables->urp_to_urd[urp_unit_idx][dev_code].iom_cmd;
+        uint urp_unit_idx = cables->iom_to_ctlr[iomUnitIdx][chan].ctlr_unit_idx;
+        iomCmd * cmd =  cables->urp_to_urd[urp_unit_idx][dev_code].iom_cmd;
         if (! cmd)
           {
             sim_warn ("URP can't find divice handler\n");

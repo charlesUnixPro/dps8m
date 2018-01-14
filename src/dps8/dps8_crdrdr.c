@@ -442,7 +442,7 @@ static int rdrReadRecord (uint iomUnitIdx, uint chan)
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     sim_debug (DBG_NOTIFY, & rdr_dev, "Read binary\n");
     uint ctlr_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
-    uint unitIdx = kables->urp_to_urd[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
+    uint unitIdx = cables->urp_to_urd[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
     // XXX in_use not being checked?
     //if (unitIdx < 0)
     //  {
@@ -727,7 +727,7 @@ static int rdr_cmd (uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     uint ctlr_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
-    uint unitIdx = kables->urp_to_urd[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
+    uint unitIdx = cables->urp_to_urd[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
     // XXX in_use not being checked?
     //if (unitIdx < 0)
     //  {
@@ -862,11 +862,11 @@ void rdrProcessEvent ()
 
 void rdrCardReady (int unitNum)
   {
-    uint ctlr_unit_idx = kables->rdr_to_urp [unitNum].ctlr_unit_idx;
+    uint ctlr_unit_idx = cables->rdr_to_urp [unitNum].ctlr_unit_idx;
     uint ctlr_port_num = 0; // Single port device
-    uint iom_unit_idx = kables->urp_to_iom[ctlr_unit_idx][ctlr_port_num].iom_unit_idx;
-    uint chan_num = kables->urp_to_iom[ctlr_unit_idx][ctlr_port_num].chan_num;
-    uint dev_code = kables->rdr_to_urp[unitNum].dev_code;
+    uint iom_unit_idx = cables->urp_to_iom[ctlr_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = cables->urp_to_iom[ctlr_unit_idx][ctlr_port_num].chan_num;
+    uint dev_code = cables->rdr_to_urp[unitNum].dev_code;
     send_special_interrupt (iom_unit_idx, chan_num, dev_code, 0377, 0377 /* tape drive to ready */);
   }
 

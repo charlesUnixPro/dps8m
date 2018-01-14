@@ -39,7 +39,7 @@
 
 #define DBG_CTR 1
 
-struct kables_s * kables = NULL;
+struct cables_s * cables = NULL;
 
 char * ctlr_type_strs [/* enum ctlr_type_e */] =
   {
@@ -133,7 +133,7 @@ static bool name_match (const char * str, const char * pattern, uint * val)
 
 static t_stat back_cable_iom_to_scu (int uncable, uint iom_unit_idx, uint iom_port_num, uint scu_unit_idx, uint scu_port_num)
   {
-    struct iom_to_scu_s * p = & kables->iom_to_scu[iom_unit_idx][iom_port_num];
+    struct iom_to_scu_s * p = & cables->iom_to_scu[iom_unit_idx][iom_port_num];
     if (uncable)
       {
         p->in_use = false;
@@ -156,7 +156,7 @@ static t_stat back_cable_iom_to_scu (int uncable, uint iom_unit_idx, uint iom_po
 
 static t_stat cable_scu_to_iom (int uncable, uint scu_unit_idx, uint scu_port_num, uint iom_unit_idx, uint iom_port_num)
   {
-    struct scu_to_iom_s * p = & kables->scu_to_iom[scu_unit_idx][scu_port_num];
+    struct scu_to_iom_s * p = & cables->scu_to_iom[scu_unit_idx][scu_port_num];
     if (uncable)
       {
         if (! p->in_use)
@@ -214,7 +214,7 @@ static t_stat cable_scu_to_iom (int uncable, uint scu_unit_idx, uint scu_port_nu
 
 static t_stat back_cable_cpu_to_scu (int uncable, uint cpu_unit_idx, uint cpu_port_num, uint scu_unit_idx, uint scu_port_num, uint scu_subport_num)
   {
-    struct cpu_to_scu_s * p = & kables->cpu_to_scu[cpu_unit_idx][cpu_port_num];
+    struct cpu_to_scu_s * p = & cables->cpu_to_scu[cpu_unit_idx][cpu_port_num];
     if (uncable)
       {
         p->in_use = false;
@@ -238,7 +238,7 @@ static t_stat back_cable_cpu_to_scu (int uncable, uint cpu_unit_idx, uint cpu_po
 
 static t_stat cable_scu_to_cpu (int uncable, uint scu_unit_idx, uint scu_port_num, uint scu_subport_num, uint cpu_unit_idx, uint cpu_port_num)
   {
-    struct scu_to_cpu_s * p = & kables->scu_to_cpu[scu_unit_idx][scu_port_num][scu_subport_num];
+    struct scu_to_cpu_s * p = & cables->scu_to_cpu[scu_unit_idx][scu_port_num][scu_subport_num];
     if (uncable)
       {
         if (! p->in_use)
@@ -297,7 +297,7 @@ static t_stat cable_scu_to_cpu (int uncable, uint scu_unit_idx, uint scu_port_nu
 //    cable SCUx port# IOMx port#
 //    cable SCUx port# CPUx port#
 
-static t_stat kable_scu (int uncable, uint scu_unit_idx, char * name_save)
+static t_stat cable_scu (int uncable, uint scu_unit_idx, char * name_save)
   {
     if (scu_unit_idx >= scu_dev.numunits)
       {
@@ -461,7 +461,7 @@ static t_stat cable_ctlr_to_iom (int uncable, struct ctlr_to_iom_s * there,
     return SCPE_OK;
   }
 
-static t_stat kable_ctlr (int uncable,
+static t_stat cable_ctlr (int uncable,
                           uint iom_unit_idx, uint chan_num,
                           uint ctlr_unit_idx, uint port_num,
                           char * service,
@@ -477,7 +477,7 @@ static t_stat kable_ctlr (int uncable,
         return SCPE_ARG;
       }
 
-    struct iom_to_ctlr_s * p = & kables->iom_to_ctlr[iom_unit_idx][chan_num];
+    struct iom_to_ctlr_s * p = & cables->iom_to_ctlr[iom_unit_idx][chan_num];
 
     if (uncable)
       {
@@ -539,7 +539,7 @@ static t_stat kable_ctlr (int uncable,
 //    cable IOMx chan# FNPx       // FNP 
 //    cable IOMx chan# ABSIx      // ABSI 
 
-static t_stat kable_iom (int uncable, uint iom_unit_idx, char * name_save)
+static t_stat cable_iom (int uncable, uint iom_unit_idx, char * name_save)
   {
     if (iom_unit_idx >= iom_dev.numunits)
       {
@@ -587,12 +587,12 @@ static t_stat kable_iom (int uncable, uint iom_unit_idx, char * name_save)
             sim_printf ("error: CABLE IOM: IPC port number out of range <%d>\n", ipc_port_num);
             return SCPE_ARG;
           }
-        return kable_ctlr (uncable,
+        return cable_ctlr (uncable,
                            iom_unit_idx, (uint) chan_num,
                            unit_idx, (uint) ipc_port_num,
                            "CABLE IOMx IPCx",
                            & ipc_dev,
-                           & kables->ipc_to_iom[unit_idx][ipc_port_num],
+                           & cables->ipc_to_iom[unit_idx][ipc_port_num],
                            CTLR_T_IPC, chan_type_PSI,
                            & ipc_unit [unit_idx], dsk_iom_cmd); // XXX mtp_iom_cmd?
       }
@@ -618,12 +618,12 @@ static t_stat kable_iom (int uncable, uint iom_unit_idx, char * name_save)
             return SCPE_ARG;
           }
         //return cable_iom_to_mtp (uncable, iom_unit_idx, (uint) chan_num, unit_idx, (uint) mtp_port_num);
-        return kable_ctlr (uncable,
+        return cable_ctlr (uncable,
                            iom_unit_idx, (uint) chan_num,
                            unit_idx, (uint) mtp_port_num,
                            "CABLE IOMx MTPx",
                            & mtp_dev,
-                           & kables->mtp_to_iom[unit_idx][mtp_port_num],
+                           & cables->mtp_to_iom[unit_idx][mtp_port_num],
                            CTLR_T_MTP, chan_type_PSI,
                            & mtp_unit [unit_idx], mt_iom_cmd); // XXX mtp_iom_cmd?
       }
@@ -649,12 +649,12 @@ static t_stat kable_iom (int uncable, uint iom_unit_idx, char * name_save)
             return SCPE_ARG;
           }
 
-        return kable_ctlr (uncable,
+        return cable_ctlr (uncable,
                            iom_unit_idx, (uint) chan_num,
                            unit_idx, (uint) urp_port_num,
                            "CABLE IOMx URPx",
                            & urp_dev,
-                           & kables->urp_to_iom[unit_idx][urp_port_num],
+                           & cables->urp_to_iom[unit_idx][urp_port_num],
                            CTLR_T_URP, chan_type_PSI,
                            & urp_unit [unit_idx], urp_iom_cmd);
       }
@@ -669,12 +669,12 @@ static t_stat kable_iom (int uncable, uint iom_unit_idx, char * name_save)
           }
 
         uint opc_port_num = 0;
-        return kable_ctlr (uncable,
+        return cable_ctlr (uncable,
                            iom_unit_idx, (uint) chan_num,
                            unit_idx, opc_port_num,
                            "CABLE IOMx OPCx",
                            & opc_dev,
-                           & kables->opc_to_iom[unit_idx][opc_port_num],
+                           & cables->opc_to_iom[unit_idx][opc_port_num],
                            CTLR_T_OPC, chan_type_CPI,
                            & opc_unit [unit_idx], opc_iom_cmd);
       }
@@ -689,12 +689,12 @@ static t_stat kable_iom (int uncable, uint iom_unit_idx, char * name_save)
           }
 
         uint fnp_port_num = 0;
-        return kable_ctlr (uncable,
+        return cable_ctlr (uncable,
                            iom_unit_idx, (uint) chan_num,
                            unit_idx, fnp_port_num,
                            "CABLE IOMx FNPx",
                            & fnp_dev,
-                           & kables->fnp_to_iom[unit_idx][fnp_port_num],
+                           & cables->fnp_to_iom[unit_idx][fnp_port_num],
                            CTLR_T_FNP, chan_type_direct,
                            & fnp_unit [unit_idx], fnp_iom_cmd);
       }
@@ -709,12 +709,12 @@ static t_stat kable_iom (int uncable, uint iom_unit_idx, char * name_save)
           }
 
         uint absi_port_num = 0;
-        return kable_ctlr (uncable,
+        return cable_ctlr (uncable,
                            iom_unit_idx, (uint) chan_num,
                            unit_idx, absi_port_num,
                            "CABLE IOMx ABSIx",
                            & absi_dev,
-                           & kables->absi_to_iom[unit_idx][absi_port_num],
+                           & cables->absi_to_iom[unit_idx][absi_port_num],
                            CTLR_T_ABSI, chan_type_direct,
                            & absi_unit [unit_idx], absi_iom_cmd);
       }
@@ -762,7 +762,7 @@ static t_stat cable_periph_to_ctlr (int uncable,
     return SCPE_OK;
   }
 
-static t_stat kable_periph (int uncable,
+static t_stat cable_periph (int uncable,
                             uint ctlr_unit_idx,
                             uint dev_code,
                             enum ctlr_type_e ctlr_type,
@@ -820,7 +820,7 @@ static t_stat kable_periph (int uncable,
 
 //     cable MTPx dev_code TAPEx
 
-static t_stat kable_mtp (int uncable, uint ctlr_unit_idx, char * name_save)
+static t_stat cable_mtp (int uncable, uint ctlr_unit_idx, char * name_save)
   {
     if (ctlr_unit_idx >= mtp_dev.numunits)
       {
@@ -857,14 +857,14 @@ static t_stat kable_mtp (int uncable, uint ctlr_unit_idx, char * name_save)
             return SCPE_ARG;
           }
 
-        return kable_periph (uncable,
+        return cable_periph (uncable,
                              ctlr_unit_idx,
                              (uint) dev_code,
                              CTLR_T_MTP,
-                             & kables->mtp_to_tape[ctlr_unit_idx][dev_code],
+                             & cables->mtp_to_tape[ctlr_unit_idx][dev_code],
                              mt_unit_idx,
                              mt_iom_cmd,
-                             & kables->tape_to_mtp[mt_unit_idx],
+                             & cables->tape_to_mtp[mt_unit_idx],
                              "CABLE MTPx TAPEx");
       }
 
@@ -878,7 +878,7 @@ static t_stat kable_mtp (int uncable, uint ctlr_unit_idx, char * name_save)
 
 //     cable IPCx dev_code DISKx
 
-static t_stat kable_ipc (int uncable, uint ctlr_unit_idx, char * name_save)
+static t_stat cable_ipc (int uncable, uint ctlr_unit_idx, char * name_save)
   {
     if (ctlr_unit_idx >= ipc_dev.numunits)
       {
@@ -915,14 +915,14 @@ static t_stat kable_ipc (int uncable, uint ctlr_unit_idx, char * name_save)
             return SCPE_ARG;
           }
 
-        return kable_periph (uncable,
+        return cable_periph (uncable,
                              ctlr_unit_idx,
                              (uint) dev_code,
                              CTLR_T_IPC,
-                             & kables->ipc_to_dsk[ctlr_unit_idx][dev_code],
+                             & cables->ipc_to_dsk[ctlr_unit_idx][dev_code],
                              dsk_unit_idx,
                              dsk_iom_cmd, // XXX
-                             & kables->dsk_to_ipc[dsk_unit_idx],
+                             & cables->dsk_to_ipc[dsk_unit_idx],
                              "CABLE IPCx DISKx");
       }
 
@@ -936,7 +936,7 @@ static t_stat kable_ipc (int uncable, uint ctlr_unit_idx, char * name_save)
 
 //     cable MSPx dev_code DISKx
 
-static t_stat kable_msp (int uncable, uint ctlr_unit_idx, char * name_save)
+static t_stat cable_msp (int uncable, uint ctlr_unit_idx, char * name_save)
   {
     if (ctlr_unit_idx >= msp_dev.numunits)
       {
@@ -973,14 +973,14 @@ static t_stat kable_msp (int uncable, uint ctlr_unit_idx, char * name_save)
             return SCPE_ARG;
           }
 
-        return kable_periph (uncable,
+        return cable_periph (uncable,
                              ctlr_unit_idx,
                              (uint) dev_code,
                              CTLR_T_MSP,
-                             & kables->msp_to_dsk[ctlr_unit_idx][dev_code],
+                             & cables->msp_to_dsk[ctlr_unit_idx][dev_code],
                              dsk_unit_idx,
                              dsk_iom_cmd, // XXX
-                             & kables->dsk_to_msp[dsk_unit_idx],
+                             & cables->dsk_to_msp[dsk_unit_idx],
                              "CABLE MSPx DISKx");
       }
 
@@ -994,7 +994,7 @@ static t_stat kable_msp (int uncable, uint ctlr_unit_idx, char * name_save)
 
 //     cable URPx dev_code [RDRx PUNx PRTx]
 
-static t_stat kable_urp (int uncable, uint ctlr_unit_idx, char * name_save)
+static t_stat cable_urp (int uncable, uint ctlr_unit_idx, char * name_save)
   {
     if (ctlr_unit_idx >= urp_dev.numunits)
       {
@@ -1031,14 +1031,14 @@ static t_stat kable_urp (int uncable, uint ctlr_unit_idx, char * name_save)
             return SCPE_ARG;
           }
 
-        return kable_periph (uncable,
+        return cable_periph (uncable,
                              ctlr_unit_idx,
                              (uint) dev_code,
                              CTLR_T_URP,
-                             & kables->urp_to_urd[ctlr_unit_idx][dev_code],
+                             & cables->urp_to_urd[ctlr_unit_idx][dev_code],
                              unit_idx,
                              rdr_iom_cmd, // XXX
-                             & kables->rdr_to_urp[unit_idx],
+                             & cables->rdr_to_urp[unit_idx],
                              "CABLE URPx RDRx");
       }
 
@@ -1051,14 +1051,14 @@ static t_stat kable_urp (int uncable, uint ctlr_unit_idx, char * name_save)
             return SCPE_ARG;
           }
 
-        return kable_periph (uncable,
+        return cable_periph (uncable,
                              ctlr_unit_idx,
                              (uint) dev_code,
                              CTLR_T_URP,
-                             & kables->urp_to_urd[ctlr_unit_idx][dev_code],
+                             & cables->urp_to_urd[ctlr_unit_idx][dev_code],
                              unit_idx,
                              pun_iom_cmd, // XXX
-                             & kables->pun_to_urp[unit_idx],
+                             & cables->pun_to_urp[unit_idx],
                              "CABLE URPx PUNx");
       }
 
@@ -1071,14 +1071,14 @@ static t_stat kable_urp (int uncable, uint ctlr_unit_idx, char * name_save)
             return SCPE_ARG;
           }
 
-        return kable_periph (uncable,
+        return cable_periph (uncable,
                              ctlr_unit_idx,
                              (uint) dev_code,
                              CTLR_T_URP,
-                             & kables->urp_to_urd[ctlr_unit_idx][dev_code],
+                             & cables->urp_to_urd[ctlr_unit_idx][dev_code],
                              unit_idx,
                              prt_iom_cmd, // XXX
-                             & kables->prt_to_urp[unit_idx],
+                             & cables->prt_to_urp[unit_idx],
                              "CABLE URPx PRTx");
       }
 
@@ -1090,7 +1090,7 @@ static t_stat kable_urp (int uncable, uint ctlr_unit_idx, char * name_save)
       }
   }
 
-t_stat sys_kable (int32 arg, const char * buf)
+t_stat sys_cable (int32 arg, const char * buf)
   {
     char * copy = strdup (buf);
     t_stat rc = SCPE_ARG;
@@ -1110,17 +1110,17 @@ t_stat sys_kable (int32 arg, const char * buf)
 
     uint unit_num;
     if (name_match (name, "SCU", & unit_num))
-      rc = kable_scu (arg, unit_num, name_save);
+      rc = cable_scu (arg, unit_num, name_save);
     else if (name_match (name, "IOM", & unit_num))
-      rc = kable_iom (arg, unit_num, name_save);
+      rc = cable_iom (arg, unit_num, name_save);
     else if (name_match (name, "MTP", & unit_num))
-      rc = kable_mtp (arg, unit_num, name_save);
+      rc = cable_mtp (arg, unit_num, name_save);
     else if (name_match (name, "IPC", & unit_num))
-      rc = kable_ipc (arg, unit_num, name_save);
+      rc = cable_ipc (arg, unit_num, name_save);
     else if (name_match (name, "MSP", & unit_num))
-      rc = kable_msp (arg, unit_num, name_save);
+      rc = cable_msp (arg, unit_num, name_save);
     else if (name_match (name, "URP", & unit_num))
-      rc = kable_urp (arg, unit_num, name_save);
+      rc = cable_urp (arg, unit_num, name_save);
     else
       {
         sim_printf ("error: cable: invalid name <%s>\n", name);
@@ -1132,12 +1132,12 @@ exit:
     return rc;
   }
 
-static void kable_init (void)
+static void cable_init (void)
   {
-    // sets kablesFromIomToDev[iomUnitIdx].devices[chanNum][dev_code].type
+    // sets cablesFromIomToDev[iomUnitIdx].devices[chanNum][dev_code].type
     //  to DEVT_NONE and in_use to false
 
-    memset (kables, 0, sizeof (struct kables_s));
+    memset (cables, 0, sizeof (struct cables_s));
   }
 
 t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
@@ -1150,7 +1150,7 @@ t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
     all (u, N_SCU_UNITS_MAX)
       all (prt, N_SCU_PORTS)
         {
-          struct scu_to_iom_s * p = & kables->scu_to_iom[u][prt];
+          struct scu_to_iom_s * p = & cables->scu_to_iom[u][prt];
           if (p->in_use)
             sim_printf (" %4u %4u    %4u %4u\n", u, prt, p->iom_unit_idx, p->iom_port_num);
         }
@@ -1159,7 +1159,7 @@ t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
     all (u, N_IOM_UNITS_MAX)
       all (prt, N_IOM_PORTS)
         {
-          struct iom_to_scu_s * p = & kables->iom_to_scu[u][prt];
+          struct iom_to_scu_s * p = & cables->iom_to_scu[u][prt];
           if (p->in_use)
             sim_printf (" %4u %4u    %4u %4u\n", u, prt, p->scu_unit_idx, p->scu_port_num);
         }
@@ -1172,7 +1172,7 @@ t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
       all (prt, N_SCU_PORTS)
         all (sp, N_SCU_SUBPORTS)
           {
-            struct scu_to_cpu_s * p = & kables->scu_to_cpu[u][prt][sp];
+            struct scu_to_cpu_s * p = & cables->scu_to_cpu[u][prt][sp];
             if (p->in_use)
               sim_printf (" %4u %4u    %4u %4u\n", u, prt, p->cpu_unit_idx, p->cpu_port_num);
           }
@@ -1181,7 +1181,7 @@ t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
     all (u, N_CPU_UNITS_MAX)
       all (prt, N_CPU_PORTS)
         {
-          struct cpu_to_scu_s * p = & kables->cpu_to_scu[u][prt];
+          struct cpu_to_scu_s * p = & cables->cpu_to_scu[u][prt];
           if (p->in_use)
             sim_printf (" %4u %4u    %4u %4u  %4u\n", u, prt, p->scu_unit_idx, p->scu_port_num, p->scu_subport_num);
         }
@@ -1193,7 +1193,7 @@ t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
     all (u, N_IOM_UNITS_MAX)
       all (c, MAX_CHANNELS)
         {
-          struct iom_to_ctlr_s * p = & kables->iom_to_ctlr[u][c];
+          struct iom_to_ctlr_s * p = & cables->iom_to_ctlr[u][c];
           if (p->in_use)
             sim_printf (" %4u %4u     %4u  %4u %-6s  %-6s %10p %10p %10p\n", u, c, p->ctlr_unit_idx, p->port_num, ctlr_type_strs[p->ctlr_type], chan_type_strs[p->chan_type], p->dev, p->board, p->iom_cmd);
         }
@@ -1203,7 +1203,7 @@ t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
     all (u, N_ ## big ## _UNITS_MAX) \
       all (prt, MAX_CTLR_PORTS) \
         { \
-          struct ctlr_to_iom_s * p = & kables->small ## _to_iom[u][prt]; \
+          struct ctlr_to_iom_s * p = & cables->small ## _to_iom[u][prt]; \
           if (p->in_use) \
             sim_printf (" %4u %4u    %4u %4u\n", u, prt, p->iom_unit_idx, p->chan_num); \
         } 
@@ -1223,7 +1223,7 @@ t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
     all (u, N_ ## from_big ## _UNITS_MAX) \
       all (prt, N_DEV_CODES) \
         { \
-          struct ctlr_to_dev_s * p = & kables->from_small ## _to_ ## to_small[u][prt]; \
+          struct ctlr_to_dev_s * p = & cables->from_small ## _to_ ## to_small[u][prt]; \
           if (p->in_use) \
             sim_printf (" %4u  %4u        %4u %10p\n", u, prt, p->unit_idx, p->iom_cmd); \
         } 
@@ -1231,7 +1231,7 @@ t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
     sim_printf ("  %-4s --> %-4s dev_code type\n", #to_label, #from_big); \
     all (u, N_ ## to_big ## _UNITS_MAX) \
       { \
-        struct dev_to_ctlr_s * p = & kables->to_small ## _to_ ## from_small[u]; \
+        struct dev_to_ctlr_s * p = & cables->to_small ## _to_ ## from_small[u]; \
         if (p->in_use) \
           sim_printf (" %4u    %4u   %4u    %5s\n", u, p->ctlr_unit_idx, p->dev_code, ctlr_type_strs[p->ctlr_type]); \
       } 
@@ -1252,30 +1252,30 @@ t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
     
 t_stat sys_cable_ripout (UNUSED int32 arg, UNUSED const char * buf)
   {
-    kable_init ();
+    cable_init ();
     scu_init ();
     return SCPE_OK;
   }
 
 void sysCableInit (void)
   {
-   if (! kables)
+   if (! cables)
       {
 #ifdef M_SHARED
-        kables = (struct kables_s *) create_shm ("kables", getsid (0),
-                                                 sizeof (struct kables_s));
+        cables = (struct cables_s *) create_shm ("cables", getsid (0),
+                                                 sizeof (struct cables_s));
 #else
-        kables = (struct kables_s *) malloc (sizeof (struct kables_s));
+        cables = (struct cables_s *) malloc (sizeof (struct cables_s));
 #endif
-        if (kables == NULL)
+        if (cables == NULL)
           {
-            sim_printf ("create_shm kables failed\n");
-            sim_err ("create_shm kables failed\n");
+            sim_printf ("create_shm cables failed\n");
+            sim_err ("create_shm cables failed\n");
           }
       }
 
     // Initialize data structures
-    kable_init ();
+    cable_init ();
   }
 
 

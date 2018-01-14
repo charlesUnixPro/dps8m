@@ -202,7 +202,7 @@ struct dev_to_ctlr_s
                                 // is MSP or IPC
   };
    
-struct kables_s
+struct cables_s
   {
     // SCU->unit
     //  IOM
@@ -248,9 +248,9 @@ struct kables_s
     struct dev_to_ctlr_s prt_to_urp [N_PRT_UNITS_MAX];
   };
 
-extern struct kables_s * kables;
+extern struct cables_s * cables;
 
-t_stat sys_kable (UNUSED int32 arg, const char * buf);
+t_stat sys_cable (UNUSED int32 arg, const char * buf);
 
 
 // Accessors
@@ -258,23 +258,23 @@ t_stat sys_kable (UNUSED int32 arg, const char * buf);
 // Get controller index from (IOM index, channel)
 
 #define get_ctlr_idx(iom_unit_idx, chan) \
-   (kables->iom_to_ctlr[iom_unit_idx][chan].ctlr_unit_idx)
+   (cables->iom_to_ctlr[iom_unit_idx][chan].ctlr_unit_idx)
 
 // Get controller in_use from (IOM index, channel)
 
 #define get_ctlr_in_use(iom_unit_idx, chan) \
-   (kables->iom_to_ctlr[iom_unit_idx][chan].in_use)
+   (cables->iom_to_ctlr[iom_unit_idx][chan].in_use)
 
 // Get SCU index from (CPU index, port)
 
 #define get_scu_idx(cpu_unit_idx, cpu_port_num) \
-   (kables->cpu_to_scu[cpu_unit_idx][cpu_port_num].scu_unit_idx)
+   (cables->cpu_to_scu[cpu_unit_idx][cpu_port_num].scu_unit_idx)
 
 
 // Get SCU in_use from (CPU index, port)
 
 #define get_scu_in_use(cpu_unit_idx, cpu_port_num) \
-   (kables->cpu_to_scu[cpu_unit_idx][cpu_port_num].in_use)
+   (cables->cpu_to_scu[cpu_unit_idx][cpu_port_num].in_use)
 
 
 t_stat sys_cable (UNUSED int32 arg, const char * buf);

@@ -404,8 +404,8 @@ static t_stat console_attn (UNUSED UNIT * uptr)
   {
     uint con_unit_idx = (uint) (uptr - attn_unit);
     uint ctlr_port_num = 0; // Consoles are single ported
-    uint iom_unit_idx = kables->opc_to_iom[con_unit_idx][ctlr_port_num].iom_unit_idx;
-    uint chan_num = kables->opc_to_iom[con_unit_idx][ctlr_port_num].chan_num;
+    uint iom_unit_idx = cables->opc_to_iom[con_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = cables->opc_to_iom[con_unit_idx][ctlr_port_num].chan_num;
     uint dev_code = 0; // Only a single console on the controller
 
     send_special_interrupt (iom_unit_idx, chan_num, dev_code, 0, 0);
@@ -582,8 +582,8 @@ static void sendConsole (int conUnitIdx, word12 stati)
     uint tally = csp->tally;
     uint daddr = csp->daddr;
     uint ctlr_port_num = 0; // Consoles are single ported
-    uint iomUnitIdx = kables->opc_to_iom[conUnitIdx][ctlr_port_num].iom_unit_idx;
-    uint chan_num = kables->opc_to_iom[conUnitIdx][ctlr_port_num].chan_num;
+    uint iomUnitIdx = cables->opc_to_iom[conUnitIdx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = cables->opc_to_iom[conUnitIdx][ctlr_port_num].chan_num;
     iomChanData_t * p = & iomChanData[iomUnitIdx][chan_num];
 
 // XXX this should be iomIndirectDataService
@@ -1358,8 +1358,8 @@ static t_stat opc_svc (UNIT * unitp)
   {
     int con_unit_idx = (int) OPC_UNIT_NUM (unitp);
     uint ctlr_port_num = 0; // Consoles are single ported
-    uint iom_unit_idx = kables->opc_to_iom[con_unit_idx][ctlr_port_num].iom_unit_idx;
-    uint chan_num = kables->opc_to_iom[con_unit_idx][ctlr_port_num].chan_num;
+    uint iom_unit_idx = cables->opc_to_iom[con_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = cables->opc_to_iom[con_unit_idx][ctlr_port_num].chan_num;
     opc_iom_cmd (iom_unit_idx, chan_num);
     return SCPE_OK;
   }
