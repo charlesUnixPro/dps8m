@@ -178,10 +178,8 @@ static char * default_base_system_script [] =
     "set iom nunits=1",
     // ; 16 drives plus a placeholder for the controller
     "set tape nunits=17",
-#ifdef NEW_CABLE
     "set mtp nunits=1",
     "set ipc nunits=1",
-#endif
     // ; 16 drives; no controller
     "set disk nunits=16",
     "set scu nunits=4",
@@ -1096,7 +1094,6 @@ static char * default_base_system_script [] =
 
     // ;cable ripout
 
-#ifdef NEW_CABLE
     //XXX"set mtp0 boot_drive=1",
     // ; Attach tape MPC to IOM 0, chan 012, dev_code 0
     "set mtp0 boot_drive=0",
@@ -1135,7 +1132,6 @@ static char * default_base_system_script [] =
     "set tape15 device_name=tapa_15",
     "kable MTP0 16 TAPE16",
     "set tape16 device_name=tapa_16",
-#endif
 
 
     "set ipc0 device_name=IPC0",

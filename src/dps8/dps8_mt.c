@@ -111,6 +111,194 @@
 
 #include "sim_tape.h"
 
+static DEBTAB mt_dt [] =
+  {
+    { "NOTIFY", DBG_NOTIFY, NULL },
+    { "INFO", DBG_INFO, NULL },
+    { "ERR", DBG_ERR, NULL },
+    { "WARN", DBG_WARN, NULL },
+    { "DEBUG", DBG_DEBUG, NULL },
+    { "ALL", DBG_ALL, NULL }, // don't move as it messes up DBG message
+    { NULL, 0, NULL }
+  };
+
+//////////////
+//////////////
+//
+// MTP
+//
+
+#define MTP_UNIT_IDX(uptr) ((uptr) - mtp_unit)
+#define N_MTP_UNITS 1 // default
+
+static struct mtp_state_s
+  {
+    uint boot_drive;
+    char device_name [MAX_DEV_NAME_LEN];
+  } mtp_state [N_MTP_UNITS_MAX];
+
+static t_stat mtp_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, 
+                               UNUSED int val, UNUSED const void * desc)
+  {
+    sim_printf ("Number of MTP controllers in the system is %d\n",
+                mtp_dev.numunits);
+    return SCPE_OK;
+  }
+
+static t_stat mtp_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, 
+                              const char * cptr, UNUSED void * desc)
+  {
+    int n = atoi (cptr);
+    if (n < 0 || n > N_MTP_UNITS_MAX)
+      return SCPE_ARG;
+    mtp_dev.numunits = (uint32) n;
+    return SCPE_OK;
+  }
+
+
+static t_stat mtp_show_boot_drive (UNUSED FILE * st, UNIT * uptr, 
+                                   UNUSED int val, UNUSED const void * desc)
+  {
+    long mtp_unit_idx = MTP_UNIT_IDX (uptr);
+    if (mtp_unit_idx < 0 || mtp_unit_idx >= N_MTP_UNITS_MAX)
+      {
+        sim_printf ("Controller unit number out of range\n");
+        return SCPE_ARG;
+      }
+    sim_printf ("Tape drive dev_code to boot from is %u\n",
+                mtp_state[mtp_unit_idx].boot_drive);
+    return SCPE_OK;
+  }
+
+static t_stat mtp_set_boot_drive (UNIT * uptr, UNUSED int32 value, 
+                                 const char * cptr, UNUSED void * desc)
+  {
+    long mtp_unit_idx = MTP_UNIT_IDX (uptr);
+    if (mtp_unit_idx < 0 || mtp_unit_idx >= N_MTP_UNITS_MAX)
+      {
+        sim_printf ("Controller unit number out of range\n");
+        return SCPE_ARG;
+      }
+    int n = (int) atoi (cptr);
+    if (n < 0 || n >= N_DEV_CODES)
+      return SCPE_ARG;
+    mtp_state[mtp_unit_idx].boot_drive = (uint) n;
+    return SCPE_OK;
+  }
+
+UNIT mtp_unit [N_MTP_UNITS_MAX] =
+   {
+      [0 ... N_MTP_UNITS_MAX-1] =
+        {
+          UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL
+        }
+  };
+
+static t_stat mtp_show_device_name (UNUSED FILE * st, UNIT * uptr, 
+                                    UNUSED int val, UNUSED const void * desc)
+  {
+    int n = (int) MTP_UNIT_IDX (uptr);
+    if (n < 0 || n >= N_MTP_UNITS_MAX)
+      return SCPE_ARG;
+    sim_printf("Controller device name is %s\n", mtp_state [n].device_name);
+    return SCPE_OK;
+  }
+
+static t_stat mtp_set_device_name (UNIT * uptr, UNUSED int32 value, 
+                                   const char * cptr, UNUSED void * desc)
+  {
+    int n = (int) MTP_UNIT_IDX (uptr);
+    if (n < 0 || n >= N_MTP_UNITS_MAX)
+      return SCPE_ARG;
+    if (cptr)
+      {
+        strncpy (mtp_state[n].device_name, cptr, MAX_DEV_NAME_LEN-1);
+        mtp_state[n].device_name[MAX_DEV_NAME_LEN-1] = 0;
+      }
+    else
+      mtp_state[n].device_name[0] = 0;
+    return SCPE_OK;
+  }
+
+static MTAB mtp_mod [] =
+  {
+    {
+      MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
+      0,            /* match */
+      "NUNITS",     /* print string */
+      "NUNITS",         /* match string */
+      mtp_set_nunits, /* validation routine */
+      mtp_show_nunits, /* display routine */
+      "Number of TAPE units in the system", /* value descriptor */
+      NULL          // help
+    },
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_VALR, /* mask */
+      0,            /* match */
+      "BOOT_DRIVE",     /* print string */
+      "BOOT_DRIVE",         /* match string */
+      mtp_set_boot_drive, /* validation routine */
+      mtp_show_boot_drive, /* display routine */
+      "Select the boot drive", /* value descriptor */
+      NULL          // help
+    },
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */
+      0,            /* match */
+      "DEVICE_NAME",     /* print string */
+      "DEVICE_NAME",         /* match string */
+      mtp_set_device_name, /* validation routine */
+      mtp_show_device_name, /* display routine */
+      "Set the device name", /* value descriptor */
+      NULL          // help
+    },
+    { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
+  };
+
+static t_stat mtp_reset (UNUSED DEVICE * dptr)
+  {
+    return SCPE_OK;
+  }
+
+DEVICE mtp_dev =
+  {
+    "MTP",            /* name */
+    mtp_unit,         /* units */
+    NULL,             /* registers */
+    mtp_mod,          /* modifiers */
+    N_MTP_UNITS,      /* #units */
+    10,               /* address radix */
+    31,               /* address width */
+    1,                /* address increment */
+    8,                /* data radix */
+    9,                /* data width */
+    NULL,             /* examine routine */
+    NULL,             /* deposit routine */
+    mtp_reset,        /* reset routine */
+    NULL,             /* boot routine */
+    NULL,             /* attach routine */
+    NULL,             /* detach routine */
+    NULL,             /* context */
+    DEV_DEBUG,        /* flags */
+    0,                /* debug control flags */
+    mt_dt,            /* debug flag names */
+    NULL,             /* memory size change */
+    NULL,             /* logical name */
+    NULL,             // attach help
+    NULL,             // help
+    NULL,             // help context
+    NULL,             // device description
+    NULL
+  };
+
+
+//////////////
+//////////////
+//
+// tape drive
+//
+
+
 #define MT_UNIT_NUM(uptr) ((uptr) - mt_unit)
 
 struct tape_state tape_states [N_MT_UNITS_MAX];
@@ -140,17 +328,6 @@ UNIT mt_unit [N_MT_UNITS_MAX] =
                        UNIT_DISABLE | UNIT_IDLE, 0),
           0, 0, 0, 0, 0, NULL, NULL, NULL, NULL
         }
-  };
-
-static DEBTAB mt_dt [] =
-  {
-    { "NOTIFY", DBG_NOTIFY, NULL },
-    { "INFO", DBG_INFO, NULL },
-    { "ERR", DBG_ERR, NULL },
-    { "WARN", DBG_WARN, NULL },
-    { "DEBUG", DBG_DEBUG, NULL },
-    { "ALL", DBG_ALL, NULL }, // don't move as it messes up DBG message
-    { NULL, 0, NULL }
   };
 
 #define UNIT_WATCH (1 << MTUF_V_UF)
@@ -960,9 +1137,15 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
         p -> IDCW_DEV_CODE = boot_drive;
 #endif
 
-    sim_debug (DBG_DEBUG, & tape_dev, "IDCW_DEV_CODE %d\n", p -> IDCW_DEV_CODE);
     uint ctlr_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
-    uint devUnitIdx = kables->mtp_to_tape[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
+
+    sim_debug (DBG_DEBUG, & tape_dev, "IDCW_DEV_CODE %d\n", p -> IDCW_DEV_CODE);
+    uint dev_code = p -> IDCW_DEV_CODE;
+    if (p -> IDCW_DEV_CODE == 0)
+      dev_code = mtp_state[ctlr_unit_idx].boot_drive;
+    sim_debug (DBG_DEBUG, & tape_dev, "dev_code %d\n", dev_code);
+
+    uint devUnitIdx = kables->mtp_to_tape[ctlr_unit_idx][dev_code].unit_idx;
     UNIT * unitp = & mt_unit [devUnitIdx];
     struct tape_state * tape_statep = & tape_states [devUnitIdx];
 
@@ -1798,7 +1981,7 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
               //p -> stati |= 0340;
             //rewindDoneUnit . u3 = mt_unit_num;
             //sim_activate (& rewindDoneUnit, 4000000); // 4M ~= 1 sec
-            send_special_interrupt (iomUnitIdx, chan, p->IDCW_DEV_CODE, 0, 0100 /* rewind complete */);
+            send_special_interrupt (iomUnitIdx, chan, dev_code, 0, 0100 /* rewind complete */);
           }
           break;
    
@@ -1812,7 +1995,7 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
             sim_tape_detach (unitp);
             //tape_statep -> rec_num = 0;
             p -> stati = 04000;
-            send_special_interrupt (iomUnitIdx, chan, p->IDCW_DEV_CODE, 0, 0040 /* unload complete */);
+            send_special_interrupt (iomUnitIdx, chan, dev_code, 0, 0040 /* unload complete */);
           }
           break;
 
@@ -1968,171 +2151,3 @@ t_stat detachTape (char * drive)
     return SCPE_OK;
   }
 
-//////////////
-//////////////
-//
-// MTP
-//
-
-#define MTP_UNIT_IDX(uptr) ((uptr) - mtp_unit)
-#define N_MTP_UNITS 1 // default
-
-static struct mtp_state_s
-  {
-    uint boot_drive;
-    char device_name [MAX_DEV_NAME_LEN];
-  } mtp_state [N_MTP_UNITS_MAX];
-
-static t_stat mtp_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, 
-                               UNUSED int val, UNUSED const void * desc)
-  {
-    sim_printf ("Number of MTP controllers in the system is %d\n",
-                mtp_dev.numunits);
-    return SCPE_OK;
-  }
-
-static t_stat mtp_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, 
-                              const char * cptr, UNUSED void * desc)
-  {
-    int n = atoi (cptr);
-    if (n < 0 || n > N_MTP_UNITS_MAX)
-      return SCPE_ARG;
-    mtp_dev.numunits = (uint32) n;
-    return SCPE_OK;
-  }
-
-
-static t_stat mtp_show_boot_drive (UNUSED FILE * st, UNIT * uptr, 
-                                   UNUSED int val, UNUSED const void * desc)
-  {
-    long mtp_unit_idx = MTP_UNIT_IDX (uptr);
-    if (mtp_unit_idx < 0 || mtp_unit_idx >= N_MTP_UNITS_MAX)
-      {
-        sim_printf ("Controller unit number out of range\n");
-        return SCPE_ARG;
-      }
-    sim_printf ("Tape drive dev_code to boot from is %u\n",
-                mtp_state[mtp_unit_idx].boot_drive);
-    return SCPE_OK;
-  }
-
-static t_stat mtp_set_boot_drive (UNIT * uptr, UNUSED int32 value, 
-                                 const char * cptr, UNUSED void * desc)
-  {
-    long mtp_unit_idx = MTP_UNIT_IDX (uptr);
-    if (mtp_unit_idx < 0 || mtp_unit_idx >= N_MTP_UNITS_MAX)
-      {
-        sim_printf ("Controller unit number out of range\n");
-        return SCPE_ARG;
-      }
-    int n = (int) atoi (cptr);
-    if (n < 0 || n >= N_DEV_CODES)
-      return SCPE_ARG;
-    mtp_state[mtp_unit_idx].boot_drive = (uint) n;
-    return SCPE_OK;
-  }
-
-UNIT mtp_unit [N_MTP_UNITS_MAX] =
-   {
-      [0 ... N_MTP_UNITS_MAX-1] =
-        {
-          UDATA (NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL
-        }
-  };
-
-static t_stat mtp_show_device_name (UNUSED FILE * st, UNIT * uptr, 
-                                    UNUSED int val, UNUSED const void * desc)
-  {
-    int n = (int) MTP_UNIT_IDX (uptr);
-    if (n < 0 || n >= N_MTP_UNITS_MAX)
-      return SCPE_ARG;
-    sim_printf("Controller device name is %s\n", mtp_state [n].device_name);
-    return SCPE_OK;
-  }
-
-static t_stat mtp_set_device_name (UNIT * uptr, UNUSED int32 value, 
-                                   const char * cptr, UNUSED void * desc)
-  {
-    int n = (int) MTP_UNIT_IDX (uptr);
-    if (n < 0 || n >= N_MTP_UNITS_MAX)
-      return SCPE_ARG;
-    if (cptr)
-      {
-        strncpy (mtp_state[n].device_name, cptr, MAX_DEV_NAME_LEN-1);
-        mtp_state[n].device_name[MAX_DEV_NAME_LEN-1] = 0;
-      }
-    else
-      mtp_state[n].device_name[0] = 0;
-    return SCPE_OK;
-  }
-
-static MTAB mtp_mod [] =
-  {
-    {
-      MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
-      0,            /* match */
-      "NUNITS",     /* print string */
-      "NUNITS",         /* match string */
-      mtp_set_nunits, /* validation routine */
-      mtp_show_nunits, /* display routine */
-      "Number of TAPE units in the system", /* value descriptor */
-      NULL          // help
-    },
-    {
-      MTAB_XTD | MTAB_VUN | MTAB_VALR, /* mask */
-      0,            /* match */
-      "BOOT_DRIVE",     /* print string */
-      "BOOT_DRIVE",         /* match string */
-      mtp_set_boot_drive, /* validation routine */
-      mtp_show_boot_drive, /* display routine */
-      "Select the boot drive", /* value descriptor */
-      NULL          // help
-    },
-    {
-      MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */
-      0,            /* match */
-      "DEVICE_NAME",     /* print string */
-      "DEVICE_NAME",         /* match string */
-      mtp_set_device_name, /* validation routine */
-      mtp_show_device_name, /* display routine */
-      "Set the device name", /* value descriptor */
-      NULL          // help
-    },
-    { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
-  };
-
-static t_stat mtp_reset (UNUSED DEVICE * dptr)
-  {
-    return SCPE_OK;
-  }
-
-DEVICE mtp_dev =
-  {
-    "MTP",            /* name */
-    mtp_unit,         /* units */
-    NULL,             /* registers */
-    mtp_mod,          /* modifiers */
-    N_MTP_UNITS,      /* #units */
-    10,               /* address radix */
-    31,               /* address width */
-    1,                /* address increment */
-    8,                /* data radix */
-    9,                /* data width */
-    NULL,             /* examine routine */
-    NULL,             /* deposit routine */
-    mtp_reset,        /* reset routine */
-    NULL,             /* boot routine */
-    NULL,             /* attach routine */
-    NULL,             /* detach routine */
-    NULL,             /* context */
-    DEV_DEBUG,        /* flags */
-    0,                /* debug control flags */
-    mt_dt,            /* debug flag names */
-    NULL,             /* memory size change */
-    NULL,             /* logical name */
-    NULL,             // attach help
-    NULL,             // help
-    NULL,             // help context
-    NULL,             // device description
-    NULL
-  };

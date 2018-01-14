@@ -44,8 +44,5 @@ void loadTape (uint driveNumber, char * tapeFilename, bool ro);
 t_stat attachTape (char * label, bool withring, char * drive);
 t_stat detachTape (char * drive);
 int mt_iom_cmd (uint iomUnitIdx, uint chan);
-#ifdef NEW_CABLE
-//int mtp_iom_cmd (uint iomUnitIdx, uint chan);
-#endif
 t_stat mount_tape (int32 arg, const char * buf);
 
