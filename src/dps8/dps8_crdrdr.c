@@ -116,8 +116,8 @@ static MTAB rdr_mod [] =
     {
       MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */
       0,            /* match */
-      "DEVICE_NAME",     /* print string */
-      "DEVICE_NAME",         /* match string */
+      "NAME",     /* print string */
+      "NAME",         /* match string */
       rdr_set_device_name, /* validation routine */
       rdr_show_device_name, /* display routine */
       "Select the boot drive", /* value descriptor */

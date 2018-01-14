@@ -245,8 +245,8 @@ static MTAB mtp_mod [] =
     {
       MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */
       0,            /* match */
-      "DEVICE_NAME",     /* print string */
-      "DEVICE_NAME",         /* match string */
+      "NAME",     /* print string */
+      "NAME",         /* match string */
       mtp_set_device_name, /* validation routine */
       mtp_show_device_name, /* display routine */
       "Set the device name", /* value descriptor */
@@ -443,8 +443,8 @@ static MTAB mt_mod [] =
     {
       MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */
       0,            /* match */
-      "DEVICE_NAME",     /* print string */
-      "DEVICE_NAME",         /* match string */
+      "NAME",     /* print string */
+      "NAME",         /* match string */
       mt_set_device_name, /* validation routine */
       mt_show_device_name, /* display routine */
       "Set the device name", /* value descriptor */

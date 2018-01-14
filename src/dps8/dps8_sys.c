@@ -171,17 +171,47 @@ static char * default_base_system_script [] =
     // ; IOM0 being the bootload IOM, despite suggestions elsewhere that was
     // ; not a requirement.
 
+//
+// IOM channel assignments
+//
+// IOM A
+//  
+//  012 MTP0
+//  013 IPC0 port 0
+//  014 MSP0 port 0
+//  015 URP0
+//  016 URP1
+//  017 URP2
+//  020 FNPD
+//  021 FNPA
+//  022 FNPB
+//  023 FNPC
+//  024 FNPE
+//  025 FNPF
+//  026 FNPG
+//  027 FNPH
+//  032 ABSI0
+//  036 OPC0
+//
+// IOM B
+//
+//  013 IPC0 port 1
+//  014 MSP0 port 1
+
     // ; Disconnect everything...
     "cable_ripout",
 
-    "set cpu nunits=7",
-    "set iom nunits=1",
+    "set cpu nunits=6",
+    "set iom nunits=2",
     // ; 16 drives plus a placeholder for the controller
     "set tape nunits=17",
     "set mtp nunits=1",
-    "set ipc nunits=1",
-    // ; 16 drives; no controller
-    "set disk nunits=16",
+    // ; 4 3381 drives; 2 controllers
+    // ; 4 d501 drives; 2 controller
+    // ; 4 d451 drives; same controller has d501s
+    "set ipc nunits=2",
+    "set msp nunits=2",
+    "set disk nunits=12",
     "set scu nunits=4",
     "set opc nunits=1",
     "set fnp nunits=8",
@@ -189,15 +219,17 @@ static char * default_base_system_script [] =
     "set rdr nunits=1",
     "set pun nunits=1",
     "set prt nunits=17",
-#ifndef __MINGW64__
     "set absi nunits=1",
+
+#if 0
+#ifndef __MINGW64__
 
     // ;Create card reader queue directory
     "! if [ ! -e /tmp/rdra ]; then mkdir /tmp/rdra; fi",
 #else
     "! mkdir %TEMP%\\rdra",
 #endif
-
+#endif
 
 // CPU0
 
@@ -594,6 +626,7 @@ static char * default_base_system_script [] =
     "set cpu5 config=y2k=disable",
 
 
+#if 0
 // CPU6
 
     "set cpu6 config=faultbase=Multics",
@@ -658,7 +691,7 @@ static char * default_base_system_script [] =
     "set cpu6 config=disable_wam=disable",
     "set cpu6 config=tro_enable=enable",
     "set cpu6 config=y2k=disable",
-
+#endif
 
 #if 0 // Until the port expander code is working
 
@@ -783,7 +816,6 @@ static char * default_base_system_script [] =
     "set iom0 config=port=7",
     "set iom0   config=enable=0",
 
-#if 0
 // IOM1
 
     "set iom1 config=iom_base=Multics2",
@@ -821,6 +853,7 @@ static char * default_base_system_script [] =
     "set iom1 config=port=7",
     "set iom1   config=enable=0",
 
+#if 0
 
 // IOM2
 
@@ -898,7 +931,7 @@ static char * default_base_system_script [] =
     "set iom3   config=enable=0",
 #endif
 
-// SC0
+// SCU0
 
     "set scu0 config=mode=program",
     "set scu0 config=port0=enable",
@@ -1090,100 +1123,107 @@ static char * default_base_system_script [] =
     "set fnp7 ipc_name=fnp-h",
 
 
-    "set tape0 boot_drive",
-
-    // ;cable ripout
-
     //XXX"set mtp0 boot_drive=1",
     // ; Attach tape MPC to IOM 0, chan 012, dev_code 0
     "set mtp0 boot_drive=0",
-    "set mtp0 device_name=MTP0",
+    "set mtp0 name=MTP0",
     // ; Attach TAPE unit 0 to IOM 0, chan 012, dev_code 1
     "cable IOM0 012 MTP0",
     "cable MTP0 1 TAPE1",
-    "set tape1 device_name=tapa_01",
+    "set tape1 name=tapa_01",
     "cable MTP0 2 TAPE2",
-    "set tape2 device_name=tapa_02",
+    "set tape2 name=tapa_02",
     "cable MTP0 3 TAPE3",
-    "set tape3 device_name=tapa_03",
+    "set tape3 name=tapa_03",
     "cable MTP0 4 TAPE4",
-    "set tape4 device_name=tapa_04",
+    "set tape4 name=tapa_04",
     "cable MTP0 5 TAPE5",
-    "set tape5 device_name=tapa_05",
+    "set tape5 name=tapa_05",
     "cable MTP0 6 TAPE6",
-    "set tape6 device_name=tapa_06",
+    "set tape6 name=tapa_06",
     "cable MTP0 7 TAPE7",
-    "set tape7 device_name=tapa_07",
+    "set tape7 name=tapa_07",
     "cable MTP0 8 TAPE8",
-    "set tape8 device_name=tapa_08",
+    "set tape8 name=tapa_08",
     "cable MTP0 9 TAPE9",
-    "set tape9 device_name=tapa_09",
+    "set tape9 name=tapa_09",
     "cable MTP0 10 TAPE10",
-    "set tape10 device_name=tapa_10",
+    "set tape10 name=tapa_10",
     "cable MTP0 11 TAPE11",
-    "set tape11 device_name=tapa_11",
+    "set tape11 name=tapa_11",
     "cable MTP0 12 TAPE12",
-    "set tape12 device_name=tapa_12",
+    "set tape12 name=tapa_12",
     "cable MTP0 13 TAPE13",
-    "set tape13 device_name=tapa_13",
+    "set tape13 name=tapa_13",
     "cable MTP0 14 TAPE14",
-    "set tape14 device_name=tapa_14",
+    "set tape14 name=tapa_14",
     "cable MTP0 15 TAPE15",
-    "set tape15 device_name=tapa_15",
+    "set tape15 name=tapa_15",
     "cable MTP0 16 TAPE16",
-    "set tape16 device_name=tapa_16",
+    "set tape16 name=tapa_16",
 
 
-    "set ipc0 device_name=IPC0",
+// 4 3381 disks
+
+    "set ipc0 name=IPC0",
     "cable IOM0 013 IPC0",
-    // ; Attach DISK unit 0 to IOM 0, chan 013, dev_code 0",
+    "cable IOM1 013 IPC0 1",
+    // ; Attach DISK unit 0 to IPC0 dev_code 0",
     "cable IPC0 0 DISK0",
     "set disk0 type=3381",
-    // ; Attach DISK unit 1 to IOM 0, chan 013, dev_code 1",
+    "set disk0 name=dska_00",
+    // ; Attach DISK unit 1 to IPC0 dev_code 1",
     "cable IPC0 1 DISK1",
     "set disk1 type=3381",
-    // ; Attach DISK unit 2 to IOM 0, chan 013, dev_code 2",
+    "set disk1 name=dska_01",
+    // ; Attach DISK unit 2 to IPC0 dev_code 2",
     "cable IPC0 2 DISK2",
     "set disk2 type=3381",
-    // ; Attach DISK unit 3 to IOM 0, chan 013, dev_code 3",
+    "set disk2 name=dska_02",
+    // ; Attach DISK unit 3 to IPC0 dev_code 3",
     "cable IPC0 3 DISK3",
     "set disk3 type=3381",
-    // ; Attach DISK unit 4 to IOM 0, chan 013, dev_code 4",
-    "cable IPC0 4 DISK4",
-    "set disk4 type=3381",
-    // ; Attach DISK unit 5 to IOM 0, chan 013, dev_code 5",
-    "cable IPC0 5 DISK5",
-    "set disk5 type=3381",
-    // ; Attach DISK unit 6 to IOM 0, chan 013, dev_code 6",
-    "cable IPC0 6 DISK6",
-    "set disk6 type=3381",
-    // ; Attach DISK unit 7 to IOM 0, chan 013, dev_code 7",
-    "cable IPC0 7 DISK7",
-    "set disk7 type=3381",
-    // ; Attach DISK unit 8 to IOM 0, chan 013, dev_code 8",
-    "cable IPC0 8 DISK8",
-    "set disk8 type=3381",
-    // ; Attach DISK unit 9 to IOM 0, chan 013, dev_code 9",
-    "cable IPC0 9 DISK9",
-    "set disk9 type=3381",
-    // ; Attach DISK unit 10 to IOM 0, chan 013, dev_code 10",
-    "cable IPC0 10 DISK10",
-    "set disk10 type=3381",
-    // ; Attach DISK unit 11 to IOM 0, chan 013, dev_code 11",
-    "cable IPC0 11 DISK11",
-    "set disk11 type=3381",
-    // ; Attach DISK unit 12 to IOM 0, chan 013, dev_code 12",
-    "cable IPC0 12 DISK12",
-    "set disk12 type=3381",
-    // ; Attach DISK unit 13 to IOM 0, chan 013, dev_code 13",
-    "cable IPC0 13 DISK13",
-    "set disk13 type=3381",
-    // ; Attach DISK unit 14 to IOM 0, chan 013, dev_code 14",
-    "cable IPC0 14 DISK14",
-    "set disk14 type=3381",
-    // ; Attach DISK unit 15 to IOM 0, chan 013, dev_code 15",
-    "cable IPC0 15 DISK15",
-    "set disk15 type=3381",
+    "set disk3 name=dska_03",
+
+// 4 d501 disks + 4 d451 disks
+
+    "set msp0 name=MSP0",
+    "cable IOM0 014 MSP0 0",
+    "cable IOM1 014 MSP0 1",
+
+    // ; Attach DISK unit 4 to MSP0 dev_code 0",
+    "cable IPC0 0 DISK4",
+    "set disk4 type=d501",
+    "set disk4 name=dskb_00",
+    // ; Attach DISK unit 5 to MSP0 dev_code 1",
+    "cable IPC0 1 DISK5",
+    "set disk5 type=d501",
+    "set disk5 name=dskb_01",
+    // ; Attach DISK unit 6 to MSP0 dev_code 2",
+    "cable IPC0 2 DISK6",
+    "set disk6 type=d501",
+    "set disk6 name=dskb_02",
+    // ; Attach DISK unit 7 to MSP0 dev_code 3",
+    "cable IPC0 3 DISK7",
+    "set disk7 type=d501",
+    "set disk7 name=dskb_03",
+
+    // ; Attach DISK unit 8 to MSP0 dev_code 4",
+    "cable IPC0 0 DISK4",
+    "set disk8 type=d451",
+    "set disk8 name=dskb_04",
+    // ; Attach DISK unit 9 to MSP0 dev_code 5",
+    "cable IPC0 1 DISK5",
+    "set disk9 type=d451",
+    "set disk9 name=dskb_05",
+    // ; Attach DISK unit 10 to MSP0 dev_code 6",
+    "cable IPC0 2 DISK6",
+    "set disk10 type=d451",
+    "set disk10 name=dskb_06",
+    // ; Attach DISK unit 11 to MSP0 dev_code 7",
+    "cable IPC0 3 DISK7",
+    "set disk11 type=d451",
+    "set disk11 name=dskb_07",
 
     // ; Attach OPC unit 0 to IOM A, chan 036, dev_code 0
     "cable IOMA 036 opc0",
@@ -1216,89 +1256,89 @@ static char * default_base_system_script [] =
 
     // ; Attach MPC unit 0 to IOM 0, char 015, dev_code 0
     "cable IOM0 015 URP0",
-    "set urp0 device_name=urpa",
+    "set urp0 name=urpa",
 
     // ; Attach RDR unit 0 to IOM 0, chan 015, dev_code 1
     "cable URP0 1 RDR0",
-    "set rdr0 device_name=rdra",
+    "set rdr0 name=rdra",
 
     // ; Attach MPC unit 1 to IOM 0, char 016, dev_code 0
     "cable IOM0 016 URP1",
-    "set urp1 device_name=urpb",
+    "set urp1 name=urpb",
 
     // ; Attach PUN unit 0 to IOM 0, chan 016, dev_code 1
     "cable URP1 1 PUN0",
-    "set pun0 device_name=puna",
+    "set pun0 name=puna",
 
     // ; Attach MPC unit 2 to IOM 0, char 017, dev_code 0
     "cable IOM0 017 URP2",
-    "set urp2 device_name=urpc",
+    "set urp2 name=urpc",
 
     // ; Attach PRT unit 0 to IOM 0, chan 017, dev_code 1
-    "set prt0 device_name=prta",
+    "set prt0 name=prta",
     "cable URP2 1 PRT0",
 
     // ; Attach PRT unit 1 to IOM 0, chan 017, dev_code 2
-    "set prt1 device_name=prtb",
+    "set prt1 name=prtb",
     "cable URP2 2 PRT1",
 
     // ; Attach PRT unit 2 to IOM 0, chan 017, dev_code 3
-    "set prt2 device_name=prtc",
+    "set prt2 name=prtc",
     "cable URP2 3 PRT2",
 
     // ; Attach PRT unit 3 to IOM 0, chan 017, dev_code 4
     "cable URP2 4 PRT3",
-    "set prt3 device_name=prtd",
+    "set prt3 name=prtd",
 
     // ; Attach PRT unit 4 to IOM 0, chan 017, dev_code 5
     "cable URP2 5 PRT4",
-    "set prt4 device_name=prte",
+    "set prt4 name=prte",
 
     // ; Attach PRT unit 5 to IOM 0, chan 017, dev_code 6
     "cable URP2 6 PRT5",
-    "set prt5 device_name=prtf",
+    "set prt5 name=prtf",
 
     // ; Attach PRT unit 6 to IOM 0, chan 017, dev_code 7
     "cable URP2 7 PRT6",
-    "set prt6 device_name=prtg",
+    "set prt6 name=prtg",
 
     // ; Attach PRT unit 7 to IOM 0, chan 017, dev_code 8
     "cable URP2 8 PRT7",
-    "set prt7 device_name=prth",
+    "set prt7 name=prth",
 
     // ; Attach PRT unit 8 to IOM 0, chan 017, dev_code 9
     "cable URP2 9 PRT8",
-    "set prt8 device_name=prti",
+    "set prt8 name=prti",
 
     // ; Attach PRT unit 9 to IOM 0, chan 017, dev_code 10
     "cable URP2 10 PRT9",
-    "set prt9 device_name=prtj",
+    "set prt9 name=prtj",
 
     // ; Attach PRT unit 10 to IOM 0, chan 017, dev_code 11
     "cable URP2 11 PRT10",
-    "set prt10 device_name=prtk",
+    "set prt10 name=prtk",
 
     // ; Attach PRT unit 11 to IOM 0, chan 017, dev_code 12
     "cable URP2 12 PRT11",
-    "set prt11 device_name=prtl",
+    "set prt11 name=prtl",
 
     // ; Attach PRT unit 12 to IOM 0, chan 017, dev_code 13
     "cable URP2 13 PRT12",
-    "set prt12 device_name=prtm",
+    "set prt12 name=prtm",
 
     // ; Attach PRT unit 13 to IOM 0, chan 017, dev_code 14
     "cable URP2 14 PRT13",
-    "set prt13 device_name=prtn",
+    "set prt13 name=prtn",
 
     // ; Attach PRT unit 14 to IOM 0, chan 017, dev_code 15
     "cable URP2 15 PRT14",
-    "set prt14 device_name=prto",
+    "set prt14 name=prto",
 
     // ; Attach PRT unit 15 to IOM 0, chan 017, dev_code 16
-    "set prt15 device_name=prtp",
+    "set prt15 name=prtp",
 
     // ; Attach PRT unit 16 to IOM 0, chan 017, dev_code 17
-    "set prt16 device_name=prtq",
+    "set prt16 name=prtq",
 
 
     // ; Attach ABSI unit 0 to IOM 0, chan 032, dev_code 0
@@ -1418,7 +1458,7 @@ static char * default_base_system_script [] =
     "set iom0 reset",
 
 #ifdef THREADZ
-    "set cpu nunits=7",
+    "set cpu nunits=6",
 #else
 #ifdef ISOTLTS
     "set cpu nunits=2",

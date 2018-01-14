@@ -143,12 +143,13 @@ static struct diskType_t diskTypes [] =
 
 #define N_DISK_UNITS 2 // default
 
-static struct disk_state
+static struct dsk_state
   {
     uint typeIdx;
     enum { no_mode, seek512_mode, seek64_mode, seek_mode, read_mode, write_mode, request_status_mode } io_mode;
     uint seekPosition;
-  } disk_states [N_DSK_UNITS_MAX];
+    char device_name [MAX_DEV_NAME_LEN];
+  } dsk_states [N_DSK_UNITS_MAX];
 
 
 //-- // extern t_stat disk_svc(UNIT *up);
@@ -235,7 +236,7 @@ UNIT dsk_unit [N_DSK_UNITS_MAX] =
       }
   };
 
-#define DISK_UNIT_IDX(uptr) ((uptr) - dsk_unit)
+#define DSK_UNIT_IDX(uptr) ((uptr) - dsk_unit)
 
 static DEBTAB disk_dt [] =
   {
@@ -267,14 +268,14 @@ static t_stat disk_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, const cha
 #if 0
 static t_stat disk_show_type (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)
   {
-    int diskUnitIdx = (int) DISK_UNIT_IDX (uptr);
+    int diskUnitIdx = (int) DSK_UNIT_IDX (uptr);
     if (diskUnitIdx < 0 || diskUnitIdx >= N_DSK_UNITS_MAX)
       {
         sim_printf ("error: invalid unit number %d\n", diskUnitIdx);
         return SCPE_ARG;
       }
 
-    sim_printf("type %s\r\n", diskTypes[disk_states[diskUnitIdx].typeIdx].typename);
+    sim_printf("type %s\r\n", diskTypes[dsk_states[diskUnitIdx].typeIdx].typename);
 
     return SCPE_OK;
   }
@@ -282,7 +283,7 @@ static t_stat disk_show_type (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int v
 
 static t_stat disk_set_type (UNUSED UNIT * uptr, UNUSED int32 value, const char * cptr, UNUSED void * desc)
   {
-    int diskUnitIdx = (int) DISK_UNIT_IDX (uptr);
+    int diskUnitIdx = (int) DSK_UNIT_IDX (uptr);
     if (diskUnitIdx < 0 || diskUnitIdx >= N_DSK_UNITS_MAX)
       {
         sim_printf ("error: invalid unit number %d\n", diskUnitIdx);
@@ -310,10 +311,36 @@ static t_stat disk_set_type (UNUSED UNIT * uptr, UNUSED int32 value, const char 
                    diskTypes[7].typename);
         return SCPE_ARG;
       }
-    disk_states[diskUnitIdx].typeIdx = i;
+    dsk_states[diskUnitIdx].typeIdx = i;
     dsk_unit[diskUnitIdx].capac = (t_addr) diskTypes[diskUnitIdx].capac;
     //sim_printf ("disk unit %d set to type %s\r\n",
                 //diskUnitIdx, diskTypes[i].typename);
+    return SCPE_OK;
+  }
+
+static t_stat dsk_show_device_name (UNUSED FILE * st, UNIT * uptr, 
+                                    UNUSED int val, UNUSED const void * desc)
+  {
+    int n = (int) DSK_UNIT_IDX (uptr);
+    if (n < 0 || n >= N_DSK_UNITS_MAX)
+      return SCPE_ARG;
+    sim_printf("Controller device name is %s\n", dsk_states [n].device_name);
+    return SCPE_OK;
+  }
+
+static t_stat dsk_set_device_name (UNIT * uptr, UNUSED int32 value, 
+                                   const char * cptr, UNUSED void * desc)
+  {
+    int n = (int) DSK_UNIT_IDX (uptr);
+    if (n < 0 || n >= N_DSK_UNITS_MAX)
+      return SCPE_ARG;
+    if (cptr)
+      {
+        strncpy (dsk_states[n].device_name, cptr, MAX_DEV_NAME_LEN-1);
+        dsk_states[n].device_name[MAX_DEV_NAME_LEN-1] = 0;
+      }
+    else
+      dsk_states[n].device_name[0] = 0;
     return SCPE_OK;
   }
 
@@ -342,6 +369,16 @@ static MTAB disk_mod [] =
       NULL /*disk_show_type*/,       // display routine
       "disk type",          // value descriptor
       "D500, D451, D400, D190, D181, D501, 3380, 3381" // Help
+    },
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */
+      0,            /* match */
+      "NAME",     /* print string */
+      "NAME",         /* match string */
+      dsk_set_device_name, /* validation routine */
+      dsk_show_device_name, /* display routine */
+      "Set the device name", /* value descriptor */
+      NULL          // help
     },
     MTAB_eol
   };
@@ -434,7 +471,7 @@ static t_stat loadDisk (uint dsk_unit_idx, const char * disk_filename, UNUSED bo
 
 static t_stat disk_attach (UNIT *uptr, CONST char *cptr)
   {
-    int diskUnitIdx = (int) DISK_UNIT_IDX (uptr);
+    int diskUnitIdx = (int) DSK_UNIT_IDX (uptr);
     if (diskUnitIdx < 0 || diskUnitIdx >= N_DSK_UNITS_MAX)
       {
         sim_printf ("error: invalid unit number %d\n", diskUnitIdx);
@@ -485,13 +522,13 @@ DEVICE dsk_dev = {
 void disk_init (void)
   {
     // Sets diskTypeIdx to 0: 3381
-    memset (disk_states, 0, sizeof (disk_states));
+    memset (dsk_states, 0, sizeof (dsk_states));
   }
 
 static int diskSeek64 (uint devUnitIdx, uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    struct disk_state * disk_statep = & disk_states [devUnitIdx];
+    struct dsk_state * disk_statep = & dsk_states [devUnitIdx];
     sim_debug (DBG_NOTIFY, & dsk_dev, "Seek64 %d\n", devUnitIdx);
     disk_statep -> io_mode = seek64_mode;
 
@@ -558,7 +595,7 @@ static int diskSeek64 (uint devUnitIdx, uint iomUnitIdx, uint chan)
 static int diskSeek512 (uint devUnitIdx, uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    struct disk_state * disk_statep = & disk_states [devUnitIdx];
+    struct dsk_state * disk_statep = & dsk_states [devUnitIdx];
     sim_debug (DBG_NOTIFY, & dsk_dev, "Seek512 %d\n", devUnitIdx);
 //sim_printf ("disk seek512 [%"PRId64"]\n", cpu.cycleCnt);
     disk_statep -> io_mode = seek512_mode;
@@ -627,7 +664,7 @@ static int diskRead (uint devUnitIdx, uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     UNIT * unitp = & dsk_unit [devUnitIdx];
-    struct disk_state * disk_statep = & disk_states [devUnitIdx];
+    struct dsk_state * disk_statep = & dsk_states [devUnitIdx];
     uint typeIdx = disk_statep->typeIdx;
     uint sectorSizeWords = diskTypes[typeIdx].sectorSizeWords;
     uint sectorSizeBytes = ((36 * sectorSizeWords) / 8);
@@ -750,7 +787,7 @@ static int diskWrite (uint devUnitIdx, uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     UNIT * unitp = & dsk_unit [devUnitIdx];
-    struct disk_state * disk_statep = & disk_states [devUnitIdx];
+    struct dsk_state * disk_statep = & dsk_states [devUnitIdx];
     uint typeIdx = disk_statep->typeIdx;
     uint sectorSizeWords = diskTypes[typeIdx].sectorSizeWords;
     uint sectorSizeBytes = ((36 * sectorSizeWords) / 8);
@@ -873,7 +910,7 @@ static int readStatusRegister (uint devUnitIdx, uint iomUnitIdx, uint chan)
   {
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     UNIT * unitp = & dsk_unit [devUnitIdx];
-    struct disk_state * disk_statep = & disk_states [devUnitIdx];
+    struct dsk_state * disk_statep = & dsk_states [devUnitIdx];
 
     sim_debug (DBG_NOTIFY, & dsk_dev, "Read %d\n", devUnitIdx);
     disk_statep -> io_mode = read_mode;
@@ -965,7 +1002,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
         return -1;
       }
     UNIT * unitp = & dsk_unit [devUnitIdx];
-    struct disk_state * disk_statep = & disk_states [devUnitIdx];
+    struct dsk_state * disk_statep = & dsk_states [devUnitIdx];
 
     disk_statep -> io_mode = no_mode;
     p -> stati = 0;
@@ -1191,8 +1228,8 @@ static MTAB ipc_mod [] =
     {
       MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */
       0,            /* match */
-      "DEVICE_NAME",     /* print string */
-      "DEVICE_NAME",         /* match string */
+      "NAME",     /* print string */
+      "NAME",         /* match string */
       ipc_set_device_name, /* validation routine */
       ipc_show_device_name, /* display routine */
       "Set the device name", /* value descriptor */
@@ -1314,8 +1351,8 @@ static MTAB msp_mod [] =
     {
       MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */
       0,            /* match */
-      "DEVICE_NAME",     /* print string */
-      "DEVICE_NAME",         /* match string */
+      "NAME",     /* print string */
+      "NAME",         /* match string */
       msp_set_device_name, /* validation routine */
       msp_show_device_name, /* display routine */
       "Set the device name", /* value descriptor */
