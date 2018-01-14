@@ -391,7 +391,7 @@ static t_stat disk_reset (UNUSED DEVICE * dptr)
 
 static t_stat loadDisk (uint dsk_unit_idx, const char * disk_filename, UNUSED bool ro)
   {
-    //sim_printf ("in loadTape %d %s\n", dsk_unit_idx, tapeFilename);
+    //sim_printf ("in loadTape %d %s\n", dsk_unit_idx, disk_filename);
     t_stat stat = attach_unit (& dsk_unit [dsk_unit_idx], disk_filename);
     if (stat != SCPE_OK)
       {
@@ -409,16 +409,17 @@ static t_stat loadDisk (uint dsk_unit_idx, const char * disk_filename, UNUSED bo
     // so substr (w, 20, 1) is bit 0 of status0
     //    substr (w, 13, 6) is the low 6 bits of dev_no
     //    substr (w, 34, 3) is the low 3 bits of status 1
-        //sim_printf ("%s %d %o\n", tapeFilename, ro,  mt_unit [dsk_unit_idx] . flags);
+        //sim_printf ("%s %d %o\n", disk_filename, ro,  mt_unit [dsk_unit_idx] . flags);
         //sim_printf ("special int %d %o\n", dsk_unit_idx, mt_unit [dsk_unit_idx] . flags);
 
-    uint ctlr_unit_idx = cables->dsk_to_msp [dsk_unit_idx].ctlr_unit_idx;
-    enum ctlr_type_e ctlr_type = cables->tape_to_mtp [dsk_unit_idx].ctlr_type;
+    uint ctlr_unit_idx = cables->dsk_to_ctlr [dsk_unit_idx].ctlr_unit_idx;
+    enum ctlr_type_e ctlr_type = cables->dsk_to_ctlr [dsk_unit_idx].ctlr_type;
     if (ctlr_type != CTLR_T_MSP && ctlr_type != CTLR_T_IPC)
       {
         // If None, assume that the cabling hasn't happend yey.
         if (ctlr_type != CTLR_T_NONE)
           {
+sim_printf ("lost %u\n", ctlr_type);
             sim_warn ("loadDisk lost\n");
             return SCPE_ARG;
           }
@@ -435,7 +436,7 @@ static t_stat loadDisk (uint dsk_unit_idx, const char * disk_filename, UNUSED bo
               {
                 uint iom_unit_idx = cables->msp_to_iom[ctlr_unit_idx][ctlr_port_num].iom_unit_idx;
                 uint chan_num = cables->msp_to_iom[ctlr_unit_idx][ctlr_port_num].chan_num;
-                uint dev_code = cables->dsk_to_msp[dsk_unit_idx].dev_code;
+                uint dev_code = cables->dsk_to_ctlr[dsk_unit_idx].dev_code;
 
                 send_special_interrupt (iom_unit_idx, chan_num, dev_code, 0x40, 01 /* disk pack ready */);
                 sent_one = true;
@@ -447,7 +448,7 @@ static t_stat loadDisk (uint dsk_unit_idx, const char * disk_filename, UNUSED bo
               {
                 uint iom_unit_idx = cables->ipc_to_iom[ctlr_unit_idx][ctlr_port_num].iom_unit_idx;
                 uint chan_num = cables->ipc_to_iom[ctlr_unit_idx][ctlr_port_num].chan_num;
-                uint dev_code = cables->dsk_to_ipc[dsk_unit_idx].dev_code;
+                uint dev_code = cables->dsk_to_ctlr[dsk_unit_idx].dev_code;
 
                 send_special_interrupt (iom_unit_idx, chan_num, dev_code, 0x40, 01 /* disk pack ready */);
                 sent_one = true;

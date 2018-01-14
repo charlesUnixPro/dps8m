@@ -951,7 +951,7 @@ static t_stat cable_ipc (int uncable, uint ctlr_unit_idx, char * name_save)
                              & cables->ipc_to_dsk[ctlr_unit_idx][dev_code],
                              dsk_unit_idx,
                              dsk_iom_cmd, // XXX
-                             & cables->dsk_to_ipc[dsk_unit_idx],
+                             & cables->dsk_to_ctlr[dsk_unit_idx],
                              "CABLE IPCx DISKx");
       }
 
@@ -1009,7 +1009,7 @@ static t_stat cable_msp (int uncable, uint ctlr_unit_idx, char * name_save)
                              & cables->msp_to_dsk[ctlr_unit_idx][dev_code],
                              dsk_unit_idx,
                              dsk_iom_cmd, // XXX
-                             & cables->dsk_to_msp[dsk_unit_idx],
+                             & cables->dsk_to_ctlr[dsk_unit_idx],
                              "CABLE MSPx DISKx");
       }
 
@@ -1267,9 +1267,8 @@ t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
     CTLR_DEV (MTP, mtp, TAPE, MT, tape);
     DEV_CTLR (MTP, mtp, TAPE, MT, tape);
     CTLR_DEV (IPC, ipc, DISK, DSK, dsk);
-    DEV_CTLR (IPC, ipc, DISK, DSK, dsk);
     CTLR_DEV (MSP, msp, DISK, DSK, dsk);
-    DEV_CTLR (MSP, msp, DISK, DSK, dsk);
+    DEV_CTLR (CTLR, ctlr, DISK, DSK, dsk);
     CTLR_DEV (URP, urp, URP, URP, urd);
     DEV_CTLR (URP, urp, RDR, RDR, rdr);
     DEV_CTLR (URP, urp, RDR, RDR, rdr);

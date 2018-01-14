@@ -236,11 +236,10 @@ struct cables_s
     struct ctlr_to_dev_s mtp_to_tape [N_MTP_UNITS_MAX] [N_DEV_CODES];
     struct dev_to_ctlr_s tape_to_mtp [N_MT_UNITS_MAX];
     //   ipc->disk
-    struct ctlr_to_dev_s ipc_to_dsk [N_IPC_UNITS_MAX] [N_DEV_CODES];
-    struct dev_to_ctlr_s dsk_to_ipc [N_DSK_UNITS_MAX];
     //   msp->disk
+    struct ctlr_to_dev_s ipc_to_dsk [N_IPC_UNITS_MAX] [N_DEV_CODES];
     struct ctlr_to_dev_s msp_to_dsk [N_MSP_UNITS_MAX] [N_DEV_CODES];
-    struct dev_to_ctlr_s dsk_to_msp [N_DSK_UNITS_MAX];
+    struct dev_to_ctlr_s dsk_to_ctlr [N_DSK_UNITS_MAX];
     //   urp->rdr/pun/prt
     struct ctlr_to_dev_s urp_to_urd [N_URP_UNITS_MAX] [N_DEV_CODES];
     struct dev_to_ctlr_s rdr_to_urp [N_RDR_UNITS_MAX];
