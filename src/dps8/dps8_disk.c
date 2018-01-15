@@ -344,61 +344,8 @@ static t_stat dsk_set_device_name (UNIT * uptr, UNUSED int32 value,
     return SCPE_OK;
   }
 
-#define UNIT_WATCH UNIT_V_UF
-
-static MTAB disk_mod [] =
+static t_stat signal_disk_ready (uint dsk_unit_idx)
   {
-    { UNIT_WATCH, 1, "WATCH", "WATCH", 0, 0, NULL, NULL },
-    { UNIT_WATCH, 0, "NOWATCH", "NOWATCH", 0, 0, NULL, NULL },
-    {
-      MTAB_dev_value, /* mask */
-      0,            /* match */
-      "NUNITS",     /* print string */
-      "NUNITS",         /* match string */
-      disk_set_nunits, /* validation routine */
-      disk_show_nunits, /* display routine */
-      "Number of DISK units in the system", /* value descriptor */
-      NULL // Help
-    },
-    {
-      MTAB_unit_value_show, // mask 
-      0,                    // match
-      "TYPE",               // print string
-      "TYPE",               // match string
-      disk_set_type,        // validation routine
-      NULL /*disk_show_type*/,       // display routine
-      "disk type",          // value descriptor
-      "D500, D451, D400, D190, D181, D501, 3380, 3381" // Help
-    },
-    {
-      MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */
-      0,            /* match */
-      "NAME",     /* print string */
-      "NAME",         /* match string */
-      dsk_set_device_name, /* validation routine */
-      dsk_show_device_name, /* display routine */
-      "Set the device name", /* value descriptor */
-      NULL          // help
-    },
-    MTAB_eol
-  };
-
-
-static t_stat disk_reset (UNUSED DEVICE * dptr)
-  {
-    return SCPE_OK;
-  }
-
-static t_stat loadDisk (uint dsk_unit_idx, const char * disk_filename, UNUSED bool ro)
-  {
-    //sim_printf ("in loadTape %d %s\n", dsk_unit_idx, disk_filename);
-    t_stat stat = attach_unit (& dsk_unit [dsk_unit_idx], disk_filename);
-    if (stat != SCPE_OK)
-      {
-        sim_printf ("loadDisk sim_disk_attach returned %d\n", stat);
-        return stat;
-      }
-
     // if substr (special_status_word, 20, 1) ^= "1"b | substr (special_status_word, 13, 6) ^= "00"b3
     // if substr (special_status_word, 34, 3) ^= "001"b
     // Note the 34,3 spans 34,35,36; therefore the bits are 1..36, not 0..35
@@ -470,6 +417,88 @@ sim_printf ("lost %u\n", ctlr_type);
     return SCPE_OK;
   }
 
+static t_stat disk_set_ready (UNIT * uptr, UNUSED int32 value, 
+                              UNUSED const char * cptr,
+                              UNUSED void * desc)
+  {
+    long disk_unit_idx = DSK_UNIT_IDX (uptr);
+    if (disk_unit_idx >= (long) dsk_dev.numunits)
+      {
+        sim_debug (DBG_ERR, & dsk_dev, 
+                   "Disk set ready: Invalid unit number %ld\n", disk_unit_idx);
+        sim_printf ("error: invalid unit number %ld\n", disk_unit_idx);
+        return SCPE_ARG;
+      }
+    return signal_disk_ready ((uint) disk_unit_idx);
+  }
+
+static t_stat loadDisk (uint dsk_unit_idx, const char * disk_filename, UNUSED bool ro)
+  {
+    //sim_printf ("in loadTape %d %s\n", dsk_unit_idx, disk_filename);
+    t_stat stat = attach_unit (& dsk_unit [dsk_unit_idx], disk_filename);
+    if (stat != SCPE_OK)
+      {
+        sim_printf ("loadDisk sim_disk_attach returned %d\n", stat);
+        return stat;
+      }
+    return signal_disk_ready ((uint) dsk_unit_idx);
+  }
+
+#define UNIT_WATCH UNIT_V_UF
+
+static MTAB disk_mod [] =
+  {
+    { UNIT_WATCH, 1, "WATCH", "WATCH", 0, 0, NULL, NULL },
+    { UNIT_WATCH, 0, "NOWATCH", "NOWATCH", 0, 0, NULL, NULL },
+    {
+      MTAB_dev_value, /* mask */
+      0,            /* match */
+      "NUNITS",     /* print string */
+      "NUNITS",         /* match string */
+      disk_set_nunits, /* validation routine */
+      disk_show_nunits, /* display routine */
+      "Number of DISK units in the system", /* value descriptor */
+      NULL // Help
+    },
+    {
+      MTAB_unit_value_show, // mask 
+      0,                    // match
+      "TYPE",               // print string
+      "TYPE",               // match string
+      disk_set_type,        // validation routine
+      NULL /*disk_show_type*/,       // display routine
+      "disk type",          // value descriptor
+      "D500, D451, D400, D190, D181, D501, 3380, 3381" // Help
+    },
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */
+      0,            /* match */
+      "NAME",     /* print string */
+      "NAME",         /* match string */
+      dsk_set_device_name, /* validation routine */
+      dsk_show_device_name, /* display routine */
+      "Set the device name", /* value descriptor */
+      NULL          // help
+    },
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_VALR, /* mask */
+      0,            /* match */
+      "READY",     /* print string */
+      "READY",         /* match string */
+      disk_set_ready,         /* validation routine */
+      NULL, /* display routine */
+      NULL,          /* value descriptor */
+      NULL   // help string
+    },
+    MTAB_eol
+  };
+
+
+static t_stat disk_reset (UNUSED DEVICE * dptr)
+  {
+    return SCPE_OK;
+  }
+
 static t_stat disk_attach (UNIT *uptr, CONST char *cptr)
   {
     int diskUnitIdx = (int) DSK_UNIT_IDX (uptr);
@@ -532,6 +561,10 @@ static int diskSeek64 (uint devUnitIdx, uint iomUnitIdx, uint chan)
     struct dsk_state * disk_statep = & dsk_states [devUnitIdx];
     sim_debug (DBG_NOTIFY, & dsk_dev, "Seek64 %d\n", devUnitIdx);
     disk_statep -> io_mode = seek64_mode;
+
+    uint typeIdx = disk_statep->typeIdx;
+    if (diskTypes[typeIdx].seekSize != seek_64)
+      sim_warn ("disk%u sent a SEEK_64 but is 512 sized\n");
 
 // Process DDCW
 
@@ -600,6 +633,10 @@ static int diskSeek512 (uint devUnitIdx, uint iomUnitIdx, uint chan)
     sim_debug (DBG_NOTIFY, & dsk_dev, "Seek512 %d\n", devUnitIdx);
 //sim_printf ("disk seek512 [%"PRId64"]\n", cpu.cycleCnt);
     disk_statep -> io_mode = seek512_mode;
+
+    uint typeIdx = disk_statep->typeIdx;
+    if (diskTypes[typeIdx].seekSize != seek_512)
+      sim_warn ("disk%u sent a SEEK_512 but is 64 sized\n");
 
 // Process DDCW
 
