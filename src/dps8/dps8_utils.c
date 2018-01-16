@@ -1923,6 +1923,8 @@ char * strdupesc (const char * str)
           * p = '^';
         else if (p [1] == 'x')       //  \x    expect
           * p = '\030';
+        else if (p [1] == 'y')       //  \y    expect
+          * p = '\031';
         //else if (p [1] == '0')       //  \0    null; used as end of expect string
           //* p = 0;
 

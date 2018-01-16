@@ -964,6 +964,35 @@ sim_printf ("uncomfortable with this\n");
 #endif
                       }
                   }
+                // autoinput expect
+                if (csp->autop && * csp->autop == 031)
+                  {
+                    //   ^ystring\0
+                    //size_t expl = strlen ((char *) (csp->autop + 1));
+                    //   ^ystring^y
+                    size_t expl = strcspn ((char *) (csp->autop + 1), "\031");
+//sim_printf ("comparing <%s> to <%s>\r\n", text, csp->autop + 1);
+//sim_printf ("\r\ncomparing ");
+//for (uint i = 0; i < expl; i ++) sim_printf (" %03o", (uint) text [i]);
+//sim_printf ("\r\nto        ");
+//for (uint i = 0; i < expl; i ++) sim_printf (" %03o", (uint) csp->autop [i+1]);
+//sim_printf ("\r\n");
+
+                    char needle [expl + 1];
+                    strncpy (needle, (char *) csp->autop + 1, expl);
+                    needle [expl] = 0;
+                    if (strstr (text, needle))
+                      {
+                        csp->autop += expl + 2;
+#ifdef THREADZ
+                        // 1K ~= 1 sec
+                        sim_activate (& attn_unit[con_unit_idx], 1000);
+#else
+                        // 4M ~= 1 sec
+                        sim_activate (& attn_unit[con_unit_idx], 4000000);
+#endif
+                      }
+                  }
                 handleRCP (text);
 #ifndef __MINGW64__
                 newlineOn ();
@@ -1066,7 +1095,7 @@ static void consoleProcessIdx (int conUnitIdx)
                 console_putstr (conUnitIdx,  "CONSOLE: RELEASED\r\n");
                 return;
               }
-            if (c == 030) // ^X 
+            if (c == 030 || c == 031) // ^X ^Y
               {
                 // an expect string is in the autoinput buffer; wait for it 
                 // to be processed
