@@ -773,8 +773,8 @@ ddcws:;
               p -> charPos = (tape_statep -> tbc * 8) / 9 % 4;
           }
 
-        if (p -> DDCW_22_23_TYPE != 0)
-          sim_warn ("curious... a tape read with more than one DDCW?\n");
+        //if (p -> DDCW_22_23_TYPE != 0)
+          //sim_warn ("curious... a tape read with more than one DDCW?\n");
 
       }
     while (p -> DDCW_22_23_TYPE != 0); // while not IOTD
@@ -801,7 +801,9 @@ static int mtWriteRecord (uint devUnitIdx, uint iomUnitIdx, uint chan)
 // Get the DDCW
 
     bool ptro, send, uff;
+loop:;
     int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+//sim_printf ("DDCW_22_23_TYPE %u\n", p->DDCW_22_23_TYPE);
     if (rc < 0)
       {
         p -> stati = 05001; // BUG: arbitrary error code; config switch
@@ -842,6 +844,7 @@ static int mtWriteRecord (uint devUnitIdx, uint iomUnitIdx, uint chan)
 
     tape_statep -> words_processed = 0;
     word36 buffer [tally];
+
     iomIndirectDataService (iomUnitIdx, chan, buffer,
                             & tape_statep -> words_processed, false);
 
@@ -954,8 +957,13 @@ static int mtWriteRecord (uint devUnitIdx, uint iomUnitIdx, uint chan)
                "%s: Wrote %d bytes to simulated tape; status %04o\n",
                __func__, (int) tape_statep -> tbc, p -> stati);
 
-    if (p -> DDCW_22_23_TYPE != 0)
-      sim_warn ("curious... a tape write with more than one DDCW?\n");
+    //if (p -> DDCW_22_23_TYPE != 0)
+      //sim_warn ("curious... a tape write with more than one DDCW?\n");
+    if (p -> DDCW_22_23_TYPE == 1) // IOTP
+      {
+        //sim_printf ("saw IOTP, looping\n");
+        goto loop;
+      }
 
     //if (sim_tape_wrp (unitp))
       //p -> stati |= 1;
@@ -1117,7 +1125,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
     struct tape_state * tape_statep = & tape_states [devUnitIdx];
 
     tape_statep -> io_mode = no_mode;
-//sim_printf ("mt cmd %d %o\n", p -> IDCW_DEV_CMD, p -> IDCW_DEV_CMD);
+//sim_printf ("mt cmd dev_code %u cmd %u. 0%o\n", dev_code, p -> IDCW_DEV_CMD, p -> IDCW_DEV_CMD);
     switch (p -> IDCW_DEV_CMD)
       {
         case 0: // CMD 00 Request status -- controller status, not tape drive
