@@ -236,7 +236,7 @@ static t_stat back_cable_cpu_to_scu (int uncable, uint cpu_unit_idx, uint cpu_po
 
 // cable SCUx CPUx
 
-static t_stat cable_scu_to_cpu (int uncable, uint scu_unit_idx, uint scu_port_num, uint scu_subport_num, uint cpu_unit_idx, uint cpu_port_num)
+static t_stat cable_scu_to_cpu (int uncable, uint scu_unit_idx, uint scu_port_num, uint scu_subport_num, uint cpu_unit_idx, uint cpu_port_num, bool is_exp)
   {
     struct scu_to_cpu_s * p = & cables->scu_to_cpu[scu_unit_idx][scu_port_num][scu_subport_num];
     if (uncable)
@@ -286,8 +286,8 @@ static t_stat cable_scu_to_cpu (int uncable, uint scu_unit_idx, uint scu_port_nu
         scu[scu_unit_idx].ports[scu_port_num].devIdx = (int) cpu_unit_idx;
         scu[scu_unit_idx].ports[scu_port_num].dev_port[0] = (int) cpu_port_num;
 // XXX is this wrong? is is_exp supposed to be an accumulation of bits?
-        scu[scu_unit_idx].ports[scu_port_num].is_exp = 0;
-        scu[scu_unit_idx].ports[scu_port_num].dev_port[scu_subport_num] = 0;
+        scu[scu_unit_idx].ports[scu_port_num].is_exp = is_exp;
+        scu[scu_unit_idx].ports[scu_port_num].dev_port[scu_subport_num] = (int) cpu_port_num;
       }
     // Taking this out breaks the unit test segment loader.
     setup_scbank_map ();
@@ -418,7 +418,7 @@ static t_stat cable_scu (int uncable, uint scu_unit_idx, char * name_save)
             sim_printf ("cable SCU: CPU port number out of range <%d>\n", cpu_port_num);
             return SCPE_ARG;
           }
-        return cable_scu_to_cpu (uncable, scu_unit_idx, (uint) scu_port_num, (uint) scu_subport_num, unit_idx, (uint) cpu_port_num);
+        return cable_scu_to_cpu (uncable, scu_unit_idx, (uint) scu_port_num, (uint) scu_subport_num, unit_idx, (uint) cpu_port_num, is_exp);
       }
 
 
