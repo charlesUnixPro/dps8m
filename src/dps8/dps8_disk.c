@@ -146,7 +146,7 @@ static struct diskType_t diskTypes [] =
 static struct dsk_state
   {
     uint typeIdx;
-    enum { no_mode, seek512_mode, seek64_mode, seek_mode, read_mode, write_mode, request_status_mode } io_mode;
+    enum { disk_no_mode, disk_seek512_mode, disk_seek64_mode, disk_seek_mode, disk_read_mode, disk_write_mode, disk_request_status_mode } io_mode;
     uint seekPosition;
     char device_name [MAX_DEV_NAME_LEN];
   } dsk_states [N_DSK_UNITS_MAX];
@@ -560,7 +560,7 @@ static int diskSeek64 (uint devUnitIdx, uint iomUnitIdx, uint chan)
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     struct dsk_state * disk_statep = & dsk_states [devUnitIdx];
     sim_debug (DBG_NOTIFY, & dsk_dev, "Seek64 %d\n", devUnitIdx);
-    disk_statep -> io_mode = seek64_mode;
+    disk_statep -> io_mode = disk_seek64_mode;
 
     uint typeIdx = disk_statep->typeIdx;
     if (diskTypes[typeIdx].seekSize != seek_64)
@@ -632,7 +632,7 @@ static int diskSeek512 (uint devUnitIdx, uint iomUnitIdx, uint chan)
     struct dsk_state * disk_statep = & dsk_states [devUnitIdx];
     sim_debug (DBG_NOTIFY, & dsk_dev, "Seek512 %d\n", devUnitIdx);
 //sim_printf ("disk seek512 [%"PRId64"]\n", cpu.cycleCnt);
-    disk_statep -> io_mode = seek512_mode;
+    disk_statep -> io_mode = disk_seek512_mode;
 
     uint typeIdx = disk_statep->typeIdx;
     if (diskTypes[typeIdx].seekSize != seek_512)
@@ -707,7 +707,7 @@ static int diskRead (uint devUnitIdx, uint iomUnitIdx, uint chan)
     uint sectorSizeWords = diskTypes[typeIdx].sectorSizeWords;
     uint sectorSizeBytes = ((36 * sectorSizeWords) / 8);
     sim_debug (DBG_NOTIFY, & dsk_dev, "Read %d\n", devUnitIdx);
-    disk_statep -> io_mode = read_mode;
+    disk_statep -> io_mode = disk_read_mode;
 
 // Process DDCWs
 
@@ -831,7 +831,7 @@ static int diskWrite (uint devUnitIdx, uint iomUnitIdx, uint chan)
     uint sectorSizeBytes = ((36 * sectorSizeWords) / 8);
 
     sim_debug (DBG_NOTIFY, & dsk_dev, "Write %d\n", devUnitIdx);
-    disk_statep -> io_mode = read_mode;
+    disk_statep -> io_mode = disk_read_mode;
 
 // Process DDCWs
 
@@ -951,7 +951,7 @@ static int readStatusRegister (uint devUnitIdx, uint iomUnitIdx, uint chan)
     struct dsk_state * disk_statep = & dsk_states [devUnitIdx];
 
     sim_debug (DBG_NOTIFY, & dsk_dev, "Read %d\n", devUnitIdx);
-    disk_statep -> io_mode = read_mode;
+    disk_statep -> io_mode = disk_read_mode;
 
 // Process DDCW
 
@@ -1042,7 +1042,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
     UNIT * unitp = & dsk_unit [devUnitIdx];
     struct dsk_state * disk_statep = & dsk_states [devUnitIdx];
 
-    disk_statep -> io_mode = no_mode;
+    disk_statep -> io_mode = disk_no_mode;
     p -> stati = 0;
 
     switch (p -> IDCW_DEV_CMD)
@@ -1053,7 +1053,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
             if (! unitp -> fileref)
               p -> stati = 04240; // device offline
 
-            disk_statep -> io_mode = no_mode;
+            disk_statep -> io_mode = disk_no_mode;
             sim_debug (DBG_NOTIFY, & dsk_dev, "Request status %d\n", devUnitIdx);
           }
           break;
@@ -1114,7 +1114,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
               return -1;
 
             sim_debug (DBG_NOTIFY, & dsk_dev, "Write %d\n", devUnitIdx);
-            disk_statep -> io_mode = write_mode;
+            disk_statep -> io_mode = disk_write_mode;
 //sim_printf ("disk write [%"PRId64"]\n", cpu.cycleCnt);
             p -> stati = 04000;
           }
@@ -1142,7 +1142,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
             p -> isRead = false;
             //if (! unitp -> fileref)
               //p -> stati = 04240; // device offline
-            disk_statep -> io_mode = no_mode;
+            disk_statep -> io_mode = disk_no_mode;
             sim_debug (DBG_NOTIFY, & dsk_dev, "Reset status %d\n", devUnitIdx);
           }
           break;

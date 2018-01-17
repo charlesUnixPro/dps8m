@@ -682,7 +682,7 @@ ddcws:;
     if (unitp->flags & UNIT_WATCH)
       sim_printf ("Tape %ld reads record %d\n",
                   (long) MT_UNIT_NUM (unitp), tape_statep -> rec_num);
-    tape_statep -> io_mode = read_mode;
+    tape_statep -> io_mode = tape_read_mode;
 
 
 // Process DDCWs
@@ -1124,7 +1124,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
     UNIT * unitp = & mt_unit [devUnitIdx];
     struct tape_state * tape_statep = & tape_states [devUnitIdx];
 
-    tape_statep -> io_mode = no_mode;
+    tape_statep -> io_mode = tape_no_mode;
 //sim_printf ("mt cmd dev_code %u cmd %u. 0%o\n", dev_code, p -> IDCW_DEV_CMD, p -> IDCW_DEV_CMD);
     switch (p -> IDCW_DEV_CMD)
       {

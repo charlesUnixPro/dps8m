@@ -15,7 +15,7 @@
 
 struct tape_state
   {
-    enum { no_mode, read_mode, write_mode, survey_mode } io_mode;
+    enum tape_mode { tape_no_mode, tape_read_mode, tape_write_mode, tape_survey_mode } io_mode;
     bool is9;
     uint8 buf [BUFSZ];
     t_mtrlnt tbc; // Number of bytes read into buffer

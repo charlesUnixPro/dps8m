@@ -161,7 +161,11 @@ struct decoded_t
     uint cell;
   };
 
+#ifdef THREADZ
 __thread static struct decoded_t decoded;
+#else
+static struct decoded_t decoded;
+#endif
 
 static void setTIMW (uint mailboxAddress, int mbx)
   {
@@ -2101,7 +2105,6 @@ static int fnpCmd (uint iomUnitIdx, uint chan)
 #else
               p -> stati = 04000;
 #endif
-            //disk_statep -> io_mode = no_mode;
             sim_debug (DBG_NOTIFY, & fnp_dev, "Request status\n");
           }
           break;

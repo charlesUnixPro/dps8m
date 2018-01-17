@@ -180,7 +180,7 @@ DEVICE opc_dev = {
 typedef struct opc_state_t
   {
     // Hangs off the device structure
-    enum { no_mode, read_mode, write_mode } io_mode;
+    enum console_mode { opc_no_mode, opc_read_mode, opc_write_mode } io_mode;
     // SIMH console library has only putc and getc; the SIMH terminal
     // library has more features including line buffering.
 #define bufsize 81
@@ -224,7 +224,7 @@ static t_stat opc_reset (UNUSED DEVICE * dptr)
   {
     for (uint i = 0; i < dptr->numunits; i ++)
       {
-        console_state[i].io_mode = no_mode;
+        console_state[i].io_mode = opc_no_mode;
         console_state[i].tailp = console_state[i].buf;
         console_state[i].readp = console_state[i].buf;
 #ifdef ATTN_HACK
@@ -635,7 +635,7 @@ static void sendConsole (int conUnitIdx, word12 stati)
       }
     csp->readp = csp->buf;
     csp->tailp = csp->buf;
-    csp->io_mode = no_mode;
+    csp->io_mode = opc_no_mode;
 
     p->stati = (word12) stati;
     send_terminate_interrupt (iomUnitIdx, chan_num);
@@ -676,7 +676,7 @@ static int opc_cmd (uint iomUnitIdx, uint chan)
 
         case 023:               // Read ASCII
           {
-            csp->io_mode = read_mode;
+            csp->io_mode = opc_read_mode;
             sim_debug (DBG_NOTIFY, & opc_dev, 
                        "%s: Read ASCII command received\n", __func__);
             if (csp->tailp != csp->buf)
@@ -762,7 +762,7 @@ sim_printf ("uncomfortable with this\n");
         case 033:               // Write ASCII
           {
             p->isRead = false;
-            csp->io_mode = write_mode;
+            csp->io_mode = opc_write_mode;
 
             sim_debug (DBG_NOTIFY, & opc_dev,
                        "%s: Write ASCII cmd received\n", __func__);
@@ -1014,7 +1014,7 @@ sim_printf ("uncomfortable with this\n");
           {
             sim_debug (DBG_NOTIFY, & opc_dev,
                        "%s: Reset cmd received\n", __func__);
-            csp->io_mode = no_mode;
+            csp->io_mode = opc_no_mode;
             p->stati = 04000;
           }
           break;
@@ -1060,7 +1060,7 @@ static void consoleProcessIdx (int conUnitIdx)
 // Simplifying logic here; if we have autoinput, then process it and skip
 // the keyboard checks, we'll get them on the next cycle.
     opc_state_t * csp = console_state + conUnitIdx;
-    if (csp->io_mode == read_mode &&
+    if (csp->io_mode == opc_read_mode &&
         csp->autop != NULL)
       {
         if (csp->autop == '\0')
@@ -1142,7 +1142,7 @@ eol:
       } // if (autop)
 
    // read mode and nothing typed
-    if (csp->io_mode == read_mode &&
+    if (csp->io_mode == opc_read_mode &&
         csp->tailp == csp->buf)
       {
         if (csp->startTime + 30 < time (NULL))
@@ -1287,7 +1287,7 @@ eol:
         return;
       }
 
-    if (csp->io_mode != read_mode)
+    if (csp->io_mode != opc_read_mode)
       {
         if (c == '\033') // escape
           csp->attn_pressed = true;

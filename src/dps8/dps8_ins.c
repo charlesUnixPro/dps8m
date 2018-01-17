@@ -3148,10 +3148,10 @@ static t_stat DoBasicInstruction (void)
           //copyBytes ((i->tag >> 2) & 0xf, cpu.rA, &cpu.CY);
           cpu.CY = cpu.rA;
           cpu.zone =
-             ((i->tag & 040) ? 0777000000000 : 0) |
-             ((i->tag & 020) ? 0000777000000 : 0) |
-             ((i->tag & 010) ? 0000000777000 : 0) |
-             ((i->tag & 004) ? 0000000000777 : 0);
+             ((i->tag & 040) ? 0777000000000u : 0) |
+             ((i->tag & 020) ? 0000777000000u : 0) |
+             ((i->tag & 010) ? 0000000777000u : 0) |
+             ((i->tag & 004) ? 0000000000777u : 0);
           cpu.useZone = true;
           cpu.ou.crflag = true;
           break;
@@ -3162,10 +3162,10 @@ static t_stat DoBasicInstruction (void)
           //copyBytes ((i->tag >> 2) & 0xf, cpu.rQ, &cpu.CY);
           cpu.CY = cpu.rQ;
           cpu.zone =
-             ((i->tag & 040) ? 0777000000000 : 0) |
-             ((i->tag & 020) ? 0000777000000 : 0) |
-             ((i->tag & 010) ? 0000000777000 : 0) |
-             ((i->tag & 004) ? 0000000000777 : 0);
+             ((i->tag & 040) ? 0777000000000u : 0) |
+             ((i->tag & 020) ? 0000777000000u : 0) |
+             ((i->tag & 010) ? 0000000777000u : 0) |
+             ((i->tag & 004) ? 0000000000777u : 0);
           cpu.useZone = true;
           cpu.ou.crflag = true;
           break;
@@ -3202,12 +3202,12 @@ static t_stat DoBasicInstruction (void)
           //copyChars (i->tag, cpu.rA, &cpu.CY);
           cpu.CY = cpu.rA;
           cpu.zone =
-             ((i->tag & 040) ? 0770000000000 : 0) |
-             ((i->tag & 020) ? 0007700000000 : 0) |
-             ((i->tag & 010) ? 0000077000000 : 0) |
-             ((i->tag & 004) ? 0000000770000 : 0) |
-             ((i->tag & 002) ? 0000000007700 : 0) |
-             ((i->tag & 001) ? 0000000000077 : 0);
+             ((i->tag & 040) ? 0770000000000u : 0) |
+             ((i->tag & 020) ? 0007700000000u : 0) |
+             ((i->tag & 010) ? 0000077000000u : 0) |
+             ((i->tag & 004) ? 0000000770000u : 0) |
+             ((i->tag & 002) ? 0000000007700u : 0) |
+             ((i->tag & 001) ? 0000000000077u : 0);
           cpu.useZone = true;
           cpu.ou.crflag = true;
           break;
@@ -3218,12 +3218,12 @@ static t_stat DoBasicInstruction (void)
           //copyChars (i->tag, cpu.rQ, &cpu.CY);
           cpu.CY = cpu.rQ;
           cpu.zone =
-             ((i->tag & 040) ? 0770000000000 : 0) |
-             ((i->tag & 020) ? 0007700000000 : 0) |
-             ((i->tag & 010) ? 0000077000000 : 0) |
-             ((i->tag & 004) ? 0000000770000 : 0) |
-             ((i->tag & 002) ? 0000000007700 : 0) |
-             ((i->tag & 001) ? 0000000000077 : 0);
+             ((i->tag & 040) ? 0770000000000u : 0) |
+             ((i->tag & 020) ? 0007700000000u : 0) |
+             ((i->tag & 010) ? 0000077000000u : 0) |
+             ((i->tag & 004) ? 0000000770000u : 0) |
+             ((i->tag & 002) ? 0000000007700u : 0) |
+             ((i->tag & 001) ? 0000000000077u : 0);
           cpu.useZone = true;
           cpu.ou.crflag = true;
           break;
@@ -5573,13 +5573,15 @@ static t_stat DoBasicInstruction (void)
           //  C(TPR.CA) -> C(PPR.IC)
           //  C(TPR.TSR) -> C(PPR.PSR)
           {
+#ifdef PANEL
             uint32 n;
             if (opcode <= 0273)
               n = (opcode & 3);
             else
               n = (opcode & 3) + 4;
             CPTUR (cptUsePRn + n);
-
+#endif
+            // PR[n] is set in ReadTraOp().
             ReadTraOp ();
           }
           return CONT_TRA;
