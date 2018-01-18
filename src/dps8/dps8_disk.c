@@ -777,7 +777,22 @@ static int diskRead (uint devUnitIdx, uint iomUnitIdx, uint chan)
         rc = (int) fread (diskBuffer, sectorSizeBytes,
                     tallySectors,
                     unitp -> fileref);
-
+ 
+// The rc code is wrong; it is using read() semantics, for fread().
+#if 1
+        if (rc == 0) // EOF or error
+          {
+            if (ferror (unitp->fileref))
+              {
+                p -> stati = 04202; // attn, seek incomplete
+                p -> chanStatus = chanStatIncorrectDCW;
+                return -1;
+              }
+            // We ignore short reads-- we assume that they are reads
+            // past the write highwater mark, and return zero data,
+            // just as if the disk had been formatted with zeros.
+          }
+#else
         if (rc == 0) // eof; reading a sector beyond the high water mark.
           {
             // okay; buffer was zero, so just pretend that a zero filled
@@ -812,6 +827,7 @@ static int diskRead (uint devUnitIdx, uint iomUnitIdx, uint chan)
             p -> chanStatus = chanStatIncorrectDCW;
             return -1;
           }
+#endif
 //sim_printf ("tallySectors %u\n", tallySectors);
 //sim_printf ("p72ByteCnt %u\n", p72ByteCnt);
 //for (uint i = 0; i < p72ByteCnt; i += 9)
