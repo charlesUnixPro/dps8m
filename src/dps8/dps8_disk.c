@@ -786,6 +786,28 @@ static int diskRead (uint devUnitIdx, uint iomUnitIdx, uint chan)
         else if (rc != (int) tallySectors)
           {
             sim_printf ("read returned %d, errno %d\n", rc, errno);
+            sim_printf ("tally %u\n", tally);
+            sim_printf ("tallySectors %u\n", tallySectors);
+            sim_printf ("tallyWords %u\n", tallyWords);
+            sim_printf ("p72ByteCnt %u\n", p72ByteCnt);
+            sim_printf ("fseek to %ld\n",  (long) (disk_statep -> seekPosition * sectorSizeBytes));
+            sim_printf ("devUnitIdx %u\n", devUnitIdx);
+            sim_printf ("iomUnitIdx %u\n", iomUnitIdx);
+            sim_printf ("chan %u\n", chan);
+            sim_printf ("typeIdx %u\n", typeIdx);
+            sim_printf ("sectorSizeWords %u\n", sectorSizeWords);
+            sim_printf ("sectorSizeBytes %u\n", sectorSizeBytes);
+            sim_printf ("fileref %p\n", unitp->fileref);
+            sim_printf ("knowns:\n");
+            for (uint i = 0; i < N_DSK_UNITS_MAX; i ++)
+              {
+                sim_printf ("  %u typeIdx %u seekPosition %u filename <%s> fileref %p\n",
+                  i,
+                  dsk_states[i].typeIdx,
+                  dsk_states[i].seekPosition,
+                  dsk_unit[i].filename,
+                  dsk_unit[i].fileref);
+              }
             p -> stati = 04202; // attn, seek incomplete
             p -> chanStatus = chanStatIncorrectDCW;
             return -1;
