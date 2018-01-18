@@ -70,7 +70,6 @@
 #include <ctype.h>
 
 #include "dps8.h"
-#include "dps8_fnp2.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_faults.h"
@@ -78,6 +77,7 @@
 #include "dps8_cpu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
+#include "dps8_fnp2.h"
 #include "fnptelnet.h"
 #include "fnpuv.h"
 #include "utlist.h"
@@ -382,21 +382,20 @@ static inline void l_putbits36_18 (word36 volatile * x, uint p, word18 val)
 #endif
 
 
-static void setTIMW (uint mailboxAddress, int mbx)
+void setTIMW (uint iom_unit_idx, uint mailboxAddress, int mbx)
   {
     uint timwAddress = mailboxAddress + TERM_INPT_MPX_WD;
-    l_putbits36_1 (& M [timwAddress], (uint) mbx, 1);
+    l_putbits36_1 (fnp_M_addr ((int) iom_unit_idx, timwAddress), (uint) mbx, 1);
   }
 
 #ifdef SCUMEM
-static uint get_scu_unit_idx_iom (uint fnp_unit_idx, word24 addr, word24 * offset)
+uint get_scu_unit_idx_iom (uint fnp_unit_idx, word24 addr, word24 * offset)
   {
-    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
     uint ctlr_port_num = 0; // FNPs are single ported
     uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
 // XXX can queryIomScbankMap return -1 here? if so, what to do?
 // The address is known to reside in the bootload SCU; we can't get to here unless that is working.
-    uint scu_unit_num = (uint) queryIomScbankMap (iom_unit_idx, fudp->mailboxAddress, offset);
+    uint scu_unit_num = (uint) queryIomScbankMap (iom_unit_idx, addr, offset);
     uint scu_unit_idx = cables->iom_to_scu[iom_unit_idx][scu_unit_num].scu_unit_idx;
     return scu_unit_idx;
   }
@@ -446,13 +445,7 @@ static void notifyCS (int mbx, int fnp_unit_idx, int lineno)
 sim_printf ("notifyCS mbx %d\n", mbx);
 #endif
     struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
-#ifdef SCUMEM
-    word24 offset;
-    uint scuUnitIdx = get_scu_unit_idx_iom ((uint) fnp_unit_idx, fudp->mailboxAddress, & offset);
-    struct mailbox vol * mbxp = (struct mailbox vol *) & scu [scuUnitIdx].M[offset];
-#else
-    struct mailbox vol * mbxp = (struct mailbox vol *) & M [fudp->mailboxAddress];
-#endif
+    struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
     struct fnp_submailbox vol * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
     l_putbits36_3 (& smbxp -> word1, 0, (word3) fnp_unit_idx); // dn355_no XXX
@@ -462,10 +455,11 @@ sim_printf ("notifyCS mbx %d\n", mbx);
     l_putbits36_18 (& smbxp -> word1, 18, 256); // blocks available XXX
 
     fudp->fnpMBXinUse [mbx] = true;
-    setTIMW (fudp->mailboxAddress, mbx + 8);
 
     uint ctlr_port_num = 0; // FNPs are single ported
     uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
+    setTIMW ((uint) iom_unit_idx, fudp->mailboxAddress, mbx + 8);
+
     uint chan_num = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].chan_num;
     send_terminate_interrupt (iom_unit_idx, chan_num);
   }
@@ -474,14 +468,7 @@ static void fnp_rcd_ack_echnego_init (int mbx, int fnp_unit_idx, int lineno)
   {
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd ack_echnego_init\n", lineno);
     struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
-    //struct t_line * linep = & fudp->MState.line[lineno];
-#ifdef SCUMEM
-    word24 offset;
-    uint scuUnitIdx = get_scu_unit_idx_iom ((uint) fnp_unit_idx, fudp->mailboxAddress, & offset);
-    struct mailbox vol * mbxp = (struct mailbox vol *) & scu [scuUnitIdx].M[offset];
-#else
-    struct mailbox vol * mbxp = (struct mailbox vol *) & M [fudp->mailboxAddress];
-#endif
+    struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
     struct fnp_submailbox vol * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
     l_putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len
@@ -496,14 +483,7 @@ static void fnp_rcd_line_disconnected (int mbx, int fnp_unit_idx, int lineno)
   {
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd line_disconnected\n", lineno);
     struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
-    //struct t_line * linep = & fudp->MState.line[lineno];
-#ifdef SCUMEM
-    word24 offset;
-    uint scuUnitIdx = get_scu_unit_idx_iom ((uint) fnp_unit_idx, fudp->mailboxAddress, & offset);
-    struct mailbox vol * mbxp = (struct mailbox vol *) & scu [scuUnitIdx].M[offset];
-#else
-    struct mailbox vol * mbxp = (struct mailbox vol *) & M [fudp->mailboxAddress];
-#endif
+    struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
     struct fnp_submailbox vol * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
     l_putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len
@@ -519,13 +499,7 @@ static void fnp_rcd_input_in_mailbox (int mbx, int fnp_unit_idx, int lineno)
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd input_in_mailbox\n", lineno);
     struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
     struct t_line * linep = & fudp->MState.line[lineno];
-#ifdef SCUMEM
-    word24 offset;
-    uint scuUnitIdx = get_scu_unit_idx_iom ((uint) fnp_unit_idx, fudp->mailboxAddress, & offset);
-    struct mailbox vol * mbxp = (struct mailbox vol *) & scu [scuUnitIdx].M[offset];
-#else
-    struct mailbox vol * mbxp = (struct mailbox vol *) & M [fudp->mailboxAddress];
-#endif
+    struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
     struct fnp_submailbox vol * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 //sim_printf ("fnp_rcd_input_in_mailbox nPos %d\n", linep->nPos);
     l_putbits36_9 (& smbxp -> word2, 9, (word9) linep->nPos); // n_chars
@@ -603,7 +577,7 @@ static void fnp_rcd_line_status  (int mbx, int fnp_unit_idx, int lineno)
   {
     struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
     struct t_line * linep = & fudp->MState.line[lineno];
-    struct mailbox * mbxp = (struct mailbox *) & M [fudp->mailboxAddress];
+    struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
     struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
 
     putbits36_18 (& smbxp -> word2, 0, 2); // cmd_data_len

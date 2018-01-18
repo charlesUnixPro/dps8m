@@ -22,6 +22,7 @@
 
 #include "dps8.h"
 #include "dps8_sys.h"
+#include "dps8_scu.h"
 #include "dps8_cpu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
@@ -36,13 +37,13 @@
 #include "threadz.h"
 #endif
 
-static inline void fnp_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
+static inline void fnp_core_read (uint iom_unit_idx, word24 addr, word36 *data, UNUSED const char * ctx)
   {
 #ifdef THREADZ
     lock_mem ();
 #endif
 #ifdef SCUMEM
-    iom_core_read (addr, data, ctx);
+    iom_core_read (iom_unit_idx, addr, data, ctx);
 #else
     * data = M [addr] & DMASK;
 #endif
@@ -51,13 +52,13 @@ static inline void fnp_core_read (word24 addr, word36 *data, UNUSED const char *
 #endif
   }
 
-static inline void fnp_core_write (word24 addr, word36 data, UNUSED const char * ctx)
+static inline void fnp_core_write (uint iom_unit_idx, word24 addr, word36 data, UNUSED const char * ctx)
   {
 #ifdef THREADZ
     lock_mem ();
 #endif
 #ifdef SCUMEM
-    iom_core_write (addr, data, ctx);
+    iom_core_write (iom_unit_idx, addr, data, ctx);
 #else
     M [addr] = data & DMASK;
 #endif
@@ -66,14 +67,14 @@ static inline void fnp_core_write (word24 addr, word36 data, UNUSED const char *
 #endif
   }
 
-static inline void fnp_core_read_n (word24 addr, word36 *data, uint n, UNUSED const char * ctx)
+static inline void fnp_core_read_n (uint iom_unit_idx, word24 addr, word36 *data, uint n, UNUSED const char * ctx)
   {
 #ifdef THREADZ
     lock_mem ();
 #endif
     for (uint i = 0; i < n; i ++)
 #ifdef SCUMEM
-      iom_core_read (addr, data, ctx);
+      iom_core_read (iom_unit_idx, addr, data, ctx);
 #else
       data [i] = M [addr + i] & DMASK;
 #endif
@@ -167,24 +168,6 @@ __thread static struct decoded_t decoded;
 static struct decoded_t decoded;
 #endif
 
-static void setTIMW (uint mailboxAddress, int mbx)
-  {
-    uint timwAddress = mailboxAddress + TERM_INPT_MPX_WD;
-#if 1
-    l_putbits36_1 (& M [timwAddress], (uint) mbx, 1);
-#else
-    lock_mem ();
-//sim_printf ("new %p\n", & M [timwAddress]
-    //word36 w = M [timwAddress];
-    word36 w;
-    fnp_core_read (timwAddress, & w, "setTIMW read");
-    putbits36_1 (& w, (uint) mbx, 1);
-    //M [timwAddress] = w;
-    fnp_core_write (timwAddress, w, "setTIMW write");
-    unlock_mem ();
-#endif
-  }
-
 //
 // Convert virtual address to physical
 //
@@ -197,10 +180,10 @@ static uint virtToPhys (uint ptPtr, uint l66Address)
     word36 ptw;
 #ifdef SCUMEM
     uint ctlr_port_no = 0; // FNPs are single port
-    uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
-    iom_core_read (iomUnitIdx, pageTable + l66AddressPage, & ptw, "fnp_iom_cmd get ptw");
+    uint iom_unit_idx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
+    iom_core_read (iom_unit_idx, pageTable + l66AddressPage, & ptw, "fnp_iom_cmd get ptw");
 #else
-    fnp_core_read (pageTable + l66AddressPage, & ptw, "fnp_iom_cmd get ptw");
+    fnp_core_read (iom_unit_idx, pageTable + l66AddressPage, & ptw, "fnp_iom_cmd get ptw");
 #endif
     uint page = getbits36_14 (ptw, 4);
     uint addr = page * 1024u + l66Address % 1024u;
@@ -211,10 +194,10 @@ static uint virtToPhys (uint ptPtr, uint l66Address)
 // Debugging...
 //
 
-static void dmpmbx (uint mailboxAddress)
+static void dmpmbx (uint iom_unit_idx, uint mailboxAddress)
   {
     struct mailbox mbx;
-    fnp_core_read_n (mailboxAddress, (word36 *) & mbx, MAILBOX_WORDS, "dmpmbx");
+    fnp_core_read_n (iom_unit_idx, mailboxAddress, (word36 *) & mbx, MAILBOX_WORDS, "dmpmbx");
     sim_printf ("dia_pcw            %012"PRIo64"\n", mbx.dia_pcw);
     sim_printf ("mailbox_requests   %012"PRIo64"\n", mbx.mailbox_requests);
     sim_printf ("term_inpt_mpx_wd   %012"PRIo64"\n", mbx.term_inpt_mpx_wd);
@@ -262,7 +245,7 @@ static int wcd (void)
   {
 #ifdef SCUMEM
     uint ctlr_port_no = 0; // FNPs are single port
-    uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
+    uint iom_unit_idx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
 #endif
 
     struct t_line * linep = & decoded.fudp->MState.line[decoded.slot_no];
@@ -570,10 +553,10 @@ static int wcd (void)
                 for (uint i = 0; i < echoTableLen; i ++)
                   {
 #ifdef SCUMEM
-                    iom_core_read (iomUnitIdx, dataAddrPhys + i, & echoTable [i], __func__);
+                    iom_core_read (iom_unit_idx, dataAddrPhys + i, & echoTable [i], __func__);
 #else
                     //echoTable [i] = M [dataAddrPhys + i];
-                    fnp_core_read (dataAddrPhys + i, echoTable + i, "echo table");
+                    fnp_core_read (iom_unit_idx, dataAddrPhys + i, echoTable + i, "echo table");
 #endif
                     //sim_printf ("   %012"PRIo64"\n", echoTable [i]);
                   }
@@ -1072,7 +1055,7 @@ word36 pad;
           }
       } // switch decoded.op_code
 
-    setTIMW (decoded.fudp->mailboxAddress, (int) decoded.cell);
+    setTIMW (iom_unit_idx, decoded.fudp->mailboxAddress, (int) decoded.cell);
 
 #ifdef FNPDBG
 sim_printf ("wcd sets the TIMW??\n");
@@ -1232,11 +1215,11 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
              uint wordAddr = virtToPhys (ptPtr, dataAddr + wordOff);
 #ifdef SCUMEM
              uint ctlr_port_no = 0; // FNPs are single port
-             uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
-             iom_core_read (iomUnitIdx, wordAddr, & word, __func__);
+             uint iom_unit_idx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
+             iom_core_read (iom_unit_idx, wordAddr, & word, __func__);
 #else
              //word = M [wordAddr];
-             fnp_core_read (wordAddr, & word, "fnp_wtx_output");
+             fnp_core_read (iom_unit_idx, wordAddr, & word, "fnp_wtx_output");
 #endif
 //sim_printf ("   %012"PRIo64"\n", M [wordAddr]);
            }
@@ -1297,6 +1280,9 @@ static int wtx (void)
     uint dcwCnt = getbits36_9 (decoded.smbxp -> word6, 27);
     //uint sent = 0;
 
+    uint ctlr_port_no = 0; // FNPs are single port
+    uint iom_unit_idx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
+
     // For each dcw
     for (uint i = 0; i < dcwCnt; i ++)
       {
@@ -1307,13 +1293,11 @@ static int wtx (void)
         //word36 dcw = M [dcwAddrPhys + i];
 #ifdef SCUMEM
         word36 dcw;
-        uint ctlr_port_no = 0; // FNPs are single port
-        uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
-        iom_core_read (iomUnitIdx, dcwAddrPhys, & dcw, __func__);
+        iom_core_read (iom_unit_idx, dcwAddrPhys, & dcw, __func__);
 #else
         //word36 dcw = M [dcwAddrPhys];
         word36 dcw;
-        fnp_core_read (dcwAddrPhys, & dcw, "dcw");
+        fnp_core_read (iom_unit_idx, dcwAddrPhys, & dcw, "dcw");
 #endif
         //sim_printf ("  %012"PRIo64"\n", dcw);
 
@@ -1327,7 +1311,7 @@ static int wtx (void)
         //sent += tally;
       } // for each dcw
 
-    setTIMW (decoded.fudp->mailboxAddress, (int) decoded.cell);
+    setTIMW (iom_unit_idx, decoded.fudp->mailboxAddress, (int) decoded.cell);
 
 #if 0
     //decoded.fudp->MState.line[decoded.slot_no].send_output = true;
@@ -1392,7 +1376,7 @@ sim_printf ("']\n");
 }
 }
     uint ctlr_port_no = 0; // FNPs are single port
-    uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
+    uint iom_unit_idx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
 //sim_printf ("long  in; line %d tally %d\n", decoded.slot_no, linep->nPos);
     for (int i = 0; i < tally0; i += 4)
       {
@@ -1407,10 +1391,10 @@ sim_printf ("']\n");
           putbits36_9 (& v, 27, data [i + 3]);
 //sim_printf ("%012"PRIo64"\n", v);
 #ifdef SCUMEM
-        iom_core_write (iomUnitIdx, addr0, v, __func__);
+        iom_core_write (iom_unit_idx, addr0, v, __func__);
 #else
         //M [addr0 ++] = v;
-        fnp_core_write (addr0, v, "rtx_input_accepted");
+        fnp_core_write (iom_unit_idx, addr0, v, "rtx_input_accepted");
 #endif
         //M [addr0 ++] = v;
         uint dcwAddrPhys = virtToPhys (decoded.p -> PCW_PAGE_TABLE_PTR, addr0);
@@ -1433,10 +1417,10 @@ sim_printf ("']\n");
               putbits36_9 (& v, 27, data [tally0 + i + 3]);
 //sim_printf ("%012"PRIo64"\n", v);
 #ifdef SCUMEM
-            iom_core_write (iomUnitIdx, addr1, v, __func__);
+            iom_core_write (iom_unit_idx, addr1, v, __func__);
 #else
         //M [addr1 ++] = v;
-            fnp_core_write (addr1, v, "rtx_input_accepted");
+            fnp_core_write (iom_unit_idx, addr1, v, "rtx_input_accepted");
 #endif
             //M [addr1 ++] = v;
             uint dcwAddrPhys = virtToPhys (decoded.p -> PCW_PAGE_TABLE_PTR, addr1);
@@ -1460,11 +1444,11 @@ sim_printf ("']\n");
     linep->input_break = false;
     linep->nPos = 0;
 
-    setTIMW (decoded.fudp->mailboxAddress, (int) decoded.cell);
+    setTIMW (iom_unit_idx, decoded.fudp->mailboxAddress, (int) decoded.cell);
 
     uint ctlr_port_num = 0; // FNPs are single ported
     uint chan_num = cables->fnp_to_iom[decoded.devUnitIdx][ctlr_port_num].chan_num;
-    send_terminate_interrupt (iomUnitIdx, chan_num);
+    send_terminate_interrupt (iom_unit_idx, chan_num);
   }
 
 static int interruptL66_CS_to_FNP (void)
@@ -1718,15 +1702,15 @@ sim_printf ("  %d %d %d %d\n", decoded.fudp->fnpMBXinUse [0], decoded.fudp->fnpM
     return 0;
   }
 
-static int interruptL66 (uint iomUnitIdx, uint chan)
+static int interruptL66 (uint iom_unit_idx, uint chan)
   {
-    decoded.p = & iomChanData [iomUnitIdx] [chan];
-    decoded.devUnitIdx = get_ctlr_idx (iomUnitIdx, chan);
+    decoded.p = & iomChanData [iom_unit_idx] [chan];
+    decoded.devUnitIdx = get_ctlr_idx (iom_unit_idx, chan);
     decoded.fudp = & fnpData.fnpUnitData [decoded.devUnitIdx];
 #ifdef SCUMEM
     word24 offset;
-    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, decoded.fudp->mailboxAddress, & offset);
-    int scuUnitIdx = cables->iom_to_scu[iomUnitIdx][scuUnitNum].scu_unit_idx;
+    int scuUnitNum =  queryIomScbankMap (iom_unit_idx, decoded.fudp->mailboxAddress, & offset);
+    int scuUnitIdx = cables->iom_to_scu[iom_unit_idx][scuUnitNum].scu_unit_idx;
     decoded.mbxp = (struct mailbox vol *) & scu [scuUnitIdx].M [decoded.fudp->mailboxAddress];
 #else
     decoded.mbxp = (struct mailbox vol *) & M [decoded.fudp -> mailboxAddress];
@@ -1832,9 +1816,9 @@ sim_printf ("3270 controller found at unit %u line %u\r\n", devUnitIdx, lineno);
     fnpuv3270Init (fnpData.telnet3270_port);
   }
 
-static void processMBX (uint iomUnitIdx, uint chan)
+static void processMBX (uint iom_unit_idx, uint chan)
   {
-    uint devUnitIdx = get_ctlr_idx (iomUnitIdx, chan);
+    uint devUnitIdx = get_ctlr_idx (iom_unit_idx, chan);
     struct fnpUnitData * fudp = & fnpData.fnpUnitData [devUnitIdx];
 
 // 60132445 FEP Coupler EPS
@@ -1979,7 +1963,7 @@ sim_printf ("reset??\n");
 #ifdef THREADZ
         lock_libuv ();
 #endif
-        ok = interruptL66 (iomUnitIdx, chan) == 0;
+        ok = interruptL66 (iom_unit_idx, chan) == 0;
 #ifdef THREADZ
         unlock_libuv ();
 #endif
@@ -2069,27 +2053,27 @@ sim_printf ("data xfer??\n");
     if (ok)
       {
 #ifdef FNPDBG
-dmpmbx (fudp->mailboxAddress);
+dmpmbx (iom_unit_idx, fudp->mailboxAddress);
 #endif
-        fnp_core_write (fudp -> mailboxAddress, 0, "fnp_iom_cmd clear dia_pcw");
+        fnp_core_write (iom_unit_idx, fudp -> mailboxAddress, 0, "fnp_iom_cmd clear dia_pcw");
         putbits36_1 (& bootloadStatus, 0, 1); // real_status = 1
         putbits36_3 (& bootloadStatus, 3, 0); // major_status = BOOTLOAD_OK;
         putbits36_8 (& bootloadStatus, 9, 0); // substatus = BOOTLOAD_OK;
         putbits36_17 (& bootloadStatus, 17, 0); // channel_no = 0;
-        fnp_core_write (fudp -> mailboxAddress + 6, bootloadStatus, "fnp_iom_cmd set bootload status");
+        fnp_core_write (iom_unit_idx, fudp -> mailboxAddress + 6, bootloadStatus, "fnp_iom_cmd set bootload status");
       }
     else
       {
-        dmpmbx (fudp->mailboxAddress);
+        dmpmbx (iom_unit_idx, fudp->mailboxAddress);
 // 3 error bit (1) unaligned, /* set to "1"b if error on connect */
         putbits36_1 (& dia_pcw, 18, 1); // set bit 18
-        fnp_core_write (fudp -> mailboxAddress, dia_pcw, "fnp_iom_cmd set error bit");
+        fnp_core_write (iom_unit_idx, fudp -> mailboxAddress, dia_pcw, "fnp_iom_cmd set error bit");
       }
   }
 
-static int fnpCmd (uint iomUnitIdx, uint chan)
+static int fnpCmd (uint iom_unit_idx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iomChanData_t * p = & iomChanData [iom_unit_idx] [chan];
     p -> stati = 0;
 //sim_printf ("fnp cmd %d\n", p -> IDCW_DEV_CMD);
     switch (p -> IDCW_DEV_CMD)
@@ -2121,11 +2105,11 @@ sim_printf ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
           }
       }
 
-    //status_service (iomUnitIdx, chan, false);
-    processMBX (iomUnitIdx, chan);
+    //status_service (iom_unit_idx, chan, false);
+    processMBX (iom_unit_idx, chan);
 
 //sim_printf ("end of list service; sending terminate interrupt\n");
-    //send_terminate_interrupt (iomUnitIdx, chan);
+    //send_terminate_interrupt (iom_unit_idx, chan);
     return 2; // did command, don't want more
   }
 
@@ -2138,14 +2122,14 @@ sim_printf ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
 // 0 ok
 // -1 problem
 
-int fnp_iom_cmd (uint iomUnitIdx, uint chan)
+int fnp_iom_cmd (uint iom_unit_idx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iomChanData_t * p = & iomChanData [iom_unit_idx] [chan];
 // Is it an IDCW?
 
     if (p -> DCW_18_20_CP == 7)
       {
-        return fnpCmd (iomUnitIdx, chan);
+        return fnpCmd (iom_unit_idx, chan);
       }
     // else // DDCW/TDCW
     sim_printf ("%s expected IDCW\n", __func__);
