@@ -1489,8 +1489,6 @@ enum
 enum { CUH_XINT = 0100, CUH_IFT = 040, CUH_CRD = 020, CUH_MRD = 010,
        CUH_MSTO = 04, CUH_PIB = 02 };
 
-#define N_CPU_UNITS_MAX 8
-
 #ifdef DPS8M
 #define N_WAM_ENTRIES 64
 #define N_WAM_MASK 077
