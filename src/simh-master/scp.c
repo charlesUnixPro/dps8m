@@ -10583,7 +10583,7 @@ void _sim_debug (uint32 dbits, DEVICE* vdptr, const char* fmt, ...)
 #endif
 {
 DEVICE *dptr = (DEVICE *)vdptr;
-if (sim_deb && dptr && (dptr->dctrl & dbits)) {
+if (sim_deb && dptr && (dbits == 0 || (dptr->dctrl & dbits))) {
 
     char stackbuf[STACKBUFSIZE];
     int32 bufsize = sizeof(stackbuf);
