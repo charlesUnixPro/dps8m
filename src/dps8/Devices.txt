@@ -1,4 +1,4 @@
-name: a.h012;
+name: a.h000;
    service: ibm3270;
 
 name: d.h000;
