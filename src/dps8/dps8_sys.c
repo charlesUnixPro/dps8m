@@ -131,6 +131,9 @@ static t_stat smfx1entry (int32 arg, const char * buf);
 #endif
 static t_stat searchMemory (UNUSED int32 arg, const char * buf);
 static t_stat bootSkip (int32 UNUSED arg, const char * UNUSED buf);
+static t_stat set_sys_polling_interval (UNUSED int32 arg, const char * buf);
+static t_stat set_sys_slow_polling_interval (UNUSED int32 arg, const char * buf);
+static t_stat set_sys_poll_check_rate (UNUSED int32 arg, const char * buf);
 
 static CTAB dps8_cmds[] =
 {
@@ -200,6 +203,9 @@ static CTAB dps8_cmds[] =
     {"SKIPBOOT", bootSkip, 0, "skip forward on boot tape", NULL, NULL},
     {"DEFAULT_BASE_SYSTEM", defaultBaseSystem, 0, "Set configuration to defaults", NULL, NULL},
     {"FNPSTART", fnpStart, 0, "Force early FNP initialization", NULL, NULL},
+    {"POLL", set_sys_polling_interval, 0, "Set polling interval in milliseconds", NULL, NULL },
+    {"SLOWPOLL", set_sys_slow_polling_interval, 0, "Set slow polling interval in polling intervals", NULL, NULL },
+    {"CHECKPOLL", set_sys_poll_check_rate, 0, "Set slow polling interval in polling intervals", NULL, NULL },
     { NULL, NULL, 0, NULL, NULL, NULL}
 };
 
@@ -1848,7 +1854,10 @@ sysinfo_t sys_opts =
       -1, /* mt_times.read */
       -1  /* mt_times.xfer */
     },
-    0 /* warn_uninit */
+    0, /* warn_uninit */
+    10, /* sys_poll_interval 10 ms (100 Hz) */
+    100, /* sys_slow_poll_interval 100 polls (1 Hz) */
+    1024  /* sys_poll_check_rate in CPU cycles */
   };
 
 static char * encode_timing (int timing)
@@ -3558,4 +3567,41 @@ static t_stat bootSkip (int32 UNUSED arg, const char * UNUSED buf)
     uint32 skipped;
     return sim_tape_sprecsf (& mt_unit [0], 1, & skipped);
   }
-  
+static t_stat set_sys_polling_interval (UNUSED int32 arg, const char * buf)
+  {
+    int n = atoi (buf);
+    if (n < 1 || n > 1000) // 1 millisecond to 1 second
+      {
+        sim_printf ("POLL %d: must be 1 (1 millisecond) to 1000 (1 second)\r\n", n);
+        return SCPE_ARG;
+      }
+    sim_printf ("Polling set to %d milliseconds\r\n", n);
+    sys_opts.sys_poll_interval = (uint) n;
+    return SCPE_OK;
+  }
+
+static t_stat set_sys_slow_polling_interval (UNUSED int32 arg, const char * buf)
+  {
+    int n = atoi (buf);
+    if (n < 1 || n > 1000) // 1 - slow poll every pool; 1000 - slow poll every 1000 polls
+      {
+        sim_printf ("SLOWPOLL %d: must be 1 (1 slow poll per pol) to 1000 (1 slow poll per 1000 polls)\r\n", n);
+        return SCPE_ARG;
+      }
+    sim_printf ("Slow polling set to %d polls\r\n", n);
+    sys_opts.sys_slow_poll_interval = (uint) n;
+    return SCPE_OK;
+  }
+
+static t_stat set_sys_poll_check_rate (UNUSED int32 arg, const char * buf)
+  {
+    int n = atoi (buf);
+    if (n < 1 || n > 1024*1024) // 1 - poll check rate in CPY cycles: 1 - check every cycle; 1024 check every 1024 cycles
+      {
+        sim_printf ("CHECKPOLL %d: must be 1 (check every cycle) to 1048576 (ckeck every million cycles\r\n", n);
+        return SCPE_ARG;
+      }
+    sim_printf ("Poll check rate set to %d CPU cycles\r\n", n);
+    sys_opts.sys_poll_check_rate = (uint) n;
+    return SCPE_OK;
+  }
