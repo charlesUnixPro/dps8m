@@ -194,7 +194,7 @@ char *getModString(char * msg, word6 tag)
 word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
     CPT (cpt2L, 17); // Add36b
-    sim_debug (DBG_TRACE, & cpu_dev, "Add36b op1 %012"PRIo64" op2 %012"PRIo64" carryin %o flagsToSet %06o flags %06o\n", op1, op2, carryin, flagsToSet, * flags); 
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Add36b op1 %012"PRIo64" op2 %012"PRIo64" carryin %o flagsToSet %06o flags %06o\n", op1, op2, carryin, flagsToSet, * flags); 
 // https://en.wikipedia.org/wiki/Two%27s_complement#Addition
 //
 // In general, any two N-bit numbers may be added without overflow, by first
@@ -275,7 +275,7 @@ word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
-    sim_debug (DBG_TRACE, & cpu_dev, "Add36b res %012"PRIo64" flags %06o ovf %o\n", res, * flags, * ovf); 
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Add36b res %012"PRIo64" flags %06o ovf %o\n", res, * flags, * ovf); 
     return res;
   }
 
@@ -690,10 +690,10 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
  //(word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags, * ovf); 
 #endif
 #ifdef NEED_128
-    sim_debug (DBG_TRACE, & cpu_dev, "Sub72b op1 %012"PRIo64"%012"PRIo64" op2 %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o\n",
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Sub72b op1 %012"PRIo64"%012"PRIo64" op2 %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o\n",
  (word36) ((rshift_128 (op1, 36).l) & MASK36), (word36) (op1.l & MASK36), (word36) (rshift_128 (op2, 36).l & MASK36), (word36) (op2.l & MASK36), carryin, flagsToSet, * flags); 
 #else
-    sim_debug (DBG_TRACE, & cpu_dev, "Sub72b op1 %012"PRIo64"%012"PRIo64" op2 %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o\n",
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Sub72b op1 %012"PRIo64"%012"PRIo64" op2 %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o\n",
  (word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags); 
 #endif
 
@@ -737,10 +737,10 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 
     // Do the math
 #ifdef NEED_128
-    sim_debug (DBG_TRACE, & cpu_dev, "Sub72b op1e %012"PRIo64"%012"PRIo64" op2e %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o\n",
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Sub72b op1e %012"PRIo64"%012"PRIo64" op2e %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o\n",
  (word36) ((rshift_128 (op1e, 36).l) & MASK36), (word36) (op1e.l & MASK36), (word36) (rshift_128 (op2e, 36).l & MASK36), (word36) (op2e.l & MASK36), carryin, flagsToSet, * flags); 
 #else
-    sim_debug (DBG_TRACE, & cpu_dev, "Sub72b op1e %012"PRIo64"%012"PRIo64" op2e %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o\n",
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Sub72b op1e %012"PRIo64"%012"PRIo64" op2e %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o\n",
  (word36) ((op1e >> 36) & MASK36), (word36) (op1e & MASK36), (word36) ((op2e >> 36) & MASK36), (word36) (op2e & MASK36), carryin, flagsToSet, * flags); 
 #endif
 #ifdef NEED_128
@@ -749,9 +749,9 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
     word74 res = op1e - op2e - ci;
 #endif
 #ifdef NEED_128
-    sim_debug (DBG_TRACE, & cpu_dev, "Sub72b res %012"PRIo64"%012"PRIo64" flags %06o ovf %o\n", (word36) (rshift_128 (res, 36).l & MASK36), (word36) (res.l & MASK36), * flags, * ovf); 
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Sub72b res %012"PRIo64"%012"PRIo64" flags %06o ovf %o\n", (word36) (rshift_128 (res, 36).l & MASK36), (word36) (res.l & MASK36), * flags, * ovf); 
 #else
-    sim_debug (DBG_TRACE, & cpu_dev, "Sub72b res %012"PRIo64"%012"PRIo64" flags %06o ovf %o\n", (word36) ((res >> 36) & MASK36), (word36) (res & MASK36), * flags, * ovf); 
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Sub72b res %012"PRIo64"%012"PRIo64" flags %06o ovf %o\n", (word36) ((res >> 36) & MASK36), (word36) (res & MASK36), * flags, * ovf); 
 #endif
 
     // Extract the overflow bits
@@ -838,9 +838,9 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
       }
     
 #ifdef NEED_128
-    sim_debug (DBG_TRACE, & cpu_dev, "Sub72b res %012"PRIo64"%012"PRIo64" flags %06o ovf %o\n", (word36) (rshift_128 (res, 36).l & MASK36), (word36) (res.l & MASK36), * flags, * ovf); 
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Sub72b res %012"PRIo64"%012"PRIo64" flags %06o ovf %o\n", (word36) (rshift_128 (res, 36).l & MASK36), (word36) (res.l & MASK36), * flags, * ovf); 
 #else
-    sim_debug (DBG_TRACE, & cpu_dev, "Sub72b res %012"PRIo64"%012"PRIo64" flags %06o ovf %o\n", (word36) ((res >> 36) & MASK36), (word36) (res & MASK36), * flags, * ovf); 
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Sub72b res %012"PRIo64"%012"PRIo64" flags %06o ovf %o\n", (word36) ((res >> 36) & MASK36), (word36) (res & MASK36), * flags, * ovf); 
 #endif
     return res;
   }
@@ -1186,19 +1186,19 @@ void cmp72(word72 op1, word72 op2, word18 *flags)
     cpu.ou.cycle |= ou_GOS;
 #endif
 #ifdef NEED_128
-sim_debug (DBG_TRACE, & cpu_dev, "op1 %016llx%016llx\n", op1.h, op1.l);
-sim_debug (DBG_TRACE, & cpu_dev, "op2 %016llx%016llx\n", op2.h, op2.l);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op1 %016llx%016llx\n", op1.h, op1.l);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op2 %016llx%016llx\n", op2.h, op2.l);
     int128 op1s =  SIGNEXT72_128 (and_128 (op1, MASK72));
     int128 op2s =  SIGNEXT72_128 (and_128 (op2, MASK72));
-sim_debug (DBG_TRACE, & cpu_dev, "op1s %016llx%016llx\n", op1s.h, op1s.l);
-sim_debug (DBG_TRACE, & cpu_dev, "op2s %016llx%016llx\n", op2s.h, op2s.l);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op1s %016llx%016llx\n", op1s.h, op1s.l);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op2s %016llx%016llx\n", op2s.h, op2s.l);
 #else
-sim_debug (DBG_TRACE, & cpu_dev, "op1 %016lx%016lx\n", (uint64_t) (op1>>64), (uint64_t) op1);
-sim_debug (DBG_TRACE, & cpu_dev, "op2 %016lx%016lx\n", (uint64_t) (op2>>64), (uint64_t) op2);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op1 %016lx%016lx\n", (uint64_t) (op1>>64), (uint64_t) op1);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op2 %016lx%016lx\n", (uint64_t) (op2>>64), (uint64_t) op2);
     int128 op1s =  SIGNEXT72_128 (op1 & MASK72);
     int128 op2s =  SIGNEXT72_128 (op2 & MASK72);
-sim_debug (DBG_TRACE, & cpu_dev, "op1s %016lx%016lx\n", (uint64_t) (op1s>>64), (uint64_t) op1s);
-sim_debug (DBG_TRACE, & cpu_dev, "op2s %016lx%016lx\n", (uint64_t) (op2s>>64), (uint64_t) op2s);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op1s %016lx%016lx\n", (uint64_t) (op1s>>64), (uint64_t) op1s);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op2s %016lx%016lx\n", (uint64_t) (op2s>>64), (uint64_t) op2s);
 #endif
 #ifdef NEED_128
     if (isgt_s128 (op1s, op2s))

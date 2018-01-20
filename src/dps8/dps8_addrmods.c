@@ -341,7 +341,7 @@ void updateIWB (word18 addr, word6 tag)
 //
 // CANFAULT
 
-t_stat doComputedAddressFormation (void)
+void doComputedAddressFormation (void)
   {
     char buf [256];
     sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -412,7 +412,7 @@ startCA:;
     sim_printf ("%s(startCA): unknown Tm??? %o\n",
                 __func__, GET_TM (cpu.rTAG));
     sim_warn ("(startCA): unknown Tmi; can't happen!\n");
-    return SCPE_OK;
+    return;
 
 
     // Register modification. Fig 6-3
@@ -422,7 +422,7 @@ startCA:;
         if (Td == 0) // TPR.CA = address from opcode
           {
             //updateIWB (identity) // known that Td is 0.
-            return SCPE_OK;
+            return;
           }
 
         word18 Cr = getCr (Td);
@@ -434,7 +434,7 @@ startCA:;
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "R_MOD: directOperand = %012"PRIo64"\n",
                        cpu.ou.directOperand);
-            return SCPE_OK;
+            return;
           }
 
         // For the case of RPT/RPD, the instruction decoder has
@@ -461,7 +461,7 @@ startCA:;
         sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD: TPR.CA=%06o\n",
                    cpu.TPR.CA);
 
-        return SCPE_OK;
+        return;
       } // R_MOD
 
 
@@ -553,7 +553,7 @@ startCA:;
         // to clear the tag; the delta code later on needs the tag to know
         // which X register to update
         if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
-          return SCPE_OK;
+          return;
 
         updateIWB (cpu.TPR.CA, cpu.rTAG);
         goto startCA;
@@ -661,7 +661,7 @@ startCA:;
                     updateIWB (cpu.TPR.CA, 0);
                   }
                 cpu.cu.CT_HOLD = 0;
-                return SCPE_OK;
+                return;
               } // TM_R
 
             case TM_RI:
@@ -708,7 +708,7 @@ startCA:;
 
         sim_printf ("%s(IR_MOD): unknown Tm??? %o\n", 
                     __func__, GET_TM (cpu.rTAG));
-        return SCPE_OK;
+        return;
       } // IR_MOD
 
     IT_MOD:;
@@ -793,6 +793,7 @@ startCA:;
                 word18 Yi_ = GET_ADDR (indword);
                 cpu.ou.characterOperandSize = GET_TB (GET_TAG (indword));
                 cpu.ou.characterOperandOffset = GET_CF (GET_TAG (indword));
+                word12 tally = GET_TALLY (indword);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD CI/SC/SCR size=%o offset=%o Yi=%06o\n",
@@ -848,6 +849,9 @@ startCA:;
                       {
                         cpu.ou.characterOperandOffset -= 1;
                       }
+                    CPT (cpt2L, 5); // Update IT Tally; SCR
+                    tally ++;
+                    tally &= 07777; // keep to 12-bits
                   }
 
                 //
@@ -863,13 +867,70 @@ startCA:;
 
                 cpu.cu.pot = 0;
 
+#ifdef SC_SCR
+
+// Instruction restart is not an issue here, as the CA will be restored from the
+// IWB, so we can set the CA back to the indirect word without losing track of
+// what was going on.
+
+                if (Td == IT_SC)
+                  {
+                    // For each reference to the indirect word, the character
+                    // counter, cf, is increased by 1 and the TALLY field is
+                    // reduced by 1 after the computed address is formed. Character
+                    // count arithmetic is modulo 6 for 6-bit characters and modulo
+                    // 4 for 9-bit bytes. If the character count, cf, overflows to
+                    // 6 for 6-bit characters or to 4 for 9-bit bytes, it is reset
+                    // to 0 and ADDRESS is increased by 1. ADDRESS arithmetic is
+                    // modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY
+                    // field is reduced to 0, the tally runout indicator is set ON,
+                    // otherwise it is set OFF.
+
+                    cpu.ou.characterOperandOffset ++;
+
+                    if (((cpu.ou.characterOperandSize == TB6) &&
+                         (cpu.ou.characterOperandOffset > 5)) ||
+                        ((cpu.ou.characterOperandSize == TB9) &&
+                         (cpu.ou.characterOperandOffset > 3)))
+                      {
+                        cpu.ou.characterOperandOffset = 0;
+                        Yi += 1;
+                        Yi &= MASK18;
+                      }
+                    CPT (cpt2L, 6); // Update IT Tally; SC
+                    tally --;
+                    tally &= 07777; // keep to 12-bits
+                  }
+
+                if (Td == IT_SC || Td == IT_SCR)
+                  {
+                    sim_debug (DBG_ADDRMOD, & cpu_dev,
+                                   "update IT tally now %o\n", tally);
+
+                    SC_I_TALLY (tally == 0);
+
+                    //word36 new_indword = (word36) (((word36) Yi << 18) |
+                    //                    (((word36) tally & 07777) << 6) |
+                    //                    cpu.ou.characterOperandSize |
+                    //                    cpu.ou.characterOperandOffset);
+                    //Write (indwordAddress,  new_indword, APU_DATA_STORE);
+                    putbits36_18 (& indword, 0, Yi_);
+                    putbits36_12 (& indword, 18, tally);
+                    putbits36_3  (& indword, 33, cpu.ou.characterOperandOffset);
+                    Write (indwordAddress,  indword, APU_DATA_STORE);
+
+                    sim_debug (DBG_ADDRMOD, & cpu_dev,
+                               "update IT wrote tally word %012"PRIo64" to %06o\n",
+                               indword, cpu.TPR.CA);
+                  }
+#endif
+
                 //
                 // Restore the CA to point to the indirect word
                 //
 
                 cpu.TPR.CA =  indwordAddress;
-
-                return SCPE_OK;
+                return;
               } // IT_CI, IT_SC, IT_SCR
    
             case IT_I: // Indirect (Td = 11)
@@ -886,7 +947,7 @@ startCA:;
                            cpu.itxPair[0]);
 
                 cpu.TPR.CA = GET_ADDR (cpu.itxPair[0]);
-                return SCPE_OK;
+                return;
               } // IT_I
 
             case IT_AD: ///< Add delta (Td = 13)
@@ -952,7 +1013,7 @@ startCA:;
                            indword, saveCA);
 
                 cpu.TPR.CA = computedAddress;
-                return SCPE_OK;
+                return;
               } // IT_AD
 
             case IT_SD: ///< Subtract delta (Td = 4)
@@ -1016,7 +1077,7 @@ startCA:;
 
 
                 cpu.TPR.CA = Yi;
-                return SCPE_OK;
+                return;
               } // IT_SD
 
             case IT_DI: ///< Decrement address, increment tally (Td = 14)
@@ -1078,7 +1139,7 @@ startCA:;
                 unlock_mem ();
 #endif
                 cpu.TPR.CA = Yi;
-                return SCPE_OK;
+                return;
               } // IT_DI
 
             case IT_ID: ///< Increment address, decrement tally (Td = 16)
@@ -1145,7 +1206,7 @@ startCA:;
 #endif
 
                 cpu.TPR.CA = computedAddress;
-                return SCPE_OK;
+                return;
               } // IT_ID
 
             // Decrement address, increment tally, and continue (Td = 15)
@@ -1347,7 +1408,7 @@ startCA:;
               } // IT_IDC
           } // Td
         sim_printf ("IT_MOD/Td how did we get here?\n");
-        return SCPE_OK;
+        return;
      } // IT_MOD
   } // doComputedAddressFormation
 

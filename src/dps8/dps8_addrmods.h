@@ -9,5 +9,5 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
-t_stat doComputedAddressFormation (void);
+void doComputedAddressFormation (void);
 void updateIWB (word18 addr, word6 tag);

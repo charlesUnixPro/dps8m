@@ -637,7 +637,7 @@ static void words2scu (word36 * words)
     cpu.PPR.PSR         = getbits36_15 (words[0], 3);
     cpu.PPR.P           = getbits36_1  (words[0], 18);
     cpu.cu.XSF          = getbits36_1  (words[0], 19);
-sim_debug (DBG_TRACE, & cpu_dev, "words2scu sets XSF to %o\n", cpu.cu.XSF);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "words2scu sets XSF to %o\n", cpu.cu.XSF);
     //cpu.cu.SDWAMM       = getbits36_1  (words[0], 20);
     //cpu.cu.SD_ON        = getbits36_1  (words[0], 21);
     //cpu.cu.PTWAMM       = getbits36_1  (words[0], 22);
@@ -1457,7 +1457,7 @@ t_stat executeInstruction (void)
     addToTheMatrix (opcode, opcodeX, b29, tag);
 #endif
 
-//sim_debug (DBG_TRACE, & cpu_dev, "isb29 %o\n", ci->b29);
+//sim_debug (DBG_TRACEEXT, & cpu_dev, "isb29 %o\n", ci->b29);
     if (ci->b29)
       ci->address = SIGNEXT15_18 (ci->address & MASK15);
 
@@ -1502,7 +1502,7 @@ IF1 sim_printf ("trapping opcode match......\n");
 //
 
     cpu.cu.XSF = 0;
-sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction sets XSF to %o\n", cpu.cu.XSF);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction sets XSF to %o\n", cpu.cu.XSF);
 
     CPT (cpt2U, 14); // non-restart processing
     // Set Address register empty
@@ -1802,7 +1802,7 @@ restart_1:
 
 #ifndef SPEED
     // Don't trace Multics idle loop
-    if (cpu.PPR.PSR != 061 || cpu.PPR.IC != 0307)
+    //if (cpu.PPR.PSR != 061 || cpu.PPR.IC != 0307)
 
       {
         traceInstruction (DBG_TRACE);
@@ -1813,7 +1813,7 @@ restart_1:
 #else  // !SPEED
 #ifdef HDBG
     // Don't trace Multics idle loop
-    if (cpu.PPR.PSR != 061 || cpu.PPR.IC != 0307)
+    //if (cpu.PPR.PSR != 061 || cpu.PPR.IC != 0307)
       hdbgTrace ();
 #endif // HDBG
 #endif // !SPEED
@@ -1888,11 +1888,11 @@ restart_1:
 //  instruction.
 //
 
-        sim_debug (DBG_TRACE, & cpu_dev,
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
                    "RPT/RPD first %d rpt %d rd %d e/o %d X0 %06o a %d b %d\n",
                    cpu.cu.repeat_first, cpu.cu.rpt, cpu.cu.rd, cpu.PPR.IC & 1,
                    cpu.rX[0], !! (cpu.rX[0] & 01000), !! (cpu.rX[0] & 0400));
-        sim_debug (DBG_TRACE, & cpu_dev,
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
                    "RPT/RPD CA %06o\n", cpu.TPR.CA);
 
 // Handle first time of a RPT or RPD
@@ -1927,7 +1927,7 @@ if (first) {
 first = false;
 sim_printf ("XXX rethink this; bit 29 is finagled below; should this be done in a different order?\n");
 }}
-sim_debug (DBG_TRACE, & cpu_dev, "b29, ci->address %o\n", ci->address);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "b29, ci->address %o\n", ci->address);
                     // a:RJ78/rpd4
                     offset = SIGNEXT15_18 (ci->address & MASK15);
                   }
@@ -1938,19 +1938,19 @@ sim_debug (DBG_TRACE, & cpu_dev, "b29, ci->address %o\n", ci->address);
 #endif
                 offset &= AMASK;
 
-                sim_debug (DBG_TRACE, & cpu_dev,
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "rpt/rd/rl repeat first; offset is %06o\n", offset);
 
                 word6 Td = GET_TD (ci->tag);
                 uint Xn = X (Td);  // Get Xn of next instruction
-                sim_debug (DBG_TRACE, & cpu_dev,
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "rpt/rd/rl repeat first; X%d was %06o\n",
                            Xn, cpu.rX[Xn]);
                 // a:RJ78/rpd5
                 cpu.TPR.CA = (cpu.rX[Xn] + offset) & AMASK;
                 cpu.rX[Xn] = cpu.TPR.CA;
                 HDBGRegX (Xn);
-                sim_debug (DBG_TRACE, & cpu_dev,
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "rpt/rd/rl repeat first; X%d now %06o\n",
                            Xn, cpu.rX[Xn]);
               } // rpt or rd or rl
@@ -2052,7 +2052,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            n, offset, cpu.TPR.CA, cpu.TPR.TBR, 
                            cpu.TPR.TSR, cpu.TPR.TRR);
                 cpu.cu.XSF = 1;
-sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction EIS sets XSF to %o\n", cpu.cu.XSF);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction EIS sets XSF to %o\n", cpu.cu.XSF);
                 //set_went_appending ();
             }
 
@@ -2079,7 +2079,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction EIS sets XSF to %o\n", cpu.
                     cpu.RSDWH_R1 = 0;
                   }
                 cpu.cu.XSF = 0;
-sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", cpu.cu.XSF);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", cpu.cu.XSF);
                 //clr_went_appending ();
               }
           }
@@ -2198,6 +2198,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
         cpu.TPR.TBR = 0;
       }
 
+#ifndef SC_SCR
 ///
 /// executeInstruction: Update IT tally
 ///
@@ -2322,6 +2323,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
                    "update IT wrote tally word %012"PRIo64" to %06o\n",
                    cpu.itxPair[0], cpu.TPR.CA);
       } // SC/SCR
+#endif
 
 ///
 /// executeInstruction: RPT/RPD/RPL processing
@@ -2358,7 +2360,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
             bool rptA = !! (cpu.rX[0] & 01000);
             bool rptB = !! (cpu.rX[0] & 00400);
 
-            sim_debug (DBG_TRACE, & cpu_dev,
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
                 "RPT/RPD delta first %d rf %d rpt %d rd %d "
                 "e/o %d X0 %06o a %d b %d\n",
                 cpu.cu.repeat_first, rf, cpu.cu.rpt, cpu.cu.rd, icOdd,
@@ -2371,7 +2373,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
                 cpu.TPR.CA = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
                 cpu.rX[Xn] = cpu.TPR.CA;
                 HDBGRegX (Xn);
-                sim_debug (DBG_TRACE, & cpu_dev,
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX[Xn]);
               }
 
@@ -2387,7 +2389,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
                 cpu.TPR.CA = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
                 cpu.rX[Xn] = cpu.TPR.CA;
                 HDBGRegX (Xn);
-                sim_debug (DBG_TRACE, & cpu_dev,
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX[Xn]);
               }
 
@@ -2399,7 +2401,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
                 cpu.TPR.CA = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
                 cpu.rX[Xn] = cpu.TPR.CA;
                 HDBGRegX (Xn);
-                sim_debug (DBG_TRACE, & cpu_dev,
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX[Xn]);
               }
           } // rpt || rd
@@ -2463,22 +2465,22 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
             putbits18 (& cpu.rX[0], 0, 8, x);
             HDBGRegX (0);
 
-            //sim_debug (DBG_TRACE, & cpu_dev, "x %03o rX[0] %06o\n", x, rX[0]);
+            //sim_debug (DBG_TRACEEXT, & cpu_dev, "x %03o rX[0] %06o\n", x, rX[0]);
 
             // a:AL39/rpd10
             //  c. If C(X0)0,7 = 0, then set the tally runout indicator ON
             //     and terminate
 
-            sim_debug (DBG_TRACE, & cpu_dev, "tally %d\n", x);
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "tally %d\n", x);
             if (x == 0)
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "tally runout\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "tally runout\n");
                 SET_I_TALLY;
                 exit = true;
               }
             else
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "not tally runout\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "not tally runout\n");
                 CLR_I_TALLY;
               }
 
@@ -2487,43 +2489,43 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
 
             if (TST_I_ZERO && (cpu.rX[0] & 0100))
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "is zero terminate\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "is zero terminate\n");
                 CLR_I_TALLY;
                 exit = true;
               }
             if (!TST_I_ZERO && (cpu.rX[0] & 040))
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "is not zero terminate\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "is not zero terminate\n");
                 CLR_I_TALLY;
                 exit = true;
               }
             if (TST_I_NEG && (cpu.rX[0] & 020))
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "is neg terminate\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "is neg terminate\n");
                 CLR_I_TALLY;
                 exit = true;
               }
             if (!TST_I_NEG && (cpu.rX[0] & 010))
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "is not neg terminate\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "is not neg terminate\n");
                 CLR_I_TALLY;
                 exit = true;
               }
             if (TST_I_CARRY && (cpu.rX[0] & 04))
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "is carry terminate\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "is carry terminate\n");
                 CLR_I_TALLY;
                 exit = true;
               }
             if (!TST_I_CARRY && (cpu.rX[0] & 02))
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "is not carry terminate\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "is not carry terminate\n");
                 CLR_I_TALLY;
                 exit = true;
               }
             if (TST_I_OFLOW && (cpu.rX[0] & 01))
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "is overflow terminate\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "is overflow terminate\n");
 // ISOLTS test ps805 says that on overflow the tally should be set.
                 //CLR_I_TALLY;
                 SET_I_TALLY;
@@ -2539,7 +2541,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
               }
             else
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "not terminate\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "not terminate\n");
               }
           } // if (cpu.cu.rpt || cpu.cu.rd & (cpu.PPR.IC & 1))
 
@@ -4929,7 +4931,7 @@ static t_stat DoBasicInstruction (void)
             uint32 n = opcode & 07;  // get n
             word18 tmp18 = cpu.rX[n] & GETHI (cpu.CY);
             tmp18 &= MASK18;
-            sim_debug (DBG_TRACE, & cpu_dev,
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
                        "n %o rX %06o HI %06o tmp %06o\n",
                        n, cpu.rX[n], (word18) (GETHI (cpu.CY) & MASK18),
                        tmp18);
@@ -5378,7 +5380,7 @@ static t_stat DoBasicInstruction (void)
 
           //ReadOP (cpu.TPR.CA, RTCD_OPERAND_FETCH);
           ReadTraOp ();
-          sim_debug (DBG_TRACE, & cpu_dev,
+          sim_debug (DBG_TRACEEXT, & cpu_dev,
                      "call6 PRR %o PSR %o\n", cpu.PPR.PRR, cpu.PPR.PSR);
 
           return CONT_TRA;
@@ -5432,11 +5434,11 @@ static t_stat DoBasicInstruction (void)
               }
             
 
-            //sim_debug (DBG_TRACE, & cpu_dev,
+            //sim_debug (DBG_TRACEEXT, & cpu_dev,
             //           "RET NBAR was %d now %d\n",
             //           TST_NBAR ? 1 : 0,
             //           TSTF (tempIR, I_NBAR) ? 1 : 0);
-            //sim_debug (DBG_TRACE, & cpu_dev,
+            //sim_debug (DBG_TRACEEXT, & cpu_dev,
             //           "RET ABS  was %d now %d\n",
             //           TST_I_ABS ? 1 : 0,
             //           TSTF (tempIR, I_ABS) ? 1 : 0);
@@ -6208,7 +6210,7 @@ static t_stat DoBasicInstruction (void)
             int scuUnitIdx =
               queryScuUnitIdx ((int) currentRunningCpuIdx,
                                   (int) cpu_port_num);
-            sim_debug (DBG_TRACE, & cpu_dev,
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
                        "rccl CA %08o cpu port %o scu unit %d\n",
                        cpu.TPR.CA, cpu_port_num, scuUnitIdx);
             if (scuUnitIdx < 0)
@@ -6225,7 +6227,7 @@ static t_stat DoBasicInstruction (void)
             if (rc > 0)
               return rc;
 #ifndef SPEED
-            if_sim_debug (DBG_TRACE, & cpu_dev)
+            if_sim_debug (DBG_TRACEEXT, & cpu_dev)
               {
                 // Clock at initialization
                 // date -d "Tue Jul 22 16:39:38 PDT 1999" +%s
@@ -6244,7 +6246,7 @@ static t_stat DoBasicInstruction (void)
                 uint128 bigsecs = divide_128_32 (big, 1000000u, & remainder);
                 uint64_t uSecs = remainder;
                 uint64_t secs = bigsecs.l;
-                sim_debug (DBG_TRACE, & cpu_dev,
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "Clock time since boot %4llu.%06llu seconds\n",
                            secs, uSecs);
 #else
@@ -6252,7 +6254,7 @@ static t_stat DoBasicInstruction (void)
                 big -= MulticsuSecs;
                 unsigned long uSecs = big % 1000000u;
                 unsigned long secs = (unsigned long) (big / 1000000u);
-                sim_debug (DBG_TRACE, & cpu_dev,
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "Clock time since boot %4lu.%06lu seconds\n",
                            secs, uSecs);
 #endif
@@ -6717,7 +6719,7 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
           cpu.rTRlsb = 0;
 //IF1 sim_printf ("CPU A ldt %d. (%o)\n", cpu.rTR, cpu.rTR);
 #endif
-          sim_debug (DBG_TRACE, & cpu_dev, "ldt TR %d (%o)\n",
+          sim_debug (DBG_TRACEEXT, & cpu_dev, "ldt TR %d (%o)\n",
                      cpu.rTR, cpu.rTR);
 #ifdef LOOPTRC
 elapsedtime ();
@@ -8405,7 +8407,7 @@ static t_stat DoEISInstruction (void)
         case 0774:  // lra
             CPTUR (cptUseRALR);
             cpu.rRALR = cpu.CY & MASK3;
-            sim_debug (DBG_TRACE, & cpu_dev, "RALR set to %o\n", cpu.rRALR);
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "RALR set to %o\n", cpu.rRALR);
 #ifdef LOOPTRC
 {
 void elapsedtime (void);
@@ -9502,11 +9504,11 @@ elapsedtime ();
  sim_printf (" rcu to %05o:%06o  PSR:IC %05o:%06o\r\n",  (cpu.Yblock8[0]>>18)&MASK15, (cpu.Yblock8[4]>>18)&MASK18, cpu.PPR.PSR, cpu.PPR.IC);
 #endif
 
-    if_sim_debug (DBG_TRACE, & cpu_dev)
+    if_sim_debug (DBG_TRACEEXT, & cpu_dev)
       {
         for (int i = 0; i < 8; i ++)
           {
-            sim_debug (DBG_TRACE, & cpu_dev, "RCU %d %012"PRIo64"\n", i,
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU %d %012"PRIo64"\n", i,
                        cpu.Yblock8[i]);
           }
       }
@@ -9524,7 +9526,7 @@ elapsedtime ();
 
     if (cpu.cu.FLT_INT == 0) // is interrupt, not fault
       {
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU interrupt return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU interrupt return\n");
         longjmp (cpu.jmpMain, JMP_REFETCH);
       }
 
@@ -9603,7 +9605,7 @@ elapsedtime ();
         // communicate; for now, turn it off on refetch so the state
         // machine doesn't become confused.
         cpu.cu.rfi = 0;
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU FIF REFETCH return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU FIF REFETCH return\n");
         longjmp (cpu.jmpMain, JMP_REFETCH);
       }
 
@@ -9611,7 +9613,7 @@ elapsedtime ();
     if (cpu.cu.rfi)
       {
 //sim_printf ( "RCU rfi refetch return\n");
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU rfi refetch return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU rfi refetch return\n");
 // Setting the to RESTART causes ISOLTS 776 to report unexpected
 // trouble faults.
 // Without clearing rfi, ISOLTS pm776-08i LUFs.
@@ -9630,7 +9632,7 @@ elapsedtime ();
     //if (cpu.cu.FI_ADDR == FAULT_MME2)
       {
 //sim_printf ("MME2 restart\n");
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU MME2 restart return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU MME2 restart return\n");
         cpu.cu.rfi = 0;
         longjmp (cpu.jmpMain, JMP_RESTART);
       }
@@ -9646,7 +9648,7 @@ elapsedtime ();
         // machine doesn't become confused.
 
         cpu.cu.rfi = 0;
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU rfi/FIF REFETCH return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU rfi/FIF REFETCH return\n");
         longjmp (cpu.jmpMain, JMP_REFETCH);
       }
 
@@ -9657,7 +9659,7 @@ elapsedtime ();
     if (cpu.cu.FI_ADDR == FAULT_MME2)
       {
 //sim_printf ("MME2 restart\n");
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU MME2 restart return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU MME2 restart return\n");
         cpu.cu.rfi = 1;
         longjmp (cpu.jmpMain, JMP_RESTART);
       }
@@ -9690,7 +9692,7 @@ elapsedtime ();
         cpu.cu.FI_ADDR == FAULT_OFL ||
         cpu.cu.FI_ADDR == FAULT_IPR)
       {
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU sync fault return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU sync fault return\n");
         cpu.cu.rfi = 0;
         longjmp (cpu.jmpMain, JMP_SYNC_FAULT_RETURN);
       }
@@ -9704,7 +9706,7 @@ elapsedtime ();
         cpu.cu.FI_ADDR == FAULT_OFL ||
         cpu.cu.FI_ADDR == FAULT_IPR)
       {
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU MMEx sync fault return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU MMEx sync fault return\n");
         cpu.cu.rfi = 0;
         longjmp (cpu.jmpMain, JMP_SYNC_FAULT_RETURN);
       }
@@ -9719,7 +9721,7 @@ elapsedtime ();
     if (cpu.cu.FI_ADDR == FAULT_LUF)
       {
         cpu.cu.rfi = 1;
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU LUF RESTART return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU LUF RESTART return\n");
         longjmp (cpu.jmpMain, JMP_RESTART);
       }
 
@@ -9736,7 +9738,7 @@ elapsedtime ();
       {
         // If the fault occurred during fetch, handled above.
         cpu.cu.rfi = 1;
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU ACV RESTART return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU ACV RESTART return\n");
         longjmp (cpu.jmpMain, JMP_RESTART);
       }
     sim_printf ("doRCU dies with unhandled fault number %d\n", cpu.cu.FI_ADDR);
