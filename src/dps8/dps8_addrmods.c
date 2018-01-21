@@ -915,7 +915,6 @@ startCA:;
                 word36 indword;
                 word18 indwordAddress = cpu.TPR.CA;
                 Read (indwordAddress, & indword, OPERAND_READ);
-
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD CI/SC/SCR indword=%012"PRIo64"\n", indword);
 
@@ -927,6 +926,7 @@ startCA:;
                 cpu.ou.characterOperandSize = GET_TB (GET_TAG (indword));
                 cpu.ou.characterOperandOffset = GET_CF (GET_TAG (indword));
 
+sim_printf ("write  indaddr %08o indword %012llo Yi %08o sz %02o os %o\n", indwordAddress, indword, Yi_, cpu.ou.characterOperandSize, cpu.ou.characterOperandOffset);
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD CI/SC/SCR size=%o offset=%o Yi=%06o\n",
                            cpu.ou.characterOperandSize,

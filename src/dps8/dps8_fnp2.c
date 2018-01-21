@@ -1392,7 +1392,6 @@ static void fnp_rtx_input_accepted (void)
             if (i + 3 < tally1)
               putbits36_9 (& v, 27, data [tally0 + i + 3]);
 //sim_printf ("%012"PRIo64"\n", v);
-            M [addr1 ++] = v;
             //M [addr1 ++] = v;
             uint dcwAddrPhys = virtToPhys (decoded.p -> PCW_PAGE_TABLE_PTR, addr1);
             M [dcwAddrPhys] = v;
