@@ -142,7 +142,6 @@ static void writeOperands (void)
         // Restore the CA; Read/Write() updates it.
         //cpu.TPR.CA = indwordAddress;
         cpu.TPR.CA = cpu.ou.character_address;
-
         return;
       } // IT
 
@@ -226,7 +225,6 @@ static void readOperands (void)
 
         // Restore the CA; Read/Write() updates it.
         cpu.TPR.CA = cpu.ou.character_address;
-
         return;
       } // IT
 
