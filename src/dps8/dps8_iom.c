@@ -217,10 +217,10 @@
 #include "dps8_sys.h"
 #include "dps8_faults.h"
 #include "dps8_scu.h"
-#include "dps8_cpu.h"
-#include "dps8_utils.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
+#include "dps8_cpu.h"
+#include "dps8_utils.h"
 #include "dps8_console.h"
 #include "dps8_fnp2.h"
 #ifdef THREADZ
@@ -796,7 +796,7 @@ word36 * iomLookupAddress (uint iomUnitIdx, word24 addr)
         sim_printf ("IOM %d mem fail %08o\n", iomUnitIdx, addr); 
         return NULL;
       }
-    int scuUnitIdx = cables->iom_to_scu[iomUnitIdx][port].scu_unit_idx;
+    uint scuUnitIdx = cables->iom_to_scu[iomUnitIdx][port].scu_unit_idx;
     return & scu[scuUnitIdx].M [offset];
   }
 #endif
@@ -2456,28 +2456,7 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
 #endif
 
 
-// XXX shouldn't it interrupt the SCU that invoked the connect?
-#if 1
     return scu_set_interrupt (iomUnitData [iomUnitIdx] . invokingScuUnitIdx, interrupt_num);
-#else
-    uint base = iomUnitData [iomUnitIdx] . configSwIomBaseAddress;
-    uint base_addr = base << 6; // 01400
-    // XXX this is wrong; I believe that the SCU unit number should be
-    // calculated from the Port Configuration Address Assignment switches
-    // For now, however, the same information is in the CPU config. switches, so
-    // this should result in the same values.
-
-    int cpu_port_num = queryIomScbankMap (iomUnitIdx, base_addr);
-    int scuUnitNum;
-    if (cpu_port_num >= 0)
-      scuUnitNum = queryScuUnitIdx (ASSUME_CPU_0, cpu_port_num);
-    else
-      scuUnitNum = 0;
-    // XXX Print warning
-    if (scuUnitNum < 0)
-      scuUnitNum = 0;
-    return scu_set_interrupt ((uint)scuUnitNum, interrupt_num);
-#endif
   }
 
 /*

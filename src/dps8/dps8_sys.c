@@ -36,9 +36,10 @@
 #include "dps8_sys.h"
 #include "dps8_faults.h"
 #include "dps8_scu.h"
+#include "dps8_iom.h"
+#include "dps8_cable.h"
 #include "dps8_cpu.h"
 #include "dps8_ins.h"
-#include "dps8_iom.h"
 #include "dps8_loader.h"
 #include "dps8_math.h"
 #include "dps8_mt.h"
@@ -50,7 +51,6 @@
 #include "dps8_crdpun.h"
 #include "dps8_prt.h"
 #include "dps8_urp.h"
-#include "dps8_cable.h"
 #include "dps8_absi.h"
 #include "utlist.h"
 #ifdef THREADZ
@@ -3564,6 +3564,9 @@ static struct pr_table
 static t_addr parse_addr (UNUSED DEVICE * dptr, const char *cptr,
                           const char **optr)
   {
+#ifdef SCUMEM
+    return 0;
+#else
     // a segment reference?
     if (strchr(cptr, '|'))
     {
@@ -3604,9 +3607,7 @@ static t_addr parse_addr (UNUSED DEVICE * dptr, const char *cptr,
             
             if (!prt->alias)    // not a PR or alias
             {
-#ifdef SCUMEM
               return 0;
-#else
                 segment *s = findSegmentNoCase(seg);
                 if (s == NULL)
                 {
@@ -3616,7 +3617,6 @@ static t_addr parse_addr (UNUSED DEVICE * dptr, const char *cptr,
                     return 0;
                 }
                 segno = s->segno;
-#endif
             }
         }
         
@@ -3625,9 +3625,7 @@ static t_addr parse_addr (UNUSED DEVICE * dptr, const char *cptr,
         if (endp == off)
         {
             // not numeric...
-#ifdef SCUMEM
             return 0;
-#else
             segdef *s = findSegdefNoCase(seg, off);
             if (s == NULL)
             {
@@ -3637,7 +3635,6 @@ static t_addr parse_addr (UNUSED DEVICE * dptr, const char *cptr,
                 return 0;
             }
             offset = (uint) s->value;
-#endif
         }
         
         // if we get here then seg contains a segment# and offset.
@@ -3679,6 +3676,7 @@ static t_addr parse_addr (UNUSED DEVICE * dptr, const char *cptr,
     
     // No, determine absolute address given by cptr
     return (t_addr)strtol(cptr, (char **) optr, 8);
+#endif // !SCUMEM
 }
 #endif // TESTING
 

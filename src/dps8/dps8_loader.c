@@ -25,6 +25,8 @@
 #include "dps8_sys.h"
 #include "dps8_faults.h"
 #include "dps8_scu.h"
+#include "dps8_iom.h"
+#include "dps8_cable.h"
 #include "dps8_cpu.h"
 #include "dps8_loader.h"
 #include "dps8_utils.h"
@@ -390,6 +392,7 @@ _sdw0 *fetchSDW (word15 segno)
   }
 #endif // ndef SCUMEM
 
+#ifndef SCUMEM
 int getAddress(int segno, int offset)
 {
     // XXX Do we need to 1st check SDWAM for segment entry?
@@ -400,6 +403,7 @@ int getAddress(int segno, int offset)
     
     return (s->ADDR + (word18) offset) & 0xffffff; // keep to 24-bits
 }
+#endif // !SCUMEM
 
 #ifndef SCUMEM
 /*
@@ -1601,6 +1605,7 @@ static void printDSBR (void)
     sim_printf ("%s\n", strDSBR (buf));
   }
 
+#ifndef SCUMEM
 static t_stat dpsCmd_DumpSegmentTable (void)
   {
     sim_printf ("*** Descriptor Segment Base Register (DSBR) ***\n");
@@ -1707,6 +1712,7 @@ static t_stat dpsCmd_DumpSegmentTable (void)
 
     return SCPE_OK;
   }
+#endif
 
 //! custom command "dump"
 t_stat dpsCmd_Dump (UNUSED int32 arg, const char *buf)
@@ -1716,10 +1722,12 @@ t_stat dpsCmd_Dump (UNUSED int32 arg, const char *buf)
     
     int nParams = sscanf (buf, "%s %s %s %s",
                           cmds[0], cmds[1], cmds[2], cmds[3]);
+#ifndef SCUMEM
     if (nParams == 2 &&
         ! strcasecmp (cmds[0], "segment") &&
         ! strcasecmp (cmds[1], "table"))
         return dpsCmd_DumpSegmentTable ();
+#endif
 #ifdef WAM
 #ifdef L68
     if (nParams == 1 && !strcasecmp (cmds[0], "sdwam"))

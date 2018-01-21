@@ -1863,7 +1863,6 @@ extern const _fault_subtype fst_str_nea;
 #ifdef SCUMEM
 // Stupid dependency order
 int lookup_cpu_mem_map (word24 addr, word24 * offset);
-int queryScuUnitIdx (int cpu_unit_num, int cpu_port_num);
 #endif
 
 static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
@@ -1897,8 +1896,13 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
 #endif
 #ifdef SCUMEM
     word24 offset;
-    int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
-    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    int cpu_port_num = lookup_cpu_mem_map (addr, & offset);
+    if (! get_scu_in_use (currentRunningCpuIdx, cpu_port_num))
+      {
+        sim_warn ("%s %012o has no SCU; faulting\n", __func__, addr);
+        doFault (FAULT_STR, fst_str_nea, __func__);
+      }
+    uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
     LOCK_MEM;
     *data = scu [scuUnitIdx].M[offset] & DMASK;
     UNLOCK_MEM;
@@ -1943,8 +1947,13 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
 #endif
 #ifdef SCUMEM
     word24 offset;
-    int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
-    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    int cpu_port_num = lookup_cpu_mem_map (addr, & offset);
+    if (! get_scu_in_use (currentRunningCpuIdx, cpu_port_num))
+      {
+        sim_warn ("%s %012o has no SCU; faulting\n", __func__, addr);
+        doFault (FAULT_STR, fst_str_nea, __func__);
+      }
+    uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
     LOCK_MEM;
     scu[scuUnitIdx].M[offset] = data & DMASK;
     UNLOCK_MEM;
@@ -1989,8 +1998,13 @@ static inline int core_write_zone (word24 addr, word36 data, UNUSED const char *
 #endif
 #ifdef SCUMEM
     word24 offset;
-    int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
-    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    int cpu_port_num = lookup_cpu_mem_map (addr, & offset);
+    if (! get_scu_in_use (currentRunningCpuIdx, cpu_port_num))
+      {
+        sim_warn ("%s %012o has no SCU; faulting\n", __func__, addr);
+        doFault (FAULT_STR, fst_str_nea, __func__);
+      }
+    uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
     LOCK_MEM;
     scu[scuUnitIdx].M[addr] = (scu[scuUnitIdx].M[addr] & ~cpu.zone) |
                               (data & cpu.zone);
@@ -2041,8 +2055,13 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd,
 #endif
 #ifdef SCUMEM
     word24 offset;
-    int scuUnitNum = lookup_cpu_mem_map (addr, & offset);
-    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    int cpu_port_num = lookup_cpu_mem_map (addr, & offset);
+    if (! get_scu_in_use (currentRunningCpuIdx, cpu_port_num))
+      {
+        sim_warn ("%s %012o has no SCU; faulting\n", __func__, addr);
+        doFault (FAULT_STR, fst_str_nea, __func__);
+      }
+    uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
     LOCK_MEM;
     *even = scu [scuUnitIdx].M[offset++] & DMASK;
     *odd = scu [scuUnitIdx].M[offset] & DMASK;
@@ -2090,8 +2109,13 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd,
 #endif
 #ifdef SCUMEM
     word24 offset;
-    int scuUnitNum =  lookup_cpu_mem_map (addr, & offset);
-    int scuUnitIdx = queryScuUnitIdx ((int) currentRunningCpuIdx, scuUnitNum);
+    int cpu_port_num = lookup_cpu_mem_map (addr, & offset);
+    if (! get_scu_in_use (currentRunningCpuIdx, cpu_port_num))
+      {
+        sim_warn ("%s %012o has no SCU; faulting\n", __func__, addr);
+        doFault (FAULT_STR, fst_str_nea, __func__);
+      }
+    uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
     LOCK_MEM;
     scu [scuUnitIdx].M[offset++] = even & DMASK;
     scu [scuUnitIdx].M[offset] = odd & DMASK;
@@ -2141,7 +2165,6 @@ int is_priv_mode (void);
 bool get_bar_mode (void);
 addr_modes_t get_addr_mode (void);
 void set_addr_mode (addr_modes_t mode);
-int queryScuUnitIdx (int cpu_unit_num, int cpu_port_num);
 void init_opcodes (void);
 void decodeInstruction (word36 inst, DCDstruct * p);
 t_stat set_mem_watch (int32 arg, const char * buf);

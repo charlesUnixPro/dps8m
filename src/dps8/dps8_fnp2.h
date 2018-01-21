@@ -268,3 +268,19 @@ void fnpRecvEOR (uv_tcp_t * client);
 void process3270Input (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
 void set_3270_write_complete (uv_tcp_t * client);
 void startFNPListener (void);
+void setTIMW (uint iom_unit_idx, uint mailboxAddress, int mbx);
+#ifdef SCUMEM
+uint get_scu_unit_idx_iom (uint fnp_unit_idx, word24 addr, word24 * offset);
+static inline void * fnp_M_addr (int fnp_unit_idx, uint addr)
+  {
+    word24 offset;
+    uint scuUnitIdx = get_scu_unit_idx_iom ((uint) fnp_unit_idx, addr, & offset);
+    return & scu[scuUnitIdx].M[offset];
+  }
+#else
+static inline void * fnp_M_addr (UNUSED int fnp_unit_idx, uint addr)
+  {
+    return & M[addr];
+  }
+#endif
+

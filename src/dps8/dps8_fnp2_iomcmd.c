@@ -22,9 +22,10 @@
 
 #include "dps8.h"
 #include "dps8_sys.h"
-#include "dps8_cpu.h"
+#include "dps8_scu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
+#include "dps8_cpu.h"
 #include "dps8_utils.h"
 #include "dps8_fnp2.h"
 #include "dps8_fnp2_iomcmd.h"
@@ -139,12 +140,6 @@ __thread static struct decoded_t decoded;
 #else
 static struct decoded_t decoded;
 #endif
-
-static void setTIMW (uint mailboxAddress, int mbx)
-  {
-    uint timwAddress = mailboxAddress + TERM_INPT_MPX_WD;
-    l_putbits36_1 (& M [timwAddress], (uint) mbx, 1);
-  }
 
 //
 // Convert virtual address to physical
@@ -1024,7 +1019,7 @@ word36 pad;
           }
       } // switch decoded.op_code
 
-    setTIMW (decoded.fudp->mailboxAddress, (int) decoded.cell);
+    setTIMW (iomUnitIdx, decoded.fudp->mailboxAddress, (int) decoded.cell);
 
 #ifdef FNPDBG
 sim_printf ("wcd sets the TIMW??\n");
@@ -1244,6 +1239,9 @@ static int wtx (void)
     uint dcwCnt = getbits36_9 (decoded.smbxp -> word6, 27);
     //uint sent = 0;
 
+    uint ctlr_port_no = 0; // FNPs are single port
+    uint iom_unit_idx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
+
     // For each dcw
     for (uint i = 0; i < dcwCnt; i ++)
       {
@@ -1268,7 +1266,7 @@ static int wtx (void)
         //sent += tally;
       } // for each dcw
 
-    setTIMW (decoded.fudp->mailboxAddress, (int) decoded.cell);
+    setTIMW (iom_unit_idx, decoded.fudp->mailboxAddress, (int) decoded.cell);
 
 #if 0
     //decoded.fudp->MState.line[decoded.slot_no].send_output = true;
@@ -1386,7 +1384,7 @@ sim_printf ("']\n");
     linep->input_break = false;
     linep->nPos = 0;
 
-    setTIMW (decoded.fudp->mailboxAddress, (int) decoded.cell);
+    setTIMW (iomUnitIdx, decoded.fudp->mailboxAddress, (int) decoded.cell);
 
     uint ctlr_port_num = 0; // FNPs are single ported
     uint chan_num = cables->fnp_to_iom[decoded.devUnitIdx][ctlr_port_num].chan_num;
@@ -1652,7 +1650,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
 #ifdef SCUMEM
     word24 offset;
     int scuUnitNum =  queryIomScbankMap (iomUnitIdx, decoded.fudp->mailboxAddress, & offset);
-    int scuUnitIdx = cables->iom_to_scu[iomUnitIdx][scuUnitNum].scu_unit_idx;
+    uint scuUnitIdx = cables->iom_to_scu[iomUnitIdx][scuUnitNum].scu_unit_idx;
     decoded.mbxp = (struct mailbox vol *) & scu [scuUnitIdx].M [decoded.fudp->mailboxAddress];
 #else
     decoded.mbxp = (struct mailbox vol *) & M [decoded.fudp -> mailboxAddress];
@@ -1760,8 +1758,8 @@ sim_printf ("3270 controller found at unit %u line %u\r\n", devUnitIdx, lineno);
 
 static void processMBX (uint iomUnitIdx, uint chan)
   {
-    uint devUnitIdx = get_ctlr_idx (iomUnitIdx, chan);
-    struct fnpUnitData * fudp = & fnpData.fnpUnitData [devUnitIdx];
+    uint fnp_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
+    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
 
 // 60132445 FEP Coupler EPS
 // 2.2.1 Control Intercommunication
@@ -1771,7 +1769,7 @@ static void processMBX (uint iomUnitIdx, uint chan)
 // mailbox and 7 Channel mailboxes."
 
     bool ok = true;
-    struct mailbox vol * mbxp = (struct mailbox vol *) & M [fudp -> mailboxAddress];
+    struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr ((int) fnp_unit_idx, fudp->mailboxAddress);
 
     word36 dia_pcw;
     dia_pcw = mbxp -> dia_pcw;
@@ -1894,7 +1892,7 @@ sim_printf ("reset??\n");
 #ifdef THREADZ
         lock_libuv ();
 #endif
-        fnpcmdBootload (devUnitIdx);
+        fnpcmdBootload (fnp_unit_idx);
 #ifdef THREADZ
         unlock_libuv ();
 #endif

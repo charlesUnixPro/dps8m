@@ -39,8 +39,8 @@
 #include "dps8_utils.h"
 #include "dps8_faults.h"
 #include "dps8_scu.h"
-#include "dps8_cpu.h"
 #include "dps8_cable.h"
+#include "dps8_cpu.h"
 
 #define DBG_CTR 1
 

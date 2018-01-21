@@ -26,6 +26,8 @@
 #include "dps8_sys.h"
 #include "dps8_faults.h"
 #include "dps8_scu.h"
+#include "dps8_iom.h"
+#include "dps8_cable.h"
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_ins.h"
@@ -35,8 +37,6 @@
 #include "dps8_iefp.h"
 #include "dps8_console.h"
 #include "dps8_fnp2.h"
-#include "dps8_iom.h"
-#include "dps8_cable.h"
 #include "dps8_crdrdr.h"
 #include "dps8_absi.h"
 #ifdef M_SHARED
