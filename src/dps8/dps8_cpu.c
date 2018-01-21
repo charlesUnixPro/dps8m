@@ -593,7 +593,7 @@ void cpu_init (void)
     if (! M)
       {
         sim_printf ("create M failed\n");
-        sim_err ("create M failed\n");
+        sim_fatal ("create M failed\n");
       }
 #endif
 
@@ -608,7 +608,7 @@ void cpu_init (void)
     if (! cpus)
       {
         sim_printf ("create cpus failed\n");
-        sim_err ("create cpus failed\n");
+        sim_fatal ("create cpus failed\n");
       }
 #endif
 
@@ -2362,7 +2362,7 @@ static uint get_scu_unit_idx (word24 addr, word24 * offset)
     int cpu_port_num = lookup_cpu_mem_map (addr, offset);
     if (cpu_port_num < 0) // Can't happen, we passed nem_check above
       { 
-        sim_err ("cpu_port_num < 0");
+        sim_warn ("cpu_port_num < 0");
         doFault (FAULT_STR, fst_str_nea,  __func__);
       }
     return cables->cpu_to_scu [currentRunningCpuIdx][cpu_port_num].scu_unit_idx;

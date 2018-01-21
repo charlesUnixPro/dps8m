@@ -1664,7 +1664,7 @@ static void fetchAndParseDCW (uint iomUnitIdx, uint chan, UNUSED bool read_only)
           break;
         default:
           {
-sim_err ("unhandled fetchAndParseDCW\n");
+sim_warn ("unhandled fetchAndParseDCW\n");
           }
           //break;
       }
@@ -3041,7 +3041,10 @@ static t_stat bootSvc (UNIT * unitp)
 // XXX XXX XXX
 // Making the assumption that low memory is connected to port 0, ..., high to 3
     if (! cables->iom_to_scu[iomUnitIdx][0].in_use)
-      sim_err ("boot iom can't find a SCU\n");
+      {
+        sim_warn ("boot iom can't find a SCU\n");
+        return SCPE_ARG;
+      }
     uint scuUnitIdx = cables->iom_to_scu[iomUnitIdx][0].scu_unit_idx;
     iom_interrupt (scuUnitIdx, iomUnitIdx);
 

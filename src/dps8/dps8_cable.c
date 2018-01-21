@@ -1298,7 +1298,7 @@ void sysCableInit (void)
         if (cables == NULL)
           {
             sim_printf ("create_shm cables failed\n");
-            sim_err ("create_shm cables failed\n");
+            sim_fatal ("create_shm cables failed\n");
           }
       }
 

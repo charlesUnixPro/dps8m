@@ -322,7 +322,7 @@ t_stat ReadPage (word18 address, word36 * result, bool isAR)
   {
     if ((address & PGMK) != 0)
       {
-        sim_err ("ReadPage not on boundary %06o\n", address);
+        sim_warn ("ReadPage not on boundary %06o\n", address);
       }
     address &= (word18) ~PGMK; // Round to page boundary
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
@@ -781,7 +781,7 @@ t_stat WritePage (word18 address, word36 * data, bool isAR)
   {
     if ((address & PGMK) != 0)
       {
-        sim_err ("WritePage not on boundary %06o\n", address);
+        sim_warn ("WritePage not on boundary %06o\n", address);
       }
     address &= (word18) ~PGMK; // Round to page boundary
     cpu.TPR.CA = cpu.iefpFinalAddress = address;

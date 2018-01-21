@@ -655,7 +655,7 @@ static void EISWriteIdx (EISaddr *p, uint n, word36 data)
 {
 #ifdef EIS_PTR
     long eisaddr_idx = EISADDR_IDX (p);
-if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
+if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
     sim_debug (DBG_TRACEEXT, & cpu_dev, "EISWriteIdx addr %06o n %u\n", cpu.du.Dk_PTR_W[eisaddr_idx], n);
     word18 addressN = (cpu.du.Dk_PTR_W[eisaddr_idx] + n) & AMASK;
 #else
@@ -694,7 +694,7 @@ static word36 EISReadIdx (EISaddr * p, uint n)
   {
 #ifdef EIS_PTR
     long eisaddr_idx = EISADDR_IDX (p);
-if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
+if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
 
     sim_debug (DBG_TRACEEXT, & cpu_dev, "EISReadIdx addr %06o n %u\n", cpu.du.Dk_PTR_W[eisaddr_idx], n);
     word18 addressN = (cpu.du.Dk_PTR_W[eisaddr_idx] + n) & AMASK;
@@ -724,7 +724,7 @@ static word36 EISRead (EISaddr * p)
   {
 #ifdef EIS_PTR
     long eisaddr_idx = EISADDR_IDX (p);
-if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
+if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
 
     sim_debug (DBG_TRACEEXT, & cpu_dev, "EISRead addr %06o\n", cpu.du.Dk_PTR_W[eisaddr_idx]);
 #else
@@ -738,7 +738,7 @@ static void EISReadN (EISaddr * p, uint N, word36 *dst)
   {
 #ifdef EIS_PTR
     long eisaddr_idx = EISADDR_IDX (p);
-if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
+if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
     sim_debug (DBG_TRACEEXT, & cpu_dev, "EISReadN addr %06o N %u\n", cpu.du.Dk_PTR_W[eisaddr_idx], N);
 #else
     sim_debug (DBG_TRACEEXT, & cpu_dev, "EISReadN addr %06o N %u\n", p->address, N);
@@ -754,7 +754,7 @@ static void EISReadPage (EISaddr * p, uint n, word36 * data)
   {
 #ifdef EIS_PTR
     long eisaddr_idx = EISADDR_IDX (p);
-if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
+if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
     word18 addressN = (cpu.du.Dk_PTR_W[eisaddr_idx] + n) & AMASK;
 #else
     word18 addressN = p -> address + n;
@@ -764,7 +764,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
     sim_debug (DBG_TRACEEXT, & cpu_dev, "%s addr %06o\n", __func__, addressN);
     if ((addressN & PGMK) != 0)
       {
-        sim_err ("EISReadPage not aligned %06o\n", addressN);
+        sim_warn ("EISReadPage not aligned %06o\n", addressN);
         addressN &= (word18) ~PGMK;
       }
 
@@ -814,7 +814,7 @@ static void EISWritePage (EISaddr * p, uint n, word36 * data)
   {
 #ifdef EIS_PTR
     long eisaddr_idx = EISADDR_IDX (p);
-if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
+if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
     word18 addressN = (cpu.du.Dk_PTR_W[eisaddr_idx] + n) & AMASK;
 #else
     word18 addressN = p -> address + n;
@@ -824,7 +824,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
     sim_debug (DBG_TRACEEXT, & cpu_dev, "%s addr %06o\n", __func__, addressN);
     if ((addressN & PGMK) != 0)
       {
-        sim_err ("EISWritePage not aligned %06o\n", addressN);
+        sim_warn ("EISWritePage not aligned %06o\n", addressN);
         addressN &= (uint) ~PGMK;
       }
 
@@ -1004,7 +1004,7 @@ static word9 EISget49 (EISaddr * p, int * pos, int tn)
         // bump source to next address
 #ifdef EIS_PTR
         long eisaddr_idx = EISADDR_IDX (p);
-if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
+if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
         cpu.du.Dk_PTR_W[eisaddr_idx] = (cpu.du.Dk_PTR_W[eisaddr_idx] + 1) & AMASK;
 #else
         p -> address = (p -> address + 1) & AMASK;
@@ -1035,7 +1035,7 @@ static bool EISgetBitRWN (EISaddr * p)
   {
 #ifdef EIS_PTR
     long eisaddr_idx = EISADDR_IDX (p);
-if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
+if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
 
 #endif
     int baseCharPosn = (p -> cPos * 9);     // 9-bit char bit position
@@ -7681,7 +7681,7 @@ static void EISwrite4(EISaddr *p, int *pos, word4 char4)
         *pos = 0;    // reset to 1st byte
 #ifdef EIS_PTR
         long eisaddr_idx = EISADDR_IDX (p);
-if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
+if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
         cpu.du.Dk_PTR_W[eisaddr_idx] = (cpu.du.Dk_PTR_W[eisaddr_idx] + 1) & AMASK;     // bump source to next address
 #else
         p->address = (p->address + 1) & AMASK;        // goto next dstAddr in memory
@@ -7746,7 +7746,7 @@ static void EISwrite9(EISaddr *p, int *pos, word9 char9)
         *pos = 0;    // reset to 1st byte
 #ifdef EIS_PTR
         long eisaddr_idx = EISADDR_IDX (p);
-if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
+if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
         cpu.du.Dk_PTR_W[eisaddr_idx] = (cpu.du.Dk_PTR_W[eisaddr_idx] + 1) & AMASK;     // bump source to next address
 #else
         p->address = (p->address + 1) & AMASK;       // goto next dstAddr in memory
@@ -8439,7 +8439,7 @@ return false;
 
 #ifdef EIS_PTR
     long eisaddr_idx = EISADDR_IDX (p);
-if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
+if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
     word18 saveAddr = cpu.du.Dk_PTR_W[eisaddr_idx];
     cpu.du.Dk_PTR_W[eisaddr_idx] += (word18) woff;
     cpu.du.Dk_PTR_W[eisaddr_idx] &= AMASK;
@@ -8725,7 +8725,7 @@ static bool EISgetBit(EISaddr *p, int *cpos, int *bpos)
 {
 #ifdef EIS_PTR
     long eisaddr_idx = EISADDR_IDX (p);
-if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
+if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
 #endif
     
     if (!p)
@@ -8921,7 +8921,7 @@ static void EISwrite4r(EISaddr *p, int *pos, word4 char4)
 {
 #ifdef EIS_PTR
     long eisaddr_idx = EISADDR_IDX (p);
-if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
+if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
 #endif
     word36 w;
     
@@ -8987,7 +8987,7 @@ static void EISwrite9r(EISaddr *p, int *pos, word9 char9)
 {
 #ifdef EIS_PTR
     long eisaddr_idx = EISADDR_IDX (p);
-if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
+if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
 #endif
     word36 w;
     if (*pos < 0)    // out-of-range?
@@ -9205,7 +9205,7 @@ static void load9x(int n, EISaddr *addr, int pos)
 #endif
 #ifdef EIS_PTR
     long eisaddr_idx = EISADDR_IDX (addr);
-if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
+if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
 #endif
     
     word36 data = EISRead(addr);
@@ -9653,7 +9653,7 @@ static int loadDec (EISaddr *p, int pos)
     int128 x = 0;
 #ifdef EIS_PTR
     long eisaddr_idx = EISADDR_IDX (p);
-if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
+if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
 #endif
     
     p->data = EISRead(p);    // read data word from memory
@@ -9800,7 +9800,7 @@ static void EISwriteToBinaryStringReverse(EISaddr *p, int k)
     EISstruct * e = & cpu.currentEISinstruction;
 #ifdef EIS_PTR
     long eisaddr_idx = EISADDR_IDX (p);
-if (eisaddr_idx < 0 || eisaddr_idx > 2) sim_err ("IDX1");
+if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
 #endif
     /// first thing we need to do is to find out the last position is the buffer we want to start writing to.
     

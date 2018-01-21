@@ -264,7 +264,7 @@ void fnpTelnetInit (void)
             fnpUnitData[fnpno].MState.line[lineno].telnetp = telnet_init (my_telopts, evHandler, 0, NULL);
             if (! fnpUnitData[fnpno].MState.line[lineno].telnetp)
               {
-                sim_err ("telnet_init failed\n");
+                sim_fatal ("telnet_init failed\n");
               }
           }
       }

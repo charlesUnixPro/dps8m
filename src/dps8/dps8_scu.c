@@ -1919,7 +1919,10 @@ static void deliverInterrupts (uint scuUnitIdx)
                 if (scu[scuUnitIdx].ports[port].is_exp)
                   sn = (uint) scu[scuUnitIdx].ports[port].xipmaskval;
                 if (! cables->scu_to_cpu[scuUnitIdx][port][sn].in_use)
-                  sim_err ("bad scuUnitIdx %u\n", scuUnitIdx);
+                  {
+                    sim_warn ("bad scuUnitIdx %u\n", scuUnitIdx);
+                    continue;
+                  }
                 uint cpuUnitIdx = cables->scu_to_cpu[scuUnitIdx][port][sn].cpu_unit_idx;
 #ifdef THREADZ
                 cpus[cpuUnitIdx].events.XIP[scuUnitIdx] = true;
