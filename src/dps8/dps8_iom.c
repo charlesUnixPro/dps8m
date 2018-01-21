@@ -322,7 +322,7 @@ void iom_core_write2 (uint iomUnitIdx, word24 addr, word36 even, word36 odd, UNU
 #endif
   }
 #else
-void iom_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
+void iom_core_read (UNUSED uint iom_unit_idx, word24 addr, word36 *data, UNUSED const char * ctx)
   {
 #ifdef THREADZ
 #ifdef lockread
@@ -337,7 +337,7 @@ void iom_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
 #endif
   }
 
-void iom_core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
+void iom_core_read2 (UNUSED uint iom_unit_idx, word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
   {
 #ifdef THREADZ
 #ifdef lockread
@@ -353,7 +353,7 @@ void iom_core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char *
 #endif
   }
 
-void iom_core_write (word24 addr, word36 data, UNUSED const char * ctx)
+void iom_core_write (UNUSED uint iom_unit_idx, word24 addr, word36 data, UNUSED const char * ctx)
   {
 #ifdef THREADZ
 #ifdef lockread
@@ -368,7 +368,7 @@ void iom_core_write (word24 addr, word36 data, UNUSED const char * ctx)
 #endif
   }
 
-void iom_core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
+void iom_core_write2 (UNUSED uint iom_unit_idx, word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
   {
 #ifdef THREADZ
 #ifdef lockread
@@ -940,11 +940,7 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
     uint chanloc = mbxLoc (iomUnitIdx, chan);
     word24 scwAddr = chanloc + 2;
     word36 scw;
-#ifdef SCUMEM
     iom_core_read (iomUnitIdx, scwAddr, & scw, __func__);
-#else
-    iom_core_read (scwAddr, & scw, __func__);
-#endif
     sim_debug (DBG_DEBUG, & iom_dev,
                "SCW chan %02o %012"PRIo64"\n", chan, scw);
     word18 addr = getbits36_18 (scw, 0);   // absolute
@@ -969,11 +965,7 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
         lq = 0;
       }
 //sim_printf ("status %d %08o %012"PRIo64" %012"PRIo64"\n", chan, addr, word1, word2);
-#ifdef SCUMEM
     iom_core_write2 (iomUnitIdx, addr, word1, word2, __func__);
-#else
-    iom_core_write2 (addr, word1, word2, __func__);
-#endif
 
     if (tally > 0 || (tally == 0 && lq != 0))
       {
@@ -1027,11 +1019,7 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s:                at: %06o\n",
                    __func__, scwAddr);
-#ifdef SCUMEM
         iom_core_write (iomUnitIdx, scwAddr, scw, __func__);
-#else
-        iom_core_write (scwAddr, scw, __func__);
-#endif
       }
 
 #ifdef THREADZ
@@ -1083,11 +1071,7 @@ static void fetchDDSPTW (uint iomUnitIdx, int chan, word18 addr)
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     word24 pgte = buildDDSPTWaddress (p -> PCW_PAGE_TABLE_PTR, 
                                       (addr >> 10) & MASK8);
-#ifdef SCUMEM
     iom_core_read (iomUnitIdx, pgte, & p -> PTW_DCW, __func__);
-#else
-    iom_core_read (pgte, & p -> PTW_DCW, __func__);
-#endif
   }
 
 static word24 buildIDSPTWaddress (word18 PCW_PAGE_TABLE_PTR, word1 seg, word8 pageNumber)
@@ -1122,11 +1106,7 @@ static void fetchIDSPTW (uint iomUnitIdx, int chan, word18 addr)
     word24 pgte = buildIDSPTWaddress (p -> PCW_PAGE_TABLE_PTR, 
                                       p -> SEG, 
                                       (addr >> 10) & MASK8);
-#ifdef SCUMEM
     iom_core_read (iomUnitIdx, pgte, & p -> PTW_DCW, __func__);
-#else
-    iom_core_read (pgte, & p -> PTW_DCW, __func__);
-#endif
 //sim_printf ("       %08o %012"PRIo64"\n", pgte, p -> PTW_DCW);
   }
 
@@ -1161,11 +1141,7 @@ static void fetchLPWPTW (uint iomUnitIdx, uint chan)
     word24 addr = buildLPWPTWaddress (p -> PCW_PAGE_TABLE_PTR, 
                                       p -> SEG,
                                       (p -> LPW_DCW_PTR >> 10) & MASK6);
-#ifdef SCUMEM
     iom_core_read (iomUnitIdx, addr, & p -> PTW_LPW, __func__);
-#else
-    iom_core_read (addr, & p -> PTW_LPW, __func__);
-#endif
   }
 
 // 'write' means periperal write; i.e. the peripheral is writing to core after
@@ -1208,17 +1184,10 @@ sim_warn ("iomDirectDataService DCW paged\n");
           break;
       }
 
-#ifdef SCUMEM
     if (write)
       iom_core_write (iomUnitIdx, daddr, * data, __func__);
     else
       iom_core_read (iomUnitIdx, daddr, data, __func__);
-#else
-    if (write)
-      iom_core_write (daddr, * data, __func__);
-    else
-      iom_core_read (daddr, data, __func__);
-#endif
 #ifdef THREADZ
     // Force mailbox and dma data to be up-to-date 
     fence ();
@@ -1263,11 +1232,7 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
               {
                 fetchIDSPTW (iomUnitIdx, (int) chan, daddr);
                 word24 addr = ((word24) (getbits36_14 (p -> PTW_DCW, 4) << 10)) | (daddr & MASK10);
-#ifdef SCUMEM
                 iom_core_write (iomUnitIdx, addr, * data, __func__);
-#else
-                iom_core_write (addr, * data, __func__);
-#endif
 //sim_printf (" %o %08o %08o %012"PRIo64" %012"PRIo64"\n", p -> SEG, daddr, addr, * data, p -> PTW_DCW);
               }
             else
@@ -1280,11 +1245,7 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
 // If PTP is not set, we are in cm1e or cm2e. Both are 'EXT DCW', so
 // we can elide the mode check here.
                 uint daddr2 = daddr | (uint) p -> ADDR_EXT << 18;
-#ifdef SCUMEM
                 iom_core_write (iomUnitIdx, daddr2, * data, __func__);
-#else
-                iom_core_write (daddr2, * data, __func__);
-#endif
               }
             daddr ++;
             data ++;
@@ -1307,22 +1268,14 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
               {
                 fetchIDSPTW (iomUnitIdx, (int) chan, daddr);
                 word24 addr = ((word24) (getbits36_14 (p -> PTW_DCW, 4) << 10)) | (daddr & MASK10);
-#ifdef SCUMEM
                 iom_core_read (iomUnitIdx, addr, data, __func__);
-#else
-                iom_core_read (addr, data, __func__);
-#endif
               }
             else
               {
 // If PTP is not set, we are in cm1e or cm2e. Both are 'EXT DCW', so
 // we can elide the mode check here.
                 uint daddr2 = daddr | (uint) p -> ADDR_EXT << 18;
-#ifdef SCUMEM
                 iom_core_read (iomUnitIdx, daddr2, data, __func__);
-#else
-                iom_core_read (daddr2, data, __func__);
-#endif
               }
             daddr ++;
             p -> tallyResidue --;
@@ -1469,15 +1422,9 @@ static void writeLPW (uint iomUnitIdx, uint chan)
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
 
     uint chanLoc = mbxLoc (iomUnitIdx, chan);
-#ifdef SCUMEM
     iom_core_write (iomUnitIdx, chanLoc, p -> LPW, __func__);
     if (chan != IOM_CONNECT_CHAN)
       iom_core_write (iomUnitIdx, chanLoc + 1, p -> LPWX, __func__);
-#else
-    iom_core_write (chanLoc, p -> LPW, __func__);
-    if (chan != IOM_CONNECT_CHAN)
-      iom_core_write (chanLoc + 1, p -> LPWX, __func__);
-#endif
 #ifdef THREADZ
     // Force mailbox and dma data to be up-to-date 
     fence ();
@@ -1497,11 +1444,7 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
     fence ();
 #endif
 
-#ifdef SCUMEM
     iom_core_read (iomUnitIdx, chanLoc, & p -> LPW, __func__);
-#else
-    iom_core_read (chanLoc, & p -> LPW, __func__);
-#endif
     sim_debug (DBG_DEBUG, & iom_dev, "lpw %012"PRIo64"\n", p -> LPW);
 
     p -> LPW_DCW_PTR = getbits36_18 (p -> LPW,  0);
@@ -1522,11 +1465,7 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
       }
     else
       {
-#ifdef SCUMEM
         iom_core_read (iomUnitIdx, chanLoc + 1, & p -> LPWX, __func__);
-#else
-        iom_core_read (chanLoc + 1, & p -> LPWX, __func__);
-#endif
         p -> LPWX_BOUND = getbits36_18 (p -> LPWX, 0);
         p -> LPWX_SIZE = getbits36_18 (p -> LPWX, 18);
       }   
@@ -1621,11 +1560,7 @@ static void fetchAndParsePCW (uint iomUnitIdx, uint chan)
     fence ();
 #endif
 
-#ifdef SCUMEM
     iom_core_read2 (iomUnitIdx, p -> LPW_DCW_PTR, & p -> PCW0, & p -> PCW1, __func__);
-#else
-    iom_core_read2 (p -> LPW_DCW_PTR, & p -> PCW0, & p -> PCW1, __func__);
-#endif
 //sim_printf ("%012"PRIo64" %012"PRIo64"\n", p -> PCW0, p ->  PCW1);
     p -> PCW_CHAN = getbits36_6 (p -> PCW1, 3);
     p -> PCW_AE = getbits36_6 (p -> PCW0, 12);
@@ -1669,7 +1604,7 @@ sim_warn ("unhandled fetchAndParseDCW\n");
           //break;
       }
 
-    iom_core_read (addr, & p -> DCW, __func__);
+    iom_core_read (iomUnitIdx, addr, & p -> DCW, __func__);
 #endif
 #ifdef THREADZ
     // Force mailbox and dma data to be up-to-date 
@@ -1682,11 +1617,7 @@ sim_warn ("unhandled fetchAndParseDCW\n");
         case cm1:
         case cm1e:
           {
-#ifdef SCUMEM
             iom_core_read (iomUnitIdx, addr, & p -> DCW, __func__);
-#else
-            iom_core_read (addr, & p -> DCW, __func__);
-#endif
           }
           break;
 
@@ -1694,11 +1625,7 @@ sim_warn ("unhandled fetchAndParseDCW\n");
         case cm2e:
           {
             addr |= ((word24) p -> LPWX_BOUND << 18);
-#ifdef SCUMEM
             iom_core_read (iomUnitIdx, addr, & p -> DCW, __func__);
-#else
-            iom_core_read (addr, & p -> DCW, __func__);
-#endif
           }
           break;
 
@@ -1725,11 +1652,7 @@ sim_warn ("unhandled fetchAndParseDCW\n");
             // PTW 4-17 || LPW 8-17
             word24 addr_ = ((word24) (getbits36_14 (p -> PTW_LPW, 4) << 10)) | ((p -> LPW_DCW_PTR) & MASK10);
 //sim_printf ("addr now %08o\n", addr_);
-#ifdef SCUMEM
             iom_core_read (iomUnitIdx, addr_, & p -> DCW, __func__);
-#else
-            iom_core_read (addr_, & p -> DCW, __func__);
-#endif
 //sim_printf ("dcw now %012"PRIo64"\n", p -> DCW);
           }
           break;
@@ -1789,29 +1712,17 @@ static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
       }
     // No address extension or paging nonsense for channels 0-7. 
     uint addr = p -> DDCW_ADDR;
-#ifdef SCUMEM
     iom_core_write (iomUnitIdx, addr, faultWord, __func__);
-#else
-    iom_core_write (addr, faultWord, __func__);
-#endif
 
     send_general_interrupt (iomUnitIdx, 1, imwSystemFaultPic);
 
     word36 ddcw;
-#ifdef SCUMEM
     iom_core_read (iomUnitIdx, mbx, & ddcw, __func__);
-#else
-    iom_core_read (mbx, & ddcw, __func__);
-#endif
     // incr addr
     putbits36_18 (& ddcw, 0, (getbits36_18 (ddcw, 0) + 1u) & MASK18);
     // decr tally
     putbits36_12 (& ddcw, 24, (getbits36_12 (ddcw, 24) - 1u) & MASK12);
-#ifdef SCUMEM
     iom_core_write (iomUnitIdx, mbx, ddcw, __func__);
-#else
-    iom_core_write (mbx, ddcw, __func__);
-#endif
 
 #ifdef THREADZ
     unlock_mem ();
@@ -2524,11 +2435,7 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
                __func__, 'A' + iomUnitIdx, chan, chan, pic, interrupt_num, 
                interrupt_num);
     word36 imw;
-#ifdef SCUMEM
     iom_core_read (iomUnitIdx, imw_addr, &imw, __func__);
-#else
-    iom_core_read (imw_addr, &imw, __func__);
-#endif
     // The 5 least significant bits of the channel determine a bit to be
     // turned on.
     sim_debug (DBG_DEBUG, & iom_dev, 
@@ -2537,11 +2444,7 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
     putbits36_1 (& imw, chan_in_group, 1);
     sim_debug (DBG_INFO, & iom_dev, 
                "%s: IMW at %#o now %012"PRIo64"\n", __func__, imw_addr, imw);
-#ifdef SCUMEM
     iom_core_write (iomUnitIdx, imw_addr, imw, __func__);
-#else
-    iom_core_write (imw_addr, imw, __func__);
-#endif
     
 #ifdef THREADZ
     unlock_mem ();
@@ -2615,29 +2518,17 @@ int send_special_interrupt (uint iomUnitIdx, uint chan, uint devCode,
 // we will just assume that everything is set up the way we expect,
 // and update the circular queue.
     word36 lpw;
-#ifdef SCUMEM
     iom_core_read (iomUnitIdx, chanloc + 0, & lpw, __func__);
-#else
-    iom_core_read (chanloc + 0, & lpw, __func__);
-#endif
 
     word36 dcw;
-#ifdef SCUMEM
     iom_core_read (iomUnitIdx, chanloc + 3, & dcw, __func__);
-#else
-    iom_core_read (chanloc + 3, & dcw, __func__);
-#endif
 
     word36 status = 0400000000000;   
     status |= (((word36) chan) & MASK6) << 27;
     status |= (((word36) devCode) & MASK8) << 18;
     status |= (((word36) status0) & MASK8) <<  9;
     status |= (((word36) status1) & MASK8) <<  0;
-#ifdef SCUMEM
     iom_core_write (iomUnitIdx, (dcw >> 18) & MASK18, status, __func__);
-#else
-    iom_core_write ((dcw >> 18) & MASK18, status, __func__);
-#endif
 
     uint tally = dcw & MASK12;
     if (tally > 1)
@@ -2647,11 +2538,7 @@ int send_special_interrupt (uint iomUnitIdx, uint chan, uint devCode,
       }
     else
       dcw = 001320010012llu; // reset to beginning of queue
-#ifdef SCUMEM
     iom_core_write (iomUnitIdx, chanloc + 3, dcw, __func__);
-#else
-    iom_core_write (chanloc + 3, dcw, __func__);
-#endif
 
 #ifdef THREADZ
     unlock_mem ();

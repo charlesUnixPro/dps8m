@@ -610,17 +610,10 @@ static void sendConsole (int conUnitIdx, word12 stati)
             if (csp->readp >= csp->tailp)
               break;
             unsigned char c = (unsigned char) (* csp->readp ++);
-#ifdef SCUMEM
             word36 w;
             iom_core_read (iomUnitIdx, daddr, & w, __func__);
             putbits36_9 (& w, charno * 9, c);
             iom_core_write (iomUnitIdx, daddr, w, __func__);
-#else
-            word36 w;
-            iom_core_read (daddr, & w, __func__);
-            putbits36_9 (& w, charno * 9, c);
-            iom_core_write (daddr, w, __func__);
-#endif
           }
         // cp = charno % 4;
 
@@ -845,17 +838,10 @@ sim_printf ("uncomfortable with this\n");
                     tally = 4096;
                   }
 
-#ifdef SCUMEM
                 word36 w0, w1, w2;
                 iom_core_read (iomUnitIdx, daddr + 0, & w0, __func__);
                 iom_core_read (iomUnitIdx, daddr + 1, & w1, __func__);
                 iom_core_read (iomUnitIdx, daddr + 2, & w2, __func__);
-#else
-                word36 w0, w1, w2;
-                iom_core_read (daddr + 0, & w0, __func__);
-                iom_core_read (daddr + 1, & w1, __func__);
-                iom_core_read (daddr + 2, & w2, __func__);
-#endif
 #ifdef ATTN_HACK
                 // When the console prints out "Command:", press the Attention
                 // key one second later
@@ -915,11 +901,7 @@ sim_printf ("uncomfortable with this\n");
                   {
                     //word36 datum = M[daddr ++];
                     word36 datum;
-#ifdef SCUMEM
                     iom_core_read (iomUnitIdx, daddr, & datum, __func__);
-#else
-                    iom_core_read (daddr, & datum, __func__);
-#endif
                     daddr ++;
                     tally --;
     

@@ -268,17 +268,10 @@ int queryIomScbankMap (uint iomUnitIdx, word24 addr, word24 * offset);
 word36 * iomLookupAddress (uint iomUnitIdx, word24 addr);
 #endif
 
-#ifdef SCUMEM
 void iom_core_read (uint iomUnitIdx, word24 addr, word36 *data, UNUSED const char * ctx);
 void iom_core_read2 (uint iomUnitIdx, word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx);
 void iom_core_write (uint iomUnitIdx, word24 addr, word36 data, UNUSED const char * ctx);
 void iom_core_write2 (uint iomUnitIdx, word24 addr, word36 even, word36 odd, UNUSED const char * ctx);
-#else
-void iom_core_read (word24 addr, word36 *data, UNUSED const char * ctx);
-void iom_core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx);
-void iom_core_write (word24 addr, word36 data, UNUSED const char * ctx);
-void iom_core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx);
-#endif
 t_stat boot2 (UNUSED int32 arg, UNUSED const char * buf);
 t_stat iomUnitResetIdx (uint iomUnitIdx);
 
