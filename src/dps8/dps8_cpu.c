@@ -2547,13 +2547,13 @@ int core_write_zone (word24 addr, word36 data, const char * ctx)
     word24 offset;
     uint scuUnitIdx = get_scu_unit_idx (addr, & offset);
     LOCK_MEM;
-    scu[scuUnitIdx].M[addr] = (scu[scuUnitIdx].M[addr] & ~cpu.zone) |
+    scu[scuUnitIdx].M[offset] = (scu[scuUnitIdx].M[offset] & ~cpu.zone) |
                               (data & cpu.zone);
     UNLOCK_MEM;
     cpu.useZone = false; // Safety
     if (watchBits [addr])
       {
-        sim_printf ("WATCH [%"PRId64"] %05o:%06o writez  %08o %012"PRIo64" "
+        sim_printf ("WATCH [%"PRId64"] %05o:%06o writez %08o %012"PRIo64" "
                     "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr, 
                     scu[scuUnitIdx].M[offset], ctx);
       }
