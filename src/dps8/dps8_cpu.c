@@ -1038,27 +1038,29 @@ t_stat sim_instr (void)
 
 // Create channel threads
 
-        for (uint iomNum = 0; iomNum < N_IOM_UNITS_MAX; iomNum ++)
+        for (uint iom_unit_idx = 0; iom_unit_idx < N_IOM_UNITS_MAX; iom_unit_idx ++)
           {
-            for (uint chnNum = 0; chnNum < MAX_CHANNELS; chnNum ++)
+            for (uint chan_num = 0; chan_num < MAX_CHANNELS; chan_num ++)
               {
-                uint devCnt = 0;
-                if (get_ctlr_in_use (iomUnitIdx, chan))
+                if (get_ctlr_in_use (iom_unit_idx, chan_num))
                   {
-                    //sim_printf ("iom %u chn %u devCnt %u\n", iomNum, chnNum, devCnt);
-                    enum ctlr_type_e ctlr_type = cables->iom_to_ctlr.ctlr_type;
-                    createChnThread (iomNum, chnNum, ctlr_type_strs [dt]);
-                    chnRdyWait (iomNum, chnNum);
+                    enum ctlr_type_e ctlr_type = 
+                      cables->iom_to_ctlr[iom_unit_idx][chan_num].ctlr_type;
+                    createChnThread (iom_unit_idx, chan_num,
+                                     ctlr_type_strs [ctlr_type]);
+                    chnRdyWait (iom_unit_idx, chan_num);
                   }
               }
           }
 
 // Create IOM threads
 
-        for (uint iomNum = 0; iomNum < N_IOM_UNITS_MAX; iomNum ++)
+        for (uint iom_unit_idx = 0;
+             iom_unit_idx < N_IOM_UNITS_MAX;
+             iom_unit_idx ++)
           {
-            createIOMThread (iomNum);
-            iomRdyWait (iomNum);
+            createIOMThread (iom_unit_idx);
+            iomRdyWait (iom_unit_idx);
           }
 
 // Create CPU threads

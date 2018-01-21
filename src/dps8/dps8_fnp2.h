@@ -278,7 +278,7 @@ static inline void * fnp_M_addr (int fnp_unit_idx, uint addr)
     return & scu[scuUnitIdx].M[offset];
   }
 #else
-static inline void * fnp_M_addr (UNUSED int fnp_unit_idx, uint addr)
+static inline void vol * fnp_M_addr (UNUSED int fnp_unit_idx, uint addr)
   {
     return & M[addr];
   }
