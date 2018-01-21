@@ -1739,7 +1739,7 @@ setCPU:;
                     //clr_went_appending (); // XXX not sure this is the right
                                            //  place
                     cpu.cu.XSF = 0;
-sim_debug (DBG_TRACE, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
+sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                     cpu.cu.TSN_VALID [0] = 0;
                     PNL (cpu.prepare_state = ps_PIA);
                     PNL (L68_ (cpu.INS_FETCH = true;))
@@ -1814,7 +1814,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                         if (!clear_TEMPORARY_ABSOLUTE_mode ())
                           {
                             // didn't go appending
-                            sim_debug (DBG_TRACE, & cpu_dev,
+                            sim_debug (DBG_TRACEEXT, & cpu_dev,
                                        "setting ABS mode\n");
                             CPT (cpt1U, 10); // temporary absolute mode
                             set_addr_mode (ABSOLUTE_mode);
@@ -1822,7 +1822,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                         else
                           {
                             // went appending
-                            sim_debug (DBG_TRACE, & cpu_dev,
+                            sim_debug (DBG_TRACEEXT, & cpu_dev,
                                        "not setting ABS mode\n");
                           }
 
@@ -2922,7 +2922,7 @@ static void set_TEMPORARY_ABSOLUTE_mode (void)
     CPT (cpt1L, 20); // set temp. abs. mode
     cpu.secret_addressing_mode = true;
     cpu.cu.XSF = false;
-sim_debug (DBG_TRACE, & cpu_dev, "set_TEMPORARY_ABSOLUTE_mode bit 29 sets XSF to 0\n");
+sim_debug (DBG_TRACEEXT, & cpu_dev, "set_TEMPORARY_ABSOLUTE_mode bit 29 sets XSF to 0\n");
     //cpu.went_appending = false;
   }
 
@@ -2979,7 +2979,7 @@ addr_modes_t get_addr_mode (void)
 void set_addr_mode (addr_modes_t mode)
   {
 //    cpu.cu.XSF = false;
-//sim_debug (DBG_TRACE, & cpu_dev, "set_addr_mode bit 29 sets XSF to 0\n");
+//sim_debug (DBG_TRACEEXT, & cpu_dev, "set_addr_mode bit 29 sets XSF to 0\n");
     //cpu.went_appending = false;
 // Temporary hack to fix fault/intr pair address mode state tracking
 //   1. secret_addressing_mode is only set in fault/intr pair processing.

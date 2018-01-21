@@ -738,8 +738,10 @@ typedef struct
     // Operations Unit/Address Modification
     bool directOperandFlag;
     word36 directOperand;
-    word6 characterOperandSize;
-    word6 characterOperandOffset;
+    word6 characterOperandSize; // just the left most bit
+    word3 characterOperandOffset; 
+    word18 character_address;
+    word36 character_data;
     bool crflag;
 #ifdef L68
     word2 eac;

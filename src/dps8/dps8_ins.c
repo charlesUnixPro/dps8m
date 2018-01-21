@@ -110,112 +110,6 @@ static void writeOperands (void)
 
     if (Tm == TM_IT && (Td == IT_CI || Td == IT_SC || Td == IT_SCR))
       {
-        CPT (cpt2U, 1); // read indirect operand
-        // CI:
-        // Bit 30 of the TAG field of the indirect word is interpreted
-        // as a character size flag, tb, with the value 0 indicating
-        // 6-bit characters and the value 1 indicating 9-bit bytes.
-        // Bits 33-35 of the TAG field are interpreted as a 3-bit
-        // character/byte position value, cf. Bits 31-32 of the TAG
-        // field must be zero.  If the character position value is
-        // greater than 5 for 6-bit characters or greater than 3 for 9-
-        // bit bytes, an illegal procedure, illegal modifier, fault
-        // will occur. The TALLY field is ignored. The computed address
-        // is the value of the ADDRESS field of the indirect word. The
-        // effective character/byte number is the value of the
-        // character position count, cf, field of the indirect word.
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands IT reading indirect word from %06o\n",
-                            cpu.TPR.CA);
-
-        //
-        // Get the indirect word
-        //
-
-        word18 saveCA = cpu.TPR.CA;
-
-        //word18 indwordAddress = cpu.TPR.CA;
-        //Read2 (indwordAddress, cpu.itxPair, INDIRECT_WORD_FETCH);
-        //ReadIndirect ();
-        Read (cpu.TPR.CA, cpu.itxPair, APU_DATA_READ);
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands IT indword=%012"PRIo64"\n", cpu.itxPair[0]);
-
-        //
-        // Parse and validate the indirect word
-        //
-
-        word18 Yi = GET_ADDR (cpu.itxPair[0]);
-        cpu.ou.characterOperandSize = GET_TB (GET_TAG (cpu.itxPair[0]));
-        cpu.ou.characterOperandOffset = GET_CF (GET_TAG (cpu.itxPair[0]));
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands IT size=%o offset=%o Yi=%06o\n",
-                   cpu.ou.characterOperandSize, cpu.ou.characterOperandOffset,
-                   Yi);
-
-        if (cpu.ou.characterOperandSize == TB6 && cpu.ou.characterOperandOffset > 5)
-          // generate an illegal procedure, illegal modifier fault
-          doFault (FAULT_IPR,
-                   fst_ill_mod,
-                   "co size == TB6 && offset > 5");
-
-        if (cpu.ou.characterOperandSize == TB9 && cpu.ou.characterOperandOffset > 3)
-          // generate an illegal procedure, illegal modifier fault
-          doFault (FAULT_IPR,
-                   fst_ill_mod,
-                   "co size == TB9 && offset > 3");
-
-        if (Td == IT_SCR)
-          {
-            CPT (cpt2U, 2); // write IT_SCR
-            // For each reference to the indirect word, the character
-            // counter, cf, is reduced by 1 and the TALLY field is
-            // increased by 1 before the computed address is formed.
-            // Character count arithmetic is modulo 6 for 6-bit characters
-            // and modulo 4 for 9-bit bytes. If the character count, cf,
-            // underflows to -1, it is reset to 5 for 6-bit characters or
-            // to 3 for 9-bit bytes and ADDRESS is reduced by 1. ADDRESS
-            // arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096.
-            // If the TALLY field overflows to 0, the tally runout
-            // indicator is set ON, otherwise it is set OFF. The computed
-            // address is the (possibly) decremented value of the ADDRESS
-            // field of the indirect word. The effective character/byte
-            // number is the decremented value of the character position
-            // count, cf, field of the indirect word.
-
-            if (cpu.ou.characterOperandOffset == 0)
-              {
-                if (cpu.ou.characterOperandSize == TB6)
-                    cpu.ou.characterOperandOffset = 5;
-                else
-                    cpu.ou.characterOperandOffset = 3;
-                Yi -= 1;
-                Yi &= MASK18;
-              }
-                else
-              {
-                cpu.ou.characterOperandOffset -= 1;
-              }
-          }
-
-        //
-        // Get the data word
-        //
-
-        PNL (cpu.prepare_state |= ps_POT);
-
-        cpu.cu.pot = 1;
-
-        word36 data;
-        Read (Yi, & data, APU_DATA_READ);
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands IT data=%012"PRIo64"\n", data);
-
-        cpu.cu.pot = 0;
-
         //
         // Put the character into the data word
         //
@@ -223,11 +117,11 @@ static void writeOperands (void)
         switch (cpu.ou.characterOperandSize)
           {
             case TB6:
-              putChar (& data, cpu.CY & 077, cpu.ou.characterOperandOffset);
+              putChar (& cpu.ou.character_data, cpu.CY & 077, cpu.ou.characterOperandOffset);
               break;
 
             case TB9:
-              putByte (& data, cpu.CY & 0777, cpu.ou.characterOperandOffset);
+              putByte (& cpu.ou.character_data, cpu.CY & 0777, cpu.ou.characterOperandOffset);
               break;
           }
 
@@ -237,21 +131,20 @@ static void writeOperands (void)
 
         PNL (cpu.prepare_state |= ps_SAW);
 
-        Write (Yi, data, APU_DATA_STORE);
+        Write (cpu.ou.character_address, cpu.ou.character_data, OPERAND_STORE);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "writeOperands IT wrote char/byte %012"PRIo64" to %06o "
                    "tTB=%o tCF=%o\n",
-                   data, Yi,
+                   cpu.ou.character_data, cpu.ou.character_address,
                    cpu.ou.characterOperandSize, cpu.ou.characterOperandOffset);
 
         // Restore the CA; Read/Write() updates it.
         //cpu.TPR.CA = indwordAddress;
-        cpu.TPR.CA = saveCA;
+        cpu.TPR.CA = cpu.ou.character_address;
 
         return;
       } // IT
-
 
     WriteOP (cpu.TPR.CA, OPERAND_STORE);
 
@@ -311,107 +204,6 @@ static void readOperands (void)
 
     if (Tm == TM_IT && (Td == IT_CI || Td == IT_SC || Td == IT_SCR))
       {
-        CPT (cpt2U, 4); // read IT/CI/SCR
-        // CI
-        // Bit 30 of the TAG field of the indirect word is interpreted
-        // as a character size flag, tb, with the value 0 indicating
-        // 6-bit characters and the value 1 indicating 9-bit bytes.
-        // Bits 33-35 of the TAG field are interpreted as a 3-bit
-        // character/byte position value, cf. Bits 31-32 of the TAG
-        // field must be zero.  If the character position value is
-        // greater than 5 for 6-bit characters or greater than 3 for 9-
-        // bit bytes, an illegal procedure, illegal modifier, fault
-        // will occur. The TALLY field is ignored. The computed address
-        // is the value of the ADDRESS field of the indirect word. The
-        // effective character/byte number is the value of the
-        // character position count, cf, field of the indirect word.
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands IT reading indirect word from %06o\n",
-                            cpu.TPR.CA);
-
-        //
-        // Get the indirect word
-        //
-
-        PNL (cpu.prepare_state |= ps_RIW);
-
-        word36 indword;
-        word18 indwordAddress = cpu.TPR.CA;
-        Read (indwordAddress, & indword, APU_DATA_READ);
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands IT indword=%012"PRIo64"\n", indword);
-
-        //
-        // Parse and validate the indirect word
-        //
-
-        word18 Yi = GET_ADDR (indword);
-        cpu.ou.characterOperandSize = GET_TB (GET_TAG (indword));
-        cpu.ou.characterOperandOffset = GET_CF (GET_TAG (indword));
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands IT size=%o offset=%o Yi=%06o\n",
-                   cpu.ou.characterOperandSize, cpu.ou.characterOperandOffset,
-                   Yi);
-
-        if (cpu.ou.characterOperandSize == TB6 && cpu.ou.characterOperandOffset > 5)
-          // generate an illegal procedure, illegal modifier fault
-          doFault (FAULT_IPR,
-                   fst_ill_mod,
-                   "co size == TB6 && offset > 5");
-
-        if (cpu.ou.characterOperandSize == TB9 && cpu.ou.characterOperandOffset > 3)
-          // generate an illegal procedure, illegal modifier fault
-          doFault (FAULT_IPR,
-                   fst_ill_mod,
-                   "co size == TB9 && offset > 3");
-
-        if (Td == IT_SCR)
-          {
-            CPT (cpt2U, 5); // read SCR
-            // For each reference to the indirect word, the character
-            // counter, cf, is reduced by 1 and the TALLY field is
-            // increased by 1 before the computed address is formed.
-            // Character count arithmetic is modulo 6 for 6-bit characters
-            // and modulo 4 for 9-bit bytes. If the character count, cf,
-            // underflows to -1, it is reset to 5 for 6-bit characters or
-            // to 3 for 9-bit bytes and ADDRESS is reduced by 1. ADDRESS
-            // arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096.
-            // If the TALLY field overflows to 0, the tally runout
-            // indicator is set ON, otherwise it is set OFF. The computed
-            // address is the (possibly) decremented value of the ADDRESS
-            // field of the indirect word. The effective character/byte
-            // number is the decremented value of the character position
-            // count, cf, field of the indirect word.
-
-            if (cpu.ou.characterOperandOffset == 0)
-              {
-                if (cpu.ou.characterOperandSize == TB6)
-                    cpu.ou.characterOperandOffset = 5;
-                else
-                    cpu.ou.characterOperandOffset = 3;
-                Yi -= 1;
-                Yi &= MASK18;
-              }
-                else
-              {
-                cpu.ou.characterOperandOffset -= 1;
-              }
-          }
-
-        //
-        // Get the data word
-        //
-
-        PNL (cpu.prepare_state |= ps_SIW);
-
-        word36 data;
-        Read (Yi, & data, APU_DATA_READ);
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands IT data=%012"PRIo64"\n", data);
-
         //
         // Get the character from the data word
         //
@@ -419,21 +211,21 @@ static void readOperands (void)
         switch (cpu.ou.characterOperandSize)
           {
             case TB6:
-              cpu.CY = GETCHAR (data, cpu.ou.characterOperandOffset);
+              cpu.CY = GETCHAR (cpu.ou.character_data, cpu.ou.characterOperandOffset);
               break;
 
             case TB9:
-              cpu.CY = GETBYTE (data, cpu.ou.characterOperandOffset);
+              cpu.CY = GETBYTE (cpu.ou.character_data, cpu.ou.characterOperandOffset);
               break;
           }
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "readOperands IT read operand %012"PRIo64" from"
                    " %06o char/byte=%"PRIo64"\n",
-                   data, Yi, cpu.CY);
+                   cpu.ou.character_data, cpu.ou.character_address, cpu.CY);
 
         // Restore the CA; Read/Write() updates it.
-        cpu.TPR.CA = indwordAddress;
+        cpu.TPR.CA = cpu.ou.character_address;
 
         return;
       } // IT
@@ -637,7 +429,7 @@ static void words2scu (word36 * words)
     cpu.PPR.PSR         = getbits36_15 (words[0], 3);
     cpu.PPR.P           = getbits36_1  (words[0], 18);
     cpu.cu.XSF          = getbits36_1  (words[0], 19);
-sim_debug (DBG_TRACE, & cpu_dev, "words2scu sets XSF to %o\n", cpu.cu.XSF);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "words2scu sets XSF to %o\n", cpu.cu.XSF);
     //cpu.cu.SDWAMM       = getbits36_1  (words[0], 20);
     //cpu.cu.SD_ON        = getbits36_1  (words[0], 21);
     //cpu.cu.PTWAMM       = getbits36_1  (words[0], 22);
@@ -1457,7 +1249,7 @@ t_stat executeInstruction (void)
     addToTheMatrix (opcode, opcodeX, b29, tag);
 #endif
 
-//sim_debug (DBG_TRACE, & cpu_dev, "isb29 %o\n", ci->b29);
+//sim_debug (DBG_TRACEEXT, & cpu_dev, "isb29 %o\n", ci->b29);
     if (ci->b29)
       ci->address = SIGNEXT15_18 (ci->address & MASK15);
 
@@ -1502,7 +1294,7 @@ IF1 sim_printf ("trapping opcode match......\n");
 //
 
     cpu.cu.XSF = 0;
-sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction sets XSF to %o\n", cpu.cu.XSF);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction sets XSF to %o\n", cpu.cu.XSF);
 
     CPT (cpt2U, 14); // non-restart processing
     // Set Address register empty
@@ -1802,7 +1594,7 @@ restart_1:
 
 #ifndef SPEED
     // Don't trace Multics idle loop
-    if (cpu.PPR.PSR != 061 || cpu.PPR.IC != 0307)
+    //if (cpu.PPR.PSR != 061 || cpu.PPR.IC != 0307)
 
       {
         traceInstruction (DBG_TRACE);
@@ -1813,7 +1605,7 @@ restart_1:
 #else  // !SPEED
 #ifdef HDBG
     // Don't trace Multics idle loop
-    if (cpu.PPR.PSR != 061 || cpu.PPR.IC != 0307)
+    //if (cpu.PPR.PSR != 061 || cpu.PPR.IC != 0307)
       hdbgTrace ();
 #endif // HDBG
 #endif // !SPEED
@@ -1888,11 +1680,11 @@ restart_1:
 //  instruction.
 //
 
-        sim_debug (DBG_TRACE, & cpu_dev,
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
                    "RPT/RPD first %d rpt %d rd %d e/o %d X0 %06o a %d b %d\n",
                    cpu.cu.repeat_first, cpu.cu.rpt, cpu.cu.rd, cpu.PPR.IC & 1,
                    cpu.rX[0], !! (cpu.rX[0] & 01000), !! (cpu.rX[0] & 0400));
-        sim_debug (DBG_TRACE, & cpu_dev,
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
                    "RPT/RPD CA %06o\n", cpu.TPR.CA);
 
 // Handle first time of a RPT or RPD
@@ -1927,7 +1719,7 @@ if (first) {
 first = false;
 sim_printf ("XXX rethink this; bit 29 is finagled below; should this be done in a different order?\n");
 }}
-sim_debug (DBG_TRACE, & cpu_dev, "b29, ci->address %o\n", ci->address);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "b29, ci->address %o\n", ci->address);
                     // a:RJ78/rpd4
                     offset = SIGNEXT15_18 (ci->address & MASK15);
                   }
@@ -1938,19 +1730,19 @@ sim_debug (DBG_TRACE, & cpu_dev, "b29, ci->address %o\n", ci->address);
 #endif
                 offset &= AMASK;
 
-                sim_debug (DBG_TRACE, & cpu_dev,
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "rpt/rd/rl repeat first; offset is %06o\n", offset);
 
                 word6 Td = GET_TD (ci->tag);
                 uint Xn = X (Td);  // Get Xn of next instruction
-                sim_debug (DBG_TRACE, & cpu_dev,
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "rpt/rd/rl repeat first; X%d was %06o\n",
                            Xn, cpu.rX[Xn]);
                 // a:RJ78/rpd5
                 cpu.TPR.CA = (cpu.rX[Xn] + offset) & AMASK;
                 cpu.rX[Xn] = cpu.TPR.CA;
                 HDBGRegX (Xn);
-                sim_debug (DBG_TRACE, & cpu_dev,
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "rpt/rd/rl repeat first; X%d now %06o\n",
                            Xn, cpu.rX[Xn]);
               } // rpt or rd or rl
@@ -2052,7 +1844,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            n, offset, cpu.TPR.CA, cpu.TPR.TBR, 
                            cpu.TPR.TSR, cpu.TPR.TRR);
                 cpu.cu.XSF = 1;
-sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction EIS sets XSF to %o\n", cpu.cu.XSF);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction EIS sets XSF to %o\n", cpu.cu.XSF);
                 //set_went_appending ();
             }
 
@@ -2079,7 +1871,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction EIS sets XSF to %o\n", cpu.
                     cpu.RSDWH_R1 = 0;
                   }
                 cpu.cu.XSF = 0;
-sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", cpu.cu.XSF);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", cpu.cu.XSF);
                 //clr_went_appending ();
               }
           }
@@ -2104,6 +1896,13 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
             if (getbits36_1 (cpu.cu.IWB, 29) != 0)
               cpu.TPR.CA &= MASK15;
           }
+
+        // These are set by doComputedAddressFormation
+        cpu.ou.directOperandFlag = false;
+        cpu.ou.directOperand = 0;
+        cpu.ou.characterOperandSize = 0;
+        cpu.ou.characterOperandOffset = 0;
+        cpu.ou.crflag = false;
 
 #define REORDER
 #ifdef REORDER
@@ -2199,131 +1998,6 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
       }
 
 ///
-/// executeInstruction: Update IT tally
-///
-
-    word6 rTAG;
-    if (ci->info->flags & NO_TAG) // for instructions line STCA/STCQ
-      rTAG = 0;
-    else
-      //rTAG = GET_TAG (cpu.cu.IWB);
-      rTAG = ci->tag;
-
-    word6 Tm = GET_TM (rTAG);
-    word6 Td = GET_TD (rTAG);
-
-    if (info->ndes == 0 /* non-EIS */ &&
-        (! (ci->info->flags & NO_TAG)) &&
-        Tm == TM_IT && (Td == IT_SC || Td == IT_SCR))
-      {
-        CPT (cpt2L, 4); // Update IT Tally; fetch indirect word
-        //
-        // Get the indirect word
-        //
-
-        //Read2 (cpu.TPR.CA, cpu.itxPair, INDIRECT_WORD_FETCH);
-        Read (cpu.TPR.CA, cpu.itxPair, APU_DATA_READ);
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "update IT indword=%012"PRIo64"\n", cpu.itxPair[0]);
-
-        //
-        // Parse and validate the indirect word
-        //
-
-        word18 Yi = GET_ADDR (cpu.itxPair[0]);
-        cpu.ou.characterOperandSize = GET_TB (GET_TAG (cpu.itxPair[0]));
-        cpu.ou.characterOperandOffset = GET_CF (GET_TAG (cpu.itxPair[0]));
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "update IT size=%o offset=%o Yi=%06o\n",
-                   cpu.ou.characterOperandSize, cpu.ou.characterOperandOffset,
-                   Yi);
-
-        word12 tally = GET_TALLY (cpu.itxPair[0]);    // 12-bits
-
-        if (Td == IT_SCR)
-          {
-            CPT (cpt2L, 5); // Update IT Tally; SCR
-            // For each reference to the indirect word, the character
-            // counter, cf, is reduced by 1 and the TALLY field is
-            // increased by 1 before the computed address is formed.
-            // Character count arithmetic is modulo 6 for 6-bit characters
-            // and modulo 4 for 9-bit bytes. If the character count, cf,
-            // underflows to -1, it is reset to 5 for 6-bit characters or
-            // to 3 for 9-bit bytes and ADDRESS is reduced by 1. ADDRESS
-            // arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096.
-            // If the TALLY field overflows to 0, the tally runout
-            // indicator is set ON, otherwise it is set OFF. The computed
-            // address is the (possibly) decremented value of the ADDRESS
-            // field of the indirect word. The effective character/byte
-            // number is the decremented value of the character position
-            // count, cf, field of the indirect word.
-
-            if (cpu.ou.characterOperandOffset == 0)
-              {
-                if (cpu.ou.characterOperandSize == TB6)
-                    cpu.ou.characterOperandOffset = 5;
-                else
-                    cpu.ou.characterOperandOffset = 3;
-                Yi -= 1;
-                Yi &= MASK18;
-              }
-                else
-              {
-                cpu.ou.characterOperandOffset -= 1;
-              }
-            tally ++;
-            tally &= 07777; // keep to 12-bits
-          }
-        else // SC
-          {
-            CPT (cpt2L, 6); // Update IT Tally; SC
-            // For each reference to the indirect word, the character
-            // counter, cf, is increased by 1 and the TALLY field is
-            // reduced by 1 after the computed address is formed. Character
-            // count arithmetic is modulo 6 for 6-bit characters and modulo
-            // 4 for 9-bit bytes. If the character count, cf, overflows to
-            // 6 for 6-bit characters or to 4 for 9-bit bytes, it is reset
-            // to 0 and ADDRESS is increased by 1. ADDRESS arithmetic is
-            // modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY
-            // field is reduced to 0, the tally runout indicator is set ON,
-            // otherwise it is set OFF.
-
-            cpu.ou.characterOperandOffset ++;
-
-            if (((cpu.ou.characterOperandSize == TB6) &&
-                 (cpu.ou.characterOperandOffset > 5)) ||
-                ((cpu.ou.characterOperandSize == TB9) &&
-                 (cpu.ou.characterOperandOffset > 3)))
-              {
-                cpu.ou.characterOperandOffset = 0;
-                Yi += 1;
-                Yi &= MASK18;
-              }
-            tally --;
-            tally &= 07777; // keep to 12-bits
-          }
-
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                       "update IT tally now %o\n", tally);
-
-        SC_I_TALLY (tally == 0);
-
-        cpu.itxPair[0] = (word36) (((word36) Yi << 18) |
-                            (((word36) tally & 07777) << 6) |
-                            cpu.ou.characterOperandSize |
-                            cpu.ou.characterOperandOffset);
-
-        Write (cpu.TPR.CA, cpu.itxPair[0], APU_DATA_STORE);
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "update IT wrote tally word %012"PRIo64" to %06o\n",
-                   cpu.itxPair[0], cpu.TPR.CA);
-      } // SC/SCR
-
-///
 /// executeInstruction: RPT/RPD/RPL processing
 ///
 
@@ -2358,7 +2032,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
             bool rptA = !! (cpu.rX[0] & 01000);
             bool rptB = !! (cpu.rX[0] & 00400);
 
-            sim_debug (DBG_TRACE, & cpu_dev,
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
                 "RPT/RPD delta first %d rf %d rpt %d rd %d "
                 "e/o %d X0 %06o a %d b %d\n",
                 cpu.cu.repeat_first, rf, cpu.cu.rpt, cpu.cu.rd, icOdd,
@@ -2371,7 +2045,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
                 cpu.TPR.CA = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
                 cpu.rX[Xn] = cpu.TPR.CA;
                 HDBGRegX (Xn);
-                sim_debug (DBG_TRACE, & cpu_dev,
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX[Xn]);
               }
 
@@ -2387,7 +2061,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
                 cpu.TPR.CA = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
                 cpu.rX[Xn] = cpu.TPR.CA;
                 HDBGRegX (Xn);
-                sim_debug (DBG_TRACE, & cpu_dev,
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX[Xn]);
               }
 
@@ -2399,7 +2073,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
                 cpu.TPR.CA = (cpu.rX[Xn] + cpu.cu.delta) & AMASK;
                 cpu.rX[Xn] = cpu.TPR.CA;
                 HDBGRegX (Xn);
-                sim_debug (DBG_TRACE, & cpu_dev,
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "RPT/RPD delta; X%d now %06o\n", Xn, cpu.rX[Xn]);
               }
           } // rpt || rd
@@ -2463,22 +2137,22 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
             putbits18 (& cpu.rX[0], 0, 8, x);
             HDBGRegX (0);
 
-            //sim_debug (DBG_TRACE, & cpu_dev, "x %03o rX[0] %06o\n", x, rX[0]);
+            //sim_debug (DBG_TRACEEXT, & cpu_dev, "x %03o rX[0] %06o\n", x, rX[0]);
 
             // a:AL39/rpd10
             //  c. If C(X0)0,7 = 0, then set the tally runout indicator ON
             //     and terminate
 
-            sim_debug (DBG_TRACE, & cpu_dev, "tally %d\n", x);
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "tally %d\n", x);
             if (x == 0)
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "tally runout\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "tally runout\n");
                 SET_I_TALLY;
                 exit = true;
               }
             else
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "not tally runout\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "not tally runout\n");
                 CLR_I_TALLY;
               }
 
@@ -2487,43 +2161,43 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
 
             if (TST_I_ZERO && (cpu.rX[0] & 0100))
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "is zero terminate\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "is zero terminate\n");
                 CLR_I_TALLY;
                 exit = true;
               }
             if (!TST_I_ZERO && (cpu.rX[0] & 040))
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "is not zero terminate\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "is not zero terminate\n");
                 CLR_I_TALLY;
                 exit = true;
               }
             if (TST_I_NEG && (cpu.rX[0] & 020))
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "is neg terminate\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "is neg terminate\n");
                 CLR_I_TALLY;
                 exit = true;
               }
             if (!TST_I_NEG && (cpu.rX[0] & 010))
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "is not neg terminate\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "is not neg terminate\n");
                 CLR_I_TALLY;
                 exit = true;
               }
             if (TST_I_CARRY && (cpu.rX[0] & 04))
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "is carry terminate\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "is carry terminate\n");
                 CLR_I_TALLY;
                 exit = true;
               }
             if (!TST_I_CARRY && (cpu.rX[0] & 02))
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "is not carry terminate\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "is not carry terminate\n");
                 CLR_I_TALLY;
                 exit = true;
               }
             if (TST_I_OFLOW && (cpu.rX[0] & 01))
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "is overflow terminate\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "is overflow terminate\n");
 // ISOLTS test ps805 says that on overflow the tally should be set.
                 //CLR_I_TALLY;
                 SET_I_TALLY;
@@ -2539,7 +2213,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", 
               }
             else
               {
-                sim_debug (DBG_TRACE, & cpu_dev, "not terminate\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "not terminate\n");
               }
           } // if (cpu.cu.rpt || cpu.cu.rd & (cpu.PPR.IC & 1))
 
@@ -2721,12 +2395,6 @@ static t_stat DoBasicInstruction (void)
 #ifdef L68
     bool is_ou = false;
 #endif
-    cpu.ou.directOperandFlag = false;
-    cpu.ou.directOperand = 0;
-    cpu.ou.characterOperandSize = 0;
-    cpu.ou.characterOperandOffset = 0;
-    cpu.ou.crflag = false;
-
 #ifdef PANEL
     if (NonEISopcodes[i->opcode].reg_use & is_OU)
       {
@@ -4929,7 +4597,7 @@ static t_stat DoBasicInstruction (void)
             uint32 n = opcode & 07;  // get n
             word18 tmp18 = cpu.rX[n] & GETHI (cpu.CY);
             tmp18 &= MASK18;
-            sim_debug (DBG_TRACE, & cpu_dev,
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
                        "n %o rX %06o HI %06o tmp %06o\n",
                        n, cpu.rX[n], (word18) (GETHI (cpu.CY) & MASK18),
                        tmp18);
@@ -5378,7 +5046,7 @@ static t_stat DoBasicInstruction (void)
 
           //ReadOP (cpu.TPR.CA, RTCD_OPERAND_FETCH);
           ReadTraOp ();
-          sim_debug (DBG_TRACE, & cpu_dev,
+          sim_debug (DBG_TRACEEXT, & cpu_dev,
                      "call6 PRR %o PSR %o\n", cpu.PPR.PRR, cpu.PPR.PSR);
 
           return CONT_TRA;
@@ -5432,11 +5100,11 @@ static t_stat DoBasicInstruction (void)
               }
             
 
-            //sim_debug (DBG_TRACE, & cpu_dev,
+            //sim_debug (DBG_TRACEEXT, & cpu_dev,
             //           "RET NBAR was %d now %d\n",
             //           TST_NBAR ? 1 : 0,
             //           TSTF (tempIR, I_NBAR) ? 1 : 0);
-            //sim_debug (DBG_TRACE, & cpu_dev,
+            //sim_debug (DBG_TRACEEXT, & cpu_dev,
             //           "RET ABS  was %d now %d\n",
             //           TST_I_ABS ? 1 : 0,
             //           TSTF (tempIR, I_ABS) ? 1 : 0);
@@ -6222,7 +5890,7 @@ static t_stat DoBasicInstruction (void)
             if (rc > 0)
               return rc;
 #ifndef SPEED
-            if_sim_debug (DBG_TRACE, & cpu_dev)
+            if_sim_debug (DBG_TRACEEXT, & cpu_dev)
               {
                 // Clock at initialization
                 // date -d "Tue Jul 22 16:39:38 PDT 1999" +%s
@@ -6241,7 +5909,7 @@ static t_stat DoBasicInstruction (void)
                 uint128 bigsecs = divide_128_32 (big, 1000000u, & remainder);
                 uint64_t uSecs = remainder;
                 uint64_t secs = bigsecs.l;
-                sim_debug (DBG_TRACE, & cpu_dev,
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "Clock time since boot %4llu.%06llu seconds\n",
                            secs, uSecs);
 #else
@@ -6249,7 +5917,7 @@ static t_stat DoBasicInstruction (void)
                 big -= MulticsuSecs;
                 unsigned long uSecs = big % 1000000u;
                 unsigned long secs = (unsigned long) (big / 1000000u);
-                sim_debug (DBG_TRACE, & cpu_dev,
+                sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "Clock time since boot %4lu.%06lu seconds\n",
                            secs, uSecs);
 #endif
@@ -6714,7 +6382,7 @@ IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
           cpu.rTRlsb = 0;
 //IF1 sim_printf ("CPU A ldt %d. (%o)\n", cpu.rTR, cpu.rTR);
 #endif
-          sim_debug (DBG_TRACE, & cpu_dev, "ldt TR %d (%o)\n",
+          sim_debug (DBG_TRACEEXT, & cpu_dev, "ldt TR %d (%o)\n",
                      cpu.rTR, cpu.rTR);
 #ifdef LOOPTRC
 elapsedtime ();
@@ -8375,7 +8043,7 @@ static t_stat DoEISInstruction (void)
         case 0774:  // lra
             CPTUR (cptUseRALR);
             cpu.rRALR = cpu.CY & MASK3;
-            sim_debug (DBG_TRACE, & cpu_dev, "RALR set to %o\n", cpu.rRALR);
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "RALR set to %o\n", cpu.rRALR);
 #ifdef LOOPTRC
 {
 void elapsedtime (void);
@@ -9472,11 +9140,11 @@ elapsedtime ();
  sim_printf (" rcu to %05o:%06o  PSR:IC %05o:%06o\r\n",  (cpu.Yblock8[0]>>18)&MASK15, (cpu.Yblock8[4]>>18)&MASK18, cpu.PPR.PSR, cpu.PPR.IC);
 #endif
 
-    if_sim_debug (DBG_TRACE, & cpu_dev)
+    if_sim_debug (DBG_TRACEEXT, & cpu_dev)
       {
         for (int i = 0; i < 8; i ++)
           {
-            sim_debug (DBG_TRACE, & cpu_dev, "RCU %d %012"PRIo64"\n", i,
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU %d %012"PRIo64"\n", i,
                        cpu.Yblock8[i]);
           }
       }
@@ -9494,7 +9162,7 @@ elapsedtime ();
 
     if (cpu.cu.FLT_INT == 0) // is interrupt, not fault
       {
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU interrupt return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU interrupt return\n");
         longjmp (cpu.jmpMain, JMP_REFETCH);
       }
 
@@ -9573,7 +9241,7 @@ elapsedtime ();
         // communicate; for now, turn it off on refetch so the state
         // machine doesn't become confused.
         cpu.cu.rfi = 0;
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU FIF REFETCH return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU FIF REFETCH return\n");
         longjmp (cpu.jmpMain, JMP_REFETCH);
       }
 
@@ -9581,7 +9249,7 @@ elapsedtime ();
     if (cpu.cu.rfi)
       {
 //sim_printf ( "RCU rfi refetch return\n");
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU rfi refetch return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU rfi refetch return\n");
 // Setting the to RESTART causes ISOLTS 776 to report unexpected
 // trouble faults.
 // Without clearing rfi, ISOLTS pm776-08i LUFs.
@@ -9600,7 +9268,7 @@ elapsedtime ();
     //if (cpu.cu.FI_ADDR == FAULT_MME2)
       {
 //sim_printf ("MME2 restart\n");
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU MME2 restart return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU MME2 restart return\n");
         cpu.cu.rfi = 0;
         longjmp (cpu.jmpMain, JMP_RESTART);
       }
@@ -9616,7 +9284,7 @@ elapsedtime ();
         // machine doesn't become confused.
 
         cpu.cu.rfi = 0;
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU rfi/FIF REFETCH return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU rfi/FIF REFETCH return\n");
         longjmp (cpu.jmpMain, JMP_REFETCH);
       }
 
@@ -9627,7 +9295,7 @@ elapsedtime ();
     if (cpu.cu.FI_ADDR == FAULT_MME2)
       {
 //sim_printf ("MME2 restart\n");
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU MME2 restart return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU MME2 restart return\n");
         cpu.cu.rfi = 1;
         longjmp (cpu.jmpMain, JMP_RESTART);
       }
@@ -9660,7 +9328,7 @@ elapsedtime ();
         cpu.cu.FI_ADDR == FAULT_OFL ||
         cpu.cu.FI_ADDR == FAULT_IPR)
       {
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU sync fault return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU sync fault return\n");
         cpu.cu.rfi = 0;
         longjmp (cpu.jmpMain, JMP_SYNC_FAULT_RETURN);
       }
@@ -9674,7 +9342,7 @@ elapsedtime ();
         cpu.cu.FI_ADDR == FAULT_OFL ||
         cpu.cu.FI_ADDR == FAULT_IPR)
       {
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU MMEx sync fault return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU MMEx sync fault return\n");
         cpu.cu.rfi = 0;
         longjmp (cpu.jmpMain, JMP_SYNC_FAULT_RETURN);
       }
@@ -9689,7 +9357,7 @@ elapsedtime ();
     if (cpu.cu.FI_ADDR == FAULT_LUF)
       {
         cpu.cu.rfi = 1;
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU LUF RESTART return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU LUF RESTART return\n");
         longjmp (cpu.jmpMain, JMP_RESTART);
       }
 
@@ -9706,7 +9374,7 @@ elapsedtime ();
       {
         // If the fault occurred during fetch, handled above.
         cpu.cu.rfi = 1;
-        sim_debug (DBG_TRACE, & cpu_dev, "RCU ACV RESTART return\n");
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU ACV RESTART return\n");
         longjmp (cpu.jmpMain, JMP_RESTART);
       }
     sim_printf ("doRCU dies with unhandled fault number %d\n", cpu.cu.FI_ADDR);

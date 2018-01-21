@@ -1424,7 +1424,7 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data,
              }
             cpu.TPR.TSR = cpu.PAR[n].SNR;
             cpu.cu.XSF = 1;
-sim_debug (DBG_TRACE, & cpu_dev, "doAppendCycle bit 29 sets XSF to 1\n");
+sim_debug (DBG_TRACEEXT, & cpu_dev, "doAppendCycle bit 29 sets XSF to 1\n");
             DBGAPP ("TSN TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
             goto A;
           }
