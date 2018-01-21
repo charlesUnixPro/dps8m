@@ -36,36 +36,8 @@
 #include "threadz.h"
 #endif
 
-static inline void fnp_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
-  {
-#ifdef THREADZ
-    lock_mem ();
-#endif
-#ifdef SCUMEM
-    iom_core_read (addr, data, ctx);
-#else
-    * data = M [addr] & DMASK;
-#endif
-#ifdef THREADZ
-    unlock_mem ();
-#endif
-  }
 
-static inline void fnp_core_write (word24 addr, word36 data, UNUSED const char * ctx)
-  {
-#ifdef THREADZ
-    lock_mem ();
-#endif
-#ifdef SCUMEM
-    iom_core_write (addr, data, ctx);
-#else
-    M [addr] = data & DMASK;
-#endif
-#ifdef THREADZ
-    unlock_mem ();
-#endif
-  }
-
+#ifdef FNPDBG
 static inline void fnp_core_read_n (word24 addr, word36 *data, uint n, UNUSED const char * ctx)
   {
 #ifdef THREADZ
@@ -81,6 +53,7 @@ static inline void fnp_core_read_n (word24 addr, word36 *data, uint n, UNUSED co
     unlock_mem ();
 #endif
   }
+#endif
 
 #ifdef THREADZ
 static inline void l_putbits36_1 (word36 vol * x, uint p, word1 val)
@@ -170,19 +143,7 @@ static struct decoded_t decoded;
 static void setTIMW (uint mailboxAddress, int mbx)
   {
     uint timwAddress = mailboxAddress + TERM_INPT_MPX_WD;
-#if 1
     l_putbits36_1 (& M [timwAddress], (uint) mbx, 1);
-#else
-    lock_mem ();
-//sim_printf ("new %p\n", & M [timwAddress]
-    //word36 w = M [timwAddress];
-    word36 w;
-    fnp_core_read (timwAddress, & w, "setTIMW read");
-    putbits36_1 (& w, (uint) mbx, 1);
-    //M [timwAddress] = w;
-    fnp_core_write (timwAddress, w, "setTIMW write");
-    unlock_mem ();
-#endif
   }
 
 //
@@ -195,13 +156,9 @@ static uint virtToPhys (uint ptPtr, uint l66Address)
     uint l66AddressPage = l66Address / 1024u;
 
     word36 ptw;
-#ifdef SCUMEM
     uint ctlr_port_no = 0; // FNPs are single port
     uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
     iom_core_read (iomUnitIdx, pageTable + l66AddressPage, & ptw, "fnp_iom_cmd get ptw");
-#else
-    fnp_core_read (pageTable + l66AddressPage, & ptw, "fnp_iom_cmd get ptw");
-#endif
     uint page = getbits36_14 (ptw, 4);
     uint addr = page * 1024u + l66Address % 1024u;
     return addr;
@@ -211,6 +168,7 @@ static uint virtToPhys (uint ptPtr, uint l66Address)
 // Debugging...
 //
 
+#ifdef FNPDBG
 static void dmpmbx (uint mailboxAddress)
   {
     struct mailbox mbx;
@@ -253,6 +211,7 @@ static void dmpmbx (uint mailboxAddress)
       }
         
   }
+#endif
 
 //
 // wcd; Multics has sent a Write Control Data command to the FNP
@@ -260,10 +219,8 @@ static void dmpmbx (uint mailboxAddress)
 
 static int wcd (void)
   {
-#ifdef SCUMEM
     uint ctlr_port_no = 0; // FNPs are single port
     uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
-#endif
 
     struct t_line * linep = & decoded.fudp->MState.line[decoded.slot_no];
     sim_debug (DBG_TRACE, & fnp_dev, "[%u] wcd op_code %u 0%o\n", decoded.slot_no, decoded.op_code, decoded.op_code);
@@ -569,12 +526,7 @@ static int wcd (void)
                 //sim_printf ("dataAddrPhys %06o\n", dataAddrPhys);
                 for (uint i = 0; i < echoTableLen; i ++)
                   {
-#ifdef SCUMEM
                     iom_core_read (iomUnitIdx, dataAddrPhys + i, & echoTable [i], __func__);
-#else
-                    //echoTable [i] = M [dataAddrPhys + i];
-                    fnp_core_read (dataAddrPhys + i, echoTable + i, "echo table");
-#endif
                     //sim_printf ("   %012"PRIo64"\n", echoTable [i]);
                   }
               }
@@ -1230,14 +1182,9 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
            {
              lastWordOff = wordOff;
              uint wordAddr = virtToPhys (ptPtr, dataAddr + wordOff);
-#ifdef SCUMEM
              uint ctlr_port_no = 0; // FNPs are single port
              uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
              iom_core_read (iomUnitIdx, wordAddr, & word, __func__);
-#else
-             //word = M [wordAddr];
-             fnp_core_read (wordAddr, & word, "fnp_wtx_output");
-#endif
 //sim_printf ("   %012"PRIo64"\n", M [wordAddr]);
            }
          byte = getbits36_9 (word, byteOff * 9);
@@ -1305,16 +1252,10 @@ static int wtx (void)
 
         // The dcw
         //word36 dcw = M [dcwAddrPhys + i];
-#ifdef SCUMEM
         word36 dcw;
         uint ctlr_port_no = 0; // FNPs are single port
         uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
         iom_core_read (iomUnitIdx, dcwAddrPhys, & dcw, __func__);
-#else
-        //word36 dcw = M [dcwAddrPhys];
-        word36 dcw;
-        fnp_core_read (dcwAddrPhys, & dcw, "dcw");
-#endif
         //sim_printf ("  %012"PRIo64"\n", dcw);
 
         // Get the address and the tally from the dcw
@@ -1405,16 +1346,8 @@ sim_printf ("']\n");
           putbits36_9 (& v, 18, data [i + 2]);
         if (i + 3 < tally0)
           putbits36_9 (& v, 27, data [i + 3]);
-//sim_printf ("%012"PRIo64"\n", v);
-#ifdef SCUMEM
-        iom_core_write (iomUnitIdx, addr0, v, __func__);
-#else
-        //M [addr0 ++] = v;
-        fnp_core_write (addr0, v, "rtx_input_accepted");
-#endif
-        //M [addr0 ++] = v;
         uint dcwAddrPhys = virtToPhys (decoded.p -> PCW_PAGE_TABLE_PTR, addr0);
-        M [dcwAddrPhys] = v;
+        iom_core_write (iomUnitIdx, dcwAddrPhys, v, __func__);
         addr0 ++;
       }
 
@@ -1431,16 +1364,9 @@ sim_printf ("']\n");
               putbits36_9 (& v, 18, data [tally0 + i + 2]);
             if (i + 3 < tally1)
               putbits36_9 (& v, 27, data [tally0 + i + 3]);
-//sim_printf ("%012"PRIo64"\n", v);
-#ifdef SCUMEM
-            iom_core_write (iomUnitIdx, addr1, v, __func__);
-#else
-        //M [addr1 ++] = v;
-            fnp_core_write (addr1, v, "rtx_input_accepted");
-#endif
-            //M [addr1 ++] = v;
-            uint dcwAddrPhys = virtToPhys (decoded.p -> PCW_PAGE_TABLE_PTR, addr1);
-            M [dcwAddrPhys] = v;
+            uint dcwAddrPhys = virtToPhys (decoded.p->PCW_PAGE_TABLE_PTR,
+                                           addr1);
+            iom_core_write (iomUnitIdx, dcwAddrPhys, v, __func__);
             addr1 ++;
           }
       }
@@ -2071,19 +1997,21 @@ sim_printf ("data xfer??\n");
 #ifdef FNPDBG
 dmpmbx (fudp->mailboxAddress);
 #endif
-        fnp_core_write (fudp -> mailboxAddress, 0, "fnp_iom_cmd clear dia_pcw");
+        iom_core_write (iomUnitIdx, fudp -> mailboxAddress, 0, "fnp_iom_cmd clear dia_pcw");
         putbits36_1 (& bootloadStatus, 0, 1); // real_status = 1
         putbits36_3 (& bootloadStatus, 3, 0); // major_status = BOOTLOAD_OK;
         putbits36_8 (& bootloadStatus, 9, 0); // substatus = BOOTLOAD_OK;
         putbits36_17 (& bootloadStatus, 17, 0); // channel_no = 0;
-        fnp_core_write (fudp -> mailboxAddress + 6, bootloadStatus, "fnp_iom_cmd set bootload status");
+        iom_core_write (iomUnitIdx, fudp -> mailboxAddress + 6, bootloadStatus, "fnp_iom_cmd set bootload status");
       }
     else
       {
+#ifdef FNPDBG
         dmpmbx (fudp->mailboxAddress);
+#endif
 // 3 error bit (1) unaligned, /* set to "1"b if error on connect */
         putbits36_1 (& dia_pcw, 18, 1); // set bit 18
-        fnp_core_write (fudp -> mailboxAddress, dia_pcw, "fnp_iom_cmd set error bit");
+        iom_core_write (iomUnitIdx, fudp -> mailboxAddress, dia_pcw, "fnp_iom_cmd set error bit");
       }
   }
 
