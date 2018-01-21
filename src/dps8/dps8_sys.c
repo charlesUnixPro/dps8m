@@ -3491,6 +3491,9 @@ static void dps8_init (void)
     signal (SIGUSR1, usr1_signal_handler);
 #endif
 
+    // sets connect to 0
+    memset (& sys_opts, 0, sizeof (sys_opts));
+
     init_opcodes();
     sysCableInit ();
     iom_init ();
