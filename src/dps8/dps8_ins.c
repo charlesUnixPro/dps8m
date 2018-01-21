@@ -110,112 +110,6 @@ static void writeOperands (void)
 
     if (Tm == TM_IT && (Td == IT_CI || Td == IT_SC || Td == IT_SCR))
       {
-        CPT (cpt2U, 1); // read indirect operand
-        // CI:
-        // Bit 30 of the TAG field of the indirect word is interpreted
-        // as a character size flag, tb, with the value 0 indicating
-        // 6-bit characters and the value 1 indicating 9-bit bytes.
-        // Bits 33-35 of the TAG field are interpreted as a 3-bit
-        // character/byte position value, cf. Bits 31-32 of the TAG
-        // field must be zero.  If the character position value is
-        // greater than 5 for 6-bit characters or greater than 3 for 9-
-        // bit bytes, an illegal procedure, illegal modifier, fault
-        // will occur. The TALLY field is ignored. The computed address
-        // is the value of the ADDRESS field of the indirect word. The
-        // effective character/byte number is the value of the
-        // character position count, cf, field of the indirect word.
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands IT reading indirect word from %06o\n",
-                            cpu.TPR.CA);
-
-        //
-        // Get the indirect word
-        //
-
-        word18 saveCA = cpu.TPR.CA;
-
-        //word18 indwordAddress = cpu.TPR.CA;
-        //Read2 (indwordAddress, cpu.itxPair, INDIRECT_WORD_FETCH);
-        //ReadIndirect ();
-        Read (cpu.TPR.CA, cpu.itxPair, APU_DATA_READ);
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands IT indword=%012"PRIo64"\n", cpu.itxPair[0]);
-
-        //
-        // Parse and validate the indirect word
-        //
-
-        word18 Yi = GET_ADDR (cpu.itxPair[0]);
-        cpu.ou.characterOperandSize = GET_TB (GET_TAG (cpu.itxPair[0]));
-        cpu.ou.characterOperandOffset = GET_CF (GET_TAG (cpu.itxPair[0]));
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands IT size=%o offset=%o Yi=%06o\n",
-                   cpu.ou.characterOperandSize, cpu.ou.characterOperandOffset,
-                   Yi);
-
-        if (cpu.ou.characterOperandSize == TB6 && cpu.ou.characterOperandOffset > 5)
-          // generate an illegal procedure, illegal modifier fault
-          doFault (FAULT_IPR,
-                   fst_ill_mod,
-                   "co size == TB6 && offset > 5");
-
-        if (cpu.ou.characterOperandSize == TB9 && cpu.ou.characterOperandOffset > 3)
-          // generate an illegal procedure, illegal modifier fault
-          doFault (FAULT_IPR,
-                   fst_ill_mod,
-                   "co size == TB9 && offset > 3");
-
-        if (Td == IT_SCR)
-          {
-            CPT (cpt2U, 2); // write IT_SCR
-            // For each reference to the indirect word, the character
-            // counter, cf, is reduced by 1 and the TALLY field is
-            // increased by 1 before the computed address is formed.
-            // Character count arithmetic is modulo 6 for 6-bit characters
-            // and modulo 4 for 9-bit bytes. If the character count, cf,
-            // underflows to -1, it is reset to 5 for 6-bit characters or
-            // to 3 for 9-bit bytes and ADDRESS is reduced by 1. ADDRESS
-            // arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096.
-            // If the TALLY field overflows to 0, the tally runout
-            // indicator is set ON, otherwise it is set OFF. The computed
-            // address is the (possibly) decremented value of the ADDRESS
-            // field of the indirect word. The effective character/byte
-            // number is the decremented value of the character position
-            // count, cf, field of the indirect word.
-
-            if (cpu.ou.characterOperandOffset == 0)
-              {
-                if (cpu.ou.characterOperandSize == TB6)
-                    cpu.ou.characterOperandOffset = 5;
-                else
-                    cpu.ou.characterOperandOffset = 3;
-                Yi -= 1;
-                Yi &= MASK18;
-              }
-                else
-              {
-                cpu.ou.characterOperandOffset -= 1;
-              }
-          }
-
-        //
-        // Get the data word
-        //
-
-        PNL (cpu.prepare_state |= ps_POT);
-
-        cpu.cu.pot = 1;
-
-        word36 data;
-        Read (Yi, & data, APU_DATA_READ);
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands IT data=%012"PRIo64"\n", data);
-
-        cpu.cu.pot = 0;
-
         //
         // Put the character into the data word
         //
@@ -223,11 +117,11 @@ static void writeOperands (void)
         switch (cpu.ou.characterOperandSize)
           {
             case TB6:
-              putChar (& data, cpu.CY & 077, cpu.ou.characterOperandOffset);
+              putChar (& cpu.ou.character_data, cpu.CY & 077, cpu.ou.characterOperandOffset);
               break;
 
             case TB9:
-              putByte (& data, cpu.CY & 0777, cpu.ou.characterOperandOffset);
+              putByte (& cpu.ou.character_data, cpu.CY & 0777, cpu.ou.characterOperandOffset);
               break;
           }
 
@@ -237,21 +131,20 @@ static void writeOperands (void)
 
         PNL (cpu.prepare_state |= ps_SAW);
 
-        Write (Yi, data, APU_DATA_STORE);
+        Write (cpu.ou.character_address, cpu.ou.character_data, OPERAND_STORE);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "writeOperands IT wrote char/byte %012"PRIo64" to %06o "
                    "tTB=%o tCF=%o\n",
-                   data, Yi,
+                   cpu.ou.character_data, cpu.ou.character_address,
                    cpu.ou.characterOperandSize, cpu.ou.characterOperandOffset);
 
         // Restore the CA; Read/Write() updates it.
         //cpu.TPR.CA = indwordAddress;
-        cpu.TPR.CA = saveCA;
+        cpu.TPR.CA = cpu.ou.character_address;
 
         return;
       } // IT
-
 
     WriteOP (cpu.TPR.CA, OPERAND_STORE);
 
@@ -311,107 +204,6 @@ static void readOperands (void)
 
     if (Tm == TM_IT && (Td == IT_CI || Td == IT_SC || Td == IT_SCR))
       {
-        CPT (cpt2U, 4); // read IT/CI/SCR
-        // CI
-        // Bit 30 of the TAG field of the indirect word is interpreted
-        // as a character size flag, tb, with the value 0 indicating
-        // 6-bit characters and the value 1 indicating 9-bit bytes.
-        // Bits 33-35 of the TAG field are interpreted as a 3-bit
-        // character/byte position value, cf. Bits 31-32 of the TAG
-        // field must be zero.  If the character position value is
-        // greater than 5 for 6-bit characters or greater than 3 for 9-
-        // bit bytes, an illegal procedure, illegal modifier, fault
-        // will occur. The TALLY field is ignored. The computed address
-        // is the value of the ADDRESS field of the indirect word. The
-        // effective character/byte number is the value of the
-        // character position count, cf, field of the indirect word.
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands IT reading indirect word from %06o\n",
-                            cpu.TPR.CA);
-
-        //
-        // Get the indirect word
-        //
-
-        PNL (cpu.prepare_state |= ps_RIW);
-
-        word36 indword;
-        word18 indwordAddress = cpu.TPR.CA;
-        Read (indwordAddress, & indword, APU_DATA_READ);
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands IT indword=%012"PRIo64"\n", indword);
-
-        //
-        // Parse and validate the indirect word
-        //
-
-        word18 Yi = GET_ADDR (indword);
-        cpu.ou.characterOperandSize = GET_TB (GET_TAG (indword));
-        cpu.ou.characterOperandOffset = GET_CF (GET_TAG (indword));
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands IT size=%o offset=%o Yi=%06o\n",
-                   cpu.ou.characterOperandSize, cpu.ou.characterOperandOffset,
-                   Yi);
-
-        if (cpu.ou.characterOperandSize == TB6 && cpu.ou.characterOperandOffset > 5)
-          // generate an illegal procedure, illegal modifier fault
-          doFault (FAULT_IPR,
-                   fst_ill_mod,
-                   "co size == TB6 && offset > 5");
-
-        if (cpu.ou.characterOperandSize == TB9 && cpu.ou.characterOperandOffset > 3)
-          // generate an illegal procedure, illegal modifier fault
-          doFault (FAULT_IPR,
-                   fst_ill_mod,
-                   "co size == TB9 && offset > 3");
-
-        if (Td == IT_SCR)
-          {
-            CPT (cpt2U, 5); // read SCR
-            // For each reference to the indirect word, the character
-            // counter, cf, is reduced by 1 and the TALLY field is
-            // increased by 1 before the computed address is formed.
-            // Character count arithmetic is modulo 6 for 6-bit characters
-            // and modulo 4 for 9-bit bytes. If the character count, cf,
-            // underflows to -1, it is reset to 5 for 6-bit characters or
-            // to 3 for 9-bit bytes and ADDRESS is reduced by 1. ADDRESS
-            // arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096.
-            // If the TALLY field overflows to 0, the tally runout
-            // indicator is set ON, otherwise it is set OFF. The computed
-            // address is the (possibly) decremented value of the ADDRESS
-            // field of the indirect word. The effective character/byte
-            // number is the decremented value of the character position
-            // count, cf, field of the indirect word.
-
-            if (cpu.ou.characterOperandOffset == 0)
-              {
-                if (cpu.ou.characterOperandSize == TB6)
-                    cpu.ou.characterOperandOffset = 5;
-                else
-                    cpu.ou.characterOperandOffset = 3;
-                Yi -= 1;
-                Yi &= MASK18;
-              }
-                else
-              {
-                cpu.ou.characterOperandOffset -= 1;
-              }
-          }
-
-        //
-        // Get the data word
-        //
-
-        PNL (cpu.prepare_state |= ps_SIW);
-
-        word36 data;
-        Read (Yi, & data, APU_DATA_READ);
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands IT data=%012"PRIo64"\n", data);
-
         //
         // Get the character from the data word
         //
@@ -419,21 +211,21 @@ static void readOperands (void)
         switch (cpu.ou.characterOperandSize)
           {
             case TB6:
-              cpu.CY = GETCHAR (data, cpu.ou.characterOperandOffset);
+              cpu.CY = GETCHAR (cpu.ou.character_data, cpu.ou.characterOperandOffset);
               break;
 
             case TB9:
-              cpu.CY = GETBYTE (data, cpu.ou.characterOperandOffset);
+              cpu.CY = GETBYTE (cpu.ou.character_data, cpu.ou.characterOperandOffset);
               break;
           }
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "readOperands IT read operand %012"PRIo64" from"
                    " %06o char/byte=%"PRIo64"\n",
-                   data, Yi, cpu.CY);
+                   cpu.ou.character_data, cpu.ou.character_address, cpu.CY);
 
         // Restore the CA; Read/Write() updates it.
-        cpu.TPR.CA = indwordAddress;
+        cpu.TPR.CA = cpu.ou.character_address;
 
         return;
       } // IT
@@ -2105,6 +1897,13 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
               cpu.TPR.CA &= MASK15;
           }
 
+        // These are set by doComputedAddressFormation
+        cpu.ou.directOperandFlag = false;
+        cpu.ou.directOperand = 0;
+        cpu.ou.characterOperandSize = 0;
+        cpu.ou.characterOperandOffset = 0;
+        cpu.ou.crflag = false;
+
 #define REORDER
 #ifdef REORDER
         if ((ci->info->flags & PREPARE_CA) || WRITEOP (ci) || READOP (ci))
@@ -2197,133 +1996,6 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
         cpu.TPR.TSR = cpu.PPR.PSR;
         cpu.TPR.TBR = 0;
       }
-
-#ifndef SC_SCR
-///
-/// executeInstruction: Update IT tally
-///
-
-    word6 rTAG;
-    if (ci->info->flags & NO_TAG) // for instructions line STCA/STCQ
-      rTAG = 0;
-    else
-      //rTAG = GET_TAG (cpu.cu.IWB);
-      rTAG = ci->tag;
-
-    word6 Tm = GET_TM (rTAG);
-    word6 Td = GET_TD (rTAG);
-
-    if (info->ndes == 0 /* non-EIS */ &&
-        (! (ci->info->flags & NO_TAG)) &&
-        Tm == TM_IT && (Td == IT_SC || Td == IT_SCR))
-      {
-        CPT (cpt2L, 4); // Update IT Tally; fetch indirect word
-        //
-        // Get the indirect word
-        //
-
-        //Read2 (cpu.TPR.CA, cpu.itxPair, INDIRECT_WORD_FETCH);
-        Read (cpu.TPR.CA, cpu.itxPair, APU_DATA_READ);
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "update IT indword=%012"PRIo64"\n", cpu.itxPair[0]);
-
-        //
-        // Parse and validate the indirect word
-        //
-
-        word18 Yi = GET_ADDR (cpu.itxPair[0]);
-        cpu.ou.characterOperandSize = GET_TB (GET_TAG (cpu.itxPair[0]));
-        cpu.ou.characterOperandOffset = GET_CF (GET_TAG (cpu.itxPair[0]));
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "update IT size=%o offset=%o Yi=%06o\n",
-                   cpu.ou.characterOperandSize, cpu.ou.characterOperandOffset,
-                   Yi);
-
-        word12 tally = GET_TALLY (cpu.itxPair[0]);    // 12-bits
-
-        if (Td == IT_SCR)
-          {
-            CPT (cpt2L, 5); // Update IT Tally; SCR
-            // For each reference to the indirect word, the character
-            // counter, cf, is reduced by 1 and the TALLY field is
-            // increased by 1 before the computed address is formed.
-            // Character count arithmetic is modulo 6 for 6-bit characters
-            // and modulo 4 for 9-bit bytes. If the character count, cf,
-            // underflows to -1, it is reset to 5 for 6-bit characters or
-            // to 3 for 9-bit bytes and ADDRESS is reduced by 1. ADDRESS
-            // arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096.
-            // If the TALLY field overflows to 0, the tally runout
-            // indicator is set ON, otherwise it is set OFF. The computed
-            // address is the (possibly) decremented value of the ADDRESS
-            // field of the indirect word. The effective character/byte
-            // number is the decremented value of the character position
-            // count, cf, field of the indirect word.
-
-            if (cpu.ou.characterOperandOffset == 0)
-              {
-                if (cpu.ou.characterOperandSize == TB6)
-                    cpu.ou.characterOperandOffset = 5;
-                else
-                    cpu.ou.characterOperandOffset = 3;
-                Yi -= 1;
-                Yi &= MASK18;
-              }
-                else
-              {
-                cpu.ou.characterOperandOffset -= 1;
-              }
-            tally ++;
-            tally &= 07777; // keep to 12-bits
-          }
-        else // SC
-          {
-            CPT (cpt2L, 6); // Update IT Tally; SC
-            // For each reference to the indirect word, the character
-            // counter, cf, is increased by 1 and the TALLY field is
-            // reduced by 1 after the computed address is formed. Character
-            // count arithmetic is modulo 6 for 6-bit characters and modulo
-            // 4 for 9-bit bytes. If the character count, cf, overflows to
-            // 6 for 6-bit characters or to 4 for 9-bit bytes, it is reset
-            // to 0 and ADDRESS is increased by 1. ADDRESS arithmetic is
-            // modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY
-            // field is reduced to 0, the tally runout indicator is set ON,
-            // otherwise it is set OFF.
-
-            cpu.ou.characterOperandOffset ++;
-
-            if (((cpu.ou.characterOperandSize == TB6) &&
-                 (cpu.ou.characterOperandOffset > 5)) ||
-                ((cpu.ou.characterOperandSize == TB9) &&
-                 (cpu.ou.characterOperandOffset > 3)))
-              {
-                cpu.ou.characterOperandOffset = 0;
-                Yi += 1;
-                Yi &= MASK18;
-              }
-            tally --;
-            tally &= 07777; // keep to 12-bits
-          }
-
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                       "update IT tally now %o\n", tally);
-
-        SC_I_TALLY (tally == 0);
-
-        cpu.itxPair[0] = (word36) (((word36) Yi << 18) |
-                            (((word36) tally & 07777) << 6) |
-                            cpu.ou.characterOperandSize |
-                            cpu.ou.characterOperandOffset);
-
-        Write (cpu.TPR.CA, cpu.itxPair[0], APU_DATA_STORE);
-
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "update IT wrote tally word %012"PRIo64" to %06o\n",
-                   cpu.itxPair[0], cpu.TPR.CA);
-      } // SC/SCR
-#endif
 
 ///
 /// executeInstruction: RPT/RPD/RPL processing
@@ -2723,12 +2395,6 @@ static t_stat DoBasicInstruction (void)
 #ifdef L68
     bool is_ou = false;
 #endif
-    cpu.ou.directOperandFlag = false;
-    cpu.ou.directOperand = 0;
-    cpu.ou.characterOperandSize = 0;
-    cpu.ou.characterOperandOffset = 0;
-    cpu.ou.crflag = false;
-
 #ifdef PANEL
     if (NonEISopcodes[i->opcode].reg_use & is_OU)
       {

@@ -780,9 +780,8 @@ startCA:;
                 //
 
                 word36 indword;
-                word18 indwordAddress = cpu.TPR.CA;
-                Read (indwordAddress, & indword, APU_DATA_READ);
-
+                word18 indaddr = cpu.TPR.CA;
+                Read (indaddr, & indword, APU_DATA_READ);
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD CI/SC/SCR indword=%012"PRIo64"\n", indword);
 
@@ -790,28 +789,31 @@ startCA:;
                 // Parse and validate the indirect word
                 //
 
-                word18 Yi_ = GET_ADDR (indword);
-                cpu.ou.characterOperandSize = GET_TB (GET_TAG (indword));
-                cpu.ou.characterOperandOffset = GET_CF (GET_TAG (indword));
+                Yi = GET_ADDR (indword);
+                word6 sz = GET_TB (GET_TAG (indword));
+                word3 os = GET_CF (GET_TAG (indword));
                 word12 tally = GET_TALLY (indword);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD CI/SC/SCR size=%o offset=%o Yi=%06o\n",
-                           cpu.ou.characterOperandSize,
-                           cpu.ou.characterOperandOffset,
-                           Yi_);
+                           sz, os, Yi);
 
-                if (cpu.ou.characterOperandSize == TB6 &&
-                    cpu.ou.characterOperandOffset > 5)
+                if (sz == TB6 && os > 5)
                   // generate an illegal procedure, illegal modifier fault
                   doFault (FAULT_IPR, fst_ill_mod,
                            "co size == TB6 && offset > 5");
 
-                if (cpu.ou.characterOperandSize == TB9 &&
-                    cpu.ou.characterOperandOffset > 3)
+                if (sz == TB9 && os > 3)
                   // generate an illegal procedure, illegal modifier fault
                   doFault (FAULT_IPR, fst_ill_mod,
                            "co size == TB9 && offset > 3");
+
+                // Save data in OU registers for readOperands/writeOperands
+
+                cpu.TPR.CA = Yi;
+                cpu.ou.character_address = Yi;
+                cpu.ou.characterOperandSize = sz;
+                cpu.ou.characterOperandOffset = os;
 
                 // CI uses the address, and SC uses the pre-increment address;
                 // but SCR use the post-decrement address
@@ -836,23 +838,39 @@ startCA:;
 		// character position count, cf, field of the indirect
 		// word.
 
-                    if (cpu.ou.characterOperandOffset == 0)
+                    if (os == 0)
                       {
-                        if (cpu.ou.characterOperandSize == TB6)
-                            cpu.ou.characterOperandOffset = 5;
+                        if (sz == TB6)
+                            os = 5;
                         else
-                            cpu.ou.characterOperandOffset = 3;
-                        Yi_ -= 1;
-                        Yi_ &= MASK18;
+                            os = 3;
+                        Yi -= 1;
+                        Yi &= MASK18;
                       }
-                        else
+                    else
                       {
-                        cpu.ou.characterOperandOffset -= 1;
+                        os -= 1;
                       }
+
                     CPT (cpt2L, 5); // Update IT Tally; SCR
                     tally ++;
                     tally &= 07777; // keep to 12-bits
+
+                    // Update saved values
+
+                    cpu.TPR.CA = Yi;
+                    cpu.ou.character_address = Yi;
+                    cpu.ou.characterOperandSize = sz;
+                    cpu.ou.characterOperandOffset = os;
                   }
+
+
+// What if readOperands and/of writeOperands fault? On restart, doCAF will be called again
+// and the indirect word would incorrectly be updated a second time. 
+//
+// We don't care about read/write access violations; in general, they are not restarted.
+//
+// We can avoid page faults by preemptively fetching the data word.
 
                 //
                 // Get the data word
@@ -860,18 +878,12 @@ startCA:;
 
                 cpu.cu.pot = 1;
 
-                word36 data;
-                Read (Yi_, & data, APU_DATA_READ);
+                Read (cpu.TPR.CA, & cpu.ou.character_data, OPERAND_READ);
+
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "IT_MOD CI/SC/SCR data=%012"PRIo64"\n", data);
+                   "IT_MOD CI/SC/SCR data=%012"PRIo64"\n", cpu.ou.character_data);
 
                 cpu.cu.pot = 0;
-
-#ifdef SC_SCR
-
-// Instruction restart is not an issue here, as the CA will be restored from the
-// IWB, so we can set the CA back to the indirect word without losing track of
-// what was going on.
 
                 if (Td == IT_SC)
                   {
@@ -886,14 +898,12 @@ startCA:;
                     // field is reduced to 0, the tally runout indicator is set ON,
                     // otherwise it is set OFF.
 
-                    cpu.ou.characterOperandOffset ++;
+                    os ++;
 
-                    if (((cpu.ou.characterOperandSize == TB6) &&
-                         (cpu.ou.characterOperandOffset > 5)) ||
-                        ((cpu.ou.characterOperandSize == TB9) &&
-                         (cpu.ou.characterOperandOffset > 3)))
+                    if (((sz == TB6) && (os > 5)) ||
+                        ((sz == TB9) && (os > 3)))
                       {
-                        cpu.ou.characterOperandOffset = 0;
+                        os = 0;
                         Yi += 1;
                         Yi &= MASK18;
                       }
@@ -907,29 +917,27 @@ startCA:;
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
                                    "update IT tally now %o\n", tally);
 
-                    SC_I_TALLY (tally == 0);
-
                     //word36 new_indword = (word36) (((word36) Yi << 18) |
                     //                    (((word36) tally & 07777) << 6) |
                     //                    cpu.ou.characterOperandSize |
                     //                    cpu.ou.characterOperandOffset);
-                    //Write (indwordAddress,  new_indword, APU_DATA_STORE);
-                    putbits36_18 (& indword, 0, Yi_);
+                    //Write (cpu.TPR.CA,  new_indword, APU_DATA_STORE);
+                    putbits36_18 (& indword, 0, Yi);
                     putbits36_12 (& indword, 18, tally);
-                    putbits36_3  (& indword, 33, cpu.ou.characterOperandOffset);
-                    Write (indwordAddress,  indword, APU_DATA_STORE);
+                    putbits36_3  (& indword, 33, os);
+                    Write (indaddr, indword, APU_DATA_STORE);
 
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
                                "update IT wrote tally word %012"PRIo64" to %06o\n",
                                indword, cpu.TPR.CA);
                   }
-#endif
 
-                //
-                // Restore the CA to point to the indirect word
-                //
+                SC_I_TALLY (tally == 0);
 
-                cpu.TPR.CA =  indwordAddress;
+
+                // readOperand and writeOperand will not use cpu.TPR.CA; they will
+                // use the saved address, size, offset and data.
+                cpu.TPR.CA = cpu.ou.character_address;
                 return;
               } // IT_CI, IT_SC, IT_SCR
    
