@@ -1208,19 +1208,34 @@ t_stat executeInstruction (void)
     //cpu.isb29 = ci->b29;
     //ISB29 = ci->b29;
     const opCode *info = ci->info;       // opCode *
+// Local caches of frequently accessed data
+
+    const uint ndes = info->ndes;
+    const bool restart = ci->restart;         // instruction is to be restarted
+    const opc_flag flags = info->flags;
+    const opc_mod mods = info->mods;
+    const uint32 opcode = ci->opcode;   // opcode
+    const bool opcodeX = ci->opcodeX;  // opcode extension
+    const word6 tag = ci->tag;          // instruction tag
+
 
 #ifdef MATRIX
-    const uint32  opcode = ci->opcode;   // opcode
-    const bool   opcodeX = ci->opcodeX;  // opcode extension
-                                         // XXX replace with rY
-    const bool   b29 = ci->b29;              // bit-29 - addressing via pointer
-                                         // register
-    const word6  tag = ci->tag;          // instruction tag
-                                         //  XXX replace withrTAG
-
-
-    addToTheMatrix (opcode, opcodeX, b29, tag);
+    {
+      const uint32  opcode = ci->opcode;   // opcode
+      const bool   opcodeX = ci->opcodeX;  // opcode extension
+                                           // XXX replace with rY
+      const bool   b29 = ci->b29;              // bit-29 - addressing via pointer
+                                           // register
+      const word6  tag = ci->tag;          // instruction tag
+                                           //  XXX replace withrTAG
+      addToTheMatrix (opcode, opcodeX, b29, tag);
+    }
 #endif
+
+//#define likely(x) (x)
+//#define unlikely(x) (x)
+#define likely(x) __builtin_expect ((x), 1)
+#define unlikely(x) __builtin_expect ((x), 0)
 
 //sim_debug (DBG_TRACEEXT, & cpu_dev, "isb29 %o\n", ci->b29);
     if (ci->b29)
@@ -1228,10 +1243,10 @@ t_stat executeInstruction (void)
 
 #ifdef L68
     CPTUR (cptUseMR);
-    if (cpu.MR.emr && cpu.MR.OC_TRAP)
+    if (unlikely (cpu.MR.emr && cpu.MR.OC_TRAP))
       {
-        if (cpu.MR.OPCODE == ci->opcode &&
-            cpu.MR.OPCODEX == ci->opcodeX) 
+        if (cpu.MR.OPCODE == opcode &&
+            cpu.MR.OPCODEX == opcodeX) 
           {
             if (cpu.MR.ihrrs)
               {
@@ -1249,7 +1264,7 @@ IF1 sim_printf ("trapping opcode match......\n");
 /// executeInstruction: Non-restart processing
 ///
 
-    if (!ci->restart || info->ndes > 0) // until we implement EIS restart
+    if (likely (!restart) || unlikely (ndes > 0)) // until we implement EIS restart
     {
         cpu.cu.TSN_VALID[0] = 0;
         cpu.cu.TSN_VALID[1] = 0;
@@ -1259,7 +1274,7 @@ IF1 sim_printf ("trapping opcode match......\n");
         cpu.cu.TSN_PRNO[2] = 0;
     }
 
-    if (ci->restart)
+    if (unlikely (restart))
       goto restart_1;
 
 //
@@ -1281,20 +1296,20 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction sets XSF to %o\n", cpu.c
     //cpu.cu.TSN_VALID[2] = 0;
 
     // If executing the target of XEC/XED, check the instruction is allowed
-    if (cpu.isXED)
-    {
-		if (ci->info->flags & NO_XED)
+    if (unlikely (cpu.isXED))
+      {
+        if (flags & NO_XED)
             doFault (FAULT_IPR,
                      fst_ill_proc,
                      "Instruction not allowed in XEC/XED");
         // The even instruction from C(Y-pair) must not alter
         // C(Y-pair)36,71, and must not be another xed instruction.
-        if (ci->opcode == 0717 && !ci->opcodeX && cpu.cu.xdo /* even instruction being executed */)
+        if (opcode == 0717 && !opcodeX && cpu.cu.xdo /* even instruction being executed */)
             doFault (FAULT_IPR,
                      fst_ill_proc,
                      "XED of XED on even word");
         // ISOLTS 791 03k, 792 03k
-        if (ci->opcode == 0560 && !ci->opcodeX) {
+        if (opcode == 0560 && !opcodeX) {
             // To Execute Double (XED) the RPD instruction, the RPD must be the second
             // instruction at an odd-numbered address.
             if (cpu.cu.xdo /* even instr being executed */)
@@ -1308,10 +1323,10 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction sets XSF to %o\n", cpu.c
                      (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
                      "XED of RPD on odd word, even IC");
         }
-    } else if (cpu.isExec) {
+    } else if (unlikely (cpu.isExec)) {
         // To execute a rpd instruction, the xec instruction must be in an odd location.
         // ISOLTS 768 01w
-        if (ci->opcode == 0560 && !ci->opcodeX && !cpu.cu.xde && !(cpu.PPR.IC & 1)) 
+        if (opcode == 0560 && !opcodeX && !cpu.cu.xde && !(cpu.PPR.IC & 1)) 
             doFault (FAULT_IPR,
                  (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
                  "XEC of RPx on even word");
@@ -1325,20 +1340,20 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction sets XSF to %o\n", cpu.c
 
 #if 0
     if (TST_I_NBAR == 0)
-      if (ci->info->flags & NO_BAR)
+      if (flags & NO_BAR)
         RPx_fault |= FR_ILL_SLV;
 #endif
 
     // RPT/RPD illegal modifiers
     // a:AL39/rpd3
-    if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
+    if (unlikely (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl))
       {
-        if (! (ci->info->flags & NO_TAG))
+        if (! (flags & NO_TAG))
           {
             // check for illegal modifiers:
             //    only R & RI are allowed
             //    only X1..X7
-            switch (GET_TM (ci->tag))
+            switch (GET_TM (tag))
               {
                 case TM_RI:
                   if (cpu.cu.rl)
@@ -1353,7 +1368,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction sets XSF to %o\n", cpu.c
                   RPx_fault |= FR_ILL_MOD;
               }
 
-            word6 Td = GET_TD (ci->tag);
+            word6 Td = GET_TD (tag);
             if (Td == TD_X0)
               {
                 RPx_fault |= FR_ILL_MOD;
@@ -1368,7 +1383,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction sets XSF to %o\n", cpu.c
 #ifdef DPS8M
         // ISOLTS 792 03e
         // this is really strange. possibly a bug in DPS8M HW (L68 handles it the same as all other instructions)
-        if (RPx_fault && !ci->opcodeX && ci->opcode==0413) // rscr
+        if (RPx_fault && !opcodeX && opcode==0413) // rscr
           {
               doFault (FAULT_IPR,
                  (_fault_subtype) {.fault_ipr_subtype=RPx_fault},
@@ -1378,17 +1393,17 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction sets XSF to %o\n", cpu.c
 
     // Instruction not allowed in RPx?
 
-    if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
+    if (unlikely (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl))
       {
-        if (ci->info->flags & NO_RPT)
+        if (flags & NO_RPT)
           {
             RPx_fault |= FR_ILL_PROC;
           }
       }
 
-    if (cpu.cu.rl)
+    if (unlikely (cpu.cu.rl))
       {
-        if (ci->info->flags & NO_RPL)
+        if (flags & NO_RPL)
           {
             RPx_fault |= FR_ILL_PROC;
           }
@@ -1398,15 +1413,15 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction sets XSF to %o\n", cpu.c
         // ISOLTS 791 03d, 792 03d
         // L68 wants ILL_MOD here - stca,stcq,stba,stbq,scpr,lcpr
         // all these instructions have a nonstandard TAG field interpretation. probably a HW bug in decoder
-        if (RPx_fault && !ci->opcodeX && (ci->opcode==0751 || ci->opcode==0752 || ci->opcode==0551 
-            || ci->opcode==0552 || ci->opcode==0452 || ci->opcode==0674))
+        if (RPx_fault && !opcodeX && (opcode==0751 || opcode==0752 || opcode==0551 
+            || opcode==0552 || opcode==0452 || opcode==0674))
           {
             RPx_fault |= FR_ILL_MOD;
           }
 #endif
       }
 
-    if (RPx_fault)
+    if (unlikely (RPx_fault))
       {
         doFault (FAULT_IPR,
                  (_fault_subtype) {.fault_ipr_subtype=RPx_fault},
@@ -1419,32 +1434,32 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction sets XSF to %o\n", cpu.c
     fault_ipr_subtype_ mod_fault = 0;
 
     // No CI/SC/SCR allowed
-    if (ci->info->mods == NO_CSS)
+    if (mods == NO_CSS)
     {
-        if (_nocss[ci->tag])
+        if (_nocss[tag])
             mod_fault |= FR_ILL_MOD; // "Illegal CI/SC/SCR modification"
     }
     // No DU/DL/CI/SC/SCR allowed
-    else if (ci->info->mods == NO_DDCSS)
+    else if (mods == NO_DDCSS)
     {
-        if (_noddcss[ci->tag])
+        if (_noddcss[tag])
             mod_fault |= FR_ILL_MOD; // "Illegal DU/DL/CI/SC/SCR modification"
     }
     // No DL/CI/SC/SCR allowed
-    else if (ci->info->mods == NO_DLCSS)
+    else if (mods == NO_DLCSS)
     {
-        if (_nodlcss[ci->tag])
+        if (_nodlcss[tag])
             mod_fault |= FR_ILL_MOD; // "Illegal DL/CI/SC/SCR modification"
     }
     // No DU/DL allowed
-    else if (ci->info->mods == NO_DUDL)
+    else if (mods == NO_DUDL)
     {
-        if (_nodudl[ci->tag])
+        if (_nodudl[tag])
             mod_fault |= FR_ILL_MOD; // "Illegal DU/DL modification"
     }
-    else if (ci->info->mods == ONLY_AU_QU_AL_QL_XN)
+    else if (mods == ONLY_AU_QU_AL_QL_XN)
     {
-        if (_onlyaqxn[ci->tag])
+        if (_onlyaqxn[tag])
             mod_fault |= FR_ILL_MOD; // "Illegal DU/DL/IC modification"
     }
 
@@ -1460,13 +1475,13 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction sets XSF to %o\n", cpu.c
 
     // check for priv ins - Attempted execution in normal or BAR modes causes a
     // illegal procedure fault.
-    if (ci->info->flags & PRIV_INS)
+    if (unlikely (flags & PRIV_INS))
       {
 #ifdef DPS8M
         // DPS8M illegal instructions lptp,lptr,lsdp,lsdr
         // ISOLTS 890 05abc
-        if (((ci->opcode == 0232 || ci->opcode == 0173) && ci->opcodeX ) 
-           || (ci->opcode == 0257))
+        if (((opcode == 0232 || opcode == 0173) && opcodeX ) 
+           || (opcode == 0257))
         {
             doFault (FAULT_IPR,
                 (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP|mod_fault},
@@ -1478,14 +1493,14 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction sets XSF to %o\n", cpu.c
             // "multics" privileged instructions: absa,ldbr,lra,rcu,scu,sdbr,ssdp,ssdr,sptp,sptr
             // ISOLTS 890 05abc,06abc
 #ifdef DPS8M
-            if (((ci->opcode == 0212 || ci->opcode == 0232 || ci->opcode == 0613 || ci->opcode == 0657) && !ci->opcodeX )
-               || ((ci->opcode == 0254 || ci->opcode == 0774) && ci->opcodeX ) 
-               || (ci->opcode == 0557 || ci->opcode == 0154))
+            if (((opcode == 0212 || opcode == 0232 || opcode == 0613 || opcode == 0657) && !opcodeX )
+               || ((opcode == 0254 || opcode == 0774) && opcodeX ) 
+               || (opcode == 0557 || opcode == 0154))
 #else // L68
             // on L68, lptp,lptr,lsdp,lsdr instructions are not illegal, so handle them here
-            if (((ci->opcode == 0212 || ci->opcode == 0232 || ci->opcode == 0613 || ci->opcode == 0657) && !ci->opcodeX )
-               || ((ci->opcode == 0254 || ci->opcode == 0774 || ci->opcode == 0232 || ci->opcode == 0173) && ci->opcodeX ) 
-               || (ci->opcode == 0557 || ci->opcode == 0154 || ci->opcode == 0257))
+            if (((opcode == 0212 || opcode == 0232 || opcode == 0613 || opcode == 0657) && !opcodeX )
+               || ((opcode == 0254 || opcode == 0774 || opcode == 0232 || opcode == 0173) && opcodeX ) 
+               || (opcode == 0557 || opcode == 0154 || opcode == 0257))
 #endif
             {
                 if (!get_bar_mode ()) {
@@ -1505,12 +1520,13 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction sets XSF to %o\n", cpu.c
           }
       }
 
-    if (get_bar_mode())
-      if (ci->info->flags & NO_BAR) {
+    if (unlikely (flags & NO_BAR))
+      if (get_bar_mode())
+        {
           // lbar
           // ISOLTS 890 06a
           // ISOLTS says that L68 handles this in the same way
-          if (ci->opcode == 0230 && !ci->opcodeX) {
+          if (opcode == 0230 && !opcodeX) {
             doFault (FAULT_IPR,
                 (_fault_subtype) {.fault_ipr_subtype=FR_ILL_SLV|mod_fault},
                 "Attempted BAR execution of nonprivileged instruction.");
@@ -1522,7 +1538,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction sets XSF to %o\n", cpu.c
 
 #ifdef DPS8M
     // DPS8M raises it delayed
-    if (mod_fault)
+    if (unlikely (mod_fault))
       {
         doFault (FAULT_IPR,
                  (_fault_subtype) {.fault_ipr_subtype=mod_fault},
@@ -1587,14 +1603,14 @@ restart_1:
 /// executeInstruction: Initialize misc.
 ///
 
-    cpu.du.JMP = (word3) info->ndes;
+    cpu.du.JMP = (word3) ndes;
     cpu.dlyFlt = false;
 
 ///
 /// executeInstruction: RPT/RPD/RPL special processing for 'first time'
 ///
 
-    if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
+    if (unlikely (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl))
       {
         CPT (cpt2U, 15); // RPx processing
 //
@@ -1706,7 +1722,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "b29, ci->address %o\n", ci->address);
                 sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "rpt/rd/rl repeat first; offset is %06o\n", offset);
 
-                word6 Td = GET_TD (ci->tag);
+                word6 Td = GET_TD (tag);
                 uint Xn = X (Td);  // Get Xn of next instruction
                 sim_debug (DBG_TRACEEXT, & cpu_dev,
                            "rpt/rd/rl repeat first; X%d was %06o\n",
@@ -1731,18 +1747,18 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "b29, ci->address %o\n", ci->address);
 /// executeInstruction: EIS operand processing
 ///
 
-    if (info->ndes > 0)
+    if (unlikely (ndes > 0))
       {
         CPT (cpt2U, 27); // EIS operand processing
         sim_debug (DBG_APPENDING, &cpu_dev, "initialize EIS descriptors\n");
         // This must not happen on instruction restart
-        if (! ci->restart)
+        if (!restart)
           {
             CPT (cpt2U, 28); // EIS not restart
             cpu.du.CHTALLY = 0;
             cpu.du.Z = 1;
           }
-        for (uint n = 0; n < info->ndes; n += 1)
+        for (uint n = 0; n < ndes; n += 1)
           {
             CPT (cpt2U, 29 + n); // EIS operand fetch (29, 30, 31)
 // XXX This is a bit of a hack; In general the code is good about
@@ -1803,7 +1819,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
             cpu.TPR.CA = (cpu.PAR[n].WORDNO + SIGNEXT15_18 (offset))
                          & MASK18;
 
-            if (! ci-> restart)
+            if (!restart)
               {
 // Not EIS, bit 29 set, restart
                 cpu.TPR.TBR = GET_PR_BITNO (n);
@@ -1832,7 +1848,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction EIS sets XSF to %o\n", c
         else
           {
 // not eis, not bit b29
-            if (! ci->restart)
+            if (!restart)
               {
                 CPT (cpt2U, 35); // not B29
                 cpu.cu.TSN_VALID [0] = 0;
@@ -1850,7 +1866,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
           }
 
         // This must not happen on instruction restart
-        if (! ci->restart)
+        if (!restart)
           {
             cpu.cu.CT_HOLD = 0; // Clear interrupted IR mode flag
           }
@@ -1862,7 +1878,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
         // to the data word instead of the indirect word; reset the CA correctly
         //
 
-        if (ci->restart && cpu.cu.pot)
+        if (restart && cpu.cu.pot)
           {
             CPT (cpt2L, 0); // POT set
             cpu.TPR.CA = GET_ADDR (IWB_IRODD);
@@ -1879,7 +1895,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
 
 #define REORDER
 #ifdef REORDER
-        if ((ci->info->flags & PREPARE_CA) || WRITEOP (ci) || READOP (ci))
+        if ((flags & PREPARE_CA) || WRITEOP (ci) || READOP (ci))
           {
             CPT (cpt2L, 1); // CAF
             doComputedAddressFormation ();
@@ -1887,7 +1903,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
             cpu.iefpFinalAddress = cpu.TPR.CA;
           }
 
-        //if (READOP (ci) && ! ((bool) (ci->info->flags & TRANSFER_INS)))
+        //if (READOP (ci) && ! ((bool) (flags & TRANSFER_INS)))
         if (READOP (ci))
           {
             CPT (cpt2L, 2); // Read operands
@@ -1916,7 +1932,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
               }
           }
 #else
-        if (ci->info->flags & PREPARE_CA)
+        if (flags & PREPARE_CA)
           {
             doComputedAddressFormation ();
             L68_ (cpu.AR_F_E = true;)
@@ -1960,7 +1976,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
         writeOperands ();
       }
 
-    else if (ci->info->flags & PREPARE_CA)
+    else if (flags & PREPARE_CA)
       {
         // 'EPP ITS; TRA' confuses the APU by leaving last_cycle 
         // at INDIRECT_WORD_FETCH; defoobarize the APU:
@@ -1991,7 +2007,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
     if (rf && cpu.cu.rd && icEven)
       rf = false;
 
-    if ((! rf) && (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl))
+    if (unlikely ((! rf) && (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)))
       {
         CPT (cpt2L, 7); // Post execution RPx
         // If we get here, the instruction just executed was a
@@ -2219,7 +2235,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
           } // rl
       } // (! rf) && (cpu.cu.rpt || cpu.cu.rd)
 
-    if (cpu.dlyFlt)
+    if (unlikely (cpu.dlyFlt))
       {
         CPT (cpt2L, 14); // Delayed fault
         doFault (cpu.dlyFltNum, cpu.dlySubFltNum, cpu.dlyCtx);
