@@ -187,6 +187,8 @@ typedef struct
 
     bool wasTDCW;
 
+    bool masked;
+
   } iomChanData_t;
 
 extern iomChanData_t iomChanData [N_IOM_UNITS_MAX] [MAX_CHANNELS];

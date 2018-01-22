@@ -2162,6 +2162,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
       p -> PCW_21_MSK =         q -> PCW_21_MSK;
     }
 
+    p->masked = !!p->PCW_21_MSK;
     struct iom_to_ctlr_s * d = & cables->iom_to_ctlr[iomUnitIdx][chan];
 
 // A device command of 051 in the PCW is only meaningful to the operator console;
@@ -2257,6 +2258,11 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
       }
 #endif
 
+    if (p->masked)
+      {
+//sim_printf ("chan %u masked, skipping\n", chan);
+        goto done;
+      }
     bool ptro, send, uff;
 
     do
@@ -2545,8 +2551,10 @@ int send_terminate_interrupt (uint iomUnitIdx, uint chan)
 
 void iom_interrupt (uint scuUnitIdx, uint iomUnitIdx)
   {
-    sim_debug (DBG_DEBUG, & iom_dev, "%s: IOM %c starting.\n",
-               __func__, 'A' + iomUnitIdx);
+    sim_debug (DBG_DEBUG, & iom_dev,
+               "%s: IOM %c starting. [%lld] %05o:%08o\n",
+               __func__, 'A' + iomUnitIdx,
+               cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC);
 
     iomUnitData [iomUnitIdx] . invokingScuUnitIdx = scuUnitIdx;
 
