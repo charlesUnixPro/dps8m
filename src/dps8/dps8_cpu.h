@@ -670,6 +670,7 @@ struct DCDstruct
     opCode * info;        // opCode *
     uint32 opcode;        // opcode
     bool   opcodeX;       // opcode extension
+    uint32 opcode10;      // opcode | (opcodeX ? 01000 : 0)
     word18 address;       // bits 0-17 of instruction
     word1  b29;           // bit-29 - address via pointer register. Usually.
     bool   i;             // interrupt inhinit bit.

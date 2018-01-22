@@ -2821,6 +2821,7 @@ void decodeInstruction (word36 inst, DCDstruct * p)
 
     p->opcode  = GET_OP (inst);   // get opcode
     p->opcodeX = GET_OPX(inst);   // opcode extension
+    p->opcode10 = p->opcode | (p->opcodeX ? 01000 : 0);
     p->address = GET_ADDR (inst); // address field from instruction
     p->b29     = GET_A (inst);    // "A" the indirect via pointer register flag
     p->i       = GET_I (inst);    // "I" inhibit interrupt flag
@@ -3732,7 +3733,7 @@ void addOUhist (void)
 
     // 41-50 stuvwyyzAB -A-REG -Q-REG -X0-REG .. -X7-REG
     PNL (putbits36_10 (& w1, 41-36,
-         (word10) ~NonEISopcodes [cpu.ou.RS].reg_use);)
+         (word10) ~opcodes10 [cpu.ou.RS].reg_use);)
 
     // 51-53 0
 

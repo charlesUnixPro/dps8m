@@ -82,22 +82,17 @@ static char * dps8_strupr(char *str)
 
 static opCode UnImp = {"(unimplemented)", 0, 0, 0, 0};
 
-struct opCode *getIWBInfo(DCDstruct *i)
-{
-    opCode *p;
-    
-    if (i->opcodeX == false)
-        p = &NonEISopcodes[i->opcode];
-    else
-        p = &EISopcodes[i->opcode];
-    
+struct opCode * getIWBInfo (DCDstruct * i)
+  {
+    opCode * p = &opcodes10[i->opcode10];
     return p->mne ? p : &UnImp;
-}
+  }
 
 char *disAssemble(char * result, word36 instruction)
 {
-    word9  opcode  = GET_OP(instruction);   ///< get opcode
-    int32  opcodeX = GET_OPX(instruction);  ///< opcode extension
+    uint32 opcode  = GET_OP(instruction);   ///< get opcode
+    uint32 opcodeX = GET_OPX(instruction);  ///< opcode extension
+    uint32 opcode10 = opcode | (opcodeX ? 01000 : 0);
     word18 address = GET_ADDR(instruction);
     word1  a       = GET_A(instruction);
     //int32 i       = GET_I(instruction);
@@ -107,25 +102,11 @@ char *disAssemble(char * result, word36 instruction)
     strcpy(result, "???");
     
     // get mnemonic ...
-    // non-EIS first
-    if (!opcodeX)
-    {
-        if (NonEISopcodes[opcode].mne)
-            strcpy(result, NonEISopcodes[opcode].mne);
-    }
-    else
-    {
-        // EIS second...
-        if (EISopcodes[opcode].mne)
-            strcpy(result, EISopcodes[opcode].mne);
-        
-        if (EISopcodes[opcode].ndes > 0)
-        {
-            // XXX need to reconstruct multi-word EIS instruction.
+    if (opcodes10[opcode10].mne)
+        strcpy(result, opcodes10[opcode10].mne);
 
-        }
-    }
-    
+    // XXX need to reconstruct multi-word EIS instruction.
+
     char buff[64];
     
     if (a)

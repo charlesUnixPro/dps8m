@@ -33,7 +33,8 @@
 
 #define _EIS_ NO_TAG | NO_XED | NO_RPT | IGN_B29
 
-struct opCode NonEISopcodes[01000] = {
+struct opCode opcodes10[02000] = {
+// NonEIS
     /* 000 */
     {NULL, 0, 0, 0, 0},
     {"mme", NO_RPT, 0, 0, 0},
@@ -563,11 +564,8 @@ struct opCode NonEISopcodes[01000] = {
     {"gtb", PREPARE_CA | NO_RPL, 0, 0, ru_A},
     {"alr", PREPARE_CA | NO_RPL, NO_DDCSS, 0, ru_A},
     {"qlr", PREPARE_CA | NO_RPL, NO_DDCSS, 0, ru_Q},
-    {"llr", PREPARE_CA | NO_RPL, NO_DDCSS, 0, ru_AQ}
-
-};
-
-struct opCode EISopcodes[01000] = {
+    {"llr", PREPARE_CA | NO_RPL, NO_DDCSS, 0, ru_AQ},
+// EIS
      /* 000 - 017 */ 
     {NULL, 0, 0, 0, 0},
     {NULL, 0, 0, 0, 0},
@@ -1542,8 +1540,9 @@ char *opcodes2text[1024] = {
 #endif
 
 #ifdef PANEL
-word8 insGrp [01000] =
+word8 insGrp [02000] =
   {
+// nonEIS
        GRP_UNKN,  GRP_MISC,  GRP_MISC,  GRP_UNKN,  GRP_MISC,  GRP_PSC,   GRP_UNKN,  GRP_MISC,  // 000-007
        GRP_UNKN,  GRP_MISC,  GRP_MISC,  GRP_MISC,  GRP_UNKN,  GRP_PCS,   GRP_UNKN,  GRP_UNKN,  // 010-017
        GRP_FXA,   GRP_FXA,   GRP_FXA,   GRP_FXA,   GRP_FXA,   GRP_FXA,   GRP_FXA,   GRP_FXA,   // 020-027
@@ -1608,9 +1607,7 @@ word8 insGrp [01000] =
        GRP_FXDMS, GRP_FXDMS, GRP_FXDMS, GRP_FXDMS, GRP_FXDMS, GRP_FXDMS, GRP_FXDMS, GRP_FXDMS, // 750-757
        GRP_PRDML, GRP_PRDML, GRP_PRDML, GRP_PRDML, GRP_PRDML, GRP_PRDML, GRP_PRDML, GRP_PRDML, // 760-767
        GRP_UNKN,  GRP_FXDMR, GRP_FXDMR, GRP_FXDMR, GRP_MISC,  GRP_FXDMR, GRP_FXDMR, GRP_FXDMR, // 770-777
-  };
-word8 eisGrp [01000] =
-  {
+// EIS
        GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  // 000-007
        GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  // 010-017
        GRP_EANM,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_ENM,   GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  // 020-027
