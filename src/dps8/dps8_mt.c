@@ -927,6 +927,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
 
     tape_statep -> io_mode = no_mode;
 //sim_printf ("mt cmd %d %o\n", p -> IDCW_DEV_CMD, p -> IDCW_DEV_CMD);
+    sim_debug (DBG_DEBUG, & tape_dev, "IDCW_DEV_CMD %oo %d.\n", p->IDCW_DEV_CMD, p->IDCW_DEV_CMD);
     switch (p -> IDCW_DEV_CMD)
       {
         case 0: // CMD 00 Request status -- controler status, not tape drive

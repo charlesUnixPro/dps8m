@@ -1923,6 +1923,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
 
     struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
                       devices [chan] [p -> IDCW_DEV_CODE];
+    p->masked = !!p->PCW_21_MSK;
 
 // A device command of 051 in the PCW is only meaningful to the operator console;
 // all other channels should ignore it. We use (somewhat bogusly) a chanType of
@@ -2017,6 +2018,11 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
       }
 #endif
 
+    if (p->masked)
+      {
+//sim_printf ("chan %u masked, skipping\n", chan);
+        goto done;
+      }
     bool ptro, send, uff;
 
     do
