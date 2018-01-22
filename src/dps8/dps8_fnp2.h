@@ -29,7 +29,7 @@
 extern UNIT fnp_unit [N_FNP_UNITS_MAX];
 extern DEVICE fnp_dev;
 
-#define MAX_LINES  64  /*  max number of FNP lines - hardware  */
+#define MAX_LINES  96  /*  max number of FNP lines - hardware  */
 
 //
 // MState_t state of an FNP

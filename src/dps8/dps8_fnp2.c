@@ -107,24 +107,13 @@ static int findMbx (uint fnpUnitIdx);
 
 #define N_FNP_UNITS 1 // default
 
-UNIT fnp_unit [N_FNP_UNITS_MAX] = {
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    {UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL}
-};
+UNIT fnp_unit [N_FNP_UNITS_MAX] =
+ {
+    [0 ... N_FNP_UNITS_MAX - 1] =
+      {
+        UDATA (NULL, UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL
+      }
+ };
 
 static DEBTAB fnpDT [] =
   {
@@ -1024,11 +1013,12 @@ static void fnpProcessBuffer (struct t_line * linep)
 
 static void fnpProcessBuffers (void)
   {
-    for (int fnpno = 0; fnpno < N_FNP_UNITS_MAX; fnpno ++)
+    uint numunits = (uint) fnp_dev.numunits;
+    for (uint fnp_unit_idx = 0; fnp_unit_idx < numunits; fnp_unit_idx ++)
       {
-        for (int lineno = 0; lineno < MAX_LINES; lineno ++)
+        for (uint lineno = 0; lineno < MAX_LINES; lineno ++)
           {
-            struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
+            struct t_line * linep = & fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno];
 
             // If an accept_input request is posted, then buffer is busy.
             if (linep->accept_input)
@@ -1072,7 +1062,7 @@ static void fnpProcessBuffers (void)
 
 // Send a message to Multics
 
-void set_3270_write_complete (uv_tcp_t * client)
+void set_3270_write_complete (UNUSED uv_tcp_t * client)
   {
     //uvClientData * p = client->data;
 //sim_printf ("set_3270_write_complete %p stn_no %d\r\n", p, p->stationNo);
@@ -1309,9 +1299,10 @@ void fnpProcessEvent (void)
     fnpProcessBuffers ();
 
     // Look for posted requests
-    for (int fnp_unit_idx = 0; fnp_unit_idx < N_FNP_UNITS_MAX; fnp_unit_idx ++)
+    uint numunits = (uint) fnp_dev.numunits;
+    for (uint fnp_unit_idx = 0; fnp_unit_idx < numunits; fnp_unit_idx ++)
       {
-        int mbx = findMbx ((uint) fnp_unit_idx);
+        int mbx = findMbx (fnp_unit_idx);
         if (mbx == -1)
           continue;
         for (int lineno = 0; lineno < MAX_LINES; lineno ++)
@@ -1342,14 +1333,14 @@ void fnpProcessEvent (void)
                 //linep -> send_output = false;
                 linep->send_output --;
                 if (linep->send_output == 0)
-                  fnp_rcd_send_output (mbx, fnp_unit_idx, lineno);
+                  fnp_rcd_send_output (mbx, (int) fnp_unit_idx, lineno);
               }
 
             // Need to send a 'line_break' command to CS?
 
             else if (linep -> line_break)
               {
-                fnp_rcd_line_break (mbx, fnp_unit_idx, lineno);
+                fnp_rcd_line_break (mbx, (int) fnp_unit_idx, lineno);
                 linep -> line_break = false;
               }
 
@@ -1357,7 +1348,7 @@ void fnpProcessEvent (void)
 
             else if (linep->acu_dial_failure)
               {
-                fnp_rcd_acu_dial_failure (mbx, fnp_unit_idx, lineno);
+                fnp_rcd_acu_dial_failure (mbx, (int) fnp_unit_idx, lineno);
                 linep->acu_dial_failure = false;
               }
 
@@ -1371,7 +1362,7 @@ void fnpProcessEvent (void)
 
             else if (linep->listen && linep->accept_new_terminal)
               {
-                fnp_rcd_accept_new_terminal (mbx, fnp_unit_idx, lineno);
+                fnp_rcd_accept_new_terminal (mbx, (int) fnp_unit_idx, lineno);
                 linep->accept_new_terminal = false;
               }
 
@@ -1379,7 +1370,7 @@ void fnpProcessEvent (void)
 
             else if (linep -> ack_echnego_init)
               {
-                fnp_rcd_ack_echnego_init (mbx, fnp_unit_idx, lineno);
+                fnp_rcd_ack_echnego_init (mbx, (int) fnp_unit_idx, lineno);
                 linep -> ack_echnego_init = false;
                 //linep -> send_output = true;
                 linep -> send_output = SEND_OUTPUT_DELAY;
@@ -1390,14 +1381,14 @@ void fnpProcessEvent (void)
 #ifdef DISC_DELAY
             else if (linep -> line_disconnected == 1)
               {
-                fnp_rcd_line_disconnected (mbx, fnp_unit_idx, lineno);
+                fnp_rcd_line_disconnected (mbx, (int) fnp_unit_idx, lineno);
                 linep -> line_disconnected = 0;
                 linep -> listen = false;
               }
 #else
             else if (linep -> line_disconnected)
               {
-                fnp_rcd_line_disconnected (mbx, fnp_unit_idx, lineno);
+                fnp_rcd_line_disconnected (mbx, (int) fnp_unit_idx, lineno);
                 linep -> line_disconnected = false;
                 linep -> listen = false;
               }
@@ -1407,7 +1398,7 @@ void fnpProcessEvent (void)
 
             else if (linep -> wru_timeout)
               {
-                fnp_rcd_wru_timeout (mbx, fnp_unit_idx, lineno);
+                fnp_rcd_wru_timeout (mbx, (int) fnp_unit_idx, lineno);
                 linep -> wru_timeout = false;
               }
 
@@ -1439,14 +1430,14 @@ void fnpProcessEvent (void)
 // sequence.
 
 #if 0
-                    fnp_rcd_accept_input (mbx, fnp_unit_idx, lineno);
+                    fnp_rcd_accept_input (mbx, (int) fnp_unit_idx, lineno);
                     //linep->input_break = false;
                     linep->input_reply_pending = true;
                     // accept_input cleared below
 #else
                     if (linep->nPos > 100)
                       {
-                        fnp_rcd_accept_input (mbx, fnp_unit_idx, lineno);
+                        fnp_rcd_accept_input (mbx, (int) fnp_unit_idx, lineno);
 #ifdef FNPDBG
 sim_printf ("accept_input\n");
 #endif
@@ -1456,7 +1447,7 @@ sim_printf ("accept_input\n");
                       }
                     else
                       {
-                        fnp_rcd_input_in_mailbox (mbx, fnp_unit_idx, lineno);
+                        fnp_rcd_input_in_mailbox (mbx, (int) fnp_unit_idx, lineno);
 #ifdef FNPDBG
 sim_printf ("input_in_mailbox\n");
 #endif
@@ -1471,7 +1462,7 @@ sim_printf ("input_in_mailbox\n");
             else if (linep->sendLineStatus)
               {
                 linep->sendLineStatus = false;
-                fnp_rcd_line_status (mbx, fnp_unit_idx, lineno);
+                fnp_rcd_line_status (mbx, (int) fnp_unit_idx, lineno);
               }
 
             else
@@ -1482,7 +1473,7 @@ sim_printf ("input_in_mailbox\n");
             // One of the request processes may have consumed the
             // mailbox; make sure one is still available
 
-            mbx = findMbx ((uint) fnp_unit_idx);
+            mbx = findMbx (fnp_unit_idx);
             if (mbx == -1)
               goto nombx;
           } // for lineno
@@ -1873,9 +1864,10 @@ void fnpConnectPrompt (uv_tcp_t * client)
   {
     fnpuv_start_writestr (client, (unsigned char *) PROMPT);
     bool first = true;
-    for (int fnpno = 0; fnpno < N_FNP_UNITS_MAX; fnpno ++)
+    uint numunits = (uint) fnp_dev.numunits;
+    for (uint fnpno = 0; fnpno < numunits; fnpno ++)
       {
-        for (int lineno = 0; lineno < MAX_LINES; lineno ++)
+        for (uint lineno = 0; lineno < MAX_LINES; lineno ++)
           {
             struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
             if (linep->service == service_login && ! linep->line_client)
@@ -1948,7 +1940,7 @@ static char EBCDICtoASCII(const unsigned char c)
   }
 #endif
 
-void fnp3270Msg (uv_tcp_t * client, unsigned char * msg)
+static void fnp3270Msg (uv_tcp_t * client, unsigned char * msg)
   {
 //sim_printf ("%s", msg);
     size_t l = strlen ((char *) msg);
@@ -2287,7 +2279,8 @@ check:;
       }
     else
       {
-        for (fnpno = 0; fnpno < N_FNP_UNITS_MAX; fnpno ++)
+        uint32 numunits = fnp_dev.numunits;
+        for (fnpno = 0; fnpno < numunits; fnpno ++)
           {
             for (lineno = 0; lineno < MAX_LINES; lineno ++)
               {

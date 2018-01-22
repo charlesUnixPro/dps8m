@@ -1343,7 +1343,8 @@ static void fnoTUNProcessLine (int fnpno, int lineno, struct t_line * linep)
 
 void fnpTUNProcessEvent (void)
   {
-    for (int fnpno = 0; fnpno < N_FNP_UNITS_MAX; fnpno ++)
+    unint32 numunits = fnp_dev.numunits;
+    for (int fnpno = 0; fnpno < numnumts; fnpno ++)
       {
         for (int lineno = 0; lineno < MAX_LINES; lineno ++)
           {
