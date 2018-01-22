@@ -249,7 +249,6 @@ static void writeOperands (void)
         //cpu.TPR.CA = indwordAddress;
         cpu.TPR.CA = saveCA;
 
-sim_printf ("write Td %u iaddr %08o idata %012llo sz %02o os %o addr %08o data %012llo cpu.CY %012llo\n", Td, cpu.TPR.CA, cpu.itxPair[0], cpu.ou.characterOperandSize, cpu.ou.characterOperandOffset, Yi, data, cpu.CY);
         return;
       } // IT
 
@@ -434,7 +433,7 @@ static void readOperands (void)
 
         // Restore the CA; Read/Write() updates it.
         cpu.TPR.CA = indwordAddress;
-sim_printf ("read  Td %u iaddr %08o idata %012llo sz %02o os %o addr %08o data %012llo CY %012llo\n", Td, indwordAddress, indword, cpu.ou.characterOperandSize, cpu.ou.characterOperandOffset, Yi, data, cpu.CY);
+
         return;
       } // IT
 
