@@ -489,7 +489,7 @@ static void fuv_write_3270_cb (uv_write_t * req, int status)
 
 // Create and start a write request
 
-static void fnpuv_start_write_3270_actual (uv_tcp_t * client, unsigned char * data, ssize_t datalen)
+static void fnpuv_start_write_3270_actual (UNUSED uv_tcp_t * client, unsigned char * data, ssize_t datalen)
   {
 #ifdef FNP2_DEBUG
 sim_printf ("fnpuv_start_write_3270_actual\r\n");
