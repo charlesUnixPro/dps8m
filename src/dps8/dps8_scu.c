@@ -1737,7 +1737,7 @@ int scu_cioc (uint cpuUnitIdx, uint scuUnitIdx, uint scu_port_num,
         iom_interrupt (scuUnitIdx, (uint) iomUnitIdx);
         return 0;
 #else // ! THREADZ
-        if (sys_opts . iom_times . connect < 0)
+        if (sys_opts . iom_times . connect <= 0)
           {
             iom_interrupt (scuUnitIdx, (uint) iomUnitIdx);
             goto done;
