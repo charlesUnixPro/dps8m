@@ -1321,7 +1321,7 @@ setCPU:;
 // If we only test every 1000 cycles, we shouldn't miss by more then
 // 10%...
 
-        //static uint fastQueueSubsample = 0;
+        //if ((! cpu.wasInhibited) && fastQueueSubsample ++ > 1024) // ~ 1KHz
         if (fastQueueSubsample ++ > 1024) // ~ 1KHz
           {
             fastQueueSubsample = 0;
