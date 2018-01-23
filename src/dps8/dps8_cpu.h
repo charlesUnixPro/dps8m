@@ -2007,7 +2007,7 @@ static inline int core_write_zone (word24 addr, word36 data, UNUSED const char *
       }
     uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
     LOCK_MEM;
-    scu[scuUnitIdx].M[addr] = (scu[scuUnitIdx].M[addr] & ~cpu.zone) |
+    scu[scuUnitIdx].M[offset] = (scu[scuUnitIdx].M[offset] & ~cpu.zone) |
                               (data & cpu.zone);
     cpu.useZone = false; // Safety
     UNLOCK_MEM;
