@@ -2401,12 +2401,6 @@ static t_stat doInstruction (void)
 #ifdef L68
     bool is_ou = false;
 #endif
-    cpu.ou.directOperandFlag = false;
-    cpu.ou.directOperand = 0;
-    cpu.ou.characterOperandSize = 0;
-    cpu.ou.characterOperandOffset = 0;
-    cpu.ou.crflag = false;
-
 
     switch (opcode10)
       {
