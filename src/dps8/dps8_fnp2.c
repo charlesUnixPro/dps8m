@@ -1016,6 +1016,8 @@ static void fnpProcessBuffers (void)
     uint numunits = (uint) fnp_dev.numunits;
     for (uint fnp_unit_idx = 0; fnp_unit_idx < numunits; fnp_unit_idx ++)
       {
+        if (! fnpData.fnpUnitData[fnp_unit_idx].fnpIsRunning)
+          continue;
         for (uint lineno = 0; lineno < MAX_LINES; lineno ++)
           {
             struct t_line * linep = & fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno];
@@ -1302,6 +1304,8 @@ void fnpProcessEvent (void)
     uint numunits = (uint) fnp_dev.numunits;
     for (uint fnp_unit_idx = 0; fnp_unit_idx < numunits; fnp_unit_idx ++)
       {
+        if (! fnpData.fnpUnitData[fnp_unit_idx].fnpIsRunning)
+          continue;
         int mbx = findMbx (fnp_unit_idx);
         if (mbx == -1)
           continue;
@@ -1865,18 +1869,20 @@ void fnpConnectPrompt (uv_tcp_t * client)
     fnpuv_start_writestr (client, (unsigned char *) PROMPT);
     bool first = true;
     uint numunits = (uint) fnp_dev.numunits;
-    for (uint fnpno = 0; fnpno < numunits; fnpno ++)
+    for (uint fnp_unit_idx = 0; fnp_unit_idx < numunits; fnp_unit_idx ++)
       {
+        if (! fnpData.fnpUnitData[fnp_unit_idx].fnpIsRunning)
+          continue;
         for (uint lineno = 0; lineno < MAX_LINES; lineno ++)
           {
-            struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
+            struct t_line * linep = & fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno];
             if (linep->service == service_login && ! linep->line_client)
               {
                 if (! first)
                   fnpuv_start_writestr (client, (unsigned char *) ",");
                 char name [16];
                 first = false;
-                sprintf (name, "%c.h%03d", 'a' + fnpno, lineno);
+                sprintf (name, "%c.h%03d", 'a' + fnp_unit_idx, lineno);
                 fnpuv_start_writestr (client, (unsigned char *) name);
               }
           }
@@ -2255,7 +2261,7 @@ check:;
     fnpuv_start_writestr (client, (unsigned char *) "\r\n");
 
 
-    uint fnpno = 0;
+    uint fnp_unit_idx = 0;
     uint lineno = 0;
 
     if (strlen (cpy))
@@ -2268,9 +2274,9 @@ check:;
             fnpuv_start_writestr (client, (unsigned char *) "can't parse\r\n");
             goto reprompt;
           }
-        fnpno = (uint) (fnpcode - 'a');
-        if (fnpData.fnpUnitData[fnpno].MState.line[lineno].service != service_login ||
-            fnpData.fnpUnitData[fnpno].MState.line[lineno].line_client)
+        fnp_unit_idx = (uint) (fnpcode - 'a');
+        if (fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].service != service_login ||
+            fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].line_client)
           {
             fnpuv_start_writestr (client, (unsigned char *) "not availible\r\n");
             goto reprompt;
@@ -2280,12 +2286,14 @@ check:;
     else
       {
         uint32 numunits = fnp_dev.numunits;
-        for (fnpno = 0; fnpno < numunits; fnpno ++)
+        for (fnp_unit_idx = 0; fnp_unit_idx < numunits; fnp_unit_idx ++)
           {
+            if (! fnpData.fnpUnitData[fnp_unit_idx].fnpIsRunning)
+              continue;
             for (lineno = 0; lineno < MAX_LINES; lineno ++)
               {
-                if (fnpData.fnpUnitData[fnpno].MState.line[lineno].service == service_login &&
-                    ! fnpData.fnpUnitData[fnpno].MState.line[lineno].line_client)
+                if (fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].service == service_login &&
+                    ! fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].line_client)
                   {
                     goto associate;
                   }
@@ -2300,10 +2308,10 @@ reprompt:;
 
 associate:;
 
-    fnpData.fnpUnitData[fnpno].MState.line[lineno].line_client = client;
-//sim_printf ("associated %c.%03d %p\n", fnpno + 'a', lineno, client);
+    fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].line_client = client;
+//sim_printf ("associated %c.%03d %p\n", fnp_unit_idx + 'a', lineno, client);
     p->assoc = true;
-    p->fnpno = fnpno;
+    p->fnpno = fnp_unit_idx;
     p->lineno = lineno;
     p->read_cb = fnpuv_associated_readcb;
     p->write_cb = fnpuv_start_write;
@@ -2318,25 +2326,25 @@ associate:;
     int ret = uv_tcp_getpeername (client, & name, & namelen);
     if (ret < 0)
       {
-        sim_printf ("CONNECT (addr err %d) to %c.h%03d\n", ret, fnpno +'a', lineno);
+        sim_printf ("CONNECT (addr err %d) to %c.h%03d\n", ret, fnp_unit_idx +'a', lineno);
       }
     else
       {
         struct sockaddr_in * p = (struct sockaddr_in *) & name;
-        sim_printf ("CONNECT %s to %c.h%03d\n", inet_ntoa (p -> sin_addr), fnpno +'a', lineno);
+        sim_printf ("CONNECT %s to %c.h%03d\n", inet_ntoa (p -> sin_addr), fnp_unit_idx +'a', lineno);
       }
 
-    sprintf (buf2, "Attached to line %c.h%03d\r\n", fnpno +'a', lineno);
+    sprintf (buf2, "Attached to line %c.h%03d\r\n", fnp_unit_idx +'a', lineno);
     fnpuv_start_writestr (client, (unsigned char *) buf2);
 
-    if (! fnpData.fnpUnitData[fnpno].MState.accept_calls)
+    if (! fnpData.fnpUnitData[fnp_unit_idx].MState.accept_calls)
       fnpuv_start_writestr (client, (unsigned char *) "Multics is not accepting calls\r\n");
-    else if (! fnpData.fnpUnitData[fnpno].MState.line[lineno].listen)
+    else if (! fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].listen)
       fnpuv_start_writestr (client, (unsigned char *) "Multics is not listening to this line\r\n");
 
-    fnpData.fnpUnitData[fnpno].MState.line[lineno].lineType = 1 /* LINE_ASCII */;
-    fnpData.fnpUnitData[fnpno].MState.line[lineno].accept_new_terminal = true;
-    fnpData.fnpUnitData[fnpno].MState.line[lineno].was_CR = false;
+    fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].lineType = 1 /* LINE_ASCII */;
+    fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].accept_new_terminal = true;
+    fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].was_CR = false;
     ltnRaw (p->telnetp);
   }
 
