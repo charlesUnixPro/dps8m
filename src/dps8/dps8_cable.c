@@ -297,7 +297,7 @@ static t_stat cable_scu_to_cpu (int uncable, uint scu_unit_idx, uint scu_port_nu
 //    cable SCUx port# IOMx port#
 //    cable SCUx port# CPUx port#
 
-static t_stat cable_scu (int uncable, uint scu_unit_idx, char * name_save)
+static t_stat cable_scu (int uncable, uint scu_unit_idx, char * * name_save)
   {
     if (scu_unit_idx >= scu_dev.numunits)
       {
@@ -306,7 +306,7 @@ static t_stat cable_scu (int uncable, uint scu_unit_idx, char * name_save)
         return SCPE_ARG;
       }
 
-    int scu_port_num = getval (& name_save, "SCU port number");
+    int scu_port_num = getval (name_save, "SCU port number");
 
     // The scu port number may have subport data encoded; check range
     // after we have decided if the is a connection to an IOM or a CPU.
@@ -320,7 +320,7 @@ static t_stat cable_scu (int uncable, uint scu_unit_idx, char * name_save)
 
 // XXX combine into parse_match ()
     // extract 'IOMx' or 'CPUx'
-    char * param = strtok_r (NULL, ", ", & name_save);
+    char * param = strtok_r (NULL, ", ", name_save);
     if (! param)
       {
         sim_printf ("cable_scu: can't parse IOM\n");
@@ -347,7 +347,7 @@ static t_stat cable_scu (int uncable, uint scu_unit_idx, char * name_save)
           }
 
         // extract iom port number
-        param = strtok_r (NULL, ", ", & name_save);
+        param = strtok_r (NULL, ", ", name_save);
         if (! param)
           {
             sim_printf ("cable SCU: can't parse IOM port number\n");
@@ -405,7 +405,7 @@ static t_stat cable_scu (int uncable, uint scu_unit_idx, char * name_save)
           }
 
         // extract cpu port number
-        param = strtok_r (NULL, ", ", & name_save);
+        param = strtok_r (NULL, ", ", name_save);
         if (! param)
           {
             sim_printf ("cable SCU: can't parse CPU port number\n");
@@ -539,7 +539,7 @@ static t_stat cable_ctlr (int uncable,
 //    cable IOMx chan# FNPx       // FNP 
 //    cable IOMx chan# ABSIx      // ABSI 
 
-static t_stat cable_iom (int uncable, uint iom_unit_idx, char * name_save)
+static t_stat cable_iom (int uncable, uint iom_unit_idx, char * * name_save)
   {
     if (iom_unit_idx >= iom_dev.numunits)
       {
@@ -548,7 +548,7 @@ static t_stat cable_iom (int uncable, uint iom_unit_idx, char * name_save)
         return SCPE_ARG;
       }
 
-    int chan_num = getval (& name_save, "IOM channel number");
+    int chan_num = getval (name_save, "IOM channel number");
 
     if (chan_num < 0 || chan_num >= MAX_CHANNELS)
       {
@@ -558,7 +558,7 @@ static t_stat cable_iom (int uncable, uint iom_unit_idx, char * name_save)
       }
 
     // extract controller type
-    char * param = strtok_r (NULL, ", ", & name_save);
+    char * param = strtok_r (NULL, ", ", name_save);
     if (! param)
       {
         sim_printf ("error: CABLE IOM can't parse controller type\n");
@@ -578,7 +578,7 @@ static t_stat cable_iom (int uncable, uint iom_unit_idx, char * name_save)
 
         // extract IPC port number
         int ipc_port_num = 0;
-        param = strtok_r (NULL, ", ", & name_save);
+        param = strtok_r (NULL, ", ", name_save);
         if (param)
           ipc_port_num = parseval (param);
 
@@ -608,7 +608,7 @@ static t_stat cable_iom (int uncable, uint iom_unit_idx, char * name_save)
 
         // extract MSP port number
         int msp_port_num = 0;
-        param = strtok_r (NULL, ", ", & name_save);
+        param = strtok_r (NULL, ", ", name_save);
         if (param)
           msp_port_num = parseval (param);
 
@@ -638,7 +638,7 @@ static t_stat cable_iom (int uncable, uint iom_unit_idx, char * name_save)
 
         // extract MTP port number
         int mtp_port_num = 0;
-        param = strtok_r (NULL, ", ", & name_save);
+        param = strtok_r (NULL, ", ", name_save);
         if (param)
           mtp_port_num = parseval (param);
 
@@ -668,7 +668,7 @@ static t_stat cable_iom (int uncable, uint iom_unit_idx, char * name_save)
 
         // extract URP port number
         int urp_port_num = 0;
-        param = strtok_r (NULL, ", ", & name_save);
+        param = strtok_r (NULL, ", ", name_save);
         if (param)
           urp_port_num = parseval (param);
 
@@ -849,7 +849,7 @@ static t_stat cable_periph (int uncable,
 
 //     cable MTPx dev_code TAPEx
 
-static t_stat cable_mtp (int uncable, uint ctlr_unit_idx, char * name_save)
+static t_stat cable_mtp (int uncable, uint ctlr_unit_idx, char * * name_save)
   {
     if (ctlr_unit_idx >= mtp_dev.numunits)
       {
@@ -858,7 +858,7 @@ static t_stat cable_mtp (int uncable, uint ctlr_unit_idx, char * name_save)
         return SCPE_ARG;
       }
 
-    int dev_code = getval (& name_save, "MTP device code");
+    int dev_code = getval (name_save, "MTP device code");
 
     if (dev_code < 0 || dev_code >= MAX_CHANNELS)
       {
@@ -868,7 +868,7 @@ static t_stat cable_mtp (int uncable, uint ctlr_unit_idx, char * name_save)
       }
 
     // extract tape index
-    char * param = strtok_r (NULL, ", ", & name_save);
+    char * param = strtok_r (NULL, ", ", name_save);
     if (! param)
       {
         sim_printf ("error: CABLE IOM can't parse device name\n");
@@ -907,7 +907,7 @@ static t_stat cable_mtp (int uncable, uint ctlr_unit_idx, char * name_save)
 
 //     cable IPCx dev_code DISKx
 
-static t_stat cable_ipc (int uncable, uint ctlr_unit_idx, char * name_save)
+static t_stat cable_ipc (int uncable, uint ctlr_unit_idx, char * * name_save)
   {
     if (ctlr_unit_idx >= ipc_dev.numunits)
       {
@@ -916,7 +916,7 @@ static t_stat cable_ipc (int uncable, uint ctlr_unit_idx, char * name_save)
         return SCPE_ARG;
       }
 
-    int dev_code = getval (& name_save, "IPC device code");
+    int dev_code = getval (name_save, "IPC device code");
 
     if (dev_code < 0 || dev_code >= MAX_CHANNELS)
       {
@@ -926,7 +926,7 @@ static t_stat cable_ipc (int uncable, uint ctlr_unit_idx, char * name_save)
       }
 
     // extract tape index
-    char * param = strtok_r (NULL, ", ", & name_save);
+    char * param = strtok_r (NULL, ", ", name_save);
     if (! param)
       {
         sim_printf ("error: CABLE IOM can't parse device name\n");
@@ -965,7 +965,7 @@ static t_stat cable_ipc (int uncable, uint ctlr_unit_idx, char * name_save)
 
 //     cable MSPx dev_code DISKx
 
-static t_stat cable_msp (int uncable, uint ctlr_unit_idx, char * name_save)
+static t_stat cable_msp (int uncable, uint ctlr_unit_idx, char * * name_save)
   {
     if (ctlr_unit_idx >= msp_dev.numunits)
       {
@@ -974,7 +974,7 @@ static t_stat cable_msp (int uncable, uint ctlr_unit_idx, char * name_save)
         return SCPE_ARG;
       }
 
-    int dev_code = getval (& name_save, "MSP device code");
+    int dev_code = getval (name_save, "MSP device code");
 
     if (dev_code < 0 || dev_code >= MAX_CHANNELS)
       {
@@ -984,7 +984,7 @@ static t_stat cable_msp (int uncable, uint ctlr_unit_idx, char * name_save)
       }
 
     // extract tape index
-    char * param = strtok_r (NULL, ", ", & name_save);
+    char * param = strtok_r (NULL, ", ", name_save);
     if (! param)
       {
         sim_printf ("error: CABLE IOM can't parse device name\n");
@@ -1023,7 +1023,7 @@ static t_stat cable_msp (int uncable, uint ctlr_unit_idx, char * name_save)
 
 //     cable URPx dev_code [RDRx PUNx PRTx]
 
-static t_stat cable_urp (int uncable, uint ctlr_unit_idx, char * name_save)
+static t_stat cable_urp (int uncable, uint ctlr_unit_idx, char * * name_save)
   {
     if (ctlr_unit_idx >= urp_dev.numunits)
       {
@@ -1032,7 +1032,7 @@ static t_stat cable_urp (int uncable, uint ctlr_unit_idx, char * name_save)
         return SCPE_ARG;
       }
 
-    int dev_code = getval (& name_save, "URP device code");
+    int dev_code = getval (name_save, "URP device code");
 
     if (dev_code < 0 || dev_code >= MAX_CHANNELS)
       {
@@ -1042,7 +1042,7 @@ static t_stat cable_urp (int uncable, uint ctlr_unit_idx, char * name_save)
       }
 
     // extract tape index
-    char * param = strtok_r (NULL, ", ", & name_save);
+    char * param = strtok_r (NULL, ", ", name_save);
     if (! param)
       {
         sim_printf ("error: CABLE IOM can't parse device name\n");
@@ -1129,7 +1129,7 @@ t_stat sys_cable (int32 arg, const char * buf)
     // extract first word
     char * name_save = NULL;
     char * name;
-    name = strtok_r (copy, ", ", & name_save);
+    name = strtok_r (copy, ", \t", & name_save);
     if (! name)
       {
         //sim_debug (DBG_ERR, & sys_dev, "sys_cable: can't parse name\n");
@@ -1138,24 +1138,31 @@ t_stat sys_cable (int32 arg, const char * buf)
       }
 
     uint unit_num;
-    if (name_match (name, "SCU", & unit_num))
-      rc = cable_scu (arg, unit_num, name_save);
+    if (strcasecmp (name, "RIPOUT") == 0)
+      rc = sys_cable_ripout (0, NULL);
+    else if (strcasecmp (name, "SHOW") == 0)
+      rc = sys_cable_show (0, NULL);
+    else if (name_match (name, "SCU", & unit_num))
+      rc = cable_scu (arg, unit_num, & name_save);
     else if (name_match (name, "IOM", & unit_num))
-      rc = cable_iom (arg, unit_num, name_save);
+      rc = cable_iom (arg, unit_num, & name_save);
     else if (name_match (name, "MTP", & unit_num))
-      rc = cable_mtp (arg, unit_num, name_save);
+      rc = cable_mtp (arg, unit_num, & name_save);
     else if (name_match (name, "IPC", & unit_num))
-      rc = cable_ipc (arg, unit_num, name_save);
+      rc = cable_ipc (arg, unit_num, & name_save);
     else if (name_match (name, "MSP", & unit_num))
-      rc = cable_msp (arg, unit_num, name_save);
+      rc = cable_msp (arg, unit_num, & name_save);
     else if (name_match (name, "URP", & unit_num))
-      rc = cable_urp (arg, unit_num, name_save);
+      rc = cable_urp (arg, unit_num, & name_save);
     else
       {
         sim_printf ("error: cable: invalid name <%s>\n", name);
         goto exit;
       }
-
+    if (strlen (name_save))
+      {
+        sim_printf ("cable ignored '%s'\n", name_save);
+      }
 exit:
     free (copy);
     return rc;
