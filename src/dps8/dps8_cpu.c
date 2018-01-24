@@ -867,11 +867,11 @@ uint currentRunningCpuIdx;
 static uint get_highest_intr (void)
   {
     uint fp = 1;
-    for (uint scuUnitNum = 0; scuUnitNum < N_SCU_UNITS_MAX; scuUnitNum ++)
+    for (uint scu_unit_idx = 0; scu_unit_idx < N_SCU_UNITS_MAX; scu_unit_idx ++)
       {
-        if (cpu.events.XIP [scuUnitNum])
+        if (cpu.events.XIP [scu_unit_idx])
           {
-            fp = scuGetHighestIntr (scuUnitNum); // CALLED WITH SCU LOCK
+            fp = scu_get_highest_intr (scu_unit_idx); // CALLED WITH SCU LOCK
             if (fp != 1)
               break;
           }
@@ -882,9 +882,9 @@ static uint get_highest_intr (void)
 bool sample_interrupts (void)
   {
     cpu.lufCounter = 0;
-    for (uint scuUnitNum = 0; scuUnitNum < N_SCU_UNITS_MAX; scuUnitNum ++)
+    for (uint scu_unit_idx = 0; scu_unit_idx < N_SCU_UNITS_MAX; scu_unit_idx ++)
       {
-        if (cpu.events.XIP [scuUnitNum])
+        if (cpu.events.XIP [scu_unit_idx])
           {
             return true;
           }

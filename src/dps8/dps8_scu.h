@@ -53,10 +53,11 @@ typedef struct
 
     // CPU/IOM connectivity; designated 0..7
     // [CAC] really CPU/SCU and SCU/IOM connectivity
-    struct ports {
+    struct ports
+      {
         //bool is_enabled;
         enum active_dev type; // type of connected device
-        int devIdx; // index of connected dev (cpuUnitIdx, iomUnitIdx
+        int dev_idx; // index of connected dev (cpu_unit_udx, iom_unit_idx
         bool is_exp;
         // which port on the connected device?
         // if is_exp is false, then only [0] is used.
@@ -65,18 +66,18 @@ typedef struct
         vol bool subport_enables [N_SCU_SUBPORTS]; 
         vol bool xipmask [N_SCU_SUBPORTS]; 
         vol int xipmaskval;
-    } ports[N_SCU_PORTS];
+      } ports [N_SCU_PORTS];
 
     // system controller mode regsister    
     word4 id;
-    word18 modeReg;
+    word18 mode_reg;
 
     uint elapsed_days;
     uint steady_clock;    // If non-zero the clock is tied to the cycle counter
     uint bullet_time;
     uint y2k;
-    int64 userCorrection;
-    uint64 lastTime;
+    int64 user_correction;
+    uint64 last_time;
 #ifdef SCUMEM
 enum { SCU_MEM_SIZE = 020000000 };
     word36 vol M [SCU_MEM_SIZE];
@@ -88,19 +89,19 @@ extern scu_t scu [N_SCU_UNITS_MAX];
 extern DEVICE scu_dev;
 
 
-int scu_set_interrupt(uint scuUnitIdx, uint inum);
+int scu_set_interrupt(uint scu_unit_idx, uint inum);
 void scu_init (void);
-t_stat scu_sscr (uint scuUnitIdx, UNUSED uint cpuUnitIdx, uint cpu_port_num, word18 addr, 
+t_stat scu_sscr (uint scu_unit_idx, UNUSED uint cpu_unit_idx, uint cpu_port_num, word18 addr, 
                  word36 rega, word36 regq);
-t_stat scu_smic (uint scuUnitIdx, uint UNUSED cpuUnitIdx, uint cpu_port_num, word36 rega);
-t_stat scu_rscr (uint scuUnitIdx, uint cpuUnitIdx, word18 addr, word36 * rega, word36 * regq);
-int scu_cioc (uint cpuUnitIdx, uint scuUnitIdx, uint scu_port_num, uint expander_command, uint sub_mask);
-t_stat scu_rmcm (uint scuUnitIdx, uint cpuUnitIdx, word36 * rega, word36 * regq);
-t_stat scu_smcm (uint scuUnitIdx, uint cpuUnitIdx, word36 rega, word36 regq);
-void scu_clear_interrupt (uint scuUnitIdx, uint inum);
-uint scuGetHighestIntr (uint scuUnitNum);
+t_stat scu_smic (uint scu_unit_idx, uint UNUSED cpu_unit_idx, uint cpu_port_num, word36 rega);
+t_stat scu_rscr (uint scu_unit_idx, uint cpu_unit_idx, word18 addr, word36 * rega, word36 * regq);
+int scu_cioc (uint cpu_unit_idx, uint scu_unit_idx, uint scu_port_num, uint expander_command, uint sub_mask);
+t_stat scu_rmcm (uint scu_unit_idx, uint cpu_unit_idx, word36 * rega, word36 * regq);
+t_stat scu_smcm (uint scu_unit_idx, uint cpu_unit_idx, word36 rega, word36 regq);
+void scu_clear_interrupt (uint scu_unit_idx, uint inum);
+uint scu_get_highest_intr (uint scu_unit_idx);
 t_stat scu_reset (DEVICE *dptr);
 t_stat scu_reset_unit (UNIT * uptr, int32 value, const char * cptr, 
                        void * desc);
-void scuUnitReset (int scuUnitIdx);
+void scu_unit_reset (int scu_unit_idx);
 

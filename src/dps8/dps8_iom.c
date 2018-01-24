@@ -2896,7 +2896,7 @@ static t_stat bootSvc (UNIT * unitp)
         if (! cables->iom_to_scu[iomUnitIdx][port_num].in_use)
           continue;
         uint scuUnitIdx = cables->iom_to_scu[iomUnitIdx][port_num].scu_unit_idx;
-        scuUnitReset ((int) scuUnitIdx);
+        scu_unit_reset ((int) scuUnitIdx);
       }
 
     // initialize memory with boot program
