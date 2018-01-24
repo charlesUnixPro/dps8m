@@ -55,6 +55,8 @@ typedef struct
     enum http_request_t httpRequest;
     char http_get_URI[MR_BUFFER_SZ];
 
+    bool no_color;
+
 } sysinfo_t;
 
 #ifndef SCUMEM

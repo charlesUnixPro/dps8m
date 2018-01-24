@@ -462,7 +462,7 @@ else if (faultNumber == FAULT_ACV)
               cpu . faultRegister [0] |= FR_CON_D;
               break;
             default:
-              sim_warn ("FAULT_CON can't map port %o\n", subFault.fault_con_subtype);
+              sim_warn ("FAULT_CON can't map port %lo\n", subFault.fault_con_subtype);
               break;
           }
       }

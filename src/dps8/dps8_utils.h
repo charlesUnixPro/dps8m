@@ -906,3 +906,10 @@ void timespec_diff(struct timespec *start, struct timespec *stop,
                    struct timespec *result);
 void currentTR (word27 * trunits, bool * ovf);
 #endif
+#ifdef COLOR
+void sim_msg (const char * fmt, ...);
+void sim_warn (const char * fmt, ...);
+#else
+#define sim_msg sim_printf
+#define sim_warn sim_printf
+#endif

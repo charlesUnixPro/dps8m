@@ -153,6 +153,6 @@ void dps8_sim_debug (uint32 dbits, DEVICE* dptr, unsigned long long cnt, const c
 #endif
 ;
 #endif
-#define sim_warn(format, ...) _sim_err (format, ##__VA_ARGS__)
+//#define sim_warn(format, ...) _sim_err (format, ##__VA_ARGS__)
 //#define sim_err(format, ...) { _sim_err (format, ##__VA_ARGS__); longjmp (cpu.jmpMain, JMP_STOP); }
 #define sim_fatal(format, ...) { _sim_err (format, ##__VA_ARGS__); exit (1); }

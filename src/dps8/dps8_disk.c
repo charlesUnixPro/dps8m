@@ -564,7 +564,7 @@ static int diskSeek64 (uint devUnitIdx, uint iomUnitIdx, uint chan)
 
     uint typeIdx = disk_statep->typeIdx;
     if (diskTypes[typeIdx].seekSize != seek_64)
-      sim_warn ("disk%u sent a SEEK_64 but is 512 sized\n");
+      sim_warn ("disk%u sent a SEEK_64 but is 512 sized\n", typeIdx);
 
 // Process DDCW
 
@@ -636,7 +636,7 @@ static int diskSeek512 (uint devUnitIdx, uint iomUnitIdx, uint chan)
 
     uint typeIdx = disk_statep->typeIdx;
     if (diskTypes[typeIdx].seekSize != seek_512)
-      sim_warn ("disk%u sent a SEEK_512 but is 64 sized\n");
+      sim_warn ("disk%u sent a SEEK_512 but is 64 sized\n", typeIdx);
 
 // Process DDCW
 

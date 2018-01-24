@@ -1368,20 +1368,20 @@ int strmask (char * str, char * mask)
  * (implemented as a small fsm, kinda...
  * (add support for embedded " later, much later...)
  */
-#define NORMAL 		1
-#define IN_STRING	2
-#define EOB			3
+#define NORMAL 1
+#define IN_STRING 2
+#define EOB 3
 
 char *
 Strtok(char *line, char *sep)
 {
     
-    static char *p;		/*!< current pointer position in input line	*/
+    static char *p; /*!< current pointer position in input line*/
     static int state = NORMAL;
     
-    char *q;			/*!< beginning of current field			*/
+    char *q; /*!< beginning of current field*/
     
-    if (line) {			/* 1st invocation						*/
+    if (line) { /* 1st invocation */
         p = line;
         state = NORMAL;
     }
@@ -1391,29 +1391,29 @@ Strtok(char *line, char *sep)
         switch (state) {
             case NORMAL:
                 switch (*p) {
-                    case 0:				///< at end of buffer
-                        state = EOB;	// set state to "end Of Buffer
+                    case 0: // at end of buffer
+                        state = EOB; // set state to "end Of Buffer
                         return q;
                         
-                    case '"':		///< beginning of a quoted string
-                        state = IN_STRING;	// we're in a string
+                    case '"': // beginning of a quoted string
+                        state = IN_STRING; // we're in a string
                         p++;
                         continue;
                         
-                    default:    ///< only a few special characters
-                        if (strchr(sep, *p) == NULL) {	// not a sep
-                            p++;				// goto next char
+                    default:    // only a few special characters
+                        if (strchr(sep, *p) == NULL) { // not a sep
+                            p++; // goto next char
                             continue;
                         } else {
-                            *p++ = (char)0;	/* ... iff >0	*/
-                            while (*p && strchr(sep, *p))	/* skip over seperator(s)*/
+                            *p++ = (char)0; /* ... iff >0 */
+                            while (*p && strchr(sep, *p)) /* skip over seperator(s)*/
                                 p++;
-                            return q;	/* return field		*/
+                            return q; /* return field */
                         }
                 }
                 
             case IN_STRING:
-                if (*p == 0) {		  /*!< incomplete quoted string	*/
+                if (*p == 0) {   /*!< incomplete quoted string */
                     state = EOB;
                     return q;
                 }
@@ -1422,12 +1422,12 @@ Strtok(char *line, char *sep)
                     p++;
                     continue;
                 }
-                state = NORMAL;			/* end of quoted string	*/
+                state = NORMAL; /* end of quoted string */
                 p++;
                 
                 continue;
                 
-            case EOB:					/*!< just in case	*/
+            case EOB: /* just in case */
                 state = NORMAL;
                 return NULL;
                 
@@ -1439,7 +1439,7 @@ Strtok(char *line, char *sep)
         
     }
     
-    return NULL;		/* no more fields in buffer		*/
+    return NULL; /* no more fields in buffer */
     
 }
 #if 0
@@ -1470,7 +1470,7 @@ char *rtrim(char *s)
 /** ------------------------------------------------------------------------- */
 char *ltrim(char *s)
 /**
- *	Removes the leading spaces from a string.
+ * Removes the leading spaces from a string.
  */
 {
     char *p;
@@ -2231,5 +2231,167 @@ void currentTR (word27 * trunits, bool * ovf)
     * trunits = (cpu.rTR - ticks) & MASK27;
     //sim_printf ("time left %f\n", (float) (* trunits) / 5120000);
     * ovf = false;
+  }
+#endif
+
+#ifdef COLOR
+//                FG BG
+// Black          30 40
+// Red            31 41
+// Green          32 42
+// Yellow         33 43
+// Blue           34 44
+// Magenta        35 45
+// Cyan           36 46
+// White          37 47
+// Bright Black   90 100
+// Bright Red     91 101
+// Bright Green   92 102
+// Bright Yellow  93 103
+// Bright Blue    94 104
+// Bright Magenta 95 105
+// Bright Cyan    96 106
+// Bright White   97 107
+
+#define GRN "\033[32m"
+#define WHT "\033[97m"
+#define YEL "\033[33m"
+
+void sim_msg (const char * fmt, ...)
+  {
+    char stackbuf[STACKBUFSIZE];
+    int32 bufsize = sizeof (stackbuf);
+    char * buf = stackbuf;
+    int32 len;
+    va_list arglist;
+
+    /* format passed string, args */
+    while (1) 
+      {
+        va_start (arglist, fmt);
+#if defined(NO_vsnprintf)
+        len = vsprintf (buf, fmt, arglist);
+#else                                               /* !defined(NO_vsnprintf) */
+        len = vsnprintf (buf, (unsigned long) bufsize-1, fmt, arglist);
+#endif                                              /* NO_vsnprintf */
+        va_end (arglist);
+
+/* If the formatted result didn't fit into the buffer, then grow the buffer and try again */
+
+        if ((len < 0) || (len >= bufsize-1))
+          {
+            if (buf != stackbuf)
+                free (buf);
+            bufsize = bufsize * 2;
+            if (bufsize < len + 2)
+                bufsize = len + 2;
+            buf = (char *) malloc ((unsigned long) bufsize);
+            if (buf == NULL)                            /* out of memory */
+                return;
+            buf[bufsize-1] = '\0';
+            continue;
+          }
+        break;
+      }
+
+    if (! sys_opts.no_color)
+      printf (GRN);
+
+    if (sim_is_running)
+      {
+        char *c, *remnant = buf;
+
+        while ((c = strchr(remnant, '\n')))
+          {
+            if ((c != buf) && (*(c - 1) != '\r'))
+              printf("%.*s\r\n", (int)(c-remnant), remnant);
+            else
+              printf("%.*s\n", (int)(c-remnant), remnant);
+            remnant = c + 1;
+          }
+        printf("%s", remnant);
+      }
+    else
+      printf("%s", buf);
+
+    if (! sys_opts.no_color)
+      sim_printf (WHT);
+
+    if (sim_log && (sim_log != stdout))
+      fprintf (sim_log, "%s", buf);
+    if (sim_deb && (sim_deb != stdout) && (sim_deb != sim_log))
+      fprintf (sim_deb, "%s", buf);
+
+    if (buf != stackbuf)
+      free (buf);
+  }
+
+void sim_warn (const char * fmt, ...)
+  {
+    char stackbuf[STACKBUFSIZE];
+    int32 bufsize = sizeof (stackbuf);
+    char * buf = stackbuf;
+    int32 len;
+    va_list arglist;
+
+    /* format passed string, args */
+    while (1) 
+      {
+        va_start (arglist, fmt);
+#if defined(NO_vsnprintf)
+        len = vsprintf (buf, fmt, arglist);
+#else                                               /* !defined(NO_vsnprintf) */
+        len = vsnprintf (buf, (unsigned long) bufsize-1, fmt, arglist);
+#endif                                              /* NO_vsnprintf */
+        va_end (arglist);
+
+/* If the formatted result didn't fit into the buffer, then grow the buffer and try again */
+
+        if ((len < 0) || (len >= bufsize-1))
+          {
+            if (buf != stackbuf)
+                free (buf);
+            bufsize = bufsize * 2;
+            if (bufsize < len + 2)
+                bufsize = len + 2;
+            buf = (char *) malloc ((unsigned long) bufsize);
+            if (buf == NULL)                            /* out of memory */
+                return;
+            buf[bufsize-1] = '\0';
+            continue;
+          }
+        break;
+      }
+
+    if (! sys_opts.no_color)
+      printf (YEL);
+
+    if (sim_is_running)
+      {
+        char *c, *remnant = buf;
+
+        while ((c = strchr(remnant, '\n')))
+          {
+            if ((c != buf) && (*(c - 1) != '\r'))
+              printf("%.*s\r\n", (int)(c-remnant), remnant);
+            else
+              printf("%.*s\n", (int)(c-remnant), remnant);
+            remnant = c + 1;
+          }
+        printf("%s", remnant);
+      }
+    else
+      printf("%s", buf);
+
+    if (! sys_opts.no_color)
+      printf (WHT);
+
+    if (sim_log && (sim_log != stdout))
+      fprintf (sim_log, "%s", buf);
+    if (sim_deb && (sim_deb != stdout) && (sim_deb != sim_log))
+      fprintf (sim_deb, "%s", buf);
+
+    if (buf != stackbuf)
+      free (buf);
   }
 #endif
