@@ -436,6 +436,7 @@ sim_printf ("listen() backlog    %d\n", backlog   );
     if (sk_data.fd_unit[socket_fd] != unit_num)
       {
 sim_printf ("listen() socket doesn't belong to us\n");
+sim_printf ("socket_fd %u fd_unit %u unit_num %u\n", socket_fd, sk_data.fd_unit[socket_fd], unit_num);
         _errno = EBADF;
         goto done;
       }
@@ -871,7 +872,7 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
         send_marker_interrupt (iom_unit_idx, (int) chan);
       }
 #endif
-    return 2; // don't contine down the dcw list.
+    return 2; // don't continue down the dcw list.
   }
 
 
@@ -934,6 +935,8 @@ static void do_try_accept (uint unit_num)
     uint words_processed;
     iomIndirectDataService (iom_unit_idx, chan, buffer,
                             & words_processed, true);
+    iomChanData_t * p = & iomChanData[iom_unit_idx][chan];
+    p->stati = 04000;
     send_terminate_interrupt (iom_unit_idx, chan);
   }
 
