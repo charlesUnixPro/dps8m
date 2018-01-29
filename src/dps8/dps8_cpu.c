@@ -1423,6 +1423,28 @@ t_stat sim_instr (void)
             break;
           }
 
+#if 0
+// Check for CPU 0 stopped
+        if (! cpuThreadz[0].run)
+          {
+            sim_printf ("CPU 0 stopped\n");
+            return STOP_STOP;
+          }
+#endif
+#if 1
+// Check for all CPUs stopped
+
+        uint n_running = 0;
+        for (uint i = 0; i < cpu_dev.numunits; i ++)
+          {
+            struct cpuThreadz_t * p = & cpuThreadz[i];
+            if (p->run)
+              n_running ++;
+          }
+        if (! n_running)
+          return STOP_STOP;
+#endif
+
 // Loop runs at 1000Hhz
 
         lock_libuv ();
@@ -2506,6 +2528,10 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
 #endif
 
 leave:
+
+#ifdef THREADZ
+    setCPURun (current_running_cpu_idx, false);
+#endif
 
 #ifdef HDBG
     hdbgPrint ();

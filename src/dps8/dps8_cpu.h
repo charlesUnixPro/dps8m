@@ -2194,5 +2194,5 @@ void add_history_force (uint hset, word36 w0, word36 w1);
 word18 get_BAR_address(word18 addr);
 #ifdef THREADZ
 t_stat threadz_sim_instr (void);
-void * cpuThreadMain (void * arg);
+void * cpu_thread_main (void * arg);
 #endif
