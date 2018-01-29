@@ -567,12 +567,12 @@ static void fnp_rcd_line_status  (int mbx, int fnp_unit_idx, int lineno)
   {
     struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
     struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
-    struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+    struct fnp_submailbox vol * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
     struct t_line * linep = & fudp->MState.line[lineno];
 
-    putbits36_18 (& smbxp -> word2, 0, 2); // cmd_data_len
-    putbits36_9 (& smbxp -> word2, 18, 0124); // op_code accept_input
-    putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
+    l_putbits36_18 (& smbxp -> word2, 0, 2); // cmd_data_len
+    l_putbits36_9 (& smbxp -> word2, 18, 0124); // op_code accept_input
+    l_putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
 
     smbxp -> mystery [0] = linep->lineStatus0;
     smbxp -> mystery [1] = linep->lineStatus1;

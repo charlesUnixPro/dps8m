@@ -244,7 +244,7 @@ void createCPUThread (uint cpuNum)
     if (rc)
       sim_printf ("createCPUThread pthread_cond_init sleepCond %d\n", rc);
 
-    rc = pthread_create (& p->cpuThread, NULL, cpuThreadMain, 
+    rc = pthread_create (& p->cpuThread, NULL, cpu_thread_main, 
                     & p->cpuThreadArg);
     if (rc)
       sim_printf ("createCPUThread pthread_create %d\n", rc);
@@ -286,7 +286,7 @@ void setCPURun (uint cpuNum, bool run)
 void cpuRunningWait (void)
   {
     int rc;
-    struct cpuThreadz_t * p = & cpuThreadz[currentRunningCpuIdx];
+    struct cpuThreadz_t * p = & cpuThreadz[current_running_cpu_idx];
     if (p->run)
       return;
     rc = pthread_mutex_lock (& p->runLock);
@@ -308,7 +308,7 @@ void cpuRunningWait (void)
 unsigned long  sleepCPU (unsigned long nsec)
   {
     int rc;
-    struct cpuThreadz_t * p = & cpuThreadz[currentRunningCpuIdx];
+    struct cpuThreadz_t * p = & cpuThreadz[current_running_cpu_idx];
     struct timespec abstime;
     clock_gettime (CLOCK_REALTIME, & abstime);
     abstime.tv_nsec += (long int) nsec;

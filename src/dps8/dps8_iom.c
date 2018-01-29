@@ -2580,7 +2580,7 @@ void * chnThreadMain (void * arg)
           
 // Set CPU context to allow sim_debug to work
 
-    setCPUnum (0);
+    set_cpu_idx (0);
 
     sim_printf("IOM %c Channel %u thread created\n", thisIOMnum + 'a', thisChnNum);
 
@@ -2602,7 +2602,7 @@ void * iomThreadMain (void * arg)
           
 // Set CPU context to allow sim_debug to work
 
-    setCPUnum (0);
+    set_cpu_idx (0);
 
     sim_printf("IOM %c thread created\n", 'a' + myid);
 
@@ -2932,11 +2932,11 @@ t_stat boot2 (UNUSED int32 arg, UNUSED const char * buf)
   {
 #ifdef ROUND_ROBIN
     uint cpuUnitIdx = 1U;
-    uint save = setCPUnum ((uint) cpuUnitIdx);
+    uint save = set_cpu_idx ((uint) cpuUnitIdx);
 if (cpuUnitIdx && ! cpu.isRunning)
  sim_printf ("starting CPU %c early\n", cpuUnitIdx + 'A');
     cpu.isRunning = true;
-                    setCPUnum (save);
+                    set_cpu_idx (save);
     //bootSvc (& bootChannelUnit [1]);
     iomBoot ((int) cpuUnitIdx, & iom_dev);
 #endif

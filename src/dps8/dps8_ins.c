@@ -146,7 +146,7 @@ static void writeOperands (void)
         return;
       } // IT
 
-    WriteOP (cpu.TPR.CA, OPERAND_STORE);
+    write_operand (cpu.TPR.CA, OPERAND_STORE);
 
     return;
 }
@@ -230,7 +230,7 @@ static void readOperands (void)
         return;
       } // IT
 
-    ReadOP (cpu.TPR.CA, OPERAND_READ);
+    read_operand (cpu.TPR.CA, OPERAND_READ);
 
     return;
   }
@@ -353,7 +353,7 @@ static void scu2words (word36 *words)
 //{
   //putbits36 (& words[4], 31, 1, 0);
 //  putbits36 (& words[4], 31, 1, cpu.PPR.P ? 0 : 1);
-//if (currentRunningCpuIdx)
+//if (current_running_cpu_idx)
 //sim_printf ("cleared ABS\n");
 //}
 #endif
@@ -1040,7 +1040,7 @@ force:;
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                   "%05o|%06o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
-                  currentRunningCpuIdx,
+                  current_running_cpu_idx,
                   cpu.BAR.BASE,
                   cpu.PPR.IC,
                   IWB_IRODD,
@@ -1058,7 +1058,7 @@ force:;
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                   "%06o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
-                  currentRunningCpuIdx,
+                  current_running_cpu_idx,
                   cpu.PPR.IC,
                   IWB_IRODD,
                   disAssemble (buf, IWB_IRODD),
@@ -1078,7 +1078,7 @@ force:;
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                  "%05o:%06o|%06o %o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
-                  currentRunningCpuIdx,
+                  current_running_cpu_idx,
                   cpu.PPR.PSR,
                   cpu.BAR.BASE,
                   cpu.PPR.IC,
@@ -1097,7 +1097,7 @@ force:;
                 sim_debug (flag, &cpu_dev,
                   "%d: "
                   "%05o:%06o %o %012"PRIo64" (%s) %06o %03o(%d) %o %o %o %02o\n",
-                  currentRunningCpuIdx,
+                  current_running_cpu_idx,
                   cpu.PPR.PSR,
                   cpu.PPR.IC,
                   cpu.PPR.PRR,
@@ -1204,7 +1204,7 @@ t_stat executeInstruction (void)
 ///
 
     DCDstruct * ci = & cpu.currentInstruction;
-    decodeInstruction (IWB_IRODD, ci);
+    decode_instruction (IWB_IRODD, ci);
     //cpu.isb29 = ci->b29;
     //ISB29 = ci->b29;
     const opCode *info = ci->info;       // opCode *
@@ -1910,7 +1910,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
             readOperands ();
             if (cpu.cu.rl)
               {
-                switch (OPSIZE ())
+                switch (operand_size ())
                   {
                     case 1:
                       {
@@ -3645,7 +3645,7 @@ static t_stat doInstruction (void)
           HDBGRegQ ();
           cpu.Yblock8[6] = ((word36)(cpu.rE & MASK8)) << 28;
 #ifdef ISOLTS
-          if (currentRunningCpuIdx)
+          if (current_running_cpu_idx)
             cpu.Yblock8[7] = (((-- cpu.shadowTR) & MASK27) << 9) | (cpu.rRALR & 07);
           else
             cpu.Yblock8[7] = ((cpu.rTR & MASK27) << 9) | (cpu.rRALR & 07);
@@ -3816,7 +3816,7 @@ static t_stat doInstruction (void)
         case x0 (0454):  // stt
           CPTUR (cptUseTR);
 #ifdef ISOLTS
-          if (currentRunningCpuIdx)
+          if (current_running_cpu_idx)
             cpu.CY = ((-- cpu.shadowTR) & MASK27) << 9;
           else
             cpu.CY = (cpu.rTR & MASK27) << 9;
@@ -5755,7 +5755,6 @@ static t_stat doInstruction (void)
 
           CPTUR (cptUsePRn + 7);
 
-          //ReadOP (cpu.TPR.CA, RTCD_OPERAND_FETCH);
           ReadTraOp ();
           sim_debug (DBG_TRACEEXT, & cpu_dev,
                      "call6 PRR %o PSR %o\n", cpu.PPR.PRR, cpu.PPR.PSR);
@@ -5775,7 +5774,6 @@ static t_stat doInstruction (void)
 
             // C(Y)0,17 -> C(PPR.IC)
             // C(Y)18,31 -> C(IR)
-            //ReadOP (cpu.TPR.CA, OPERAND_READ);
             ReadTraOp ();
 
             cpu.PPR.IC = GETHI (cpu.CY);
@@ -5835,7 +5833,6 @@ static t_stat doInstruction (void)
           if (TST_I_EOFL)
             {
               CLR_I_EOFL;
-              //ReadOP (cpu.TPR.CA, OPERAND_READ);
               ReadTraOp ();
               return CONT_TRA;
             }
@@ -6352,15 +6349,15 @@ static t_stat doInstruction (void)
 #ifdef L68
             uint cpu_port_num = (cpu.TPR.CA >> 15) & 07;
 #endif
-            if (! get_scu_in_use (currentRunningCpuIdx, cpu_port_num))
+            if (! get_scu_in_use (current_running_cpu_idx, cpu_port_num))
               {
                 sim_warn ("rccl on CPU %u port %d has no SCU; faulting\n",
-                          currentRunningCpuIdx, cpu_port_num);
+                          current_running_cpu_idx, cpu_port_num);
                 doFault (FAULT_ONC, fst_onc_nem, "(rccl)");
               }
-            uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
+            uint scuUnitIdx = get_scu_idx (current_running_cpu_idx, cpu_port_num);
 
-            t_stat rc = scu_rscr ((uint) scuUnitIdx, currentRunningCpuIdx,
+            t_stat rc = scu_rscr ((uint) scuUnitIdx, current_running_cpu_idx,
                                   040, & cpu.rA, & cpu.rQ);
             HDBGRegA ();
             HDBGRegQ ();
@@ -6824,7 +6821,7 @@ IF1 sim_printf ("set mode register %012"PRIo64"\n", cpu.CY);
                 {
 IF1 sim_printf ("0-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
                   for (uint i = 0; i < N_HIST_SETS; i ++)
-                    addHistForce (i, 0, 0);
+                    add_history_force (i, 0, 0);
 // XXX ISOLTS pm700 test-01n 
 // The test clears the history registers but with ihr & emr set, causing
 // the registers to fill with alternating 0's and lcpr instructions.
@@ -6839,7 +6836,7 @@ IF1 sim_printf ("0-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
                 {
 IF1 sim_printf ("1-> %u\n", cpu.history_cyclic[CU_HIST_REG]);
                   for (uint i = 0; i < N_HIST_SETS; i ++)
-                    addHistForce (i, MASK36, MASK36);
+                    add_history_force (i, MASK36, MASK36);
 // XXX ISOLTS pm700 test-01n 
 // The test clears the history registers but with ihr & emr set, causing
 // the registers to fill with alternating 0's and lcpr instructions.
@@ -7539,16 +7536,16 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 #ifdef L68
             uint cpu_port_num = (cpu.TPR.CA >> 15) & 07;
 #endif
-            if (! get_scu_in_use (currentRunningCpuIdx, cpu_port_num))
+            if (! get_scu_in_use (current_running_cpu_idx, cpu_port_num))
               {
                 sim_warn ("rmcm to non-existent controller on "
                           "cpu %d port %d\n",
-                          currentRunningCpuIdx, cpu_port_num);
+                          current_running_cpu_idx, cpu_port_num);
                 break;
               }
-            uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
+            uint scuUnitIdx = get_scu_idx (current_running_cpu_idx, cpu_port_num);
             t_stat rc = scu_rmcm ((uint) scuUnitIdx,
-                                  currentRunningCpuIdx,
+                                  current_running_cpu_idx,
                                   & cpu.rA, & cpu.rQ);
             HDBGRegA ();
             HDBGRegQ ();
@@ -7605,7 +7602,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 
             // Trace the cable from the port to find the SCU number
             // connected to that port
-            if (! get_scu_in_use (currentRunningCpuIdx, cpu_port_num))
+            if (! get_scu_in_use (current_running_cpu_idx, cpu_port_num))
               {
                 // CPTUR (cptUseFR) -- will be set by doFault
 
@@ -7621,14 +7618,14 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 
                 doFault (FAULT_CMD, fst_cmd_ctl, "(rscr)");
               }
-            uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
+            uint scuUnitIdx = get_scu_idx (current_running_cpu_idx, cpu_port_num);
 #ifdef PANEL
             {
                uint function = (cpu.iefpFinalAddress >> 3) & 07;
                CPT (cpt13L, function);
             }
 #endif
-            t_stat rc = scu_rscr ((uint) scuUnitIdx, currentRunningCpuIdx,
+            t_stat rc = scu_rscr ((uint) scuUnitIdx, current_running_cpu_idx,
                                   cpu.iefpFinalAddress & MASK15,
                                   & cpu.rA, & cpu.rQ);
             HDBGRegA ();
@@ -8117,11 +8114,11 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
               {
                 doFault (FAULT_ONC, fst_onc_nem, "(cioc)");
               }
-            if (! get_scu_in_use (currentRunningCpuIdx, cpu_port_num))
+            if (! get_scu_in_use (current_running_cpu_idx, cpu_port_num))
               {
                 doFault (FAULT_ONC, fst_onc_nem, "(cioc)");
               }
-            uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
+            uint scuUnitIdx = get_scu_idx (current_running_cpu_idx, cpu_port_num);
 
 // expander word
 // dcl  1 scs$reconfig_general_cow aligned external, /* Used during reconfig
@@ -8138,7 +8135,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
             word8 sub_mask = getbits36_8 (cpu.CY, 0);
             word3 expander_command = getbits36_3 (cpu.CY, 21);
             uint scu_port_num = (uint) getbits36_3 (cpu.CY, 33);
-            scu_cioc (currentRunningCpuIdx, (uint) scuUnitIdx, scu_port_num, 
+            scu_cioc (current_running_cpu_idx, (uint) scuUnitIdx, scu_port_num, 
                       expander_command, sub_mask);
           }
           break;
@@ -8154,16 +8151,16 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 #ifdef L68
             uint cpu_port_num = (cpu.TPR.CA >> 15) & 07;
 #endif
-            if (! get_scu_in_use (currentRunningCpuIdx, cpu_port_num))
+            if (! get_scu_in_use (current_running_cpu_idx, cpu_port_num))
               {
                 sim_warn ("smcm to non-existent controller on "
                           "cpu %d port %d\n", 
-                          currentRunningCpuIdx, cpu_port_num);
+                          current_running_cpu_idx, cpu_port_num);
                 break;
               }
-            uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
+            uint scuUnitIdx = get_scu_idx (current_running_cpu_idx, cpu_port_num);
             t_stat rc = scu_smcm ((uint) scuUnitIdx,
-                                  currentRunningCpuIdx, cpu.rA, cpu.rQ);
+                                  current_running_cpu_idx, cpu.rA, cpu.rQ);
             if (rc)
               return rc;
           }
@@ -8185,7 +8182,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 #ifdef L68
             uint cpu_port_num = (cpu.TPR.CA >> 15) & 07;
 #endif
-            if (! get_scu_in_use (currentRunningCpuIdx, cpu_port_num))
+            if (! get_scu_in_use (current_running_cpu_idx, cpu_port_num))
               {
 #ifdef DPS8M
                 return SCPE_OK;
@@ -8204,8 +8201,8 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                 doFault (FAULT_CMD, fst_cmd_ctl, "(smic)");
 #endif
               }
-            uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
-            t_stat rc = scu_smic ((uint) scuUnitIdx, currentRunningCpuIdx, 
+            uint scuUnitIdx = get_scu_idx (current_running_cpu_idx, cpu_port_num);
+            t_stat rc = scu_smic ((uint) scuUnitIdx, current_running_cpu_idx, 
                                   cpu_port_num, cpu.rA);
             if (rc)
               return rc;
@@ -8222,7 +8219,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 #ifdef L68
             uint cpu_port_num = (cpu.TPR.CA >> 10) & 07;
 #endif
-            if (! get_scu_in_use (currentRunningCpuIdx, cpu_port_num))
+            if (! get_scu_in_use (current_running_cpu_idx, cpu_port_num))
               {
                 // CPTUR (cptUseFR) -- will be set by doFault
                 if (cpu_port_num == 0)
@@ -8235,8 +8232,8 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                   putbits36 (& cpu.faultRegister[0], 28, 4, 010);
                 doFault (FAULT_CMD, fst_cmd_ctl, "(sscr)");
               }
-            uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
-            t_stat rc = scu_sscr ((uint) scuUnitIdx, currentRunningCpuIdx,
+            uint scuUnitIdx = get_scu_idx (current_running_cpu_idx, cpu_port_num);
+            t_stat rc = scu_sscr ((uint) scuUnitIdx, current_running_cpu_idx,
                                   cpu_port_num, cpu.iefpFinalAddress & MASK15,
                                   cpu.rA, cpu.rQ);
 
@@ -8358,9 +8355,9 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
               sim_debug (DBG_TRACEEXT, & cpu_dev, "DIS refetches\n");
 #ifdef ROUND_ROBIN
 #ifdef ISOLTS
-              if (currentRunningCpuIdx)
+              if (current_running_cpu_idx)
               {
-//sim_printf ("stopping CPU %c\n", currentRunningCpuIdx + 'A');
+//sim_printf ("stopping CPU %c\n", current_running_cpu_idx + 'A');
                 cpu.isRunning = false;
               }
 #endif
@@ -9005,9 +9002,9 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
     cpu.ou.STR_OP = (is_ou && (i->info->flags & (STORE_OPERAND | STORE_YPAIR))) ? 1 : 0; 
     cpu.ou.cycle |= ou_GOF;
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr && is_ou)
-      addOUhist ();
+      add_OU_history ();
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr && is_du)
-      addDUhist ();
+      add_DU_history ();
 #endif
     return SCPE_OK;
 }
@@ -9302,7 +9299,7 @@ elapsedtime ();
 // fault     fault  mnemonic   name             priority group  handler
 // number   address
 //   0         0      sdf      Shutdown               27 7
-//   1         2      str      Store                  10 4                                  getBARaddress, instruction execution
+//   1         2      str      Store                  10 4                                  get_BAR_address, instruction execution
 //   2         4      mme      Master mode entry 1    11 5      JMP_SYNC_FAULT_RETURN       instruction execution
 //   3         6      f1       Fault tag 1            17 5      (JMP_REFETCH/JMP_RESTART)   doComputedAddressFormation
 //   4        10      tro      Timer runout           26 7      JMP_REFETCH                 FETCH_cycle

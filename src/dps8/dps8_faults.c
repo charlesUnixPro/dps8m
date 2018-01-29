@@ -364,11 +364,11 @@ else if (faultNumber == FAULT_ACV)
  sim_printf (" ACV %012llo PSR:IC %05o:%06o\r\n", subFault.bits, cpu.PPR.PSR, cpu.PPR.IC);
 }
 #endif
-//if (currentRunningCpuIdx)
+//if (current_running_cpu_idx)
     //sim_printf ("Fault %d(0%0o), sub %ld(0%lo), dfc %c, '%s'\n", 
                //faultNumber, faultNumber, subFault, subFault, 
                //cpu . bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
-//if (currentRunningCpuIdx)
+//if (current_running_cpu_idx)
     //sim_printf ("xde %d xdo %d\n", cpu.cu.xde, cpu.cu.xdo);
     sim_debug (DBG_FAULT, & cpu_dev, 
                "Fault %d(0%0o), sub %"PRIu64"(0%"PRIo64"), dfc %c, '%s'\n", 
@@ -523,7 +523,7 @@ sim_debug (DBG_FAULT, & cpu_dev, "cycle %u ndes %u fn %u v %u\n", cpu.cycle, cpu
 #endif
 
 #ifdef ISOLTS
-//if (currentRunningCpuIdx && faultNumber == FAULT_LUF) hdbgPrint ();
+//if (current_running_cpu_idx && faultNumber == FAULT_LUF) hdbgPrint ();
 #endif
     if (faultNumber == FAULT_ACV)
       {

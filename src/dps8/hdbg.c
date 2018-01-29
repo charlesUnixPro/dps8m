@@ -129,7 +129,7 @@ void hdbgTrace (void)
     if (! hevents)
       goto done;
 #ifdef ISOLTS
-if (currentRunningCpuIdx == 0)
+if (current_running_cpu_idx == 0)
   goto done;
 #endif
     hevents [hevtPtr] . type = hevtTrace;
@@ -154,7 +154,7 @@ void hdbgMRead (word24 addr, word36 data)
     if (! hevents)
       goto done;
 #ifdef ISOLTS
-if (currentRunningCpuIdx == 0)
+if (current_running_cpu_idx == 0)
   goto done;
 #endif
     hevents [hevtPtr] . type = hevtMRead;
@@ -176,7 +176,7 @@ void hdbgMWrite (word24 addr, word36 data)
     if (! hevents)
       goto done;
 #ifdef ISOLTS
-if (currentRunningCpuIdx == 0)
+if (current_running_cpu_idx == 0)
   goto done;
 #endif
     hevents [hevtPtr] . type = hevtMWrite;
@@ -199,7 +199,7 @@ void hdbgFault (_fault faultNumber, _fault_subtype subFault,
     if (! hevents)
       goto done;
 #ifdef ISOLTS
-if (currentRunningCpuIdx == 0)
+if (current_running_cpu_idx == 0)
   goto done;
 #endif
     hevents [hevtPtr] . type = hevtFault;
@@ -223,7 +223,7 @@ void hdbgIntrSet (uint inum, uint cpuUnitIdx, uint scuUnitIdx)
     if (! hevents)
       goto done;
 #ifdef ISOLTS
-if (currentRunningCpuIdx == 0)
+if (current_running_cpu_idx == 0)
   goto done;
 #endif
     hevents [hevtPtr].type = hevtIntrSet;
@@ -246,7 +246,7 @@ void hdbgIntr (uint intr_pair_addr)
     if (! hevents)
       goto done;
 #ifdef ISOLTS
-if (currentRunningCpuIdx == 0)
+if (current_running_cpu_idx == 0)
   goto done;
 #endif
     hevents [hevtPtr].type = hevtIntr;
@@ -267,7 +267,7 @@ void hdbgReg (enum hregs_t type, word36 data)
     if (! hevents)
       goto done;
 #ifdef ISOLTS
-if (currentRunningCpuIdx == 0)
+if (current_running_cpu_idx == 0)
   goto done;
 #endif
     hevents[hevtPtr].type = hevtReg;
@@ -290,7 +290,7 @@ void hdbgPAReg (enum hregs_t type, struct _par * data)
     if (! hevents)
       goto done;
 #ifdef ISOLTS
-if (currentRunningCpuIdx == 0)
+if (current_running_cpu_idx == 0)
   goto done;
 #endif
     hevents[hevtPtr].type = hevtPAReg;

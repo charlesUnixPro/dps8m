@@ -657,7 +657,7 @@ static void fetchNSDW (word15 segno)
 #endif
 #ifndef SPEED
     char buf [256];
-    DBGAPP ("fetchNSDW (2):SDW0=%s\n", strSDW0 (buf, & cpu.SDW0));
+    DBGAPP ("fetchNSDW (2):SDW0=%s\n", str_SDW0 (buf, & cpu.SDW0));
 #endif
   }
 

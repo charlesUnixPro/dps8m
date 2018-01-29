@@ -3741,7 +3741,7 @@ t_stat fprint_sym (UNUSED FILE * ofile, UNUSED t_addr addr,
         // decode instruction
         DCDstruct ci;
         DCDstruct * p = & ci;
-        decodeInstruction (word1, p);
+        decode_instruction (word1, p);
         
         // MW EIS?
         if (p->info->ndes > 1)

@@ -14,10 +14,10 @@
 extern DEVICE scu_dev;
 
 #ifdef ISOLTS
-#define isISOLTS (currentRunningCpuIdx != 0)
+#define isISOLTS (current_running_cpu_idx != 0)
 #else
 #if 0 // CPU1 only
-#define isISOLTS (currentRunningCpuIdx != 0)
+#define isISOLTS (current_running_cpu_idx != 0)
 #else // Any CPU
 #define isISOLTS true
 #endif
@@ -27,14 +27,14 @@ extern DEVICE scu_dev;
 #define if_sim_debug(dbits, dptr) if ((0))
 
 #else
-      // ((dptr != & cpu_dev) || currentRunningCpuIdx == 1) && 
+      // ((dptr != & cpu_dev) || current_running_cpu_idx == 1) && 
 
 #define if_sim_debug(dbits, dptr) \
   if ( \
       sim_deb && \
       isISOLTS && \
       (((dptr)->dctrl & (dbits)) || (dbits) == 0) && \
-      ((dptr != & cpu_dev) || ((1 << currentRunningCpuIdx) & dbgCPUMask)) && \
+      ((dptr != & cpu_dev) || ((1 << current_running_cpu_idx) & dbgCPUMask)) && \
       ((dptr != & cpu_dev) || sim_deb_segno == NO_SUCH_SEGNO || sim_deb_segno == cpu . PPR . PSR) && \
       ((dptr != & cpu_dev) || sim_deb_ringno == NO_SUCH_RINGNO || sim_deb_ringno == cpu . PPR. PRR) && \
       ((dptr != & cpu_dev) || (! sim_deb_bar) || (! TST_I_NBAR)) && \

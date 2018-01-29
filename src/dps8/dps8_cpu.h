@@ -1797,14 +1797,14 @@ extern cpu_state_t * restrict cpup;
 #endif
 #define cpu (* cpup)
 
-uint setCPUnum (uint cpuNum);
+uint set_cpu_idx (uint cpuNum);
 #ifdef THREADZ
-extern __thread uint currentRunningCpuIdx;
+extern __thread uint current_running_cpu_idx;
 #else
 #ifdef ROUND_ROBIN
-extern uint currentRunningCpuIdx;
+extern uint current_running_cpu_idx;
 #else
-#define currentRunningCpuIdx 0
+#define current_running_cpu_idx 0
 #endif
 #endif
 
@@ -1829,9 +1829,9 @@ static inline void SET_AR_CHAR_BITNO (uint n, word2 c, word4 b)
 
 bool sample_interrupts (void);
 t_stat simh_hooks (void);
-int OPSIZE (void);
-t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp);
-t_stat WriteOP (word18 addr, _processor_cycle_type acctyp);
+int operand_size (void);
+t_stat read_operand (word18 addr, _processor_cycle_type cyctyp);
+t_stat write_operand (word18 addr, _processor_cycle_type acctyp);
 
 #ifdef PANEL
 static inline void trackport (word24 a, word36 d)
@@ -1898,12 +1898,12 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
 #ifdef SCUMEM
     word24 offset;
     int cpu_port_num = lookup_cpu_mem_map (addr, & offset);
-    if (! get_scu_in_use (currentRunningCpuIdx, cpu_port_num))
+    if (! get_scu_in_use (current_running_cpu_idx, cpu_port_num))
       {
         sim_warn ("%s %012o has no SCU; faulting\n", __func__, addr);
         doFault (FAULT_STR, fst_str_nea, __func__);
       }
-    uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
+    uint scuUnitIdx = get_scu_idx (current_running_cpu_idx, cpu_port_num);
     LOCK_MEM;
     *data = scu [scuUnitIdx].M[offset] & DMASK;
     UNLOCK_MEM;
@@ -1949,12 +1949,12 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
 #ifdef SCUMEM
     word24 offset;
     int cpu_port_num = lookup_cpu_mem_map (addr, & offset);
-    if (! get_scu_in_use (currentRunningCpuIdx, cpu_port_num))
+    if (! get_scu_in_use (current_running_cpu_idx, cpu_port_num))
       {
         sim_warn ("%s %012o has no SCU; faulting\n", __func__, addr);
         doFault (FAULT_STR, fst_str_nea, __func__);
       }
-    uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
+    uint scuUnitIdx = get_scu_idx (current_running_cpu_idx, cpu_port_num);
     LOCK_MEM;
     scu[scuUnitIdx].M[offset] = data & DMASK;
     UNLOCK_MEM;
@@ -2000,12 +2000,12 @@ static inline int core_write_zone (word24 addr, word36 data, UNUSED const char *
 #ifdef SCUMEM
     word24 offset;
     int cpu_port_num = lookup_cpu_mem_map (addr, & offset);
-    if (! get_scu_in_use (currentRunningCpuIdx, cpu_port_num))
+    if (! get_scu_in_use (current_running_cpu_idx, cpu_port_num))
       {
         sim_warn ("%s %012o has no SCU; faulting\n", __func__, addr);
         doFault (FAULT_STR, fst_str_nea, __func__);
       }
-    uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
+    uint scuUnitIdx = get_scu_idx (current_running_cpu_idx, cpu_port_num);
     LOCK_MEM;
     scu[scuUnitIdx].M[offset] = (scu[scuUnitIdx].M[offset] & ~cpu.zone) |
                               (data & cpu.zone);
@@ -2057,12 +2057,12 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd,
 #ifdef SCUMEM
     word24 offset;
     int cpu_port_num = lookup_cpu_mem_map (addr, & offset);
-    if (! get_scu_in_use (currentRunningCpuIdx, cpu_port_num))
+    if (! get_scu_in_use (current_running_cpu_idx, cpu_port_num))
       {
         sim_warn ("%s %012o has no SCU; faulting\n", __func__, addr);
         doFault (FAULT_STR, fst_str_nea, __func__);
       }
-    uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
+    uint scuUnitIdx = get_scu_idx (current_running_cpu_idx, cpu_port_num);
     LOCK_MEM;
     *even = scu [scuUnitIdx].M[offset++] & DMASK;
     *odd = scu [scuUnitIdx].M[offset] & DMASK;
@@ -2111,12 +2111,12 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd,
 #ifdef SCUMEM
     word24 offset;
     int cpu_port_num = lookup_cpu_mem_map (addr, & offset);
-    if (! get_scu_in_use (currentRunningCpuIdx, cpu_port_num))
+    if (! get_scu_in_use (current_running_cpu_idx, cpu_port_num))
       {
         sim_warn ("%s %012o has no SCU; faulting\n", __func__, addr);
         doFault (FAULT_STR, fst_str_nea, __func__);
       }
-    uint scuUnitIdx = get_scu_idx (currentRunningCpuIdx, cpu_port_num);
+    uint scuUnitIdx = get_scu_idx (current_running_cpu_idx, cpu_port_num);
     LOCK_MEM;
     scu [scuUnitIdx].M[offset++] = even & DMASK;
     scu [scuUnitIdx].M[offset] = odd & DMASK;
@@ -2167,9 +2167,9 @@ bool get_bar_mode (void);
 addr_modes_t get_addr_mode (void);
 void set_addr_mode (addr_modes_t mode);
 void init_opcodes (void);
-void decodeInstruction (word36 inst, DCDstruct * p);
+void decode_instruction (word36 inst, DCDstruct * p);
 t_stat set_mem_watch (int32 arg, const char * buf);
-char *strSDW0 (char * buf, _sdw *SDW);
+char *str_SDW0 (char * buf, _sdw *SDW);
 #ifdef SCUMEM
 int lookup_cpu_mem_map (word24 addr, word24 * offset);
 #else
@@ -2178,23 +2178,20 @@ int lookup_cpu_mem_map (word24 addr);
 void cpu_init (void);
 void setup_scbank_map (void);
 #ifdef DPS8M
-void addCUhist (void);
-void addDUOUhist (word36 flags, word18 ICT, word9 RS_REG, word9 flags2);
-void addAPUhist (word15 ESN, word21 flags, word24 RMA, word3 RTRR,
+void add_CU_history (void);
+void add_DUOU_history (word36 flags, word18 ICT, word9 RS_REG, word9 flags2);
+void add_APU_history (word15 ESN, word21 flags, word24 RMA, word3 RTRR,
                  word9 flags2);
-void addEAPUhist (word18 ZCA, word18 opcode);
+void add_EAPU_history (word18 ZCA, word18 opcode);
 #endif
 #ifdef L68
-void addCUhist (void);
-void addOUhist (void);
-void addDUhist (void);
-void addAPUhist (enum APUH_e op);
+void add_CU_history (void);
+void add_OU_history (void);
+void add_DU_history (void);
+void add_APU_history (enum APUH_e op);
 #endif
-void addHist (uint hset, word36 w0, word36 w1);
-uint getCPUnum (void);
-void addHistForce (uint hset, word36 w0, word36 w1);
-uint getCPUnum (void);
-word18 getBARaddress(word18 addr);
+void add_history_force (uint hset, word36 w0, word36 w1);
+word18 get_BAR_address(word18 addr);
 #ifdef THREADZ
 t_stat threadz_sim_instr (void);
 void * cpuThreadMain (void * arg);

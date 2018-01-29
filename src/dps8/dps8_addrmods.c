@@ -105,7 +105,7 @@ static char * op_desc_str (char * temp)
 
     if (READOP (i))
       {
-        switch (OPSIZE ())
+        switch (operand_size ())
           {
             case 1:
               strcat (temp, "readCY");
@@ -134,7 +134,7 @@ static char * op_desc_str (char * temp)
         if (strlen (temp))
           strcat (temp, "/");
 
-        switch (OPSIZE ())
+        switch (operand_size ())
           {
             case 1:
               strcat (temp, "writeCY");
@@ -325,7 +325,7 @@ void updateIWB (word18 addr, word6 tag)
                * wb, GET_ADDR (* wb),
                extMods [GET_TAG (* wb)].mod);
 
-    decodeInstruction (IWB_IRODD, & cpu.currentInstruction);
+    decode_instruction (IWB_IRODD, & cpu.currentInstruction);
   }
 
 //

@@ -1589,7 +1589,7 @@ t_stat sim_load (FILE *fileref, const char *cptr, const char *fnam, int flag)
 static void printSDW0 (_sdw0 *SDW)
   {
     char buf [256];
-    sim_printf ("%s\n", strSDW0 (buf, SDW));
+    sim_printf ("%s\n", str_SDW0 (buf, SDW));
   }
 
 static char * strDSBR (char * buf)
