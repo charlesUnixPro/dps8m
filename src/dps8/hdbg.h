@@ -32,8 +32,8 @@ enum hregs_t
     hreg_PR0, hreg_PR1, hreg_PR2, hreg_PR3, hreg_PR4, hreg_PR5, hreg_PR6, hreg_PR7
   };
 void hdbgReg (enum hregs_t type, word36 data);
-struct _par;
-void hdbgPAReg (enum hregs_t type, struct _par * data);
+struct par_s;
+void hdbgPAReg (enum hregs_t type, struct par_s * data);
 #endif
 
 #ifdef HDBG

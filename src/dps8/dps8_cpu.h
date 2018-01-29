@@ -1,7 +1,7 @@
 /*
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
- Copyright 2013-2017 by Charles Anthony
+ Copyright 2013-2018 by Charles Anthony
  Copyright 2015 by Eric Swenson
 
  All rights reserved.
@@ -36,7 +36,7 @@ typedef enum
   {
     ABSOLUTE_mode,
     APPEND_mode,
-  } addr_modes_t;
+  } addr_modes_e;
 
 
 // The control unit of the CPU is always in one of several states. We
@@ -52,9 +52,9 @@ typedef enum
     INTERRUPT_EXEC_cycle,
     FETCH_cycle,
     SYNC_FAULT_RTN_cycle,
-  } cycles_t;
+  } cycles_e;
 
-struct _tpr
+struct tpr_s
   {
     word3   TRR; // The current effective ring number
     word15  TSR; // The current effective segment number
@@ -64,7 +64,7 @@ struct _tpr
                  // segment whose segment number is in TPR.TSR
   };
 
-struct _ppr
+struct ppr_s
   {
     word3   PRR; // The number of the ring in which the process is executing. 
                  // It is set to the effective ring number of the procedure 
@@ -136,7 +136,7 @@ struct _ppr
 //                    first bit of the next data item element.
 //
 
-struct _par
+struct par_s
   {
     word15  SNR;    // The segment number of the segment containing the data 
                     // item described by the pointer register.
@@ -159,7 +159,7 @@ struct _par
 #define AR    PAR
 #define PR    PAR
 
-struct _bar
+struct bar_s
   {
     word9 BASE;     // Contains the 9 high-order bits of an 18-bit address 
                     // relocation constant. The low-order bits are generated 
@@ -171,7 +171,7 @@ struct _bar
                     // 0 is truly 0, indicating a null memory range.
   };
 
-struct _dsbr
+struct dsbr_s
   {
     word24  ADDR;   // If DSBR.U = 1, the 24-bit absolute main memory address
                     //  of the origin of the current descriptor segment;
@@ -194,7 +194,7 @@ struct _dsbr
 // the descriptor segment whose description is currently loaded into the
 // descriptor segment base register (DSBR).
 
-struct _sdw
+struct sdw_s
   {
     word24  ADDR;    // The 24-bit absolute main memory address of the page
                      //  table for the target segment if SDWAM.U = 0;
@@ -259,13 +259,13 @@ struct _sdw
                      //  and the queue is reordered.
   };
 
-typedef struct _sdw _sdw;
-typedef struct _sdw _sdw0;
+typedef struct sdw_s sdw_s;
+typedef struct sdw_s sdw0_s;
 
 #if 0
 // in-core SDW (i.e. not cached, or in SDWAM)
 
-struct _sdw0
+struct sdw0_s
   {
     // even word
     word24  ADDR;    // The 24-bit absolute main memory address of the page
@@ -313,13 +313,13 @@ struct _sdw0
                      //  an offset less than EB if G=0
 };
 
-typedef struct _sdw0 _sdw0;
+typedef struct sdw0_s sdw0_s;
 #endif
 
 
 // PTW as used by APU
 
-struct _ptw
+struct ptw_s
  {
     word18  ADDR;    // The 18 high-order bits of the 24-bit absolute
                      //  main memory address of the page.
@@ -360,13 +360,13 @@ struct _ptw
     
   };
 
-typedef struct _ptw _ptw;
-typedef struct _ptw _ptw0;
+typedef struct ptw_s ptw_s;
+typedef struct ptw_s ptw0_s;
 
 #if 0
 // in-core PTW
 
-struct _ptw0
+struct ptw0_s
   {
     word18  ADDR;   // The 18 high-order bits of the 24-bit absolute main
                     //  memory address of the page.
@@ -379,14 +379,14 @@ struct _ptw0
     
   };
 
-typedef struct _ptw0 _ptw0;
+typedef struct ptw0_s ptw0_s;
 #endif
 
 //
 // Cache Mode Regsiter
 //
 
-struct _cache_mode_register
+struct cache_mode_register_s
   {
     word15   cache_dir_address;
     word1    par_bit;
@@ -422,9 +422,9 @@ struct _cache_mode_register
                         // processor is initialized.
   };
 
-typedef struct _cache_mode_register _cache_mode_register;
+typedef struct cache_mode_register_s cache_mode_register_s;
 
-typedef struct mode_register
+typedef struct mode_register_s
   {
     word36 r;
 #ifdef L68
@@ -461,11 +461,11 @@ typedef struct mode_register
 #endif
                     //  0       0           34
      word1 emr;     //  m       n           35 enable MR
-  } _mode_register;
+  } mode_register_s;
 
 extern DEVICE cpu_dev;
 
-typedef struct MOPstruct MOPstruct;
+typedef struct MOP_struct MOP_struct;
 
 // address of an EIS operand
 typedef struct EISaddr
@@ -600,7 +600,7 @@ typedef struct EISstruct
     word9   editInsertionTable [8];     // 8 9-bit chars
     
     int     mopIF;          // current micro-operation IF field
-    MOPstruct *m;           // pointer to current MOP struct
+    MOP_struct *m;           // pointer to current MOP struct
     
     word9   inBuffer [64];  // decimal unit input buffer
     word9   *in;            // pointer to current read position in inBuffer
@@ -1504,7 +1504,7 @@ enum { CUH_XINT = 0100, CUH_IFT = 040, CUH_CRD = 020, CUH_MRD = 010,
 typedef struct
   {
     jmp_buf jmpMain; // This is the entry to the CPU state machine
-    cycles_t cycle;
+    cycles_e cycle;
     unsigned long long cycleCnt;
     unsigned long long instrCnt;
     unsigned long long instrCntT0;
@@ -1559,13 +1559,13 @@ typedef struct
 
     word18 lnk;  // rpl link value
 
-    struct _tpr TPR;   // Temporary Pointer Register
-    struct _ppr PPR;   // Procedure Pointer Register
-    struct _par PAR [8]; // pointer/address resisters
-    struct _bar BAR;   // Base Address Register
-    struct _dsbr DSBR; // Descriptor Segment Base Register
+    struct tpr_s TPR;   // Temporary Pointer Register
+    struct ppr_s PPR;   // Procedure Pointer Register
+    struct par_s PAR [8]; // pointer/address resisters
+    struct bar_s BAR;   // Base Address Register
+    struct dsbr_s DSBR; // Descriptor Segment Base Register
 #ifdef WAM
-    _sdw SDWAM [N_WAM_ENTRIES]; // Segment Descriptor Word Associative Memory
+    sdw_s SDWAM [N_WAM_ENTRIES]; // Segment Descriptor Word Associative Memory
 #endif
 #ifdef L68
     word4 SDWAMR;
@@ -1573,9 +1573,9 @@ typedef struct
 #ifdef DPS8M
     word6 SDWAMR;
 #endif
-    _sdw * SDW; // working SDW
-    _sdw SDW0; // a SDW not in SDWAM
-    _sdw _s;
+    sdw_s * SDW; // working SDW
+    sdw_s SDW0; // a SDW not in SDWAM
+    sdw_s _s;
 #ifdef PANEL
     // Intermediate data collection for APU SCROLL 
     word18 lastPTWOffset;
@@ -1694,7 +1694,7 @@ typedef struct
     bool useZone;
 
 #ifdef WAM
-    _ptw PTWAM [N_WAM_ENTRIES];
+    ptw_s PTWAM [N_WAM_ENTRIES];
 #endif
 #ifdef L68
     word4 PTWAMR;
@@ -1702,10 +1702,10 @@ typedef struct
 #ifdef DPS8M
     word6 PTWAMR;
 #endif
-    _ptw * PTW;
-    _ptw0 PTW0; // a PTW not in PTWAM (PTWx1)
-    _cache_mode_register CMR;
-    _mode_register MR;
+    ptw_s * PTW;
+    ptw0_s PTW0; // a PTW not in PTWAM (PTWx1)
+    cache_mode_register_s CMR;
+    mode_register_s MR;
 
     // G7 faults
 
@@ -1762,7 +1762,7 @@ typedef struct
     // Changes to the mode register history bits do not take affect until
     // the next instruction (ISOLTS 700 2a). Cache the values here so
     // that post register updates can see the old values.
-    _mode_register MR_cache;
+    mode_register_s MR_cache;
     
     // If the instruction wants overflow thrown after operand write
     bool dlyFlt;
@@ -2164,12 +2164,12 @@ int is_priv_mode (void);
 //void clr_went_appending (void);
 //bool get_went_appending (void);
 bool get_bar_mode (void);
-addr_modes_t get_addr_mode (void);
-void set_addr_mode (addr_modes_t mode);
+addr_modes_e get_addr_mode (void);
+void set_addr_mode (addr_modes_e mode);
 void init_opcodes (void);
 void decode_instruction (word36 inst, DCDstruct * p);
 t_stat set_mem_watch (int32 arg, const char * buf);
-char *str_SDW0 (char * buf, _sdw *SDW);
+char *str_SDW0 (char * buf, sdw_s *SDW);
 #ifdef SCUMEM
 int lookup_cpu_mem_map (word24 addr, word24 * offset);
 #else

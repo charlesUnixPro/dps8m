@@ -406,7 +406,7 @@ static t_stat cpu_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value,
     return SCPE_OK;
   }
 
-static char * cycle_str (cycles_t cycle)
+static char * cycle_str (cycles_e cycle)
   {
     switch (cycle)
       {
@@ -431,7 +431,7 @@ static char * cycle_str (cycles_t cycle)
       }
   }
 
-static void set_cpu_cycle (cycles_t cycle)
+static void set_cpu_cycle (cycles_e cycle)
   {
     sim_debug (DBG_CYCLE, & cpu_dev, "Setting cycle to %s\n",
                cycle_str (cycle));
@@ -516,7 +516,7 @@ static void cpu_reset_unit_idx (UNUSED uint cpun, bool clear_mem)
     cpu.apu.lastCycle = UNKNOWN_CYCLE;
 #endif
 
-    memset (& cpu.PPR, 0, sizeof (struct _ppr));
+    memset (& cpu.PPR, 0, sizeof (struct ppr_s));
 
     setup_scbank_map ();
 
@@ -778,7 +778,7 @@ void init_opcodes (void)
 
 
 
-char * str_SDW0 (char * buf, _sdw0 * SDW)
+char * str_SDW0 (char * buf, sdw0_s * SDW)
   {
     sprintf (buf, "ADDR=%06o R1=%o R2=%o R3=%o F=%o FC=%o BOUND=%o R=%o "
              "E=%o W=%o P=%o U=%o G=%o C=%o EB=%o",
@@ -1559,7 +1559,7 @@ static void do_LUF_fault (void)
 #endif
 
 /*
- * addr_modes_t get_addr_mode()
+ * addr_modes_e get_addr_mode()
  *
  * Report what mode the CPU is in.
  * This is determined by examining a couple of IR flags.
@@ -3262,7 +3262,7 @@ bool get_bar_mode (void)
     return ! (cpu.secret_addressing_mode || TST_I_NBAR);
   }
 
-addr_modes_t get_addr_mode (void)
+addr_modes_e get_addr_mode (void)
   {
     if (cpu.secret_addressing_mode)
         return ABSOLUTE_mode; // This is not the mode you are looking for
@@ -3292,7 +3292,7 @@ addr_modes_t get_addr_mode (void)
  *
  */
 
-void set_addr_mode (addr_modes_t mode)
+void set_addr_mode (addr_modes_e mode)
   {
 //    cpu.cu.XSF = false;
 //sim_debug (DBG_TRACEEXT, & cpu_dev, "set_addr_mode bit 29 sets XSF to 0\n");

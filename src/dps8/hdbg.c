@@ -35,7 +35,7 @@ struct hevt
       {
         struct
           {
-            addr_modes_t addrMode;
+            addr_modes_e addrMode;
             word15 segno;
             word18 ic;
             word3 ring;
@@ -76,7 +76,7 @@ struct hevt
         struct
           {
             enum hregs_t type;
-            struct _par data;
+            struct par_s data;
           } par;
       };
   };
@@ -282,7 +282,7 @@ done: ;
   }
 
 
-void hdbgPAReg (enum hregs_t type, struct _par * data)
+void hdbgPAReg (enum hregs_t type, struct par_s * data)
   {
 #ifdef THREADZ
     pthread_mutex_lock (& hdbg_lock);

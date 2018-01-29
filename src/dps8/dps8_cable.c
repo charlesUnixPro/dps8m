@@ -1142,6 +1142,8 @@ t_stat sys_cable (int32 arg, const char * buf)
       rc = sys_cable_ripout (0, NULL);
     else if (strcasecmp (name, "SHOW") == 0)
       rc = sys_cable_show (0, NULL);
+    else if (strcasecmp (name, "DUMP") == 0)
+      rc = sys_cable_show (1, NULL);
     else if (name_match (name, "SCU", & unit_num))
       rc = cable_scu (arg, unit_num, & name_save);
     else if (name_match (name, "IOM", & unit_num))
@@ -1176,7 +1178,7 @@ static void cable_init (void)
     memset (cables, 0, sizeof (struct cables_s));
   }
 
-t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
+t_stat sys_cable_show (int32 dump, UNUSED const char * buf)
   {
 #define all(i,n) \
   for (uint i = 0; i < n; i ++)
@@ -1191,16 +1193,18 @@ t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
             sim_printf (" %4u %4u    %4u %4u\n", u, prt, p->iom_unit_idx, p->iom_port_num);
         }
  
-    sim_printf ("   IOM port --> SCU port\n");
-    all (u, N_IOM_UNITS_MAX)
-      all (prt, N_IOM_PORTS)
-        {
-          struct iom_to_scu_s * p = & cables->iom_to_scu[u][prt];
-          if (p->in_use)
-            sim_printf (" %4u %4u    %4u %4u\n", u, prt, p->scu_unit_idx, p->scu_port_num);
-        }
+    if (dump)
+      {
+        sim_printf ("   IOM port --> SCU port\n");
+        all (u, N_IOM_UNITS_MAX)
+          all (prt, N_IOM_PORTS)
+            {
+              struct iom_to_scu_s * p = & cables->iom_to_scu[u][prt];
+              if (p->in_use)
+                sim_printf (" %4u %4u    %4u %4u\n", u, prt, p->scu_unit_idx, p->scu_port_num);
+            }
+      }
     sim_printf ("\n");
-
 
     sim_printf ("SCU <--> CPU\n");
     sim_printf ("   SCU port --> CPU port\n");
@@ -1213,13 +1217,16 @@ t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
               sim_printf (" %4u %4u    %4u %4u\n", u, prt, p->cpu_unit_idx, p->cpu_port_num);
           }
  
-    sim_printf ("   CPU port --> SCU port subport\n");
-    all (u, N_CPU_UNITS_MAX)
-      all (prt, N_CPU_PORTS)
-        {
-          struct cpu_to_scu_s * p = & cables->cpu_to_scu[u][prt];
-          if (p->in_use)
-            sim_printf (" %4u %4u    %4u %4u  %4u\n", u, prt, p->scu_unit_idx, p->scu_port_num, p->scu_subport_num);
+    if (dump)
+      {
+        sim_printf ("   CPU port --> SCU port subport\n");
+        all (u, N_CPU_UNITS_MAX)
+          all (prt, N_CPU_PORTS)
+            {
+              struct cpu_to_scu_s * p = & cables->cpu_to_scu[u][prt];
+              if (p->in_use)
+                sim_printf (" %4u %4u    %4u %4u  %4u\n", u, prt, p->scu_unit_idx, p->scu_port_num, p->scu_subport_num);
+            }
         }
     sim_printf ("\n");
 
@@ -1234,6 +1241,8 @@ t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
             sim_printf (" %4u %4u     %4u  %4u %-6s  %-6s %10p %10p %10p\n", u, c, p->ctlr_unit_idx, p->port_num, ctlr_type_strs[p->ctlr_type], chan_type_strs[p->chan_type], p->dev, p->board, p->iom_cmd);
         }
 
+    if (dump)
+      {
 #define CTLR_IOM(big,small) \
     sim_printf ("  %-4s port --> IOM channel\n", #big); \
     all (u, N_ ## big ## _UNITS_MAX) \
@@ -1243,13 +1252,14 @@ t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
           if (p->in_use) \
             sim_printf (" %4u %4u    %4u %4u\n", u, prt, p->iom_unit_idx, p->chan_num); \
         } 
-    CTLR_IOM (MTP, mtp)
-    CTLR_IOM (MSP, msp)
-    CTLR_IOM (IPC, ipc)
-    CTLR_IOM (URP, urp)
-    CTLR_IOM (DIA, dia)
-    CTLR_IOM (ABSI, absi)
-    CTLR_IOM (OPC, opc)
+        CTLR_IOM (MTP, mtp)
+        CTLR_IOM (MSP, msp)
+        CTLR_IOM (IPC, ipc)
+        CTLR_IOM (URP, urp)
+        CTLR_IOM (DIA, dia)
+        CTLR_IOM (ABSI, absi)
+        CTLR_IOM (OPC, opc)
+      }
     sim_printf ("\n");
 
     sim_printf ("controller <--> device\n");
@@ -1272,15 +1282,33 @@ t_stat sys_cable_show (UNUSED int32 arg, UNUSED const char * buf)
           sim_printf (" %4u    %4u   %4u    %5s\n", u, p->ctlr_unit_idx, p->dev_code, ctlr_type_strs[p->ctlr_type]); \
       } 
     CTLR_DEV (MTP, mtp, TAPE, MT, tape);
-    DEV_CTLR (MTP, mtp, TAPE, MT, tape);
+    if (dump)
+      {
+        DEV_CTLR (MTP, mtp, TAPE, MT, tape);
+      }
     CTLR_DEV (IPC, ipc, DISK, DSK, dsk);
     CTLR_DEV (MSP, msp, DISK, DSK, dsk);
-    DEV_CTLR (CTLR, ctlr, DISK, DSK, dsk);
+    if (dump)
+      {
+        DEV_CTLR (CTLR, ctlr, DISK, DSK, dsk);
+      }
     CTLR_DEV (URP, urp, URP, URP, urd);
-    DEV_CTLR (URP, urp, RDR, RDR, rdr);
-    DEV_CTLR (URP, urp, RDR, RDR, rdr);
-    DEV_CTLR (URP, urp, PUN, PUN, pun);
-    DEV_CTLR (URP, urp, PRT, PRT, prt);
+    if (dump)
+      {
+        DEV_CTLR (URP, urp, RDR, RDR, rdr);
+      }
+    if (dump)
+      {
+        DEV_CTLR (URP, urp, RDR, RDR, rdr);
+      }
+    if (dump)
+      {
+        DEV_CTLR (URP, urp, PUN, PUN, pun);
+      }
+    if (dump)
+      {
+        DEV_CTLR (URP, urp, PRT, PRT, prt);
+      }
 
     return SCPE_OK;
   }

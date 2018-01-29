@@ -6579,7 +6579,7 @@ static int mopSES (void)
     return 0;
 }
 
-struct MOPstruct
+struct MOP_struct
 {
     char *mopName;             // name of microoperation
     int (*f)(void);    // pointer to mop() [returns character to be stored]
@@ -6598,7 +6598,7 @@ static char * mopCodes [040] =
 #endif
 
 
-static MOPstruct mopTab[040] = {
+static MOP_struct mopTab[040] = {
     {NULL, 0},
     {"insm", mopINSM },
     {"enf",  mopENF  },
@@ -6638,7 +6638,7 @@ static MOPstruct mopTab[040] = {
  * fetch MOP from e->mopAddr/e->mopPos ...
  */
 
-static MOPstruct* EISgetMop (void)
+static MOP_struct* EISgetMop (void)
 {
     EISstruct * e = & cpu.currentEISinstruction;
     //static word18 lastAddress;  // try to keep memory access' down
@@ -6684,7 +6684,7 @@ static MOPstruct* EISgetMop (void)
     word5 mop   = (mop9 >> 4) & 037;
     e->mopIF = mop9 & 0xf;
     
-    MOPstruct *m = &mopTab[mop];
+    MOP_struct *m = &mopTab[mop];
     sim_debug (DBG_TRACEEXT, & cpu_dev, "MOP %s(%o) %o\n", m -> mopName, mop, e->mopIF);
     e->m = m;
     if (e->m == NULL || e->m->f == NULL)
@@ -6740,7 +6740,7 @@ IF1 sim_printf ("mop entry %o src %d dst %d mop %d\n", e->_faults, e->srcTally, 
     while (e->dstTally)
     {
         sim_debug (DBG_TRACEEXT, & cpu_dev, "mopExecutor srcTally %d dstTally %d mopTally %d\n", e->srcTally, e->dstTally, e->mopTally);
-        MOPstruct *m = EISgetMop();
+        MOP_struct *m = EISgetMop();
         if (! m)
           {
 IF1 sim_printf ("mopExecutor EISgetMop forced break\n");

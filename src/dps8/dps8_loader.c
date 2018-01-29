@@ -358,7 +358,7 @@ static void makeITS(int segno, int offset, int tag, word36 *Ypair)
 
 // Assumes unpaged DSBR
 
-_sdw0 *fetchSDW (word15 segno)
+sdw0_s *fetchSDW (word15 segno)
   {
     word36 SDWeven, SDWodd;
     
@@ -367,7 +367,7 @@ _sdw0 *fetchSDW (word15 segno)
     
     // even word
     
-    _sdw0 *SDW = & cpu._s;
+    sdw0_s *SDW = & cpu._s;
     memset (SDW, 0, sizeof (cpu._s));
     
     SDW->ADDR = (SDWeven >> 12) & 077777777;
@@ -399,7 +399,7 @@ int getAddress(int segno, int offset)
     
     
     // get address of in-core segment descriptor word from DSBR
-    _sdw0 *s = fetchSDW ((word15) segno);
+    sdw0_s *s = fetchSDW ((word15) segno);
     
     return (s->ADDR + (word18) offset) & 0xffffff; // keep to 24-bits
 }
@@ -417,7 +417,7 @@ bool getSegmentAddressString(int addr, char *msg)
     {
         int segno = s->segno;       // get segment number from list of known "deferred" segments
         
-        _sdw0 *s0 = fetchSDW ((word15) segno);
+        sdw0_s *s0 = fetchSDW ((word15) segno);
         int startAddr = (int) s0->ADDR;   // get start address
         //if (addr >= startAddr && addr <= startAddr + (s0->BOUND << 4) - 1)
         if (addr >= startAddr && addr <= startAddr + s->size)
@@ -447,11 +447,11 @@ bool getSegmentAddressString(int addr, char *msg)
 //}
 
 //static
-//void writeSDW(int segno, _sdw0 *s0)
+//void writeSDW(int segno, sdw0_s *s0)
 //{
 //    int addr = DSBR.ADDR + (2 * segno);
 //    
-//    // write a _sdw to memory
+//    // write a sdw0_s to memory
 //    
 //    word36 even = 0, odd = 0;
 //    even = bitfieldInsert36(even, s0->ADDR, 12, 24);
@@ -574,7 +574,7 @@ static int loadDeferredSegment(segment *sg, int addr24)
     // update in-code SDW to reflect segment info
     // Done in loadUnpagedSegment()
     
-//    _sdw0 *s0 = fetchSDW(segno);
+//    sdw0_s *s0 = fetchSDW(segno);
 //    
 //    s0->ADDR = addr24; // 24-bit absolute address
 //    
@@ -1292,9 +1292,9 @@ static t_stat load_simh (FILE *fileref, int32 segno, int32 ldaddr,
 /*!
  * Create sdw0. Create an in-core SDW ...
  */
-static _sdw0* createSDW0(word24 addr, word3 R1, word3 R2, word3 R3, word1 F, word3 FC, word14 BOUND, word1 R, word1 E, word1 W, word1 P, word1 U, word1 G, word1 C, word14 EB)
+static sdw0_s* createSDW0(word24 addr, word3 R1, word3 R2, word3 R3, word1 F, word3 FC, word14 BOUND, word1 R, word1 E, word1 W, word1 P, word1 U, word1 G, word1 C, word14 EB)
 {
-    static _sdw0 SDW0;
+    static sdw0_s SDW0;
     
     // even word
     SDW0.ADDR = addr & 077777777;
@@ -1318,7 +1318,7 @@ static _sdw0* createSDW0(word24 addr, word3 R1, word3 R2, word3 R3, word1 F, wor
     return &SDW0;
 }
 
-static void writeSDW0toYPair(_sdw0 *p, word36 *yPair)
+static void writeSDW0toYPair(sdw0_s *p, word36 *yPair)
 {
     word36 even, odd;
     
@@ -1366,7 +1366,7 @@ static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
     
     //sim_printf ("B:%d count:%d\n", BOUND, count);
     
-    _sdw0 *s = createSDW0(addr, R1, R2, R3, F, FC, BOUND, R, E, W, P, U, G, C, EB);
+    sdw0_s *s = createSDW0(addr, R1, R2, R3, F, FC, BOUND, R, E, W, P, U, G, C, EB);
     word36 yPair[2];
     writeSDW0toYPair(s, yPair);
     
@@ -1586,7 +1586,7 @@ t_stat sim_load (FILE *fileref, const char *cptr, const char *fnam, int flag)
 #endif
 }
 
-static void printSDW0 (_sdw0 *SDW)
+static void printSDW0 (sdw0_s *SDW)
   {
     char buf [256];
     sim_printf ("%s\n", str_SDW0 (buf, SDW));
@@ -1616,7 +1616,7 @@ static t_stat dpsCmd_DumpSegmentTable (void)
         for (word15 segno = 0; 2 * segno < 16 * (cpu.DSBR.BND + 1); segno += 1)
           {
             sim_printf ("Seg %d - ", segno);
-            _sdw0 *s = fetchSDW (segno);
+            sdw0_s *s = fetchSDW (segno);
             printSDW0 (s);
           }
       }
@@ -1632,7 +1632,7 @@ static t_stat dpsCmd_DumpSegmentTable (void)
             word36 PTWx1;
             core_read ((cpu.DSBR.ADDR + x1) & PAMASK, & PTWx1, __func__);
 
-            _ptw0 PTW1;
+            ptw0_s PTW1;
             PTW1.ADDR = GETHI (PTWx1);
             PTW1.U = TSTBIT (PTWx1, 9);
             PTW1.M = TSTBIT (PTWx1, 6);
@@ -1649,7 +1649,7 @@ static t_stat dpsCmd_DumpSegmentTable (void)
                 word36 SDWeven, SDWodd;
                 core_read2 (((PTW1.ADDR << 6) + tspt * 2u) & PAMASK,
                              & SDWeven, & SDWodd, __func__);
-                _sdw0 SDW0;
+                sdw0_s SDW0;
                 // even word
                 SDW0.ADDR = (SDWeven >> 12) & PAMASK;
                 SDW0.R1 = (SDWeven >> 9) & 7;
@@ -1692,7 +1692,7 @@ static t_stat dpsCmd_DumpSegmentTable (void)
                         core_read ((SDW0.ADDR + x2) & PAMASK, & PTWx2,
                                     __func__);
 
-                        _ptw0 PTW_2;
+                        ptw0_s PTW_2;
                         PTW_2.ADDR = GETHI (PTWx2);
                         PTW_2.U = TSTBIT (PTWx2, 9);
                         PTW_2.M = TSTBIT (PTWx2, 6);

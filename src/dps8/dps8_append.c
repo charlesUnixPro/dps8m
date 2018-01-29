@@ -98,7 +98,7 @@ void setAPUStatus (apuStatusBits status)
   }
 
 #ifdef WAM
-static char *strSDW (char * buf, _sdw *SDW);
+static char *strSDW (char * buf, sdw_s *SDW);
 #endif
 
 //
@@ -131,7 +131,7 @@ static void selftestPTWAM (void)
 
     for (int i = 0; i < N_WAM_ENTRIES; i ++)
       {
-        _ptw * p = cpu.PTWAM + i;
+        ptw_s * p = cpu.PTWAM + i;
         if (p -> USE > N_WAM_ENTRIES - 1)
           sim_printf ("PTWAM[%d].USE is %d; > %d!\n",
                       i, p -> USE, N_WAM_ENTRIES - 1);
@@ -464,7 +464,7 @@ static word6 calcHitAM (word6 LRU, uint hitLevel)
   }
 #endif
 
-static _sdw * fetchSDWfromSDWAM (word15 segno)
+static sdw_s * fetchSDWfromSDWAM (word15 segno)
   {
     DBGAPP ("fetchSDWfromSDWAM(0):segno=%05o\n", segno);
     
@@ -513,7 +513,7 @@ static _sdw * fetchSDWfromSDWAM (word15 segno)
 #ifdef DPS8M
     uint setno = segno & 017;
     uint toffset;
-    _sdw *p;
+    sdw_s *p;
     for (toffset = 0; toffset < 64; toffset += 16)
       {
         p = & cpu.SDWAM[toffset + setno];
@@ -662,7 +662,7 @@ static void fetchNSDW (word15 segno)
   }
 
 #ifdef WAM
-static char *strSDW (char * buf, _sdw *SDW)
+static char *strSDW (char * buf, sdw_s *SDW)
   {
     if (! SDW->FE)
       sprintf (buf, "*** SDW Uninitialized ***");
@@ -703,7 +703,7 @@ t_stat dumpSDWAM (void)
     char buf [256];
     for (int _n = 0; _n < N_WAM_ENTRIES; _n++)
       {
-        _sdw *p = & cpu.SDWAM[_n];
+        sdw_s *p = & cpu.SDWAM[_n];
         
         if (p->FE)
           sim_printf ("SDWAM n:%d %s\n", _n, strSDW (buf, p));
@@ -753,7 +753,7 @@ static void loadSDWAM (word15 segno, UNUSED bool nomatch)
     if (nomatch || cpu.switches.disable_wam || ! cpu.cu.SD_ON)
       {
         DBGAPP ("loadSDWAM: SDWAM disabled\n");
-        _sdw * p = & cpu.SDW0;
+        sdw_s * p = & cpu.SDW0;
         p->POINTER = segno;
         p->USE = 0;
         p->FE = true;     // in use by SDWAM
@@ -771,7 +771,7 @@ static void loadSDWAM (word15 segno, UNUSED bool nomatch)
 
     for (int _n = 0; _n < N_WAM_ENTRIES; _n++)
       {
-        _sdw * p = & cpu.SDWAM[_n];
+        sdw_s * p = & cpu.SDWAM[_n];
         if (! p->FE || p->USE == 0)
           {
             DBGAPP ("loadSDWAM(1):SDWAM[%d] FE=0 || USE=0\n", _n);
@@ -783,7 +783,7 @@ static void loadSDWAM (word15 segno, UNUSED bool nomatch)
             
             for (int _h = 0; _h < N_WAM_ENTRIES; _h++)
               {
-                _sdw * q = & cpu.SDWAM[_h];
+                sdw_s * q = & cpu.SDWAM[_h];
                 q->USE -= 1;
                 q->USE &= N_WAM_MASK;
               }
@@ -807,7 +807,7 @@ static void loadSDWAM (word15 segno, UNUSED bool nomatch)
 #ifdef DPS8M
     uint setno = segno & 017;
     uint toffset;
-    _sdw *p;
+    sdw_s *p;
     for (toffset = 0; toffset < 64; toffset += 16)
       {
         p = & cpu.SDWAM[toffset + setno];
@@ -843,7 +843,7 @@ static void loadSDWAM (word15 segno, UNUSED bool nomatch)
   }
 
 #ifdef WAM
-static _ptw * fetchPTWfromPTWAM (word15 segno, word18 CA)
+static ptw_s * fetchPTWfromPTWAM (word15 segno, word18 CA)
   {
     if (cpu.switches.disable_wam || ! cpu.cu.PT_ON)
       {
@@ -891,7 +891,7 @@ static _ptw * fetchPTWfromPTWAM (word15 segno, word18 CA)
 #ifdef DPS8M
     uint setno = (CA >> 10) & 017;
     uint toffset;
-    _ptw *p;
+    ptw_s *p;
     for (toffset = 0; toffset < 64; toffset += 16)
       {
         p = & cpu.PTWAM[toffset + setno];
@@ -925,7 +925,7 @@ static _ptw * fetchPTWfromPTWAM (word15 segno, word18 CA)
   }
 #endif // WAM
 
-static void fetchPTW (_sdw *sdw, word18 offset)
+static void fetchPTW (sdw_s *sdw, word18 offset)
   {
     // AL39 p.5-7
     // Fetches a PTW from a page table other than a descriptor segment page
@@ -986,7 +986,7 @@ static void loadPTWAM (word15 segno, word18 offset, UNUSED bool nomatch)
     if (nomatch || cpu.switches.disable_wam || ! cpu.cu.PT_ON)
       {
         DBGAPP ("loadPTWAM: PTWAM disabled\n");
-        _ptw * p = & cpu.PTW0;
+        ptw_s * p = & cpu.PTW0;
         p->PAGENO = (offset >> 6) & 07760;  // ISOLTS-861 02, AL39 p.3-22
         p->POINTER = segno;
         p->USE = 0;
@@ -1005,7 +1005,7 @@ static void loadPTWAM (word15 segno, word18 offset, UNUSED bool nomatch)
 
     for (int _n = 0; _n < N_WAM_ENTRIES; _n++)
       {
-        _ptw * p = & cpu.PTWAM[_n];
+        ptw_s * p = & cpu.PTWAM[_n];
         if (! p->FE || p->USE == 0)
           {
             DBGAPP ("loadPTWAM(1):PTWAM[%d] FE=0 || USE=0\n", _n);
@@ -1017,7 +1017,7 @@ static void loadPTWAM (word15 segno, word18 offset, UNUSED bool nomatch)
             
             for (int _h = 0; _h < N_WAM_ENTRIES; _h++)
               {
-                _ptw * q = & cpu.PTWAM[_h];
+                ptw_s * q = & cpu.PTWAM[_h];
                 q->USE -= 1;
                 q->USE &= N_WAM_MASK;
               }
@@ -1042,7 +1042,7 @@ static void loadPTWAM (word15 segno, word18 offset, UNUSED bool nomatch)
 #ifdef DPS8M
     uint setno = (offset >> 10) & 017;
     uint toffset;
-    _ptw *p;
+    ptw_s *p;
     for (toffset = 0; toffset < 64; toffset += 16)
       {
         p = & cpu.PTWAM [toffset + setno];
@@ -1084,7 +1084,7 @@ static void loadPTWAM (word15 segno, word18 offset, UNUSED bool nomatch)
  * modify target segment PTW (Set M=1) ...
  */
 
-static void modifyPTW (_sdw *sdw, word18 offset)
+static void modifyPTW (sdw_s *sdw, word18 offset)
   {
     PNL (L68_ (cpu.apu.state |= apu_MPTW;))
     //word24 y2 = offset % 1024;
@@ -1104,7 +1104,7 @@ static void modifyPTW (_sdw *sdw, word18 offset)
 #endif
   }
 
-static void doPTW2 (_sdw *sdw, word18 offset)
+static void doPTW2 (sdw_s *sdw, word18 offset)
   {
     PNL (L68_ (cpu.apu.state |= apu_FPTW2;))
     setAPUStatus (apuStatus_PTW2);
@@ -1121,7 +1121,7 @@ static void doPTW2 (_sdw *sdw, word18 offset)
 
     core_read ((sdw->ADDR + x2 + 1) & PAMASK, & PTWx2n, __func__);
 
-    _ptw0 PTW2; 
+    ptw_s PTW2; 
     PTW2.ADDR = GETHI (PTWx2n);
     PTW2.U = TSTBIT (PTWx2n, 9);
     PTW2.M = TSTBIT (PTWx2n, 6);
@@ -2406,8 +2406,8 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
   {
     // Local copies so we don't disturb machine state
 
-    _ptw0 PTW1;
-    _sdw0 SDW1;
+    ptw_s PTW1;
+    sdw_s SDW1;
 
    if (2u * segno >= 16u * (cpu.DSBR.BND + 1u))
      {

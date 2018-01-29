@@ -1776,7 +1776,7 @@ t_stat computeAbsAddrN (word24 * abs_addr, int segno, uint offset)
         core_read2(((PTW1.ADDR << 6) + y1) & PAMASK, & SDWeven, & SDWodd,
                     __func__);
 
-        _sdw0 SDW0; 
+        sdw0_s SDW0; 
         // even word
         SDW0.ADDR = (SDWeven >> 12) & PAMASK;
         SDW0.R1 = (SDWeven >> 9) & 7;
@@ -2800,7 +2800,7 @@ static t_stat virtAddrN (uint address)
     if (cpu.DSBR.U) {
         for(word15 segno = 0; 2u * segno < 16u * (cpu.DSBR.BND + 1u); segno += 1)
         {
-            _sdw0 *s = fetchSDW(segno);
+            sdw0_s *s = fetchSDW(segno);
             if (address >= s -> ADDR && address < s -> ADDR + s -> BOUND * 16u)
               sim_msg ("  %06o:%06o\n", segno, address - s -> ADDR);
         }
@@ -2831,7 +2831,7 @@ static t_stat virtAddrN (uint address)
                 word36 SDWeven, SDWodd;
                 core_read2(((PTW1.ADDR << 6) + tspt * 2u) & PAMASK, & SDWeven,
                            & SDWodd, __func__);
-                _sdw0 SDW0;
+                sdw0_s SDW0;
                 // even word
                 SDW0.ADDR = (SDWeven >> 12) & PAMASK;
                 SDW0.R1 = (SDWeven >> 9) & 7u;
