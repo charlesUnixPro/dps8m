@@ -555,7 +555,7 @@ static int skt_read8 (int unit_num, uint tally, word36 * buffer)
 //       2 count  fixed bin, /* buffer size */  // 1
 //       2 rc     fixed bin,                    // 2
 //       2 errno  char(8),                      // 3,4
-//       2 buffer char (0 refer (SOCKETDEV_read_data9.cont); // 5,....
+//       2 buffer char (0 refer (SOCKETDEV_read_data9.count); // 5,....
 
 /* Tally >= 5 */
 /* In: */
@@ -586,6 +586,79 @@ sim_printf ("read8() socket doesn't belong to us\n");
     set_error (& buffer[2], _errno);
   }
 
+static int skt_write8 (uint iom_unit_idx, uint chan, int unit_num, uint tally, word36 * buffer)
+  {
+    iomChanData_t * p = & iomChanData[iom_unit_idx][chan];
+// dcl 1 SOCKETDEV_write_data8 aligned,
+//       2 sockfd fixed bin,                    // 0
+//       2 count  fixed bin, /* buffer size */  // 1
+//       2 rc     fixed bin,                    // 2
+//       2 errno  char(8),                      // 3,4
+//       2 buffer char (0 refer (SOCKETDEV_read_data9.count); // 5,....
+
+    if (tally < 5)
+      {
+        p->stati = 050012; // BUG: arbitrary error code; config switch
+        return -1;
+      }
+
+/* Tally >= 5 */
+/* In: */
+/*   sockfd */
+/*   count */
+/* Out: */
+/*   rc */
+/*   errno */
+/*   buffer */
+
+    int socket_fd = (int) buffer[0];
+sim_printf ("write8() socket     %d\n", socket_fd);
+
+    ssize_t rc = 0;
+    int _errno = 0;
+    // Does this socket belong to us?
+    if (sk_data.fd_unit[socket_fd] != unit_num)
+      {
+sim_printf ("write8() socket doesn't belong to us\n");
+        set_error (& buffer[4], EBADF);
+        return 2; // send terminate interrupt
+      }
+
+   // Tally is at most 4096, so buffer words is at most 4096 - 5 => 4091
+   // count (4 chars/word) is at most 4091 * 4 
+    word36 count36 = buffer[1];
+    if (count36 > (4091 * 4))
+      {
+        p->stati = 050012; // BUG: arbitrary error code; config switch
+        return -1;
+      }
+    uint count = (uint) count36;
+ 
+    uint count_words = (count + 3) / 4;
+    if ((count_words + 5) > tally)
+      {
+        p->stati = 050012; // BUG: arbitrary error code; config switch
+        return -1;
+      }
+
+    uint8_t netdata [count];
+    for (uint n = 0; n < count; n ++)
+      {
+         uint wordno = (uint) n / 4;
+         uint charno = (uint) n % 4;
+         netdata[n] = getbits36_8 (buffer [5 + wordno], charno * 9 + 1);
+//sim_printf ("%012llo %u %u %u %03u\n", buffer [5 + wordno], n, wordno, charno, netdata[n]);
+      }
+
+    rc = write (socket_fd, netdata, count);
+    if (rc == -1)
+      _errno = errno;
+
+    buffer[2] = ((word36) ((word36s) rc)) & MASK36; // rc
+    set_error (& buffer[3], _errno);
+    return 2; // send terminate interrupt
+  }
+
 static int get_ddcw (iomChanData_t * p, uint iom_unit_idx, uint chan, bool * ptro, uint expected_tally, uint * tally)
   {
     bool send, uff;
@@ -603,17 +676,17 @@ static int get_ddcw (iomChanData_t * p, uint iom_unit_idx, uint chan, bool * ptr
     if (! send)
       {
         sim_warn ("%s nothing to send\n", __func__);
-        p -> stati = 05001; // BUG: arbitrary error code; config switch
+        p->stati = 05001; // BUG: arbitrary error code; config switch
         return 1;
       }
-    if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+    if (p->DCW_18_20_CP == 07 || p->DDCW_22_23_TYPE == 2)
       {
         sim_warn ("%s expected DDCW\n", __func__);
-        p -> stati = 05001; // BUG: arbitrary error code; config switch
+        p->stati = 05001; // BUG: arbitrary error code; config switch
         return -1;
       }
 
-    * tally = p -> DDCW_TALLY;
+    * tally = p->DDCW_TALLY;
     if (* tally == 0)
       {
         sim_debug (DBG_DEBUG, & sk_dev,
@@ -625,10 +698,10 @@ static int get_ddcw (iomChanData_t * p, uint iom_unit_idx, uint chan, bool * ptr
     sim_debug (DBG_DEBUG, & sk_dev,
                "%s: Tally %d (%o)\n", __func__, * tally, * tally);
 
-    if (* tally && * tally != expected_tally)
+    if (expected_tally && * tally && * tally != expected_tally)
       {
         sim_warn ("socket_dev socket call expected tally of %d; got %d\n", expected_tally, * tally);
-        p -> stati = 05001; // BUG: arbitrary error code; config switch
+        p->stati = 05001; // BUG: arbitrary error code; config switch
         return -1;
       }
     return 0;
@@ -639,22 +712,22 @@ static int sk_cmd (uint iom_unit_idx, uint chan)
     iomChanData_t * p = & iomChanData[iom_unit_idx][chan];
 
     sim_debug (DBG_DEBUG, & sk_dev, "IDCW_DEV_CODE %d\n", p->IDCW_DEV_CODE);
-    //struct device * d = & cables -> cablesFromIomToDev [iom_unit_idx].devices[chan][p->IDCW_DEV_CODE];
+    //struct device * d = & cables->cablesFromIomToDev [iom_unit_idx].devices[chan][p->IDCW_DEV_CODE];
     //uint devUnitIdx = d->devUnitIdx;
     //UNIT * unitp = & sk_unit[devUnitIdx];
 sim_printf ("device %u\n", p->IDCW_DEV_CODE);
     bool ptro;
-    switch (p -> IDCW_DEV_CMD)
+    switch (p->IDCW_DEV_CMD)
       {
         case 0: // CMD 00 Request status -- controller status, not device
           {
-            p -> stati = 04000; // have_status = 1
+            p->stati = 04000; // have_status = 1
             sim_debug (DBG_DEBUG, & sk_dev,
-                       "%s: Request status: %04o\n", __func__, p -> stati);
+                       "%s: Request status: %04o\n", __func__, p->stati);
             sim_debug (DBG_DEBUG, & sk_dev,
-                       "%s: Request status control: %o\n", __func__, p -> IDCW_CONTROL);
+                       "%s: Request status control: %o\n", __func__, p->IDCW_CONTROL);
             sim_debug (DBG_DEBUG, & sk_dev,
-                       "%s: Request status channel command: %o\n", __func__, p -> IDCW_CHAN_CMD);
+                       "%s: Request status channel command: %o\n", __func__, p->IDCW_CHAN_CMD);
           }
           break;
 
@@ -711,7 +784,7 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
         case 03:               // CMD 03 -- Debugging
           {
             sim_printf ("socket_dev received command 3\r\n");
-            p -> stati = 04000;
+            p->stati = 04000;
           }
           break;
 
@@ -845,29 +918,54 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
           }
           break;
 
+        case 9:               // CMD 9 -- write8()
+          {
+            sim_debug (DBG_DEBUG, & sk_dev,
+                       "%s: socket_dev_$read8\n", __func__);
+
+            const int expected_tally = 0;
+            uint tally;
+            int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
+            if (rc)
+              return rc;
+
+            // Fetch parameters from core into buffer
+
+            word36 buffer [tally];
+            uint words_processed;
+            iomIndirectDataService (iom_unit_idx, chan, buffer,
+                                    & words_processed, false);
+
+            skt_write8 (iom_unit_idx, chan, (int) p->IDCW_DEV_CODE, tally, buffer);
+
+            iomIndirectDataService (iom_unit_idx, chan, buffer,
+                                    & words_processed, true);
+          }
+          break;
+
         case 040:               // CMD 040 -- Reset Status
           {
-            p -> stati = 04000;
+            p->stati = 04000;
             sim_debug (DBG_DEBUG, & sk_dev,
                        "%s: Reset status is %04o.\n",
-                       __func__, p -> stati);
+                       __func__, p->stati);
             return 0;
           }
 
         default:
           {
-            p -> stati = 04501;
-            p -> chanStatus = chanStatIncorrectDCW;
-            sim_warn ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
+            p->stati = 04501;
+            p->chanStatus = chanStatIncorrectDCW;
+            sim_warn ("%s: Unknown command 0%o\n", __func__, p->IDCW_DEV_CMD);
           }
           break;
 
       } // IDCW_DEV_CMD
 
-    sim_debug (DBG_DEBUG, & sk_dev, "stati %04o\n", p -> stati);
+    sim_debug (DBG_DEBUG, & sk_dev, "stati %04o\n", p->stati);
 
 #if 0
-    if (p -> IDCW_CONTROL == 3) // marker bit set
+    if (p->IDCW_CONTROL == 3) // marker bit set
       {
         send_marker_interrupt (iom_unit_idx, (int) chan);
       }
@@ -882,7 +980,7 @@ int sk_iom_cmd (uint iom_unit_idx, uint chan)
 // Is it an IDCW?
 
     int rc = 0;
-    if (p -> DCW_18_20_CP == 7)
+    if (p->DCW_18_20_CP == 7)
       {
         rc = sk_cmd (iom_unit_idx, chan);
       }
@@ -964,7 +1062,7 @@ static void do_try_read (uint unit_num)
     for (ssize_t n = 0; n < nread; n ++)
       {
          uint wordno = (uint) n / 4;
-         uint charno = (uint) n & 4;
+         uint charno = (uint) n % 4;
          putbits36_9 (& buffer [5 + wordno], charno * 9, (word9) netdata [n]);
       }
 
