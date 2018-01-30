@@ -2252,10 +2252,12 @@ void currentTR (word27 * trunits, bool * ovf)
 // Bright Magenta 95 105
 // Bright Cyan    96 106
 // Bright White   97 107
+// Reset all       0
 
 #define GRN "\033[32m"
 #define WHT "\033[97m"
 #define YEL "\033[33m"
+#define RST "\033[0m"
 
 void sim_msg (const char * fmt, ...)
   {
@@ -2315,7 +2317,7 @@ void sim_msg (const char * fmt, ...)
       printf("%s", buf);
 
     if (! sys_opts.no_color)
-      sim_printf (WHT);
+      sim_printf (RST);
 
     if (sim_log && (sim_log != stdout))
       fprintf (sim_log, "%s", buf);
@@ -2384,7 +2386,73 @@ void sim_warn (const char * fmt, ...)
       printf("%s", buf);
 
     if (! sys_opts.no_color)
-      printf (WHT);
+      printf (RST);
+
+    if (sim_log && (sim_log != stdout))
+      fprintf (sim_log, "%s", buf);
+    if (sim_deb && (sim_deb != stdout) && (sim_deb != sim_log))
+      fprintf (sim_deb, "%s", buf);
+
+    if (buf != stackbuf)
+      free (buf);
+  }
+
+void sim_print (const char * fmt, ...)
+  {
+    char stackbuf[STACKBUFSIZE];
+    int32 bufsize = sizeof (stackbuf);
+    char * buf = stackbuf;
+    int32 len;
+    va_list arglist;
+
+    /* format passed string, args */
+    while (1) 
+      {
+        va_start (arglist, fmt);
+#if defined(NO_vsnprintf)
+        len = vsprintf (buf, fmt, arglist);
+#else                                               /* !defined(NO_vsnprintf) */
+        len = vsnprintf (buf, (unsigned long) bufsize-1, fmt, arglist);
+#endif                                              /* NO_vsnprintf */
+        va_end (arglist);
+
+/* If the formatted result didn't fit into the buffer, then grow the buffer and try again */
+
+        if ((len < 0) || (len >= bufsize-1))
+          {
+            if (buf != stackbuf)
+                free (buf);
+            bufsize = bufsize * 2;
+            if (bufsize < len + 2)
+                bufsize = len + 2;
+            buf = (char *) malloc ((unsigned long) bufsize);
+            if (buf == NULL)                            /* out of memory */
+                return;
+            buf[bufsize-1] = '\0';
+            continue;
+          }
+        break;
+      }
+
+    if (! sys_opts.no_color)
+      printf (RST);
+
+    if (sim_is_running)
+      {
+        char *c, *remnant = buf;
+
+        while ((c = strchr(remnant, '\n')))
+          {
+            if ((c != buf) && (*(c - 1) != '\r'))
+              printf("%.*s\r\n", (int)(c-remnant), remnant);
+            else
+              printf("%.*s\n", (int)(c-remnant), remnant);
+            remnant = c + 1;
+          }
+        printf("%s", remnant);
+      }
+    else
+      printf("%s", buf);
 
     if (sim_log && (sim_log != stdout))
       fprintf (sim_log, "%s", buf);

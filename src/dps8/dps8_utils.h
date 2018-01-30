@@ -909,7 +909,9 @@ void currentTR (word27 * trunits, bool * ovf);
 #ifdef COLOR
 void sim_msg (const char * fmt, ...);
 void sim_warn (const char * fmt, ...);
+void sim_print (const char * fmt, ...);
 #else
 #define sim_msg sim_printf
 #define sim_warn sim_printf
+#define sim_print sim_printf
 #endif

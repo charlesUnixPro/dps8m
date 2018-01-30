@@ -380,9 +380,9 @@ static int opc_autoinput_show (UNUSED FILE * st, UNIT * uptr,
         "%s: Auto-input is/was: %s\n", __func__, csp->auto_input);
  #endif
     if (csp->auto_input)
-      sim_printf ("Autoinput: '%s'\n", csp->auto_input); 
+      sim_print ("Autoinput: '%s'\n", csp->auto_input); 
     else
-      sim_printf ("Autoinput: NULL\n");
+      sim_print ("Autoinput: NULL\n");
     return SCPE_OK;
   }
  
@@ -450,11 +450,6 @@ static void newlineOn (void)
 
 static void handleRCP (char * text)
   {
-    //sim_printf ("<%s>\n", text);
-    //for (uint i = 0; i < strlen (text); i ++)
-      //sim_printf ("%02x ", text[i]);
-    //sim_printf ("\n");
-
 // It appears that Cygwin doesn't grok "%ms"
 #if 0
     char * label = NULL;
@@ -473,12 +468,10 @@ static void handleRCP (char * text)
                 label, with, drive);
     if (rc == 3)
       {
-        //sim_printf ("label %s %s ring on %s\n", label, with, drive);
         bool withring = (strcmp (with, "with") == 0);
         char labelDotTap[strlen (label) + strlen (".tap") + 1];
         strcpy (labelDotTap, label);
         strcat (labelDotTap, ".tap");
-//sim_printf ("<%s>\n", labelDotTap);
         attachTape (labelDotTap, withring, drive);
         return;
       }
@@ -487,12 +480,10 @@ static void handleRCP (char * text)
                 label, with, drive);
     if (rc == 3)
       {
-        //sim_printf ("label %s %s ring on %s\n", label, with, drive);
         bool withring = (strcmp (with, "with") == 0);
         char labelDotTap [strlen (label) + strlen (".tap") + 1];
         strcpy (labelDotTap, label);
         strcat (labelDotTap, ".tap");
-//sim_printf ("<%s>\n", labelDotTap);
         attachTape (labelDotTap, withring, drive);
         return;
       }
@@ -507,7 +498,6 @@ static void handleRCP (char * text)
                 drive);
     if (rc == 1)
       {
-        //sim_printf ("label %s %s ring on %s\n", label, with, drive);
         detachTape (drive);
         return;
       }
@@ -517,7 +507,6 @@ static void handleRCP (char * text)
                 drive);
     if (rc == 1)
       {
-        //sim_printf ("label %s %s ring on %s\n", label, with, drive);
         detachTape (drive);
         return;
       }
@@ -528,11 +517,9 @@ static void handleRCP (char * text)
                 label, whom);
     if (rc == 2)
       {
-        //sim_printf ("label %s %s ring on %s\n", label, with, drive);
         char labelDotDsk[strlen (label) + 4];
         strcpy (labelDotDsk, label);
         strcat (labelDotDsk, ".dsk");
-sim_printf ("<%s>\n", labelDotDsk);
         attachDisk (labelDotDsk);
       }
 #endif
@@ -555,7 +542,6 @@ static void oscar (char * text)
     char prefix[] = "log oscar ";
     if (strncmp (text, prefix, strlen (prefix)))
       return;
-    //sim_printf ("<%s>\n", text);
     //do_cmd (0, text + strlen (prefix));
     char * cptr = text + strlen (prefix);
     char gbuf[257];
@@ -567,12 +553,12 @@ static void oscar (char * text)
       {
         t_stat stat = cmdp->action (cmdp->arg, cptr);  /* if found, exec */
         if (stat == SCPE_OK)
-          sim_printf ("oscar thinks that's ok.\n");
+          sim_msg ("oscar thinks that's ok.\n");
         else
-          sim_printf ("oscar thinks %d\n", stat);
+          sim_warn ("oscar thinks %d\n", stat);
       }
     else
-      sim_printf ("oscar says huh?\n");
+      sim_msg ("oscar says huh?\n");
   }
 #endif
 
@@ -690,25 +676,25 @@ static int opc_cmd (uint iomUnitIdx, uint chan)
             int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
             if (rc < 0)
               {
-                sim_printf ("console read list service failed\n");
+                sim_warn ("console read list service failed\n");
                 p->stati = 05001; // BUG: arbitrary error code; config switch
                 p->chanStatus = chanStatIncomplete;
                 return -1;
               }
             if (uff)
               {
-                sim_printf ("console read ignoring uff\n"); // XXX
+                sim_warn ("console read ignoring uff\n"); // XXX
               }
             if (! send)
               {
-                sim_printf ("console read nothing to send\n");
+                sim_warn ("console read nothing to send\n");
                 p->stati = 05001; // BUG: arbitrary error code; config switch
                 p->chanStatus = chanStatIncomplete;
                 return  -1;
               }
             if (p->DCW_18_20_CP == 07 || p->DDCW_22_23_TYPE == 2)
               {
-                sim_printf ("console read expected DDCW\n");
+                sim_warn ("console read expected DDCW\n");
                 p->stati = 05001; // BUG: arbitrary error code; config switch
                 p->chanStatus = chanStatIncorrectDCW;
                 return -1;
@@ -716,7 +702,7 @@ static int opc_cmd (uint iomUnitIdx, uint chan)
 
             if (rc)
               {
-                sim_printf ("list service failed\n");
+                sim_warn ("list service failed\n");
                 p->stati = 05001; // BUG: arbitrary error code; config switch
                 p->chanStatus = chanStatIncomplete;
                 return -1;
@@ -725,7 +711,7 @@ static int opc_cmd (uint iomUnitIdx, uint chan)
             if (p->DDCW_22_23_TYPE != 0 &&
                 p->DDCW_22_23_TYPE != 1) //IOTD, IOTP
               {
-sim_printf ("uncomfortable with this\n");
+sim_warn ("uncomfortable with this\n");
                 p->stati = 05001; // BUG: arbitrary error code; config switch
                 p->chanStatus = chanStatIncorrectDCW;
                 return -1;
@@ -777,7 +763,7 @@ sim_printf ("uncomfortable with this\n");
                                          & uff);
                 if (rc < 0)
                   {
-                    sim_printf ("console write list service failed\n");
+                    sim_warn ("console write list service failed\n");
                     p->stati = 05001; // BUG: arbitrary error code; 
                                         //config switch
                     p->chanStatus = chanStatIncomplete;
@@ -785,11 +771,11 @@ sim_printf ("uncomfortable with this\n");
                   }
                 if (uff)
                   {
-                    sim_printf ("console write ignoring uff\n"); // XXX
+                    sim_warn ("console write ignoring uff\n"); // XXX
                   }
                 if (! send)
                   {
-                    sim_printf ("console write nothing to send\n");
+                    sim_warn ("console write nothing to send\n");
                     p->stati = 05001; // BUG: arbitrary error code; 
                                         //config switch
                     p->chanStatus = chanStatIncomplete;
@@ -797,7 +783,7 @@ sim_printf ("uncomfortable with this\n");
                   }
                 if (p->DCW_18_20_CP == 07 || p->DDCW_22_23_TYPE == 2)
                   {
-                    sim_printf ("console write expected DDCW\n");
+                    sim_warn ("console write expected DDCW\n");
                     p->stati = 05001; // BUG: arbitrary error code; 
                                         //config switch
                     p->chanStatus = chanStatIncorrectDCW;
@@ -806,7 +792,7 @@ sim_printf ("uncomfortable with this\n");
 
                 if (rc)
                   {
-                    sim_printf ("list service failed\n");
+                    sim_warn ("list service failed\n");
                     p->stati = 05001; // BUG: arbitrary error code;
                                         // config switch
                     p->chanStatus = chanStatIncomplete;
@@ -822,7 +808,7 @@ sim_printf ("uncomfortable with this\n");
                 if (p->DDCW_22_23_TYPE != 0 &&
                     p->DDCW_22_23_TYPE != 1) //IOTD, IOTP
                   {
-sim_printf ("uncomfortable with this\n");
+sim_warn ("uncomfortable with this\n");
                     // BUG: arbitrary error code; config switch
                     p->stati = 05001;
                     p->chanStatus = chanStatIncorrectDCW;
@@ -851,7 +837,6 @@ sim_printf ("uncomfortable with this\n");
                     w1 == 0141156144072llu &&
                     w2 == 0040177177177llu)
                   {
-                    //sim_printf ("attn!\n");
                     if (! csp->once_per_boot)
                       {
 #ifdef THREADZ
@@ -872,7 +857,6 @@ sim_printf ("uncomfortable with this\n");
                     w0 == 0122145141144llu &&
                     w1 == 0171015012177llu)
                   {
-                    //sim_printf ("attn!\n");
                     if (! csp->once_per_boot)
                       {
 #ifdef THREADZ
@@ -887,7 +871,6 @@ sim_printf ("uncomfortable with this\n");
                   }
 #endif // ATTN_HACK
 
-//sim_printf ("%012"PRIo64" %012"PRIo64"\n", M[daddr + 0], M[daddr + 1]);
                 // Tally is in words, not chars.
     
                 char text[tally * 4 + 1];
@@ -897,6 +880,7 @@ sim_printf ("uncomfortable with this\n");
                 newlineOff ();
 #endif
 // XXX this should be iomIndirectDataService
+                sim_print (""); // force text color reset
                 while (tally)
                   {
                     //word36 datum = M[daddr ++];
@@ -927,12 +911,6 @@ sim_printf ("uncomfortable with this\n");
                     //size_t expl = strlen ((char *) (csp->autop + 1));
                     //   ^xstring^x
                     size_t expl = strcspn ((char *) (csp->autop + 1), "\030");
-//sim_printf ("comparing <%s> to <%s>\r\n", text, csp->autop + 1);
-//sim_printf ("\r\ncomparing ");
-//for (uint i = 0; i < expl; i ++) sim_printf (" %03o", (uint) text [i]);
-//sim_printf ("\r\nto        ");
-//for (uint i = 0; i < expl; i ++) sim_printf (" %03o", (uint) csp->autop [i+1]);
-//sim_printf ("\r\n");
 
                     if (strncmp (text, (char *) (csp->autop + 1), expl) == 0)
                       {
@@ -953,12 +931,6 @@ sim_printf ("uncomfortable with this\n");
                     //size_t expl = strlen ((char *) (csp->autop + 1));
                     //   ^ystring^y
                     size_t expl = strcspn ((char *) (csp->autop + 1), "\031");
-//sim_printf ("comparing <%s> to <%s>\r\n", text, csp->autop + 1);
-//sim_printf ("\r\ncomparing ");
-//for (uint i = 0; i < expl; i ++) sim_printf (" %03o", (uint) text [i]);
-//sim_printf ("\r\nto        ");
-//for (uint i = 0; i < expl; i ++) sim_printf (" %03o", (uint) csp->autop [i+1]);
-//sim_printf ("\r\n");
 
                     char needle [expl + 1];
                     strncpy (needle, (char *) csp->autop + 1, expl);
@@ -983,7 +955,7 @@ sim_printf ("uncomfortable with this\n");
                 p->initiate = false;
 
                if (p->DDCW_22_23_TYPE != 0)
-                 sim_printf ("curious... a console write with more than one "
+                 sim_warn ("curious... a console write with more than one "
                              "DDCW?\n");
 
              }
@@ -1039,6 +1011,7 @@ sim_printf ("uncomfortable with this\n");
 
 static void consoleProcessIdx (int conUnitIdx)
   {
+    sim_print (""); // force text color reset
 // Simplifying logic here; if we have autoinput, then process it and skip
 // the keyboard checks, we'll get them on the next cycle.
     opc_state_t * csp = console_state + conUnitIdx;
@@ -1166,7 +1139,6 @@ eol:
       }
     if (c < SCPE_KFLAG)
       {
-        //sim_printf ("Bad char\n");
         return; // Should be impossible
       }
     c -= SCPE_KFLAG;    // translate to ascii
@@ -1217,7 +1189,6 @@ eol:
           {
             console_putstr (conUnitIdx,  "\r\n");
             csp->simh_buffer[csp->simh_buffer_cnt] = 0;
-            //sim_printf ("send: <%s>\r\n", csp->simh_buffer);
 
             char * cptr = csp->simh_buffer;
             char gbuf[simh_buffer_sz];
@@ -1275,7 +1246,6 @@ eol:
           csp->attn_pressed = true;
         return;
       }
-    //sim_printf ("<%02x>\n", c);
     if (c == '\177' || c == '\010')  // backspace/del
       {
         if (csp->tailp > csp->buf)
@@ -1305,7 +1275,6 @@ eol:
     if (c == '\012' || c == '\015')  // CR/LF
       {
         console_putstr (conUnitIdx,  "\r\n");
-        //sim_printf ("send: <%s>\r\n", csp->buf);
         sendConsole (conUnitIdx, 04000); // Normal status
         return;
       }
@@ -1378,7 +1347,7 @@ static t_stat opc_svc (UNIT * unitp)
 static t_stat opc_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr,
                                  UNUSED int val, UNUSED const void * desc)
   {
-    sim_printf ("Number of OPC units in system is %d\n", opc_dev.numunits);
+    sim_print ("Number of OPC units in system is %d\n", opc_dev.numunits);
     return SCPE_OK;
   }
 
@@ -1426,7 +1395,7 @@ static t_stat opc_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
     for (;;)
       {
         int64_t v;
-        int rc = cfgparse ("opc_set_config", cptr, opc_config_list,
+        int rc = cfgparse (__func__, cptr, opc_config_list,
                            & cfg_state, & v);
         switch (rc)
           {
@@ -1444,7 +1413,7 @@ static t_stat opc_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
 #endif
     
             default:
-              sim_printf ("error: opc_set_config: invalid cfgparse rc <%d>\n",
+              sim_warn ("error: opc_set_config: invalid cfgparse rc <%d>\n",
                           rc);
               cfgparse_done (& cfg_state);
               return SCPE_ARG;
@@ -1462,7 +1431,7 @@ static t_stat opc_show_config (UNUSED FILE * st, UNUSED UNIT * uptr,
 #ifdef ATTN_HACK
     int devUnitIdx = (int) OPC_UNIT_NUM (uptr);
     opc_state_t * csp = console_state + devUnitIdx;
-    sim_printf ("Attn hack:  %d\n", csp->attn_hack);
+    sim_msg ("Attn hack:  %d\n", csp->attn_hack);
 #endif
     return SCPE_OK;
   }
@@ -1475,7 +1444,7 @@ t_stat set_console_port (int32 arg, const char * buf)
     if (arg < 0 || arg >= N_OPC_UNITS_MAX)
       return SCPE_ARG;
     console_state[arg].console_access.port = n;
-    sim_printf ("Console %d port set to %d\n", arg, n);
+    sim_msg ("Console %d port set to %d\n", arg, n);
     return SCPE_OK;
   }
 
@@ -1485,26 +1454,25 @@ t_stat set_console_pw (int32 arg, UNUSED const char * buf)
       return SCPE_ARG;
     if (strlen (buf) == 0)
       {
-        sim_printf ("no password\n");
+        sim_msg ("no password\n");
         console_state[arg].console_access.pw[0] = 0;
         return SCPE_OK;
       }
     if (arg < 0 || arg >= N_OPC_UNITS_MAX)
       return SCPE_ARG;
     char token[strlen (buf)];
-    //sim_printf ("<%s>\n", buf);
     int rc = sscanf (buf, "%s", token);
     if (rc != 1)
       return SCPE_ARG;
     if (strlen (token) > PW_SIZE)
       return SCPE_ARG;
     strcpy (console_state[arg].console_access.pw, token);
-    //sim_printf ("<%s>\n", token);
     return SCPE_OK;
   }
 
 static void console_putstr (int conUnitIdx, char * str)
   {
+    sim_print (""); // Force text color reset
     size_t l = strlen (str);
     for (size_t i = 0; i < l; i ++)
       sim_putchar (str[i]);

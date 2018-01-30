@@ -74,57 +74,57 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     long cpu_unit_idx = UNIT_IDX (uptr);
     if (cpu_unit_idx < 0 || cpu_unit_idx >= N_CPU_UNITS_MAX)
       {
-        sim_printf ("error: invalid unit number %ld\n", cpu_unit_idx);
+        sim_warn ("error: invalid unit number %ld\n", cpu_unit_idx);
         return SCPE_ARG;
       }
 
-    sim_printf ("CPU unit number %ld\n", cpu_unit_idx);
+    sim_msg ("CPU unit number %ld\n", cpu_unit_idx);
 
-    sim_printf ("Fault base:               %03o(8)\n",
+    sim_msg ("Fault base:               %03o(8)\n",
                 cpus[cpu_unit_idx].switches.FLT_BASE);
-    sim_printf ("CPU number:               %01o(8)\n",
+    sim_msg ("CPU number:               %01o(8)\n",
                 cpus[cpu_unit_idx].switches.cpu_num);
-    sim_printf ("Data switches:            %012"PRIo64"(8)\n",
+    sim_msg ("Data switches:            %012"PRIo64"(8)\n",
                 cpus[cpu_unit_idx].switches.data_switches);
-    sim_printf ("Address switches:         %06o(8)\n",
+    sim_msg ("Address switches:         %06o(8)\n",
                 cpus[cpu_unit_idx].switches.addr_switches);
     for (int i = 0; i < N_CPU_PORTS; i ++)
       {
-        sim_printf ("Port%c enable:             %01o(8)\n",
+        sim_msg ("Port%c enable:             %01o(8)\n",
                     'A' + i, cpus[cpu_unit_idx].switches.enable [i]);
-        sim_printf ("Port%c init enable:        %01o(8)\n",
+        sim_msg ("Port%c init enable:        %01o(8)\n",
                     'A' + i, cpus[cpu_unit_idx].switches.init_enable [i]);
-        sim_printf ("Port%c assignment:         %01o(8)\n",
+        sim_msg ("Port%c assignment:         %01o(8)\n",
                     'A' + i, cpus[cpu_unit_idx].switches.assignment [i]);
-        sim_printf ("Port%c interlace:          %01o(8)\n",
+        sim_msg ("Port%c interlace:          %01o(8)\n",
                     'A' + i, cpus[cpu_unit_idx].switches.assignment [i]);
-        sim_printf ("Port%c store size:         %01o(8)\n",
+        sim_msg ("Port%c store size:         %01o(8)\n",
                     'A' + i, cpus[cpu_unit_idx].switches.store_size [i]);
       }
-    sim_printf ("Processor mode:           %s [%o]\n", 
+    sim_msg ("Processor mode:           %s [%o]\n", 
                 cpus[cpu_unit_idx].switches.proc_mode ? "Multics" : "GCOS",
                 cpus[cpu_unit_idx].switches.proc_mode);
-    sim_printf ("Processor speed:          %02o(8)\n", 
+    sim_msg ("Processor speed:          %02o(8)\n", 
                 cpus[cpu_unit_idx].switches.proc_speed);
-    sim_printf ("DIS enable:               %01o(8)\n", 
+    sim_msg ("DIS enable:               %01o(8)\n", 
                 cpus[cpu_unit_idx].switches.dis_enable);
-    sim_printf ("Steady clock:             %01o(8)\n", 
+    sim_msg ("Steady clock:             %01o(8)\n", 
                 scu [0].steady_clock);
-    sim_printf ("Halt on unimplemented:    %01o(8)\n", 
+    sim_msg ("Halt on unimplemented:    %01o(8)\n", 
                 cpus[cpu_unit_idx].switches.halt_on_unimp);
-    sim_printf ("Disable SDWAM/PTWAM:      %01o(8)\n", 
+    sim_msg ("Disable SDWAM/PTWAM:      %01o(8)\n", 
                 cpus[cpu_unit_idx].switches.disable_wam);
-    sim_printf ("Report faults:            %01o(8)\n", 
+    sim_msg ("Report faults:            %01o(8)\n", 
                 cpus[cpu_unit_idx].switches.report_faults);
-    sim_printf ("TRO faults enabled:       %01o(8)\n", 
+    sim_msg ("TRO faults enabled:       %01o(8)\n", 
                 cpus[cpu_unit_idx].switches.tro_enable);
-    sim_printf ("Y2K enabled:              %01o(8)\n", 
+    sim_msg ("Y2K enabled:              %01o(8)\n", 
                 scu [0].y2k);
-    sim_printf ("drl fatal enabled:        %01o(8)\n", 
+    sim_msg ("drl fatal enabled:        %01o(8)\n", 
                 cpus[cpu_unit_idx].switches.drl_fatal);
-    sim_printf ("useMap:                   %d\n",
+    sim_msg ("useMap:                   %d\n",
                 cpus[cpu_unit_idx].switches.useMap);
-    sim_printf ("Disable cache:            %01o(8)\n",
+    sim_msg ("Disable cache:            %01o(8)\n",
                 cpus[cpu_unit_idx].switches.disable_cache);
 
     return SCPE_OK;
@@ -307,7 +307,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value,
     long cpu_unit_idx = UNIT_IDX (uptr);
     if (cpu_unit_idx < 0 || cpu_unit_idx >= N_CPU_UNITS_MAX)
       {
-        sim_printf ("error: cpu_set_config: invalid unit number %ld\n",
+        sim_warn ("error: cpu_set_config: invalid unit number %ld\n",
                     cpu_unit_idx);
         return SCPE_ARG;
       }
@@ -319,7 +319,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value,
     for (;;)
       {
         int64_t v;
-        int rc = cfgparse ("cpu_set_config", cptr, cpu_config_list,
+        int rc = cfgparse (__func__, cptr, cpu_config_list,
                            & cfg_state, & v);
         if (rc == -1) // done
           {
@@ -378,7 +378,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value,
           cpus[cpu_unit_idx].switches.disable_cache = v;
         else
           {
-            sim_printf ("error: cpu_set_config: invalid cfgparse rc <%d>\n",
+            sim_warn ("error: cpu_set_config: invalid cfgparse rc <%d>\n",
                         rc);
             cfgparse_done (& cfg_state);
             return SCPE_ARG; 
@@ -392,7 +392,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value,
 static t_stat cpu_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, 
                                UNUSED int val, UNUSED const void * desc)
   {
-    sim_printf ("Number of CPUs in system is %d\n", cpu_dev.numunits);
+    sim_msg ("Number of CPUs in system is %d\n", cpu_dev.numunits);
     return SCPE_OK;
   }
 
@@ -790,7 +790,7 @@ char * str_SDW0 (char * buf, sdw0_s * SDW)
 
 static t_stat cpu_boot (UNUSED int32 cpu_unit_idx, UNUSED DEVICE * dptr)
   {
-    sim_printf ("Try 'BOOT IOMn'\n");
+    sim_warn ("Try 'BOOT IOMn'\n");
     return SCPE_ARG;
   }
 
@@ -874,7 +874,7 @@ void setup_scbank_map (void)
               {
                 if (cpu.scbank_map [scpg] != -1)
                   {
-                    sim_printf ("scbank overlap scpg %d (%o) old port %d "
+                    sim_warn ("scbank overlap scpg %d (%o) old port %d "
                                 "newport %d\n",
                                 scpg, scpg, cpu.scbank_map [scpg], port_num);
                   }
@@ -889,7 +889,7 @@ void setup_scbank_map (void)
               }
             else
               {
-                sim_printf ("scpg too big port %d scpg %d (%o), "
+                sim_warn ("scpg too big port %d scpg %d (%o), "
                             "limit %d (%o)\n",
                             port_num, scpg, scpg, N_SCBANKS, N_SCBANKS);
               }
@@ -941,7 +941,7 @@ static void get_serial_number (void)
         uint cpun, sn;
         if (sscanf (buffer, "sn: %u", & cpu.switches.serno) == 1)
           {
-            sim_printf ("Serial number is %u\n", cpu.switches.serno);
+            sim_msg ("Serial number is %u\n", cpu.switches.serno);
             havesn = true;
           }
         else if (sscanf (buffer, "sn%u: %u", & cpun, & sn) == 2)
@@ -949,7 +949,7 @@ static void get_serial_number (void)
             if (cpun < N_CPU_UNITS_MAX)
               {
                 cpus[cpun].switches.serno = sn;
-                sim_printf ("Serial number of CPU %u is %u\n",
+                sim_msg ("Serial number of CPU %u is %u\n",
                             cpun, cpus[cpun].switches.serno);
                 havesn = true;
               }
@@ -957,9 +957,9 @@ static void get_serial_number (void)
       }
     if (! havesn)
       {
-        sim_printf ("Please register your system at "
+        sim_msg ("Please register your system at "
                     "https://ringzero.wikidot.com/wiki:register\n");
-        sim_printf ("or create the file 'serial.txt' containing the line "
+        sim_msg ("or create the file 'serial.txt' containing the line "
                     "'sn: 0'.\n");
       }
     if (fp)
@@ -976,7 +976,7 @@ static void do_stats (void)
       {
         first = false;
         clock_gettime (CLOCK_BOOTTIME, & stats_time);
-        sim_printf ("stats started\r\n");
+        sim_msg ("stats started\r\n");
       }
     else
       {
@@ -984,18 +984,18 @@ static void do_stats (void)
         clock_gettime (CLOCK_BOOTTIME, & now);
         timespec_diff (& stats_time, & now, & delta);
         stats_time = now;
-        sim_printf ("stats %6ld.%02ld\r\n", delta.tv_sec,
+        sim_msg ("stats %6ld.%02ld\r\n", delta.tv_sec,
                     delta.tv_nsec / 10000000);
 
-        sim_printf ("Instruction counts\r\n");
+        sim_msg ("Instruction counts\r\n");
         for (uint i = 0; i < 8; i ++)
           {
-            sim_printf (" %9lld", cpus[i].instrCnt);
+            sim_msg (" %9lld", cpus[i].instrCnt);
             cpus[i].instrCnt = 0;
           }
-        sim_printf ("\r\n");
+        sim_msg ("\r\n");
 
-        sim_printf ("\r\n");
+        sim_msg ("\r\n");
       }
   }
 #endif
@@ -1051,7 +1051,6 @@ void cpu_init (void)
 #endif
     if (! M)
       {
-        sim_printf ("create M failed\n");
         sim_fatal ("create M failed\n");
       }
 #endif
@@ -1066,7 +1065,6 @@ void cpu_init (void)
       }
     if (! cpus)
       {
-        sim_printf ("create cpus failed\n");
         sim_fatal ("create cpus failed\n");
       }
 #endif
@@ -1427,7 +1425,7 @@ t_stat sim_instr (void)
 // Check for CPU 0 stopped
         if (! cpuThreadz[0].run)
           {
-            sim_printf ("CPU 0 stopped\n");
+            sim_msg ("CPU 0 stopped\n");
             return STOP_STOP;
           }
 #endif
@@ -1526,7 +1524,7 @@ void * cpu_thread_main (void * arg)
     int myid = * (int *) arg;
     set_cpu_idx ((uint) myid);
     
-    sim_printf("CPU %c thread created\n", 'a' + myid);
+    sim_msg ("CPU %c thread created\n", 'a' + myid);
 
     setSignals ();
     threadz_sim_instr ();
@@ -1637,7 +1635,7 @@ setCPU:;
       }
     if (c == cpu_dev.numunits)
       {
-        sim_printf ("All CPUs stopped\n");
+        sim_msg ("All CPUs stopped\n");
         goto leave;
       }
     set_cpu_idx ((current + 1) % cpu_dev.numunits);
@@ -1677,7 +1675,7 @@ setCPU:;
             set_cpu_cycle (EXEC_cycle);
             break;
         default:
-          sim_printf ("longjmp value of %d unhandled\n", val);
+          sim_warn ("longjmp value of %d unhandled\n", val);
             goto leave;
       }
 
@@ -2328,7 +2326,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
 
                 if (ret < 0)
                   {
-                    sim_printf ("execute instruction returned %d?\n", ret);
+                    sim_warn ("executeInstruction returned %d?\n", ret);
                     break;
                   }
 
@@ -2536,15 +2534,18 @@ leave:
 #ifdef HDBG
     hdbgPrint ();
 #endif
-    sim_printf("\ncycles = %llu\n", cpu.cycleCnt);
-    sim_printf("\ninstructions = %llu\n", cpu.instrCnt);
+    sim_msg ("\ncycles = %llu\n", cpu.cycleCnt);
+    sim_msg ("\ninstructions = %llu\n", cpu.instrCnt);
+
+#if 0
     for (int i = 0; i < N_FAULTS; i ++)
       {
         if (cpu.faultCnt [i])
-          sim_printf ("%s faults = %ld\n",
+          sim_msg  ("%s faults = %ld\n",
                       faultNames [i], cpu.faultCnt [i]);
       }
-    
+#endif
+
 #ifdef M_SHARED
 // simh needs to have the IC statically allocated, so a placeholder was
 // created. Update the placeholder in so the IC can be seen by simh, and
@@ -2703,10 +2704,10 @@ t_stat set_mem_watch (int32 arg, const char * buf)
       {
         if (arg)
           {
-            sim_printf ("no argument to watch?\n");
+            sim_warn ("no argument to watch?\n");
             return SCPE_ARG;
           }
-        sim_printf ("Clearing all watch points\n");
+        sim_msg ("Clearing all watch points\n");
         memset (& watch_bits, 0, sizeof (watch_bits));
         return SCPE_OK;
       }
@@ -2714,7 +2715,7 @@ t_stat set_mem_watch (int32 arg, const char * buf)
     long int n = strtol (buf, & end, 0);
     if (* end || n < 0 || n >= MEMSIZE)
       {
-        sim_printf ("invalid argument to watch?\n");
+        sim_warn ("invalid argument to watch?\n");
         return SCPE_ARG;
       }
     watch_bits [n] = arg != 0;
@@ -2799,7 +2800,7 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
     UNLOCK_MEM;
     if (watch_bits [addr])
       {
-        sim_printf ("WATCH [%"PRId64"] %05o:%06o read   %08o %012"PRIo64" "
+        sim_msg ("WATCH [%"PRId64"] %05o:%06o read   %08o %012"PRIo64" "
                     "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr,
                     * data, ctx);
       }
@@ -2813,7 +2814,7 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
       }
     if (watch_bits [addr])
       {
-        sim_printf ("WATCH [%"PRId64"] %05o:%06o read   %08o %012"PRIo64" "
+        sim_msg ("WATCH [%"PRId64"] %05o:%06o read   %08o %012"PRIo64" "
                     "(%s)\n",
                     cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr, M [addr],
                     ctx);
@@ -2874,7 +2875,7 @@ int core_write (word24 addr, word36 data, const char * ctx)
     UNLOCK_MEM;
     if (watch_bits [addr])
       {
-        sim_printf ("WATCH [%"PRId64"] %05o:%06o write   %08o %012"PRIo64" "
+        sim_msg ("WATCH [%"PRId64"] %05o:%06o write   %08o %012"PRIo64" "
                     "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr, 
                     scu[sci_unit_idx].M[offset], ctx);
       }
@@ -2884,7 +2885,7 @@ int core_write (word24 addr, word36 data, const char * ctx)
     UNLOCK_MEM;
     if (watch_bits [addr])
       {
-        sim_printf ("WATCH [%"PRId64"] %05o:%06o write  %08o %012"PRIo64" "
+        sim_msg ("WATCH [%"PRId64"] %05o:%06o write  %08o %012"PRIo64" "
                     "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr, 
                     M [addr], ctx);
         traceInstruction (0);
@@ -2941,7 +2942,7 @@ int core_write_zone (word24 addr, word36 data, const char * ctx)
     cpu.useZone = false; // Safety
     if (watch_bits [addr])
       {
-        sim_printf ("WATCH [%"PRId64"] %05o:%06o writez %08o %012"PRIo64" "
+        sim_msg ("WATCH [%"PRId64"] %05o:%06o writez %08o %012"PRIo64" "
                     "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr, 
                     scu[sci_unit_idx].M[offset], ctx);
       }
@@ -2952,7 +2953,7 @@ int core_write_zone (word24 addr, word36 data, const char * ctx)
     cpu.useZone = false; // Safety
     if (watch_bits [addr])
       {
-        sim_printf ("WATCH [%"PRId64"] %05o:%06o writez %08o %012"PRIo64" "
+        sim_msg ("WATCH [%"PRId64"] %05o:%06o writez %08o %012"PRIo64" "
                     "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr, 
                     M [addr], ctx);
         traceInstruction (0);
@@ -3017,7 +3018,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
     UNLOCK_MEM;
     if (watch_bits [addr])
       {
-        sim_printf ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" "
+        sim_msg ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" "
                     "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr,
                     * even, ctx);
       }
@@ -3029,7 +3030,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
     UNLOCK_MEM;
     if (watch_bits [addr+1])
       {
-        sim_printf ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" "
+        sim_msg ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" "
                     "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr+1,
                     * odd, ctx);
       }
@@ -3047,7 +3048,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
       }
     if (watch_bits [addr])
       {
-        sim_printf ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" "
+        sim_msg ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" "
                     "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr, 
                     M [addr], ctx);
         traceInstruction (0);
@@ -3070,7 +3071,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
       }
     if (watch_bits [addr])
       {
-        sim_printf ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" "
+        sim_msg ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" "
                     "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr,
                     M [addr], ctx);
         traceInstruction (0);
@@ -3135,7 +3136,7 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
     scu [sci_unit_idx].M[offset++] = even & DMASK;
     if (watch_bits [addr])
       {
-        sim_printf ("WATCH [%"PRId64"] %05o:%06o write2 %08o %012"PRIo64" "
+        sim_msg ("WATCH [%"PRId64"] %05o:%06o write2 %08o %012"PRIo64" "
                     "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr,
                     even, ctx);
       }
@@ -3144,14 +3145,14 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
     UNLOCK_MEM;
     if (watch_bits [addr+1])
       {
-        sim_printf ("WATCH [%"PRId64"] %05o:%06o write2 %08o %012"PRIo64" "
+        sim_msg ("WATCH [%"PRId64"] %05o:%06o write2 %08o %012"PRIo64" "
                     "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr+1,
                     odd, ctx);
       }
 #else
     if (watch_bits [addr])
       {
-        sim_printf ("WATCH [%"PRId64"] %05o:%06o write2 %08o %012"PRIo64" "
+        sim_msg ("WATCH [%"PRId64"] %05o:%06o write2 %08o %012"PRIo64" "
                     "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr,
                     even, ctx);
         traceInstruction (0);
@@ -3168,7 +3169,7 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
 
     if (watch_bits [addr])
       {
-        sim_printf ("WATCH [%"PRId64"] %05o:%06o write2 %08o %012"PRIo64" "
+        sim_msg ("WATCH [%"PRId64"] %05o:%06o write2 %08o %012"PRIo64" "
                     "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr,
                     odd, ctx);
         traceInstruction (0);
@@ -3531,8 +3532,8 @@ void add_CU_history (void)
     if (! cpu.MR_cache.ihr)
       return;
 
-//IF1 if (cpu.MR.hrhlt) sim_printf ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
-//IF1 sim_printf ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
+//IF1 if (cpu.MR.hrhlt) sim_msg ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
+//IF1 sim_msg ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
     word36 w0 = 0, w1 = 0;
 
     // 0 PIA
@@ -3597,7 +3598,7 @@ void add_CU_history (void)
           {
             cpu.MR.ihr = 0;
           }
-//IF1 sim_printf ("trapping......\n");
+//IF1 sim_msg ("trapping......\n");
         set_FFV_fault (4);
         return;
       }
