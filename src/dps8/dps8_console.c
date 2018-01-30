@@ -1011,7 +1011,6 @@ sim_warn ("uncomfortable with this\n");
 
 static void consoleProcessIdx (int conUnitIdx)
   {
-    sim_print (""); // force text color reset
 // Simplifying logic here; if we have autoinput, then process it and skip
 // the keyboard checks, we'll get them on the next cycle.
     opc_state_t * csp = console_state + conUnitIdx;
@@ -1026,6 +1025,7 @@ static void consoleProcessIdx (int conUnitIdx)
             return;
           }
         int announce = 1;
+        sim_print (""); // force text color reset
         for (;;)
           {
             if (csp->tailp >= csp->buf + sizeof (csp->buf))
@@ -1297,6 +1297,7 @@ eol:
         if (csp->tailp >= csp->buf + sizeof (csp->buf))
           return;
 
+        sim_print (""); // force text color reset
         * csp->tailp ++ = (unsigned char) c;
         console_putchar (conUnitIdx, (char) c);
         return;
