@@ -1751,7 +1751,7 @@ t_stat computeAbsAddrN (word24 * abs_addr, int segno, uint offset)
         word36 PTWx1;
         core_read ((cpu.DSBR.ADDR + x1) & PAMASK, & PTWx1, __func__);
 
-        _ptw0 PTW1;
+        ptw_s PTW1;
         PTW1.ADDR = GETHI(PTWx1);
         PTW1.U = TSTBIT(PTWx1, 9);
         PTW1.M = TSTBIT(PTWx1, 6);
@@ -1836,7 +1836,7 @@ t_stat computeAbsAddrN (word24 * abs_addr, int segno, uint offset)
             word36 PTWx2;
             core_read ((SDW0.ADDR + x2) & PAMASK, & PTWx2, __func__);
     
-            _ptw0 PTW2;
+            ptw_s PTW2;
             PTW2.ADDR = GETHI(PTWx2);
             PTW2.U = TSTBIT(PTWx2, 9);
             PTW2.M = TSTBIT(PTWx2, 6);
@@ -2814,7 +2814,7 @@ static t_stat virtAddrN (uint address)
             word36 PTWx1;
             core_read ((cpu.DSBR.ADDR + x1) & PAMASK, & PTWx1, __func__);
 
-            _ptw0 PTW1;
+            ptw_s PTW1;
             PTW1.ADDR = GETHI(PTWx1);
             PTW1.U = TSTBIT(PTWx1, 9);
             PTW1.M = TSTBIT(PTWx1, 6);
@@ -2874,7 +2874,7 @@ static t_stat virtAddrN (uint address)
                         word36 PTWx2;
                         core_read ((SDW0.ADDR + x2) & PAMASK, & PTWx2, __func__);
 
-                        _ptw0 PTW2;
+                        ptw_s PTW2;
                         PTW2.ADDR = GETHI(PTWx2);
                         PTW2.U = TSTBIT(PTWx2, 9);
                         PTW2.M = TSTBIT(PTWx2, 6);
