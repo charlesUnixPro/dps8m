@@ -1624,7 +1624,9 @@ sim_warn ("unhandled fetchAndParseDCW\n");
         // LPW EXT
         case cm2e:
           {
-            addr |= ((word24) p -> LPWX_BOUND << 18);
+// LPXW_BOUND is mod 2; ie. val is * 2
+            //addr |= ((word24) p -> LPWX_BOUND << 18);
+            addr += ((word24) p -> LPWX_BOUND << 1);
             iom_core_read (iomUnitIdx, addr, & p -> DCW, __func__);
           }
           break;
