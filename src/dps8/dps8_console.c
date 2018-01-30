@@ -570,9 +570,9 @@ static void sendConsole (int conUnitIdx, word12 stati)
     uint ctlr_port_num = 0; // Consoles are single ported
     uint iomUnitIdx = cables->opc_to_iom[conUnitIdx][ctlr_port_num].iom_unit_idx;
     uint chan_num = cables->opc_to_iom[conUnitIdx][ctlr_port_num].chan_num;
-    iomChanData_t * p = & iomChanData[iomUnitIdx][chan_num];
+    iom_chan_data_t * p = & iom_chan_data[iomUnitIdx][chan_num];
 
-// XXX this should be iomIndirectDataService
+// XXX this should be iom_indirect_data_service
     p->charPos = tally % 4;
 
 #ifdef OSCAR
@@ -626,7 +626,7 @@ static void console_putstr (int conUnitIdx, char * str);
 
 static int opc_cmd (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData[iomUnitIdx][chan];
+    iom_chan_data_t * p = & iom_chan_data[iomUnitIdx][chan];
     uint con_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
     UNIT * unitp = & opc_unit[con_unit_idx];
     opc_state_t * csp = console_state + con_unit_idx;
@@ -673,7 +673,7 @@ static int opc_cmd (uint iomUnitIdx, uint chan)
             bool ptro, send, uff;
 
             // We only expect one DCW, so no loop
-            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+            int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
             if (rc < 0)
               {
                 sim_warn ("console read list service failed\n");
@@ -759,7 +759,7 @@ sim_warn ("uncomfortable with this\n");
             bool uff;
             do
               {
-                int rc = iomListService (iomUnitIdx, chan, & ptro, & send,
+                int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send,
                                          & uff);
                 if (rc < 0)
                   {
@@ -879,7 +879,7 @@ sim_warn ("uncomfortable with this\n");
 #ifndef __MINGW64__
                 newlineOff ();
 #endif
-// XXX this should be iomIndirectDataService
+// XXX this should be iom_indirect_data_service
                 sim_print (""); // force text color reset
                 while (tally)
                   {

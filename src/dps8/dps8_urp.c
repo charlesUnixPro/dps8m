@@ -201,7 +201,7 @@ void urp_init (void)
 
 static int urp_cmd (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
     uint ctlr_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
     uint devUnitIdx = cables->urp_to_urd[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
     UNIT * unitp = & urp_unit [devUnitIdx];
@@ -229,7 +229,7 @@ static int urp_cmd (uint iomUnitIdx, uint chan)
 
             bool ptro, send, uff;
 
-            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+            int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
             if (rc < 0)
               {
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
@@ -294,7 +294,7 @@ static int urp_cmd (uint iomUnitIdx, uint chan)
 
             bool ptro, send, uff;
 
-            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+            int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
             if (rc < 0)
               {
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
@@ -339,7 +339,7 @@ static int urp_cmd (uint iomUnitIdx, uint chan)
             bool ptro, send, uff;
             for (uint ddcwIdx = 0; ddcwIdx < ddcwCnt; ddcwIdx ++)
               {
-                int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+                int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
                 if (rc < 0)
                   {
                     p -> stati = 05001; // BUG: arbitrary error code; config switch
@@ -373,7 +373,7 @@ static int urp_cmd (uint iomUnitIdx, uint chan)
                 // Copy from core to buffer
                 word36 buffer [tally];
                 uint wordsProcessed = 0;
-                iomIndirectDataService (iomUnitIdx, chan, buffer,
+                iom_indirect_data_service (iomUnitIdx, chan, buffer,
                                         & wordsProcessed, false);
 
 
@@ -484,7 +484,7 @@ sim_printf ("\n");
 
             bool ptro, send, uff;
 
-            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+            int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
             if (rc < 0)
               {
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
@@ -526,7 +526,7 @@ sim_printf ("\n");
 
             bool ptro, send, uff;
 
-            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+            int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
             if (rc < 0)
               {
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
@@ -588,7 +588,7 @@ sim_printf ("\n");
 // -1 problem
 int urp_iom_cmd (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
 // Is it an IDCW?
 
     if (p -> DCW_18_20_CP == 7)
@@ -597,7 +597,7 @@ int urp_iom_cmd (uint iomUnitIdx, uint chan)
         if (dev_code == 0)
           return urp_cmd (iomUnitIdx, chan);
         uint urp_unit_idx = cables->iom_to_ctlr[iomUnitIdx][chan].ctlr_unit_idx;
-        iomCmd * cmd =  cables->urp_to_urd[urp_unit_idx][dev_code].iom_cmd;
+        iom_cmd_t * cmd =  cables->urp_to_urd[urp_unit_idx][dev_code].iom_cmd;
         if (! cmd)
           {
             sim_warn ("URP can't find divice handler\n");

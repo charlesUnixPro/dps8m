@@ -383,9 +383,9 @@ uint get_scu_unit_idx_iom (uint fnp_unit_idx, word24 addr, word24 * offset)
   {
     uint ctlr_port_num = 0; // FNPs are single ported
     uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
-// XXX can queryIomScbankMap return -1 here? if so, what to do?
+// XXX can query_IOM_SCU_bank_map return -1 here? if so, what to do?
 // The address is known to reside in the bootload SCU; we can't get to here unless that is working.
-    uint scu_unit_num = (uint) queryIomScbankMap (iom_unit_idx, addr, offset);
+    uint scu_unit_num = (uint) query_IOM_SCU_bank_map (iom_unit_idx, addr, offset);
     uint scu_unit_idx = cables->iom_to_scu[iom_unit_idx][scu_unit_num].scu_unit_idx;
     return scu_unit_idx;
   }

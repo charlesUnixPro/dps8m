@@ -1328,7 +1328,7 @@ static void panel_process_event (void)
          else
            cpu_reset_unit_idx (ASSUME0, false); // INITIALIZE
          // XXX Until a boot switch is wired up
-         doBoot ();
+         do_boot ();
       }
     // EXECUTE pressed; EXECUTE PB set, EXECUTE FAULT set
     if (cpu.DATA_panel_s_trig_sw == 0 &&

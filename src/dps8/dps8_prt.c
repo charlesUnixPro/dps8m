@@ -410,7 +410,7 @@ static int eoj (word36 * buffer, uint tally)
 
 static int prt_cmd (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
     uint ctlr_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
     uint devUnitIdx = cables->urp_to_urd[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
     UNIT * unitp = & prt_unit [devUnitIdx];
@@ -434,7 +434,7 @@ static int prt_cmd (uint iomUnitIdx, uint chan)
 
             bool ptro, send, uff;
 
-            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+            int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
             if (rc < 0)
               {
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
@@ -499,7 +499,7 @@ static int prt_cmd (uint iomUnitIdx, uint chan)
 
             bool ptro, send, uff;
 
-            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+            int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
             if (rc < 0)
               {
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
@@ -544,7 +544,7 @@ static int prt_cmd (uint iomUnitIdx, uint chan)
             bool ptro, send, uff;
             for (uint ddcwIdx = 0; ddcwIdx < ddcwCnt; ddcwIdx ++)
               {
-                int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+                int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
                 if (rc < 0)
                   {
                     p -> stati = 05001; // BUG: arbitrary error code; config switch
@@ -578,7 +578,7 @@ static int prt_cmd (uint iomUnitIdx, uint chan)
                 // Copy from core to buffer
                 word36 buffer [tally];
                 uint wordsProcessed = 0;
-                iomIndirectDataService (iomUnitIdx, chan, buffer,
+                iom_indirect_data_service (iomUnitIdx, chan, buffer,
                                         & wordsProcessed, false);
 
 
@@ -704,7 +704,7 @@ sim_printf ("\n");
 // -1 problem
 int prt_iom_cmd (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
 // Is it an IDCW?
 
     if (p -> DCW_18_20_CP == 7)

@@ -538,7 +538,7 @@ sim_printf ("notifyCS mbx %d\n", mbx);
 #ifdef SCUMEM
     uint iom_unit_idx = (uint) cables->cables_from_iom_to_dia [fnpno].iom_unit_idx;
     word24 offset;
-    int scu_unit_num =  queryIomScbankMap (iom_unit_idx, dudp->mailbox_address, & offset);
+    int scu_unit_num =  query_IOM_SCU_bank_map (iom_unit_idx, dudp->mailbox_address, & offset);
     int scu_unit_idx = cables->cablesFromScus[iom_unit_idx][scu_unit_num].scu_unit_idx;
     struct mailbox vol * mbxp = (struct mailbox vol *) & scu [scu_unit_idx].M[offset];
 #else
@@ -569,11 +569,11 @@ static void cmd_bootload (uint iom_unit_idx, uint dev_unit_idx, uint chan, word2
   {
     
     uint fnpno = dev_unit_idx; // XXX
-    //iomChanData_t * p = & iomChanData [iom_unit_idx] [chan];
+    //iom_chan_data_t * p = & iom_chan_data [iom_unit_idx] [chan];
     struct dia_unit_data * dudp = & dia_data.dia_unit_data[fnpno];
 #ifdef SCUMEM
     word24 offset;
-    int scu_unit_num =  queryIomScbankMap (iom_unit_idx, dudp->mailbox_address, & offset);
+    int scu_unit_num =  query_IOM_SCU_bank_map (iom_unit_idx, dudp->mailbox_address, & offset);
     int scu_unit_idx = cables->cablesFromScus[iom_unit_idx][scu_unit_num].scu_unit_idx;
     struct mailbox vol * mbxp = (struct mailbox *) & scu[scu_unit_idx].M[decoded.dudp->mailbox_address]; 
 #else
@@ -598,14 +598,14 @@ static void cmd_bootload (uint iom_unit_idx, uint dev_unit_idx, uint chan, word2
 
 static int interruptL66 (uint iom_unit_idx, uint chan)
   {
-    iomChanData_t * p = & iomChanData[iom_unit_idx][chan];
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
     struct device * d = & cables->cablesFromIomToDev[iom_unit_idx].
       devices[chan][p->IDCW_DEV_CODE];
     uint dev_unit_idx = d->devUnitIdx;
     struct dia_unit_data * dudp = &dia_data.dia_unit_data[dev_unit_idx];
 #ifdef SCUMEM
     word24 offset;
-    int scu_unit_num =  queryIomScbankMap (iom_unit_idx, dudp->mailbox_address, & offset);
+    int scu_unit_num =  query_IOM_SCU_bank_map (iom_unit_idx, dudp->mailbox_address, & offset);
     int scu_unit_idx = cables->cablesFromScus[iom_unit_idx][scu_unit_num].scu_unit_idx;
     struct mailbox vol * mbxp = (struct mailbox *) & scu[scu_unit_idx].M[dudp->mailbox_address];
 #else
@@ -675,7 +675,7 @@ sim_printf ("CS interrupt %u\n", cell);
 
 static void processMBX (uint iom_unit_idx, uint chan)
   {
-    iomChanData_t * p = & iomChanData[iom_unit_idx][chan];
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
     struct device * d = & cables->cablesFromIomToDev[iom_unit_idx].
       devices[chan][p->IDCW_DEV_CODE];
     uint dev_unit_idx = d->devUnitIdx;
@@ -991,7 +991,7 @@ sim_printf ("data xfer??\n");
 
 static int dia_cmd (uint iom_unit_idx, uint chan)
   {
-    iomChanData_t * p = & iomChanData[iom_unit_idx][chan];
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
     p -> stati = 0;
 //sim_printf ("fnp cmd %d\n", p -> IDCW_DEV_CMD);
     switch (p -> IDCW_DEV_CMD)
@@ -1041,7 +1041,7 @@ sim_printf ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
 int dia_iom_cmd (uint iom_unit_idx, uint chan)
   {
 sim_printf ("dia_iom_cmd %u %u\r\n", iom_unit_idx, chan);
-    iomChanData_t * p = & iomChanData[iom_unit_idx][chan];
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
 // Is it an IDCW?
 
     if (p -> DCW_18_20_CP == 7)

@@ -468,7 +468,7 @@ static t_stat cable_ctlr (int uncable,
                           DEVICE * devp,
                           struct ctlr_to_iom_s * there,
                           enum ctlr_type_e ctlr_type, enum chan_type_e chan_type,
-                          UNIT * unitp, iomCmd * iomCmd)
+                          UNIT * unitp, iom_cmd_t * iom_cmd)
   {
     if (ctlr_unit_idx >= devp->numunits)
       {
@@ -526,7 +526,7 @@ static t_stat cable_ctlr (int uncable,
         p->chan_type = chan_type;
         p->dev = devp;
         p->board  = unitp;
-        p->iom_cmd  = iomCmd;
+        p->iom_cmd  = iom_cmd;
       }
 
     return SCPE_OK;
@@ -759,7 +759,7 @@ static t_stat cable_periph_to_ctlr (int uncable,
                                     uint ctlr_unit_idx, uint dev_code,
                                     enum ctlr_type_e ctlr_type,
                                     struct dev_to_ctlr_s * there,
-                                    UNUSED iomCmd * iom_cmd)
+                                    UNUSED iom_cmd_t * iom_cmd)
   {
     if (uncable)
       {
@@ -797,7 +797,7 @@ static t_stat cable_periph (int uncable,
                             enum ctlr_type_e ctlr_type,
                             struct ctlr_to_dev_s * here,
                             uint unit_idx,
-                            iomCmd * iom_cmd,
+                            iom_cmd_t * iom_cmd,
                             struct dev_to_ctlr_s * there,
                             char * service)
   {

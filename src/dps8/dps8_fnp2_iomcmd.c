@@ -131,7 +131,7 @@ struct decoded_t
     struct fnp_submailbox vol * fsmbxp;
     struct mailbox vol * mbxp;
     struct fnpUnitData * fudp;
-    iomChanData_t * p;
+    iom_chan_data_t * p;
     uint cell;
   };
 
@@ -1644,12 +1644,12 @@ sim_printf ("  %d %d %d %d\n", decoded.fudp->fnpMBXinUse [0], decoded.fudp->fnpM
 
 static int interruptL66 (uint iomUnitIdx, uint chan)
   {
-    decoded.p = & iomChanData [iomUnitIdx] [chan];
+    decoded.p = & iom_chan_data [iomUnitIdx] [chan];
     decoded.devUnitIdx = get_ctlr_idx (iomUnitIdx, chan);
     decoded.fudp = & fnpData.fnpUnitData [decoded.devUnitIdx];
 #ifdef SCUMEM
     word24 offset;
-    int scuUnitNum =  queryIomScbankMap (iomUnitIdx, decoded.fudp->mailboxAddress, & offset);
+    int scuUnitNum =  query_IOM_SCU_bank_map (iomUnitIdx, decoded.fudp->mailboxAddress, & offset);
     uint scuUnitIdx = cables->iom_to_scu[iomUnitIdx][scuUnitNum].scu_unit_idx;
     decoded.mbxp = (struct mailbox vol *) & scu [scuUnitIdx].M [decoded.fudp->mailboxAddress];
 #else
@@ -2015,7 +2015,7 @@ dmpmbx (fudp->mailboxAddress);
 
 static int fnpCmd (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
     p -> stati = 0;
 //sim_printf ("fnp cmd %d\n", p -> IDCW_DEV_CMD);
     switch (p -> IDCW_DEV_CMD)
@@ -2066,7 +2066,7 @@ sim_printf ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
 
 int fnp_iom_cmd (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
 // Is it an IDCW?
 
     if (p -> DCW_18_20_CP == 7)

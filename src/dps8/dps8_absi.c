@@ -140,7 +140,7 @@ static t_stat absi_reset (UNUSED DEVICE * dptr)
 
 static int absi_cmd (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = &iomChanData[iomUnitIdx][chan];
+    iom_chan_data_t * p = &iom_chan_data[iomUnitIdx][chan];
 // sim_printf ("absi_cmd CHAN_CMD %o DEV_CODE %o DEV_CMD %o COUNT %o\n", 
 //p->IDCW_CHAN_CMD, p->IDCW_DEV_CODE, p->IDCW_DEV_CMD, p->IDCW_COUNT);
     sim_debug (DBG_TRACE, & absi_dev, 
@@ -218,7 +218,7 @@ sim_printf ("absi marker\n");
 // -1 problem
 int absi_iom_cmd (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData[iomUnitIdx][chan];
+    iom_chan_data_t * p = & iom_chan_data[iomUnitIdx][chan];
 // Is it an IDCW?
 
     if (p->DCW_18_20_CP == 7)

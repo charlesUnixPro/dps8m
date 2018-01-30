@@ -439,7 +439,7 @@ static int getRawCardData (int fd, uint8_t * buffer)
 
 static int rdrReadRecord (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
     sim_debug (DBG_NOTIFY, & rdr_dev, "Read binary\n");
     uint ctlr_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
     uint unitIdx = cables->urp_to_urd[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
@@ -686,7 +686,7 @@ sim_printf ("\n");
 
     bool ptro, send, uff;
 
-    int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+    int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
     if (rc < 0)
       {
         p -> stati = 05001; // BUG: arbitrary error code; config switch
@@ -710,7 +710,7 @@ sim_printf ("\n");
         return -1;
       }
 
-    iomIndirectDataService (iomUnitIdx, chan, buffer,
+    iom_indirect_data_service (iomUnitIdx, chan, buffer,
                             & tally, true);
     p -> stati = 04000; // ok
     p -> initiate = false;
@@ -725,7 +725,7 @@ sim_printf ("\n");
 
 static int rdr_cmd (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
     uint ctlr_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
     uint unitIdx = cables->urp_to_urd[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
     // XXX in_use not being checked?
@@ -874,7 +874,7 @@ void rdrCardReady (int unitNum)
 
 int rdr_iom_cmd (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
 
     // Is it an IDCW?
     if (p -> DCW_18_20_CP == 7)

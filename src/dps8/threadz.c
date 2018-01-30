@@ -402,7 +402,7 @@ void createIOMThread (uint iomNum)
     if (rc)
       sim_printf ("createIOMThread pthread_cond_init intrCond %d\n", rc);
 
-    rc = pthread_create (& p->iomThread, NULL, iomThreadMain, 
+    rc = pthread_create (& p->iomThread, NULL, iom_thread_main, 
                     & p->iomThreadArg);
     if (rc)
       sim_printf ("createIOMThread pthread_create %d\n", rc);
@@ -417,7 +417,7 @@ void createIOMThread (uint iomNum)
 void iomInterruptWait (void)
   {
     int rc;
-    struct iomThreadz_t * p = & iomThreadz[thisIOMnum];
+    struct iomThreadz_t * p = & iomThreadz[this_iom_idx];
     rc = pthread_mutex_lock (& p->intrLock);
     if (rc)
       sim_printf ("iomInterruptWait pthread_mutex_lock %d\n", rc);
@@ -431,7 +431,7 @@ void iomInterruptWait (void)
 #ifdef tdbg
     p->outCnt++;
     if (p->inCnt != p->outCnt)
-      sim_printf ("iom thread %d in %d out %d\n", thisIOMnum,
+      sim_printf ("iom thread %d in %d out %d\n", this_iom_idx,
                   p->inCnt, p->outCnt);
 #endif
   }
@@ -441,7 +441,7 @@ void iomInterruptWait (void)
 void iomInterruptDone (void)
   {
     int rc;
-    struct iomThreadz_t * p = & iomThreadz[thisIOMnum];
+    struct iomThreadz_t * p = & iomThreadz[this_iom_idx];
     p->intr = false;
     rc = pthread_cond_signal (& p->intrCond);
     if (rc)
@@ -555,7 +555,7 @@ void createChnThread (uint iomNum, uint chnNum, const char * devTypeStr)
     if (rc)
       sim_printf ("createChnThread pthread_cond_init connectCond %d\n", rc);
 
-    rc = pthread_create (& p->chnThread, NULL, chnThreadMain, 
+    rc = pthread_create (& p->chnThread, NULL, chan_thread_main, 
                     & p->chnThreadArg);
     if (rc)
       sim_printf ("createChnThread pthread_create %d\n", rc);
@@ -570,7 +570,7 @@ void createChnThread (uint iomNum, uint chnNum, const char * devTypeStr)
 void chnConnectWait (void)
   {
     int rc;
-    struct chnThreadz_t * p = & chnThreadz[thisIOMnum][thisChnNum];
+    struct chnThreadz_t * p = & chnThreadz[this_iom_idx][this_chan_num];
 
    
     rc = pthread_mutex_lock (& p->connectLock);
@@ -586,7 +586,7 @@ void chnConnectWait (void)
 #ifdef tdbg
     p->outCnt++;
     if (p->inCnt != p->outCnt)
-      sim_printf ("chn thread %d in %d out %d\n", thisChnNum,
+      sim_printf ("chn thread %d in %d out %d\n", this_chan_num,
                   p->inCnt, p->outCnt);
 #endif
   }
@@ -596,7 +596,7 @@ void chnConnectWait (void)
 void chnConnectDone (void)
   {
     int rc;
-    struct chnThreadz_t * p = & chnThreadz[thisIOMnum][thisChnNum];
+    struct chnThreadz_t * p = & chnThreadz[this_iom_idx][this_chan_num];
     p->connect = false;
     rc = pthread_cond_signal (& p->connectCond);
     if (rc)

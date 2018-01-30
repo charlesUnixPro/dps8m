@@ -557,7 +557,7 @@ void disk_init (void)
 
 static int diskSeek64 (uint devUnitIdx, uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
     struct dsk_state * disk_statep = & dsk_states [devUnitIdx];
     sim_debug (DBG_NOTIFY, & dsk_dev, "Seek64 %d\n", devUnitIdx);
     disk_statep -> io_mode = disk_seek64_mode;
@@ -569,7 +569,7 @@ static int diskSeek64 (uint devUnitIdx, uint iomUnitIdx, uint chan)
 // Process DDCW
 
     bool ptro, send, uff;
-    int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+    int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
     if (rc < 0)
       {
         sim_printf ("diskSeek54 list service failed\n");
@@ -606,7 +606,7 @@ static int diskSeek64 (uint devUnitIdx, uint iomUnitIdx, uint chan)
       }
 
     word36 seekData;
-    iomDirectDataService (iomUnitIdx, chan, & seekData, false);
+    iom_direct_data_service (iomUnitIdx, chan, & seekData, false);
 
 //sim_printf ("seekData %012"PRIo64"\n", seekData);
 // Observations about the seek/write stream
@@ -628,7 +628,7 @@ static int diskSeek64 (uint devUnitIdx, uint iomUnitIdx, uint chan)
 
 static int diskSeek512 (uint devUnitIdx, uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
     struct dsk_state * disk_statep = & dsk_states [devUnitIdx];
     sim_debug (DBG_NOTIFY, & dsk_dev, "Seek512 %d\n", devUnitIdx);
 //sim_printf ("disk seek512 [%"PRId64"]\n", cpu.cycleCnt);
@@ -641,7 +641,7 @@ static int diskSeek512 (uint devUnitIdx, uint iomUnitIdx, uint chan)
 // Process DDCW
 
     bool ptro, send, uff;
-    int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+    int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
     if (rc < 0)
       {
         sim_printf ("diskSeek512 list service failed\n");
@@ -678,7 +678,7 @@ static int diskSeek512 (uint devUnitIdx, uint iomUnitIdx, uint chan)
       }
 
     word36 seekData;
-    iomDirectDataService (iomUnitIdx, chan, & seekData, false);
+    iom_direct_data_service (iomUnitIdx, chan, & seekData, false);
 
 //sim_printf ("seekData %012"PRIo64"\n", seekData);
 // Observations about the seek/write stream
@@ -700,7 +700,7 @@ static int diskSeek512 (uint devUnitIdx, uint iomUnitIdx, uint chan)
 
 static int diskRead (uint devUnitIdx, uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
     UNIT * unitp = & dsk_unit [devUnitIdx];
     struct dsk_state * disk_statep = & dsk_states [devUnitIdx];
     uint typeIdx = disk_statep->typeIdx;
@@ -714,7 +714,7 @@ static int diskRead (uint devUnitIdx, uint iomUnitIdx, uint chan)
     bool ptro, send, uff;
     do
       {
-        int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+        int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
         if (rc < 0)
           {
             sim_printf ("diskRead list service failed\n");
@@ -850,7 +850,7 @@ static int diskRead (uint devUnitIdx, uint iomUnitIdx, uint chan)
                                      & w);
             buffer [i] = w;
           }
-        iomIndirectDataService (iomUnitIdx, chan, buffer,
+        iom_indirect_data_service (iomUnitIdx, chan, buffer,
                                 & wordsProcessed, true);
         p -> charPos = tally % 4;
       } while (p -> DDCW_22_23_TYPE != 0); // not IOTD
@@ -861,7 +861,7 @@ static int diskRead (uint devUnitIdx, uint iomUnitIdx, uint chan)
 
 static int diskWrite (uint devUnitIdx, uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
     UNIT * unitp = & dsk_unit [devUnitIdx];
     struct dsk_state * disk_statep = & dsk_states [devUnitIdx];
     uint typeIdx = disk_statep->typeIdx;
@@ -876,7 +876,7 @@ static int diskWrite (uint devUnitIdx, uint iomUnitIdx, uint chan)
     bool ptro, send, uff;
     do
       {
-        int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+        int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
         if (rc < 0)
           {
             sim_printf ("diskWrite list service failed\n");
@@ -945,7 +945,7 @@ static int diskWrite (uint devUnitIdx, uint iomUnitIdx, uint chan)
           }
 #else
         word36 buffer [tally];
-        iomIndirectDataService (iomUnitIdx, chan, buffer,
+        iom_indirect_data_service (iomUnitIdx, chan, buffer,
                                 & wordsProcessed, false);
 // XXX is this losing information?
         wordsProcessed = 0;
@@ -984,7 +984,7 @@ static int diskWrite (uint devUnitIdx, uint iomUnitIdx, uint chan)
 
 static int readStatusRegister (uint devUnitIdx, uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
     UNIT * unitp = & dsk_unit [devUnitIdx];
     struct dsk_state * disk_statep = & dsk_states [devUnitIdx];
 
@@ -996,7 +996,7 @@ static int readStatusRegister (uint devUnitIdx, uint iomUnitIdx, uint chan)
     bool ptro;
     bool send;
     bool uff;
-    int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+    int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
     if (rc < 0)
       {
         sim_printf ("readStatusRegister list service failed\n");
@@ -1045,7 +1045,7 @@ static int readStatusRegister (uint devUnitIdx, uint iomUnitIdx, uint chan)
     memset (buffer, 0, sizeof (buffer));
     buffer [0] = SIGN36;
     uint wordsProcessed = 0;
-    iomIndirectDataService (iomUnitIdx, chan, buffer,
+    iom_indirect_data_service (iomUnitIdx, chan, buffer,
                             & wordsProcessed, true);
 #else
     for (uint i = 0; i < tally; i ++)
@@ -1065,7 +1065,7 @@ static int readStatusRegister (uint devUnitIdx, uint iomUnitIdx, uint chan)
 
 static int disk_cmd (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
     uint ctlr_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
     uint devUnitIdx;
     if (cables->iom_to_ctlr[iomUnitIdx][chan].ctlr_type == CTLR_T_IPC)
@@ -1210,7 +1210,7 @@ sim_printf ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
 
 int dsk_iom_cmd (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
 // Is it an IDCW?
 
     if (p -> DCW_18_20_CP == 7)

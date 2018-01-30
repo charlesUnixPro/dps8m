@@ -12,9 +12,9 @@
  */
 
 #ifdef THREADZ
-extern __thread uint thisIOMnum;
-extern __thread uint thisChnNum;
-extern __thread bool thisIOMHaveLock;
+extern __thread uint this_iom_idx;
+extern __thread uint this_chan_num;
+//extern __thread bool thisIOMHaveLock;
 #endif
 
 //typedef enum 
@@ -124,7 +124,7 @@ typedef struct
 // services to the channel.
 //
 //  [CAC: I think that this can be elided. To implement correctly,
-//  iomListService and/or doPayloadChannel would have to know the
+//  iom_list_service and/or doPayloadChannel would have to know the
 //  word or sub-word functionality of the channel. But it would
 //  be simpler to let the device handler just access the CP data,
 //  and make it's own decisions about "zeros". After all, it is 
@@ -189,9 +189,9 @@ typedef struct
 
     bool masked;
 
-  } iomChanData_t;
+  } iom_chan_data_t;
 
-extern iomChanData_t iomChanData [N_IOM_UNITS_MAX] [MAX_CHANNELS];
+extern iom_chan_data_t iom_chan_data [N_IOM_UNITS_MAX] [MAX_CHANNELS];
 extern DEVICE iom_dev;
 
 // Indirect data service data type
@@ -236,10 +236,10 @@ typedef struct pcw_t
   } pcw_t;
 #endif
 
-int send_special_interrupt (uint iomUnitIdx, uint chanNum, uint devCode, 
+int send_special_interrupt (uint iom_unit_idx, uint chanNum, uint devCode, 
                             word8 status0, word8 status1);
 //
-// iomCmd returns:
+// iom_cmd_t returns:
 //
 //  0: ok
 //  1; ignored cmd, drop connect.
@@ -247,33 +247,32 @@ int send_special_interrupt (uint iomUnitIdx, uint chanNum, uint devCode,
 //  3; command pending, don't sent terminate interrupt
 // -1: error
 
-typedef int iomCmd (uint iomUnitIdx, uint chan);
-int iomListService (uint iomUnitIdx, uint chan,
+typedef int iom_cmd_t (uint iom_unit_idx, uint chan);
+int iom_list_service (uint iom_unit_idx, uint chan,
                            bool * ptro, bool * sendp, bool * uffp);
-int send_terminate_interrupt (uint iomUnitIdx, uint chanNum);
-void iom_interrupt (uint scuUnitNum, uint iomUnitIdx);
-void iomDirectDataService (uint iomUnitIdx, uint chan, word36 * data,
+int send_terminate_interrupt (uint iom_unit_idx, uint chanNum);
+void iom_interrupt (uint scuUnitNum, uint iom_unit_idx);
+void iom_direct_data_service (uint iom_unit_idx, uint chan, word36 * data,
                            bool write);
-void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
+void iom_indirect_data_service (uint iom_unit_idx, uint chan, word36 * data,
                              uint * cnt, bool write);
 void iom_init (void);
-int send_marker_interrupt (uint iomUnitIdx, int chan);
+int send_marker_interrupt (uint iom_unit_idx, int chan);
 #ifdef PANEL
-void doBoot (void);
+void do_boot (void);
 #endif
 #ifdef THREADZ
-void * iomThreadMain (void * arg);
-void * chnThreadMain (void * arg);
+void * iom_thread_main (void * arg);
+void * chan_thread_main (void * arg);
 #endif
 #ifdef SCUMEM
-int queryIomScbankMap (uint iomUnitIdx, word24 addr, word24 * offset);
-word36 * iomLookupAddress (uint iomUnitIdx, word24 addr);
+int query_IOM_SCU_bank_map (uint iom_unit_idx, word24 addr, word24 * offset);
 #endif
 
-void iom_core_read (uint iomUnitIdx, word24 addr, word36 *data, UNUSED const char * ctx);
-void iom_core_read2 (uint iomUnitIdx, word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx);
-void iom_core_write (uint iomUnitIdx, word24 addr, word36 data, UNUSED const char * ctx);
-void iom_core_write2 (uint iomUnitIdx, word24 addr, word36 even, word36 odd, UNUSED const char * ctx);
+void iom_core_read (uint iom_unit_idx, word24 addr, word36 *data, UNUSED const char * ctx);
+void iom_core_read2 (uint iom_unit_idx, word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx);
+void iom_core_write (uint iom_unit_idx, word24 addr, word36 data, UNUSED const char * ctx);
+void iom_core_write2 (uint iom_unit_idx, word24 addr, word36 even, word36 odd, UNUSED const char * ctx);
 t_stat boot2 (UNUSED int32 arg, UNUSED const char * buf);
-t_stat iomUnitResetIdx (uint iomUnitIdx);
+t_stat iom_unit_reset_idx (uint iom_unit_idx);
 

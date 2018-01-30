@@ -1122,7 +1122,7 @@ void scu_unit_reset (int scu_unit_idx)
           continue;
         //if (! scu [scu_unit_idx].port_enable [scu_port_num])
           //continue;
-        iomUnitResetIdx ((uint) portp->dev_idx);
+        iom_unit_reset_idx ((uint) portp->dev_idx);
       }
 
 // CAC - These settings were reversed engineer from the code instead

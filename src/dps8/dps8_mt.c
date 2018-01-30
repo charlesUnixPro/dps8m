@@ -604,7 +604,7 @@ static int mtReadRecord (uint devUnitIdx, uint iomUnitIdx, uint chan)
 
 // If a tape read IDCW has multiple DDCWs, are additional records read?
 
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
     UNIT * unitp = & mt_unit [devUnitIdx];
     struct tape_state * tape_statep = & tape_states [devUnitIdx];
 
@@ -690,7 +690,7 @@ ddcws:;
     bool ptro, send, uff;
     do
       {
-        int rc2 = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+        int rc2 = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
         if (rc2 < 0)
           {
             p -> stati = 05001; // BUG: arbitrary error code; config switch
@@ -757,7 +757,7 @@ ddcws:;
                 sim_printf (">\n");
             }
 #endif
-            iomIndirectDataService (iomUnitIdx, chan, buffer,
+            iom_indirect_data_service (iomUnitIdx, chan, buffer,
                                     & tape_statep -> words_processed, true);
             if (p -> tallyResidue)
               {
@@ -788,7 +788,7 @@ static int mtWriteRecord (uint devUnitIdx, uint iomUnitIdx, uint chan)
 
 // If a tape read IDCW has multiple DDCWs, are additional records read?
 
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
     UNIT * unitp = & mt_unit [devUnitIdx];
     struct tape_state * tape_statep = & tape_states [devUnitIdx];
 
@@ -802,7 +802,7 @@ static int mtWriteRecord (uint devUnitIdx, uint iomUnitIdx, uint chan)
 
     bool ptro, send, uff;
 loop:;
-    int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+    int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
 //sim_printf ("DDCW_22_23_TYPE %u\n", p->DDCW_22_23_TYPE);
     if (rc < 0)
       {
@@ -845,7 +845,7 @@ loop:;
     tape_statep -> words_processed = 0;
     word36 buffer [tally];
 
-    iomIndirectDataService (iomUnitIdx, chan, buffer,
+    iom_indirect_data_service (iomUnitIdx, chan, buffer,
                             & tape_statep -> words_processed, false);
 
 #if 0
@@ -974,7 +974,7 @@ loop:;
 // -1 problem
 static int surveyDevices (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
 // According to rcp_tape_survey_.pl1:
 //
 //       2 survey_data,
@@ -994,7 +994,7 @@ static int surveyDevices (uint iomUnitIdx, uint chan)
     p -> stati = 04000; // have_status = 1
     // Get the DDCW
     bool ptro, send, uff;
-    int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+    int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
     if (rc < 0)
       {
         sim_warn ("%s list service failed\n", __func__);
@@ -1071,7 +1071,7 @@ static int surveyDevices (uint iomUnitIdx, uint chan)
           }
         cnt ++;
       }
-    iomIndirectDataService (iomUnitIdx, chan, buffer, & bufsz, true);
+    iom_indirect_data_service (iomUnitIdx, chan, buffer, & bufsz, true);
     p -> stati = 04000;
     return 0;
   }
@@ -1093,7 +1093,7 @@ static int surveyDevices (uint iomUnitIdx, uint chan)
 
 static int mt_cmd (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
 
 // According to poll_mpc.pl1
 // Note: XXX should probably be checking these...
@@ -1211,7 +1211,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
                        "%s: Read controller main memory\n", __func__);
 
             bool ptro, send, uff;
-            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+            int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
             if (rc < 0)
               {
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
@@ -1238,7 +1238,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
 //sim_printf ("chan mode %d\n", p -> chanMode);
 //sim_printf ("ddcw %012"PRIo64"\n", p -> DCW);
             word36 control;
-            iomDirectDataService (iomUnitIdx, chan, & control, false);
+            iom_direct_data_service (iomUnitIdx, chan, & control, false);
 //sim_printf ("control %012"PRIo64"\n", control);
 //sim_printf ("  addr %012"PRIo64" tally %012"PRIo64"\n", getbits36_16 (control, 0), getbits36_16 (control, 16));
             tape_statep -> cntlrAddress = getbits36_16 (control, 0);
@@ -1283,7 +1283,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
                        "%s: initiate read data transfer\n", __func__);
 
             bool ptro, send, uff;
-            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+            int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
             if (rc < 0)
               {
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
@@ -1367,7 +1367,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
                 putbits36_18 (buf + i,  0, mem [i * 2]);
                 putbits36_18 (buf + i, 18, mem [i * 2 + 1]);
               }
-            iomIndirectDataService (iomUnitIdx, chan, buf, & tally, true);
+            iom_indirect_data_service (iomUnitIdx, chan, buf, & tally, true);
             p -> stati = 04000;
             p -> initiate = false; 
           }
@@ -1389,7 +1389,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
                        "%s: initiate write data transfer\n", __func__);
 
             bool ptro, send, uff;
-            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+            int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
             if (rc < 0)
               {
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
@@ -1455,7 +1455,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
                        "%s: Write controller main memory\n", __func__);
 
             bool ptro, send, uff;
-            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+            int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
             if (rc < 0)
               {
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
@@ -1482,7 +1482,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
 //sim_printf ("chan mode %d\n", p -> chanMode);
 //sim_printf ("ddcw %012"PRIo64"\n", p -> DCW);
             word36 control;
-            iomDirectDataService (iomUnitIdx, chan, & control, false);
+            iom_direct_data_service (iomUnitIdx, chan, & control, false);
 //sim_printf ("control %012"PRIo64"\n", control);
 //sim_printf ("  addr %012"PRIo64" tally %012"PRIo64"\n", getbits36_16 (control, 0), getbits36_16 (control, 16));
             tape_statep -> cntlrAddress = getbits36_16 (control, 0);
@@ -2023,7 +2023,7 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
 // -1 problem
 int mt_iom_cmd (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
 // Is it an IDCW?
 
     if (p -> DCW_18_20_CP == 7)

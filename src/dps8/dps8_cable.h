@@ -146,7 +146,7 @@ struct iom_to_ctlr_s
     enum chan_type_e chan_type; // CPI, PSI, Direct
     DEVICE * dev; // ctlr device
     UNIT * board; // points into iomUnit
-    iomCmd * iom_cmd;
+    iom_cmd_t * iom_cmd;
   };
 
 struct ctlr_to_iom_s
@@ -190,7 +190,7 @@ struct ctlr_to_dev_s
   {
     bool in_use;
     uint unit_idx;
-    iomCmd * iom_cmd;
+    iom_cmd_t * iom_cmd;
   };
 
 struct dev_to_ctlr_s
