@@ -447,7 +447,7 @@ void iom_core_read (uint iom_unit_idx, word24 addr, word36 *data, UNUSED const c
     uint scu_unit_idx = cables->iom_to_scu[iom_unit_idx][scuUnitNum].scu_unit_idx;
 #ifdef THREADZ
 #ifdef lockread
-    lock_mem ();
+    lock_mem_rd ();
 #endif
 #endif
     *data = scu[scu_unit_idx].M[offset] & DMASK;
@@ -465,7 +465,7 @@ void iom_core_read2 (uint iom_unit_idx, word24 addr, word36 *even, word36 *odd, 
     uint scu_unit_idx = cables->iom_to_scu[iom_unit_idx][scuUnitNum].scu_unit_idx;
 #ifdef THREADZ
 #ifdef lockread
-    lock_mem ();
+    lock_mem_rd ();
 #endif
 #endif
     * even = scu[scu_unit_idx].M[offset ++] & DMASK;
@@ -484,7 +484,7 @@ void iom_core_write (uint iom_unit_idx, word24 addr, word36 data, UNUSED const c
     uint scu_unit_idx = cables->iom_to_scu[iom_unit_idx][scuUnitNum].scu_unit_idx;
 #ifdef THREADZ
 #ifdef lockread
-    lock_mem ();
+    lock_mem_wr ();
 #endif
 #endif
     scu[scu_unit_idx].M[offset] = data & DMASK;
@@ -502,7 +502,7 @@ void iom_core_write2 (uint iom_unit_idx, word24 addr, word36 even, word36 odd, U
     uint scu_unit_idx = cables->iom_to_scu[iom_unit_idx][scuUnitNum].scu_unit_idx;
 #ifdef THREADZ
 #ifdef lockread
-    lock_mem ();
+    lock_mem_wr ();
 #endif
 #endif
     scu[scu_unit_idx].M[offset ++] = even & DMASK;
@@ -518,7 +518,7 @@ void iom_core_read (UNUSED uint iom_unit_idx, word24 addr, word36 *data, UNUSED 
   {
 #ifdef THREADZ
 #ifdef lockread
-    lock_mem ();
+    lock_mem_rd ();
 #endif
 #endif
     * data = M[addr] & DMASK;
@@ -533,7 +533,7 @@ void iom_core_read2 (UNUSED uint iom_unit_idx, word24 addr, word36 *even, word36
   {
 #ifdef THREADZ
 #ifdef lockread
-    lock_mem ();
+    lock_mem_rd ();
 #endif
 #endif
     * even = M[addr ++] & DMASK;
@@ -549,7 +549,7 @@ void iom_core_write (UNUSED uint iom_unit_idx, word24 addr, word36 data, UNUSED 
   {
 #ifdef THREADZ
 #ifdef lockread
-    lock_mem ();
+    lock_mem_wr ();
 #endif
 #endif
     M[addr] = data & DMASK;
@@ -564,7 +564,7 @@ void iom_core_write2 (UNUSED uint iom_unit_idx, word24 addr, word36 even, word36
   {
 #ifdef THREADZ
 #ifdef lockread
-    lock_mem ();
+    lock_mem_wr ();
 #endif
 #endif
     M[addr ++] = even;
@@ -1525,7 +1525,7 @@ static int status_service (uint iom_unit_idx, uint chan, bool marker)
     // See page 33 and AN87 for format of y-pair of status info
     
 #ifdef THREADZ
-    lock_mem ();
+    lock_mem_wr ();
 #endif
 
     // BUG: much of the following is not tracked
@@ -2277,7 +2277,7 @@ static int send_general_interrupt (uint iom_unit_idx, uint chan, enum iomImwPics
   {
 
 #ifdef THREADZ
-    lock_mem ();
+    lock_mem_wr ();
 #endif
 
     uint imw_addr;
@@ -2335,7 +2335,7 @@ static void iom_fault (uint iom_unit_idx, uint chan, UNUSED const char * who,
                       iomSysFaults_t signal)
   {
 #ifdef THREADZ
-    lock_mem ();
+    lock_mem_wr ();
 #endif
 
 //sim_printf ("iom_fault %s\n", who);
@@ -3100,7 +3100,7 @@ int send_special_interrupt (uint iom_unit_idx, uint chan, uint devCode,
     uint chanloc = mbxLoc (iom_unit_idx, IOM_SPECIAL_STATUS_CHAN);
 
 #ifdef THREADZ
-    lock_mem ();
+    lock_mem_wr ();
 #endif
 
 // Multics uses an 12(8) word circular queue, managed by clever manipulation

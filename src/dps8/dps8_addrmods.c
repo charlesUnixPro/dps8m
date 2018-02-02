@@ -33,6 +33,9 @@
 #include "dps8_utils.h"
 #include "dps8_iefp.h"
 #include "dps8_opcodetable.h"
+#ifdef THREADZ
+#include "threadz.h"
+#endif
 
 #define DBG_CTR cpu.cycleCnt
 
@@ -984,7 +987,7 @@ startCA:;
                            cpu.TPR.CA);
 
 #ifdef THREADZ
-                lock_mem ();
+                lock_rmw ();
 #endif
 
                 word18 saveCA = cpu.TPR.CA;
@@ -1021,7 +1024,7 @@ startCA:;
                 Write (saveCA, indword, APU_DATA_STORE);
 
 #ifdef THREADZ
-                unlock_mem ();
+                unlock_rmw ();
 #endif
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -1046,7 +1049,7 @@ startCA:;
                 // of the decremented ADDRESS field of the indirect word.
 
 #ifdef THREADZ
-                lock_mem ();
+                lock_rmw ();
 #endif
 
                 word18 saveCA = cpu.TPR.CA;
@@ -1084,7 +1087,7 @@ startCA:;
                 Write (saveCA, indword, APU_DATA_STORE);
 
 #ifdef THREADZ
-                unlock_mem ();
+                unlock_rmw ();
 #endif
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -1113,7 +1116,7 @@ startCA:;
                            cpu.TPR.CA);
 
 #ifdef THREADZ
-                lock_mem ();
+                lock_rmw ();
 #endif
 
                 word18 saveCA = cpu.TPR.CA;
@@ -1153,7 +1156,7 @@ startCA:;
                 Write (saveCA, indword, APU_DATA_STORE);
 
 #ifdef THREADZ
-                unlock_mem ();
+                unlock_rmw ();
 #endif
                 cpu.TPR.CA = Yi;
                 return;
@@ -1177,7 +1180,7 @@ startCA:;
                            cpu.TPR.CA);
 
 #ifdef THREADZ
-                lock_mem ();
+                lock_rmw ();
 #endif
 
                 word36 indword;
@@ -1219,7 +1222,7 @@ startCA:;
                 Write (saveCA, indword, APU_DATA_STORE);
 
 #ifdef THREADZ
-                unlock_mem ();
+                unlock_rmw ();
 #endif
 
                 cpu.TPR.CA = computedAddress;
@@ -1254,7 +1257,7 @@ startCA:;
                            cpu.TPR.CA);
 
 #ifdef THREADZ
-                lock_mem ();
+                lock_rmw ();
 #endif
 
                 word18 saveCA = cpu.TPR.CA;
@@ -1296,7 +1299,7 @@ startCA:;
                 Write (saveCA, indword, APU_DATA_STORE);
 
 #ifdef THREADZ
-                unlock_mem ();
+                unlock_rmw ();
 #endif
                 // If the TAG of the indirect word invokes a register, that is,
                 // specifies r, ri, or ir modification, the effective Td value
@@ -1354,7 +1357,7 @@ startCA:;
                            cpu.TPR.CA);
 
 #ifdef THREADZ
-                lock_mem ();
+                lock_rmw ();
 #endif
 
                 word18 saveCA = cpu.TPR.CA;
@@ -1394,7 +1397,7 @@ startCA:;
                 Write (saveCA, indword, APU_DATA_STORE);
 
 #ifdef THREADZ
-                unlock_mem ();
+                unlock_rmw ();
 #endif
 
                 // If the TAG of the indirect word invokes a register, that is,

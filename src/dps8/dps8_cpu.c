@@ -2614,7 +2614,7 @@ t_stat read_operand (word18 addr, _processor_cycle_type cyctyp)
             (i -> opcode == 0214 && ! i -> opcodeX))    // sznc
 #endif
           {
-            lock_mem ();
+            lock_rmw ();
           }
       }
 #endif
@@ -2797,7 +2797,7 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
 #ifdef SCUMEM
     word24 offset;
     uint scu_unit_idx = get_scu_unit_idx (addr, & offset);
-    LOCK_MEM;
+    LOCK_MEM_RD;
     *data = scu [scu_unit_idx].M[offset] & DMASK;
     UNLOCK_MEM;
     if (watch_bits [addr])
@@ -2823,7 +2823,7 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
         traceInstruction (0);
       }
 
-    LOCK_MEM;
+    LOCK_MEM_RD;
     *data = M[addr] & DMASK;
     UNLOCK_MEM;
 
@@ -2872,7 +2872,7 @@ int core_write (word24 addr, word36 data, const char * ctx)
 #ifdef SCUMEM
     word24 offset;
     uint sci_unit_idx = get_scu_unit_idx (addr, & offset);
-    LOCK_MEM;
+    LOCK_MEM_WR;
     scu[sci_unit_idx].M[offset] = data & DMASK;
     UNLOCK_MEM;
     if (watch_bits [addr])
@@ -2882,7 +2882,7 @@ int core_write (word24 addr, word36 data, const char * ctx)
                     scu[sci_unit_idx].M[offset], ctx);
       }
 #else
-    LOCK_MEM;
+    LOCK_MEM_WR;
     M[addr] = data & DMASK;
     UNLOCK_MEM;
     if (watch_bits [addr])
@@ -2937,7 +2937,7 @@ int core_write_zone (word24 addr, word36 data, const char * ctx)
 #ifdef SCUMEM
     word24 offset;
     uint sci_unit_idx = get_scu_unit_idx (addr, & offset);
-    LOCK_MEM;
+    LOCK_MEM_WR;
     scu[sci_unit_idx].M[offset] = (scu[sci_unit_idx].M[offset] & ~cpu.zone) |
                               (data & cpu.zone);
     UNLOCK_MEM;
@@ -2949,7 +2949,7 @@ int core_write_zone (word24 addr, word36 data, const char * ctx)
                     scu[sci_unit_idx].M[offset], ctx);
       }
 #else
-    LOCK_MEM;
+    LOCK_MEM_WR;
     M[addr] = (M[addr] & ~cpu.zone) | (data & cpu.zone);
     UNLOCK_MEM;
     cpu.useZone = false; // Safety
@@ -3015,7 +3015,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
 #ifdef SCUMEM
     word24 offset;
     uint sci_unit_idx = get_scu_unit_idx (addr, & offset);
-    LOCK_MEM;
+    LOCK_MEM_RD;
     *even = scu [sci_unit_idx].M[offset++] & DMASK;
     UNLOCK_MEM;
     if (watch_bits [addr])
@@ -3027,7 +3027,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012"PRIo64" (%s)\n",
                 addr, * even, ctx);
-    LOCK_MEM;
+    LOCK_MEM_RD;
     *odd = scu [sci_unit_idx].M[offset] & DMASK;
     UNLOCK_MEM;
     if (watch_bits [addr+1])
@@ -3055,7 +3055,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
                     M [addr], ctx);
         traceInstruction (0);
       }
-    LOCK_MEM;
+    LOCK_MEM_RD;
     *even = M[addr++] & DMASK;
     UNLOCK_MEM;
     sim_debug (DBG_CORE, & cpu_dev,
@@ -3079,7 +3079,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
         traceInstruction (0);
       }
 
-    LOCK_MEM;
+    LOCK_MEM_RD;
     *odd = M[addr] & DMASK;
     UNLOCK_MEM;
     sim_debug (DBG_CORE, & cpu_dev,
@@ -3142,7 +3142,7 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
                     "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr,
                     even, ctx);
       }
-    LOCK_MEM;
+    LOCK_MEM_WR;
     scu [sci_unit_idx].M[offset] = odd & DMASK;
     UNLOCK_MEM;
     if (watch_bits [addr+1])
@@ -3159,7 +3159,7 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
                     even, ctx);
         traceInstruction (0);
       }
-    LOCK_MEM;
+    LOCK_MEM_WR;
     M[addr++] = even & DMASK;
     UNLOCK_MEM;
     sim_debug (DBG_CORE, & cpu_dev,
@@ -3176,7 +3176,7 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
                     odd, ctx);
         traceInstruction (0);
       }
-    LOCK_MEM;
+    LOCK_MEM_WR;
     M[addr] = odd & DMASK;
     UNLOCK_MEM;
 #endif

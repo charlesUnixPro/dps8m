@@ -18,6 +18,8 @@
 // Resource locks
 //
 
+// simh library serializer
+
 static pthread_mutex_t simh_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void lock_simh (void)
@@ -29,6 +31,8 @@ void unlock_simh (void)
   {
     pthread_mutex_unlock (& simh_lock);
   }
+
+// libuv library serializer
 
 static pthread_mutex_t libuv_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -42,92 +46,132 @@ void unlock_libuv (void)
     pthread_mutex_unlock (& libuv_lock);
   }
 
-#ifdef use_spinlock
-pthread_spinlock_t mem_lock;
-#else
-static pthread_mutex_t mem_lock = PTHREAD_MUTEX_INITIALIZER;
-#endif
-static __thread uint memLockDepth = 0;
+// Memory serializer
 
-void lock_mem (void)
+//   addrmods RMW lock
+//     Read()
+//     Write()
+//
+//   CPU -- reset locks
+//
+//   core_read/core_write locks
+//
+//   read_operand/write operand RMW lock
+//     Read()
+//     Write()
+//
+//  IOM 
+
+// mem_lock -- memory atomicity lock
+// rmw_lock -- big R/M/W cycle lock
+
+pthread_rwlock_t mem_lock = PTHREAD_RWLOCK_INITIALIZER;
+static __thread bool have_mem_lock = false;
+static __thread bool have_rmw_lock = false;
+
+void lock_rmw (void)
   {
-    if (memLockDepth == 0)
+    if (have_rmw_lock)
       {
-        int rc;
-#ifdef use_spinlock
-        rc = pthread_spin_lock (& mem_lock);
-#else
-        rc = pthread_mutex_lock (& mem_lock);
-#endif
-        if (rc)
-          sim_printf ("lock_mem pthread_mutex_lock mem_lock %d\n", rc);
+        sim_warn ("%s: Already have RMW lock\n", __func__);
+        return;
       }
-    memLockDepth ++;
+    if (have_mem_lock)
+      {
+        sim_warn ("%s: Already have memory lock\n", __func__);
+        return;
+      }
+    int rc= pthread_rwlock_wrlock (& mem_lock);
+    if (rc)
+      sim_printf ("%s pthread_rwlock_rdlock mem_lock %d\n", __func__, rc);
+    have_mem_lock = true;
+    have_rmw_lock = true;
+  }
+
+void lock_mem_rd (void)
+  {
+    // If the big RMW lock is on, do nothing.
+    if (have_rmw_lock)
+      return;
+
+    if (have_mem_lock)
+      {
+        sim_warn ("%s: Already have memory lock\n", __func__);
+        return;
+      }
+    int rc= pthread_rwlock_rdlock (& mem_lock);
+    if (rc)
+      sim_printf ("%s pthread_rwlock_rdlock mem_lock %d\n", __func__, rc);
+    have_mem_lock = true;
+  }
+
+void lock_mem_wr (void)
+  {
+    // If the big RMW lock is on, do nothing.
+    if (have_rmw_lock)
+      return;
+
+    if (have_mem_lock)
+      {
+        sim_warn ("%s: Already have memory lock\n", __func__);
+        return;
+      }
+    int rc= pthread_rwlock_wrlock (& mem_lock);
+    if (rc)
+      sim_printf ("%s pthread_rwlock_wrlock mem_lock %d\n", __func__, rc);
+    have_mem_lock = true;
+  }
+
+
+void unlock_rmw (void)
+  {
+    if (! have_mem_lock)
+      {
+        sim_warn ("%s: Don't have memory lock\n", __func__);
+        return;
+      }
+    if (! have_rmw_lock)
+      {
+        sim_warn ("%s: Don't have RMW lock\n", __func__);
+        return;
+      }
+
+    int rc = pthread_rwlock_unlock (& mem_lock);
+    if (rc)
+      sim_printf ("%s pthread_rwlock_ublock mem_lock %d\n", __func__, rc);
+    have_mem_lock = false;
+    have_rmw_lock = false;
   }
 
 void unlock_mem (void)
   {
-    if (memLockDepth == 0)
+    if (have_rmw_lock)
+      return; 
+    if (! have_mem_lock)
       {
-        sim_printf ("spurious mem unlock %u\n", test_mem_lock());
+        sim_warn ("%s: Don't have memory lock\n", __func__);
         return;
       }
 
-    if (memLockDepth == 1)
-      {
-        int rc;
-#ifdef use_spinlock
-        rc = pthread_spin_unlock (& mem_lock);
-#else
-        rc = pthread_mutex_unlock (& mem_lock);
-#endif
-        if (rc)
-          sim_printf ("unlock_mem pthread_mutex_lock mem_lock %d\n", rc);
-      }
-    memLockDepth --;
+    int rc = pthread_rwlock_unlock (& mem_lock);
+    if (rc)
+      sim_printf ("%s pthread_rwlock_ublock mem_lock %d\n", __func__, rc);
+    have_mem_lock = false;
   }
 
 void unlock_mem_force (void)
   {
-    if (memLockDepth == 0)
-      return;
-    memLockDepth = 0;
-    int rc;
-#ifdef use_spinlock
-    rc = pthread_spin_unlock (& mem_lock);
-#else
-    rc = pthread_mutex_unlock (& mem_lock);
-#endif
-    if (rc)
-      sim_printf ("unlock_mem pthread_mutex_lock mem_lock %d\n", rc);
-  }
-
-// assertion
-
-bool test_mem_lock (void)
-  {
-    //sim_debug (DBG_TRACE, & cpu_dev, "test_mem_lock\n");
-    int rc;
-#ifdef use_spinlock
-    rc = pthread_spin_trylock (& mem_lock);
-#else
-    rc = pthread_mutex_trylock (& mem_lock);
-#endif
-    if (rc)
+    if (have_mem_lock)
       {
-         // couldn't lock; presumably already  
-         return true;
+        int rc = pthread_rwlock_unlock (& mem_lock);
+        if (rc)
+          sim_printf ("%s pthread_rwlock_unlock mem_lock %d\n", __func__, rc);
       }
-    // lock acquired, it wasn't locked
-#ifdef use_spinlock
-    rc = pthread_spin_unlock (& mem_lock);
-#else
-    rc = pthread_mutex_unlock (& mem_lock);
-#endif
-    if (rc)
-      sim_printf ("test_mem_lock pthread_mutex_lock mem_lock %d\n", rc);
-    return false;   
+    have_mem_lock = false;
+    have_rmw_lock = false;
   }
+
+// SCU serializer
 
 static pthread_spinlock_t scu_lock;
 
@@ -149,6 +193,8 @@ void unlock_scu (void)
       sim_printf ("unlock_scu pthread_spin_lock scu %d\n", rc);
   }
 
+
+// Debugging tool
 
 static pthread_mutex_t tst_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -651,9 +697,10 @@ void initThreadz (void)
     memset (chnThreadz, 0, sizeof (chnThreadz));
 #endif
 
-#ifdef use_spinlock
-    pthread_spin_init (& mem_lock, PTHREAD_PROCESS_PRIVATE);
-#endif
+    //pthread_rwlock_init (& mem_lock, PTHREAD_PROCESS_PRIVATE);
+    have_mem_lock = false;
+    have_rmw_lock = false;
+
     pthread_spin_init (& scu_lock, PTHREAD_PROCESS_PRIVATE);
   }
 

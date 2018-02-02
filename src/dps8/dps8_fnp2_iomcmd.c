@@ -42,7 +42,7 @@
 static inline void fnp_core_read_n (word24 addr, word36 *data, uint n, UNUSED const char * ctx)
   {
 #ifdef THREADZ
-    lock_mem ();
+    lock_mem_rd ();
 #endif
     for (uint i = 0; i < n; i ++)
 #ifdef SCUMEM
@@ -70,7 +70,7 @@ static inline void l_putbits36_1 (word36 vol * x, uint p, word1 val)
     // caller may provide val that is too big, e.g., a word with all bits
     // set to one, so we mask val
 #ifdef THREADZ
-    lock_mem ();
+    lock_mem_wr ();
 #endif
     * x = (* x & ~ smask) | (((word36) val & mask) << shift);
 #ifdef THREADZ

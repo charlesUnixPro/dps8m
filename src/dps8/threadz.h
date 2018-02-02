@@ -70,9 +70,7 @@ static inline int cthread_cond_timedwait (pthread_cond_t * restrict cond,
 
 
 
-#ifdef use_spinlock
-extern pthread_spinlock_t mem_lock;
-#endif
+extern pthread_rwlock_t mem_lock;
 
 
 // libuv resource lock
@@ -86,10 +84,12 @@ void lock_simh (void);
 void unlock_simh (void);
 
 // atomic memory lock
-void lock_mem (void);
+void lock_rmw (void);
+void lock_mem_rd (void);
+void lock_mem_wr (void);
+void unlock_rmw (void);
 void unlock_mem (void);
 void unlock_mem_force (void);
-bool test_mem_lock (void);
 
 // scu lock
 void lock_scu (void);
