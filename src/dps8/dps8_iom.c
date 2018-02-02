@@ -434,7 +434,7 @@ enum iomImwPics
     imwSpecialPic = 3
   };
 
-#ifdef THREADZ
+#ifdef IO_THREADZ
 __thread uint this_iom_idx;
 __thread uint this_chan_num;
 #endif
@@ -3060,7 +3060,7 @@ loops ++;
             iom_chan_data_t * q = & iom_chan_data[iom_unit_idx][p -> PCW_CHAN];
             q -> DCW = p -> DCW;
             unpack_DCW (iom_unit_idx, p -> PCW_CHAN);
-#ifdef THREADZ
+#ifdef IO_THREADZ
             setChnConnect (iom_unit_idx, p -> PCW_CHAN);
 #else
             do_payload_chan (iom_unit_idx, p -> PCW_CHAN);
@@ -3164,7 +3164,7 @@ void iom_interrupt (uint scu_unit_idx, uint iom_unit_idx)
 
     iom_unit_data[iom_unit_idx].invokingScuUnitIdx = scu_unit_idx;
 
-#ifdef THREADZ
+#ifdef IO_THREADZ
     setIOMInterrupt (iom_unit_idx);
     iomDoneWait (iom_unit_idx);
 #else
@@ -3177,7 +3177,7 @@ void iom_interrupt (uint scu_unit_idx, uint iom_unit_idx)
     // XXX do_connect_chan return value ignored
   }
  
-#ifdef THREADZ
+#ifdef IO_THREADZ
 void * chan_thread_main (void * arg)
   {     
     uint myid = (uint) * (int *) arg;

@@ -130,6 +130,7 @@ void cpuRunningWait (void);
 unsigned long sleepCPU (unsigned long nsec);
 void wakeCPU (uint cpuNum);
 
+#ifdef IO_TRHEADZ
 // IOM threads
 
 struct iomThreadz_t
@@ -189,6 +190,8 @@ void chnConnectWait (void);
 void chnConnectDone (void);
 void setChnConnect (uint iomNum, uint chnNum);
 void chnRdyWait (uint iomNum, uint chnNum);
+#endif
+
 void initThreadz (void);
 void setSignals (void);
 void fence (void);

@@ -355,6 +355,7 @@ void wakeCPU (uint cpuNum)
       sim_printf ("wakeCPU pthread_mutex_unlock %d\n", rc);
   }
 
+#ifdef IO_THREADZ
 ////////////////////////////////////////////////////////////////////////////////
 //
 // IOM threads
@@ -641,11 +642,14 @@ void chnRdyWait (uint iomNum, uint chnNum)
     while (! p -> ready)
       usleep (10000);
    }
+#endif
 
 void initThreadz (void)
   {
+#ifdef IO_THREADZ
     // chnThreadz is sparse; make sure 'started' is false
     memset (chnThreadz, 0, sizeof (chnThreadz));
+#endif
 
 #ifdef use_spinlock
     pthread_spin_init (& mem_lock, PTHREAD_PROCESS_PRIVATE);

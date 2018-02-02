@@ -1367,6 +1367,7 @@ t_stat sim_instr (void)
       {
         inited = true;
 
+#ifdef IO_THREADZ
 // Create channel threads
 
         for (uint iom_unit_idx = 0; iom_unit_idx < N_IOM_UNITS_MAX; iom_unit_idx ++)
@@ -1393,6 +1394,7 @@ t_stat sim_instr (void)
             createIOMThread (iom_unit_idx);
             iomRdyWait (iom_unit_idx);
           }
+#endif
 
 // Create CPU threads
 

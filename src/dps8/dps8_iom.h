@@ -11,7 +11,7 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
-#ifdef THREADZ
+#ifdef IO_THREADZ
 extern __thread uint this_iom_idx;
 extern __thread uint this_chan_num;
 //extern __thread bool thisIOMHaveLock;
@@ -261,7 +261,7 @@ int send_marker_interrupt (uint iom_unit_idx, int chan);
 #ifdef PANEL
 void do_boot (void);
 #endif
-#ifdef THREADZ
+#ifdef IO_THREADZ
 void * iom_thread_main (void * arg);
 void * chan_thread_main (void * arg);
 #endif
