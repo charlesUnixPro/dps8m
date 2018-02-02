@@ -194,6 +194,27 @@ void unlock_scu (void)
   }
 
 
+// IOM serializer
+
+static pthread_spinlock_t iom_lock;
+
+void lock_iom (void)
+  {
+    int rc;
+    rc = pthread_spin_lock (& iom_lock);
+    if (rc)
+      sim_printf ("%s pthread_spin_lock iom %d\n", __func__, rc);
+  }
+
+void unlock_iom (void)
+  {
+    int rc;
+    rc = pthread_spin_unlock (& iom_lock);
+    if (rc)
+      sim_printf ("%s pthread_spin_lock iom %d\n", __func__, rc);
+  }
+
+
 // Debugging tool
 
 static pthread_mutex_t tst_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -702,6 +723,7 @@ void initThreadz (void)
     have_rmw_lock = false;
 
     pthread_spin_init (& scu_lock, PTHREAD_PROCESS_PRIVATE);
+    pthread_spin_init (& iom_lock, PTHREAD_PROCESS_PRIVATE);
   }
 
 // Set up per-thread signal handlers

@@ -95,6 +95,10 @@ void unlock_mem_force (void);
 void lock_scu (void);
 void unlock_scu (void);
 
+// iom lock
+void lock_iom (void);
+void unlock_iom (void);
+
 
 // testing lock
 void lock_tst (void);
