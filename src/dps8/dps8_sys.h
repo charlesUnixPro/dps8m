@@ -57,6 +57,9 @@ typedef struct
 
     bool no_color;
 
+    uint sys_poll_interval; // Polling interval in milliseconds
+    uint sys_slow_poll_interval; // Polling interval in polling intervals
+    uint sys_poll_check_rate; // Check for pooling interval rate in CPU cycles
 } sysinfo_t;
 
 #ifndef SCUMEM

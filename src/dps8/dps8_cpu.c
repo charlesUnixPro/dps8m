@@ -1007,7 +1007,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
   {
     // Call the one hertz stuff every 100 loops
     static uint oneHz = 0;
-    if (oneHz ++ >= 100) // ~ 1Hz
+    if (oneHz ++ >= sys_opts.sys_slow_poll_interval) // ~ 1Hz
       {
         oneHz = 0;
         rdrProcessEvent (); 
@@ -1082,7 +1082,7 @@ void cpu_init (void)
     ev_poll_loop = uv_default_loop ();
     uv_timer_init (ev_poll_loop, & ev_poll_handle);
     // 10 ms == 100Hz
-    uv_timer_start (& ev_poll_handle, ev_poll_cb, 10, 10);
+    uv_timer_start (& ev_poll_handle, ev_poll_cb, sys_opts.sys_poll_interval, sys_opts.sys_poll_interval);
 #endif
 
     // TODO: reset *all* other structures to zero
@@ -1704,7 +1704,8 @@ setCPU:;
 // 10%...
 
         //if ((! cpu.wasInhibited) && fast_queue_subsample ++ > 1024) // ~ 1KHz
-        if (fast_queue_subsample ++ > 1024) // ~ 1KHz
+        //static uint fastQueueSubsample = 0;
+        if (fast_queue_subsample ++ > sys_opts.sys_poll_check_rate) // ~ 1KHz
           {
             fast_queue_subsample = 0;
             uv_run (ev_poll_loop, UV_RUN_NOWAIT);
@@ -2291,7 +2292,8 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                     cpu.rTRticks = 0;
                     break;
 #endif
-                    usleep (10000);
+                    //usleep (10000);
+                    usleep (sys_opts.sys_poll_interval * 1000/*10000*/);
 
 #ifndef THREADZ
 #ifndef NO_EV_POLL
@@ -2313,13 +2315,19 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
          
                     cpu.rTRticks = 0;
                     // Would we have underflowed while sleeping?
-                    if ((cpu.rTR & ~ MASK27) || cpu.rTR <= 5120)
+                    //if ((cpu.rTR & ~ MASK27) || cpu.rTR <= 5120)
+                    //if (cpu.rTR <= 5120)
+
+                    // Timer register runs at 512 KHz
+                    // 512Khz / 512 is millisecods
+                    if (cpu.rTR <= sys_opts.sys_poll_interval * 512)
+                    
                       {
                         if (cpu.switches.tro_enable)
                           setG7fault (current_running_cpu_idx, FAULT_TRO,
                                       fst_zero);
                       }
-                    cpu.rTR = (cpu.rTR - 5120) & MASK27;
+                    cpu.rTR = (cpu.rTR - sys_opts.sys_poll_interval * 512) & MASK27;
 #endif // ! ROUND_ROBIN
                     break;
                   }

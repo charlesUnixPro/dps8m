@@ -116,7 +116,6 @@ t_stat sim_load (FILE *fileref, const char *cptr, const char *fnam, int flag)
   }
 #endif
 
-
 ////////////////////////////////////////////////////////////////////////////////
 //
 // simh Commands
@@ -1567,6 +1566,45 @@ static t_stat do_execute_fault (UNUSED int32 arg,  UNUSED const char * buf)
   {
     // Assume bootload CPU
     setG7fault (0, FAULT_EXF, fst_zero);
+    return SCPE_OK;
+  }
+
+static t_stat set_sys_polling_interval (UNUSED int32 arg, const char * buf)
+  {
+    int n = atoi (buf);
+    if (n < 1 || n > 1000) // 1 millisecond to 1 second
+      {
+        sim_printf ("POLL %d: must be 1 (1 millisecond) to 1000 (1 second)\r\n", n);
+        return SCPE_ARG;
+      }
+    sim_printf ("Polling set to %d milliseconds\r\n", n);
+    sys_opts.sys_poll_interval = (uint) n;
+    return SCPE_OK;
+  }
+
+static t_stat set_sys_slow_polling_interval (UNUSED int32 arg, const char * buf)
+  {
+    int n = atoi (buf);
+    if (n < 1 || n > 1000) // 1 - slow poll every pool; 1000 - slow poll every 1000 polls
+      {
+        sim_printf ("SLOWPOLL %d: must be 1 (1 slow poll per pol) to 1000 (1 slow poll per 1000 polls)\r\n", n);
+        return SCPE_ARG;
+      }
+    sim_printf ("Slow polling set to %d polls\r\n", n);
+    sys_opts.sys_slow_poll_interval = (uint) n;
+    return SCPE_OK;
+  }
+
+static t_stat set_sys_poll_check_rate (UNUSED int32 arg, const char * buf)
+  {
+    int n = atoi (buf);
+    if (n < 1 || n > 1024*1024) // 1 - poll check rate in CPY cycles: 1 - check every cycle; 1024 check every 1024 cycles
+      {
+        sim_printf ("CHECKPOLL %d: must be 1 (check every cycle) to 1048576 (ckeck every million cycles\r\n", n);
+        return SCPE_ARG;
+      }
+    sim_printf ("Poll check rate set to %d CPU cycles\r\n", n);
+    sys_opts.sys_poll_check_rate = (uint) n;
     return SCPE_OK;
   }
 
@@ -3344,6 +3382,9 @@ static CTAB dps8_cmds[] =
     {"FNPSTART",            fnp_start,                0, "fnpstart: Force immediate FNP initialization\n", NULL, NULL},
     {"MOUNT",               mount_tape,               0, "mount: Mount tape image and signal Mulitcs\n", NULL, NULL },
     {"XF",                  do_execute_fault,         0, "xf: Execute fault: Press the execute fault button\n", NULL, NULL},
+    {"POLL",                set_sys_polling_interval, 0, "Set polling interval in milliseconds", NULL, NULL },
+    {"SLOWPOLL",           set_sys_slow_polling_interval, 0, "Set slow polling interval in polling intervals", NULL, NULL },
+    {"CHECKPOLL",          set_sys_poll_check_rate, 0, "Set slow polling interval in polling intervals", NULL, NULL },
 
 //
 // Debugging
@@ -3508,6 +3549,12 @@ static void dps8_init (void)
 
     // sets connect to 0
     memset (& sys_opts, 0, sizeof (sys_opts));
+    // sys_poll_interval 10 ms (100 Hz)
+    sys_opts.sys_poll_interval = 10;
+    // sys_slow_poll_interval 100 polls (1 Hz)
+    sys_opts.sys_slow_poll_interval = 100;
+    // sys_poll_check_rate in CPU cycles
+    sys_opts.sys_poll_check_rate = 1024;
 
     init_opcodes();
     sysCableInit ();
