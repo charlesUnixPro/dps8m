@@ -929,7 +929,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
 //sim_printf ("mt cmd %d %o\n", p -> IDCW_DEV_CMD, p -> IDCW_DEV_CMD);
     switch (p -> IDCW_DEV_CMD)
       {
-        case 0: // CMD 00 Request status -- controler status, not tape drive
+        case 0: // CMD 00 Request status -- controller status, not tape drive
           {
             if (p -> IDCW_CHAN_CMD == 040) // If special controller command, then command 0 is 'suspend'
               {
@@ -1223,7 +1223,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
           break;
 
 
-        case 020: // release controller
+        case 020: // CMD 020 -- release controller
           {
             if (p -> IDCW_CHAN_CMD == 040) // If special controller command, then command 020 is 'release'
               {
@@ -1255,7 +1255,8 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
 
 // 032: MTP write main memory (binary) (poll_mpc.pl1)
 
-        case 032: // CMD 032 MTP write main memory (binary) (poll_mpc.pl1); used to clear device stats.
+        case 032: // CMD 032 -- MTP write main memory (binary)
+                  //    (poll_mpc.pl1); used to clear device stats.
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Write controller main memory\n", __func__);
@@ -1332,7 +1333,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
           }
           break;
 
-        case 044: // 044 Forward skip  Record
+        case 044: // 044 -- Forward skip Record
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Forward Skip Record\n");
@@ -1392,7 +1393,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
           }
           break;
 
-        case 045: // 045 Forward Skip File
+        case 045: // CMD 045 -- Forward Skip File
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Forward Skip File\n");
@@ -1440,7 +1441,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
           }
           break;
 
-        case 046: // 046 Backspace Record
+        case 046: // CMD 046 -- Backspace Record
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Backspace Record\n");
@@ -1516,7 +1517,7 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
           }
           break;
 
-        case 047: // 047 Backspace File
+        case 047: // CMD 047 -- Backspace File
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Backspace File\n");
