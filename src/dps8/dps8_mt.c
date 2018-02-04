@@ -728,6 +728,9 @@ static int mtWriteRecord (uint iomUnitIdx, uint chan)
 
     int ret = sim_tape_wrrecf (unitp, tape_statep -> buf, tape_statep -> tbc);
     sim_debug (DBG_DEBUG, & tape_dev, "sim_tape_wrrecf returned %d, with tbc %d\n", ret, tape_statep -> tbc);
+
+    if (unitp->io_flush)
+      unitp->io_flush (unitp);                              /* flush buffered data */
     // XXX put unit number in here...
 
     if (ret != 0)
@@ -1630,6 +1633,8 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
                 ret = sim_tape_wrtmk (unitp);
                 sim_debug (DBG_DEBUG, & tape_dev, 
                            "sim_tape_wrtmk returned %d\n", ret);
+                if (unitp->io_flush)
+                  unitp->io_flush (unitp);                              /* flush buffered data */
               }
             if (ret != 0)
               {
