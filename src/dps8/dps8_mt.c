@@ -597,7 +597,7 @@ ddcws:;
 static int mtWriteRecord (uint iomUnitIdx, uint chan)
   {
 
-// If a tape read IDCW has multiple DDCWs, are additional records read?
+// If a tape write IDCW has multiple DDCWs, are additional records written?
 
     iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
     struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
@@ -760,6 +760,10 @@ static int mtWriteRecord (uint iomUnitIdx, uint chan)
     if (unitp->flags & UNIT_WATCH)
       sim_printf ("Tape %ld writes record %d\n",
                   (long) MT_UNIT_NUM (unitp), tape_statep -> rec_num);
+
+    sim_tape_wreom (unitp);
+    if (unitp->io_flush)
+      unitp->io_flush (unitp);                              /* flush buffered data */
 
     p -> stati = 04000;
     if (sim_tape_wrp (unitp))
@@ -1656,6 +1660,10 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
                 p -> chanStatus = chanStatParityErrPeriph;
                 break;
               }
+
+            sim_tape_wreom (unitp);
+            if (unitp->io_flush)
+              unitp->io_flush (unitp);                              /* flush buffered data */
 
             tape_statep -> rec_num ++;
             if (unitp->flags & UNIT_WATCH)
