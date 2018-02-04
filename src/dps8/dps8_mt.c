@@ -786,7 +786,7 @@ ddcws:;
 static int mtWriteRecord (uint devUnitIdx, uint iomUnitIdx, uint chan)
   {
 
-// If a tape read IDCW has multiple DDCWs, are additional records read?
+// If a tape write IDCW has multiple DDCWs, are additional records written?
 
     iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
     UNIT * unitp = & mt_unit [devUnitIdx];
@@ -917,6 +917,9 @@ loop:;
 
     int ret = sim_tape_wrrecf (unitp, tape_statep -> buf, tape_statep -> tbc);
     sim_debug (DBG_DEBUG, & tape_dev, "sim_tape_wrrecf returned %d, with tbc %d\n", ret, tape_statep -> tbc);
+
+    if (unitp->io_flush)
+      unitp->io_flush (unitp);                              /* flush buffered data */
     // XXX put unit number in here...
 
     if (ret != 0)
@@ -946,6 +949,10 @@ loop:;
     if (unitp->flags & UNIT_WATCH)
       sim_printf ("Tape %ld writes record %d\n",
                   (long) MT_UNIT_NUM (unitp), tape_statep -> rec_num);
+
+    sim_tape_wreom (unitp);
+    if (unitp->io_flush)
+      unitp->io_flush (unitp);                              /* flush buffered data */
 
     p -> stati = 04000;
     if (sim_tape_wrp (unitp))
@@ -1420,7 +1427,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
           break;
 
 
-        case 020: // release controller
+        case 020: // CMD 020 -- release controller
           {
             if (p -> IDCW_CHAN_CMD == 040) // If special controller command, then command 020 is 'release'
               {
@@ -1449,7 +1456,8 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
 
 // 032: MTP write main memory (binary) (poll_mpc.pl1)
 
-        case 032: // CMD 032 MTP write main memory (binary) (poll_mpc.pl1); used to clear device stats.
+        case 032: // CMD 032 -- MTP write main memory (binary)
+                  //    (poll_mpc.pl1); used to clear device stats.
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "%s: Write controller main memory\n", __func__);
@@ -1531,7 +1539,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
           }
           break;
 
-        case 044: // 044 Forward skip  Record
+        case 044: // 044 -- Forward skip Record
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Forward Skip Record\n");
@@ -1591,7 +1599,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
           }
           break;
 
-        case 045: // 045 Forward Skip File
+        case 045: // CMD 045 -- Forward Skip File
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Forward Skip File\n");
@@ -1639,7 +1647,7 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
           }
           break;
 
-        case 046: // 046 Backspace Record
+        case 046: // CMD 046 -- Backspace Record
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Backspace Record\n");
@@ -1715,7 +1723,7 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
           }
           break;
 
-        case 047: // 047 Backspace File
+        case 047: // CMD 047 -- Backspace File
           {
             sim_debug (DBG_DEBUG, & tape_dev,
                        "mt_cmd: Backspace File\n");
@@ -1828,6 +1836,8 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
                 ret = sim_tape_wrtmk (unitp);
                 sim_debug (DBG_DEBUG, & tape_dev, 
                            "sim_tape_wrtmk returned %d\n", ret);
+                if (unitp->io_flush)
+                  unitp->io_flush (unitp);                              /* flush buffered data */
               }
             if (ret != 0)
               {
@@ -1848,6 +1858,10 @@ sim_printf ("sim_tape_sprecsr returned %d\n", ret);
                 p -> chanStatus = chanStatParityErrPeriph;
                 break;
               }
+
+            sim_tape_wreom (unitp);
+            if (unitp->io_flush)
+              unitp->io_flush (unitp);                              /* flush buffered data */
 
             tape_statep -> rec_num ++;
             if (unitp->flags & UNIT_WATCH)
