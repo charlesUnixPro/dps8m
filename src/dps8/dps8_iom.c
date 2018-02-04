@@ -2326,7 +2326,6 @@ static int send_general_interrupt (uint iom_unit_idx, uint chan, enum iomImwPics
     fence ();
 #endif
 
-
     return scu_set_interrupt (iom_unit_data[iom_unit_idx].invokingScuUnitIdx, interrupt_num);
   }
 

@@ -192,6 +192,7 @@ typedef struct
   } iom_chan_data_t;
 
 extern iom_chan_data_t iom_chan_data [N_IOM_UNITS_MAX] [MAX_CHANNELS];
+
 extern DEVICE iom_dev;
 
 // Indirect data service data type
