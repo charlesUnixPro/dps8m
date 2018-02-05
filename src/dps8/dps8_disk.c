@@ -95,35 +95,71 @@ struct diskType_t
     bool removable;
     enum seekSize_t seekSize; // false: seek 64  true: seek 512
     uint sectorSizeWords;
+    uint dau_type;
   };
+
+// dau_type stat_mpc_.pl1
+//
+//  dcl  ddev_model (0:223) char (6) static options (constant)
+//          init ((84) (""), "  190A", (52) (""), "  190B", "   401", "  190B", (14) (""), "   451", (31) (""), "   402",
+//          (13) (""), "   500", "   501", "   500", "   501", "   500", "   501", "   500", "   501", (9) (""), "   509",
+//          "", "   509", "", "   509", "", "   509");
+
+//  84   0:83   ""
+//   1  84      "190A"
+//  52  85:135  ""
+//   1  137     "190B
+//   1  138     "401"
+//   1  139     "190B"
+//  14  140:153 ""
+//   1  154     "451"
+//  31  155:185 ""
+//   1  186     "402"
+//  13  175:199 ""
+//   1  200     "500"
+//   1  201     "501"
+//   1  202     "500"
+//   1  203     "501"
+//   1  204     "500"
+//   1  205     "501"
+//   1  206     "500"
+//   1  207     "501"
+//   9  208:216 ""
+//   1  217     "509"
+//   1  218     ""
+//   1  219     "509"
+//   1  220     ""
+//   1  221     "509"
+//   1  222     ""
+//   1  223     "509"
 
 
 
 static struct diskType_t diskTypes [] =
   {
     { // disk_init assumes 3381 is at index 0
-      "3381", 22479, 0, false, seek_512, 512
+      "3381", 22479, 0, false, seek_512, 512, 0
     },
     {
-      "d500", 38258, 1, false, seek_64, 64
+      "d500", 38258, 1, false, seek_64, 64, 200
     },
     {
-      "d451", 38258, 1, true, seek_64, 64
+      "d451", 38258, 1, true, seek_64, 64, 154
     },
     {
-      "d400", 19270, 1, true, seek_64, 64
+      "d400", 19270, 1, true, seek_64, 64, 84 // d400 is a d190 with "high-efficiency format (40 sectors/track)"
     },
     {
-      "d190", 14760, 1, true, seek_64, 64
+      "d190", 14760, 1, true, seek_64, 64, 84 // 190A 84, 190B 137
     },
     {
-      "d181", 4444, 1, true, seek_64, 64
+      "d181", 4444, 1, true, seek_64, 64, 0 // no idea what the dau idx is
     },
     {
-      "d501", 67200, 1, false, seek_64, 64
+      "d501", 67200, 1, false, seek_64, 64, 201
     },
     {
-      "3380", 112395, 0, false, seek_512, 512
+      "3380", 112395, 0, false, seek_512, 512, 0 // 338x is never attached to a dau
     },
   };
 #define N_DISK_TYPES (sizeof (diskTypes) / sizeof (struct diskType_t))
@@ -1063,6 +1099,267 @@ static int readStatusRegister (uint devUnitIdx, uint iomUnitIdx, uint chan)
     return 0;
   }
 
+static int read_configuration (uint dev_unit_idx, uint iom_unit_idx, uint chan)
+  {
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
+    UNIT * unitp = & dsk_unit[dev_unit_idx];
+    struct dsk_state * disk_statep = & dsk_states[dev_unit_idx];
+
+    sim_debug (DBG_NOTIFY, & dsk_dev, "Read %d\n", dev_unit_idx);
+    disk_statep->io_mode = disk_read_mode;
+
+// Process DDCW
+
+    bool ptro;
+    bool send;
+    bool uff;
+    int rc = iom_list_service (iom_unit_idx, chan, & ptro, & send, & uff);
+    if (rc < 0)
+      {
+        sim_printf ("%s list service failed\n", __func__);
+        return -1;
+      }
+    if (uff)
+      {
+        sim_printf ("%s ignoring uff\n", __func__); // XXX
+      }
+    if (! send)
+      {
+        sim_printf ("%s nothing to send\n", __func__);
+        return 1;
+      }
+    if (p->DCW_18_20_CP == 07 || p->DDCW_22_23_TYPE == 2)
+      {
+        sim_printf ("%s expected DDCW\n", __func__);
+        return -1;
+      }
+
+
+    uint tally = p -> DDCW_TALLY;
+
+// poll_mpc.pl1
+//
+// dcl  1 dau_buf aligned based (workp),   /* The IOI buffer segment */
+//        2 cf_idcw bit (36),              /* Read Configuration (24o) */
+//        2 cf_dcw bit (36),               /* Addr=dau_buf.data(0), tally=65 */
+//        2 st_idcw bit (36),              /* Read/Clear Statistics (16o) */
+//        2 st_dcw bit (36),         /* Address=dau_buf.data(130), tally=315 */
+//        2 data (0:759) bit (18) unal;    /* Config & statistics area */
+
+#if 0
+    if (tally != 4)
+      {
+        sim_debug (DBG_ERR, &i om_dev, 
+                   "%s: RSR expected tally of 4, is %d\n",
+                   __func__, tally);
+      }
+    if (tally == 0)
+      {
+        sim_debug (DBG_DEBUG, & dsk_dev,
+                   "%s: Tally of zero interpreted as 010000(4096)\n",
+                   __func__);
+        tally = 4096;
+      }
+
+// XXX need status register data format 
+// system_library_tools/source/bound_io_tools_.s.archive/analyze_detail_stat_.pl1  anal_fips_disk_().
+
+#ifdef TESTING
+    sim_warn ("Need status register data format\n");
+#endif
+#endif
+
+// poll_mpc.pl1
+//
+// dcl  1 dau_buf aligned based (workp),   /* The IOI buffer segment */
+//        2 cf_idcw bit (36),              /* Read Configuration (24o) */
+//        2 cf_dcw bit (36),               /* Addr=dau_buf.data(0), tally=65 */
+//        2 st_idcw bit (36),              /* Read/Clear Statistics (16o) */
+//        2 st_dcw bit (36),         /* Address=dau_buf.data(130), tally=315 */
+//        2 data (0:759) bit (18) unal;    /* Config & statistics area */
+
+//  dau_buf.data:
+//    0                                35
+//   +----------------+------------------+
+//   |    data(0)     |   data(1)        |
+//   +----------------+------------------+
+//   |    data(2)     |   data(3)        |
+//   +----------------+------------------+
+
+// dcl  dau_data (0:759) bit (16) unal;                        /* DAU config and stats */
+
+//
+//          do i = 0 to 759;
+//            substr (dau_data (i), 1, 8) = substr (dau_buf.data (i), 2, 8);
+//            substr (dau_data (i), 9, 8) = substr (dau_buf.data (i), 11, 8);
+//          end;
+//
+//   substr (dau_buf.data (i), 2, 8)
+//
+//    0 1 2 3 4 5 6 7 8     ....       17
+//   +-----------------------------------+
+//   | |X|X|X|X|X|X|X|X| |Y|Y|Y|Y|Y|Y|Y|Y|
+//   +-----------------------------------+
+//
+//   substr (dau_data (i), 1, 8)
+//
+//    0 1 2 3 4 5 6 7 8   ....     15
+//   +-------------------------------+
+//   |X|X|X|X|X|X|X|X|Y|Y|Y|Y|Y|Y|Y|Y|
+//   +-------------------------------+
+
+// dcl  1 dau_char based (image_ptr) unaligned,   /* Config data */
+//       2 type bit (8),                          /* = 12 HEX */
+//       2 hw_rev bit (8) unal,                   /* DAU rev */
+//       2 fw_maj_rev bit (8) unal,               /* firmware rev letter */ 
+//       2 fw_sub_rev bit (8) unal;               /* firmware rev number */
+//       2 dev (64),                              /* seq'ed by dev# */
+//                       /* all 4 bytes zero, if device NEVER configured */
+//         3 type fixed bin (8) uns unal,         /* device type */
+//         3 number fixed bin (8) uns unal,       /* device number, =FF if not configured */
+//         3 summary_status bit (8) unal,         /* device SS reg */
+//         3 port_number fixed bin (8) uns unal;  /* device DAU port */
+
+// We know that we are an MSP and not an IPC as this command is only issued
+// to MSPs.
+
+    uint ctlr_unit_idx = get_ctlr_idx (iom_unit_idx, chan);
+    struct ctlr_to_dev_s * dev_p;
+    if (cables->iom_to_ctlr[iom_unit_idx][chan].ctlr_type == CTLR_T_IPC)
+      dev_p = cables->ipc_to_dsk[ctlr_unit_idx];
+    else  
+      dev_p = cables->msp_to_dsk[ctlr_unit_idx];
+
+// XXX Temp
+    word36 buffer [tally];
+    memset (buffer, 0, sizeof (buffer));
+    putbits36_9 (& buffer [0],  0, 0x12);
+    putbits36_9 (& buffer [0],  9, 1);  // h/w revision
+    putbits36_9 (& buffer [0], 18, '1');  // fw maj revision
+    putbits36_9 (& buffer [0], 27, 'a');  // fw sub revision
+
+    for (word9 dev_num = 0; dev_num < N_DEV_CODES; dev_num ++)
+      {
+         if (! dev_p[dev_num].in_use)
+           continue;
+         uint dsk_unit_idx = dev_p[dev_num].unit_idx;
+         word9 dau_type = (word9) diskTypes[dsk_unit_idx].dau_type;
+         putbits36_9 (& buffer[1+dev_num], 0, dau_type); // dev.type
+         putbits36_9 (& buffer[1+dev_num], 9, dev_num); // dev.number
+         putbits36_9 (& buffer[1+dev_num], 18, 0); // dev.summary_status // XXX
+         putbits36_9 (& buffer[1+dev_num], 27, dev_num); // dev.port_number 
+     }
+
+    uint wordsProcessed = tally;
+    iom_indirect_data_service (iom_unit_idx, chan, buffer,
+                            & wordsProcessed, true);
+#if 0
+#if 1
+    word36 buffer [tally];
+    memset (buffer, 0, sizeof (buffer));
+    buffer [0] = SIGN36;
+    uint wordsProcessed = 0;
+    iom_indirect_data_service (iom_unit_idx, chan, buffer,
+                            & wordsProcessed, true);
+#else
+    for (uint i = 0; i < tally; i ++)
+      //M [daddr + i] = 0;
+      core_write (daddr + i, 0, "Disk status register");
+
+    //M [daddr] = SIGN36;
+    core_write (daddr, SIGN36, "Disk status register");
+#endif
+#endif
+    p -> charPos = 0;
+    p -> stati = 04000;
+    if (! unitp -> fileref)
+      p -> stati = 04240; // device offline
+    p -> initiate = false;
+    return 0;
+  }
+
+static int read_and_clear_statistics (uint dev_unit_idx, uint iom_unit_idx, uint chan)
+  {
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
+    UNIT * unitp = & dsk_unit[dev_unit_idx];
+    struct dsk_state * disk_statep = & dsk_states[dev_unit_idx];
+
+    sim_debug (DBG_NOTIFY, & dsk_dev, "Read %d\n", dev_unit_idx);
+    disk_statep->io_mode = disk_read_mode;
+
+// Process DDCW
+
+    bool ptro;
+    bool send;
+    bool uff;
+    int rc = iom_list_service (iom_unit_idx, chan, & ptro, & send, & uff);
+    if (rc < 0)
+      {
+        sim_printf ("%s list service failed\n", __func__);
+        return -1;
+      }
+    if (uff)
+      {
+        sim_printf ("%s ignoring uff\n", __func__); // XXX
+      }
+    if (! send)
+      {
+        sim_printf ("%s nothing to send\n", __func__);
+        return 1;
+      }
+    if (p->DCW_18_20_CP == 07 || p->DDCW_22_23_TYPE == 2)
+      {
+        sim_printf ("%s expected DDCW\n", __func__);
+        return -1;
+      }
+
+
+#if 0
+    uint tally = p -> DDCW_TALLY;
+
+    if (tally != 4)
+      {
+        sim_debug (DBG_ERR, &i om_dev, 
+                   "%s: RSR expected tally of 4, is %d\n",
+                   __func__, tally);
+      }
+    if (tally == 0)
+      {
+        sim_debug (DBG_DEBUG, & dsk_dev,
+                   "%s: Tally of zero interpreted as 010000(4096)\n",
+                   __func__);
+        tally = 4096;
+      }
+#endif
+
+#if 0
+#ifdef TESTING
+    sim_warn ("Need status register data format\n");
+#endif
+#if 1
+    word36 buffer [tally];
+    memset (buffer, 0, sizeof (buffer));
+    buffer [0] = SIGN36;
+    uint wordsProcessed = 0;
+    iom_indirect_data_service (iom_unit_idx, chan, buffer,
+                            & wordsProcessed, true);
+#else
+    for (uint i = 0; i < tally; i ++)
+      //M [daddr + i] = 0;
+      core_write (daddr + i, 0, "Disk status register");
+
+    //M [daddr] = SIGN36;
+    core_write (daddr, SIGN36, "Disk status register");
+#endif
+#endif
+    p -> charPos = 0;
+    p -> stati = 04000;
+    if (! unitp -> fileref)
+      p -> stati = 04240; // device offline
+    p -> initiate = false;
+    return 0;
+  }
+
 static int disk_cmd (uint iomUnitIdx, uint chan)
   {
     iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
@@ -1096,6 +1393,15 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
           }
           break;
 
+        case 016: // CMD 16 Read and Clear Statistics -- Model 800
+          {
+// XXX missing. see poll_mpc.pl1, poll_mpc_data.incl.pl1
+            int rc = read_and_clear_statistics (devUnitIdx, iomUnitIdx, chan);
+            if (rc)
+              return -1;
+            //p -> stati = 04000;
+            break;
+          }
         case 022: // CMD 22 Read Status Resgister
           {
             int rc = readStatusRegister (devUnitIdx, iomUnitIdx, chan);
@@ -1104,11 +1410,14 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
           }
           break;
 
-        case 024: // CMD 24 Read configuration
+        case 024: // CMD 24 Read configuration -- Model 800
           {
 // XXX missing. see poll_mpc.pl1, poll_mpc_data.incl.pl1
-            p -> stati = 04000;
-            return 0;
+            int rc = read_configuration (devUnitIdx, iomUnitIdx, chan);
+            if (rc)
+              return -1;
+            //p -> stati = 04000;
+            break;
           }
         case 025: // CMD 25 READ
           {

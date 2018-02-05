@@ -2959,7 +2959,7 @@ static int do_payload_chan (uint iom_unit_idx, uint chan)
             p -> stati = 04501;
             p -> dev_code = getbits36_6 (p -> DCW, 6);
             p -> chanStatus = chanStatInvalidInstrPCW;
-            sim_warn ("do_payload_chan expected IDCW %d (%o)\n", chan, chan);
+            sim_warn ("do_payload_chan expected IDCW %d (%o), cmd was %d. %oo\n", chan, chan, p->IDCW_DEV_CMD, p->IDCW_DEV_CMD);
             goto done;
           }
 
