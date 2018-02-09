@@ -401,7 +401,7 @@ unsigned long  sleepCPU (unsigned long nsec)
     timespec_diff (& abstime, & newtime, & delta);
     if (delta.tv_nsec < 0)
       return 0; // safety
-    return (unsigned long) delta.tv_nsec;
+    return (unsigned long) delta.tv_nsec / 1000;
   }
 
 // Called to wake sleeping CPU; such as interrupt during DIS
