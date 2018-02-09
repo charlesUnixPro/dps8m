@@ -84,6 +84,7 @@ void lock_simh (void);
 void unlock_simh (void);
 
 // atomic memory lock
+bool get_rmw_lock (void);
 void lock_rmw (void);
 void lock_mem_rd (void);
 void lock_mem_wr (void);

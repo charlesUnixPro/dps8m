@@ -424,8 +424,6 @@ static void fetchDSPTW (word15 segno)
 
 // CANFAULT
 
-extern bool get_rmw_lock (void);
-
 static void modifyDSPTW (word15 segno)
   {
 

@@ -69,7 +69,10 @@ pthread_rwlock_t mem_lock = PTHREAD_RWLOCK_INITIALIZER;
 static __thread bool have_mem_lock = false;
 static __thread bool have_rmw_lock = false;
 
-bool get_rmw_lock (void) { return have_rmw_lock; }
+bool get_rmw_lock (void)
+  {
+    return have_rmw_lock;
+  }
 
 void lock_rmw (void)
   {
