@@ -608,7 +608,7 @@ static int mtReadRecord (uint devUnitIdx, uint iomUnitIdx, uint chan)
     UNIT * unitp = & mt_unit [devUnitIdx];
     struct tape_state * tape_statep = & tape_states [devUnitIdx];
 
-    enum { dataOK, noTape, tapeMark, tapeEOM } tapeStatus;
+    enum { dataOK, noTape, tapeMark, tapeEOM, tapeError } tapeStatus;
     tape_statep -> is9 = p -> IDCW_DEV_CMD == 003;
     sim_debug (DBG_DEBUG, & tape_dev, "%s: Read %s record\n", __func__,
                tape_statep -> is9 ? "9" : "binary");
@@ -651,7 +651,7 @@ static int mtReadRecord (uint devUnitIdx, uint iomUnitIdx, uint chan)
           {
             sim_warn ("%s: Read %d bytes with EOM.\n", 
                         __func__, tape_statep -> tbc);
-            return 0;
+            //return 0;
           }
         tape_statep -> tbc = 0;
         tapeStatus = tapeEOM;
@@ -667,7 +667,9 @@ static int mtReadRecord (uint devUnitIdx, uint iomUnitIdx, uint chan)
                    __func__);
         p -> stati = 05001; // BUG: arbitrary error code; config switch
         p -> chanStatus = chanStatParityErrPeriph;
-        return 0;
+        //return 0;
+        tapeStatus = tapeEOM;
+        goto ddcws;
       }
     p -> stati = 04000;
     if (sim_tape_wrp (unitp))
