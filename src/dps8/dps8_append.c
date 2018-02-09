@@ -29,6 +29,9 @@
 #include "dps8_utils.h"
 #include "dps8_append.h"
 #include "dps8_addrmods.h"
+#ifdef THREADZ
+#include "threadz.h"
+#endif
 
 #define DBG_CTR cpu.cycleCnt
 
@@ -421,6 +424,8 @@ static void fetchDSPTW (word15 segno)
 
 // CANFAULT
 
+extern bool get_rmw_lock (void);
+
 static void modifyDSPTW (word15 segno)
   {
 
@@ -430,11 +435,22 @@ static void modifyDSPTW (word15 segno)
 
     word24 x1 = (2u * segno) / 1024u; // floor
     
+#ifdef THREADZ
+    bool lck = get_rmw_lock ();
+    if (! lck)
+      lock_rmw ();
+#endif
+
     word36 PTWx1;
     core_read ((cpu.DSBR.ADDR + x1) & PAMASK, & PTWx1, __func__);
     PTWx1 = SETBIT (PTWx1, 9);
     core_write ((cpu.DSBR.ADDR + x1) & PAMASK, PTWx1, __func__);
     
+#ifdef THREADZ
+    if (! lck)
+      unlock_rmw ();
+#endif
+
     cpu.PTW0.U = 1;
 #ifdef L68
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
@@ -946,6 +962,11 @@ static void fetchPTW (sdw_s *sdw, word18 offset)
     PNL (cpu.lastPTWOffset = offset;)
     PNL (cpu.lastPTWIsDS = false;)
 
+#ifdef THREADZ
+    bool lck = get_rmw_lock ();
+    if (! lck)
+      lock_rmw ();
+#endif
     core_read ((sdw->ADDR + x2) & PAMASK, & PTWx2, __func__);
     
     cpu.PTW0.ADDR = GETHI (PTWx2);
@@ -962,6 +983,11 @@ static void fetchPTW (sdw_s *sdw, word18 offset)
         cpu.PTW0.U = 1;
       }
     
+#ifdef THREADZ
+    if (! lck)
+      unlock_rmw ();
+#endif
+
 #ifdef L68
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
       addAPUhist (APUH_FPTW);
@@ -1094,9 +1120,18 @@ static void modifyPTW (sdw_s *sdw, word18 offset)
     
     setAPUStatus (apuStatus_MPTW);
 
+#ifdef THREADZ
+    bool lck = get_rmw_lock ();
+    if (! lck)
+      lock_rmw ();
+#endif
     core_read ((sdw->ADDR + x2) & PAMASK, & PTWx2, __func__);
     PTWx2 = SETBIT (PTWx2, 6);
     core_write ((sdw->ADDR + x2) & PAMASK, PTWx2, __func__);
+#ifdef THREADZ
+    if (! lck)
+      unlock_rmw ();
+#endif
     cpu.PTW->M = 1;
 #ifdef L68
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
