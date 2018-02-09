@@ -136,7 +136,7 @@ struct decoded_t
   };
 
 #ifdef THREADZ
-__thread static struct decoded_t decoded;
+static __thread struct decoded_t decoded;
 #else
 static struct decoded_t decoded;
 #endif
