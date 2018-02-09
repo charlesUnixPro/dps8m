@@ -2277,6 +2277,29 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                     //   rTR * 250 / 128
                     //   rTR * 125 / 64
 
+#ifdef NO_TIMEWAIT
+                    //usleep (sys_opts.sys_poll_interval * 1000/*10000*/);
+                    struct timespec req, rem;
+                    uint ms = sys_opts.sys_poll_interval;
+                    long int nsec = (long int) ms * 1000 * 1000;
+                    req.tv_nsec = nsec;
+                    req.tv_sec += req.tv_nsec / 1000000000;
+                    req.tv_nsec %= 1000000000;
+                    int rc = nanosleep (& req, & rem);
+                    // Awakened early?
+                    if (rc == -1)
+                      {
+                         ms = (uint) (rem.tv_nsec / 1000 + req.tv_sec * 1000);
+                      }
+                    word27 ticks = ms * 512;
+                    if (cpu.rTR <= ticks)
+                      {
+                        if (cpu.switches.tro_enable)
+                          setG7fault (current_running_cpu_idx, FAULT_TRO,
+                                      fst_zero);
+                      }
+                    cpu.rTR = (cpu.rTR - ticks) & MASK27;
+#else // !NO_TIMEWAIT
                     unsigned long left = sleepCPU (cpu.rTR * 125u / 64u);
                     if (left)
                       {
@@ -2289,26 +2312,25 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                                       fst_zero);
                         cpu.rTR = 0;
                       }
+#endif // !NO_TIMEWAIT
                     cpu.rTRticks = 0;
                     break;
-#endif
+#else // !THREADZ
                     //usleep (10000);
                     usleep (sys_opts.sys_poll_interval * 1000/*10000*/);
-
-#ifndef THREADZ
 #ifndef NO_EV_POLL
                     // Trigger I/O polling
                     uv_run (ev_poll_loop, UV_RUN_NOWAIT);
                     fast_queue_subsample = 0;
-#else
+#else // NO_EV_POLL
                     // this ignores the amount of time since the last poll;
                     // worst case is the poll delay of 1/50th of a second.
                     slowQueueSubsample += 10240; // ~ 1Hz
                     queueSubsample += 10240; // ~100Hz
-#endif
+#endif // NO_EV_POLL
 
                     sim_interval = 0;
-#endif
+#endif // !THREADZ
                     // Timer register runs at 512 KHz
                     // 512000 is 1 second
                     // 512000/100 -> 5120  is .01 second

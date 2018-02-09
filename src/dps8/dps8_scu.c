@@ -1400,7 +1400,9 @@ static void deliver_interrupts (uint scu_unit_idx)
                 hdbgIntrSet (inum, cpu_unit_udx, scu_unit_idx);
 #endif
                 setCPURun ((uint) cpu_unit_udx, true);
+#ifndef NO_TIMEWAIT
                 wakeCPU ((uint) cpu_unit_udx);
+#endif
                 sim_debug (DBG_DEBUG, & scu_dev,
                            "interrupt set for CPU %d SCU %d\n",
                            cpu_unit_udx, scu_unit_idx);
