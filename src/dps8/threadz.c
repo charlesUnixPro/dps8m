@@ -318,7 +318,9 @@ void createCPUThread (uint cpuNum)
 
     char nm [17];
     sprintf (nm, "CPU %c", 'a' + cpuNum);
+#ifndef __FreeBSD__
     pthread_setname_np (p->cpuThread, nm);
+#endif
   }
 
 #if 0
@@ -477,7 +479,9 @@ void createIOMThread (uint iomNum)
 
     char nm [17];
     sprintf (nm, "IOM %c", 'a' + iomNum);
+#ifndef __FreeBSD__
     pthread_setname_np (p->iomThread, nm);
+#endif
   }
 
 // Called by IOM thread to block until CIOC call
@@ -630,7 +634,9 @@ void createChnThread (uint iomNum, uint chnNum, const char * devTypeStr)
 
     char nm [17];
     sprintf (nm, "chn %c/%u %s", 'a' + iomNum, chnNum, devTypeStr);
+#ifndef __FreeBSD__
     pthread_setname_np (p->chnThread, nm);
+#endif
   }
 
 // Called by channel thread to block until I/O command presented
