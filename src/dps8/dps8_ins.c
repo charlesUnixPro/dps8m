@@ -2977,6 +2977,9 @@ static t_stat doInstruction (void)
             cpu.CY = Add36b (cpu.CY, 1, 0, I_ZNOC,
                                  & cpu.cu.IR, & ovf);
             overflow (ovf, true, "aos overflow fault");
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           }
           break;
 
@@ -3122,6 +3125,9 @@ static t_stat doInstruction (void)
             cpu.zone = 0777777000000;
             cpu.useZone = true;
           }
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
         case x0 (0634):  // ldi
@@ -3389,6 +3395,9 @@ static t_stat doInstruction (void)
           cpu.zone = 0000000777777;
           cpu.useZone = true;
           SCF (i->stiTally, cpu.CY, I_TALLY);
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
 
@@ -3517,6 +3526,9 @@ static t_stat doInstruction (void)
           SC_I_ZERO (cpu.rA == 0);
           SC_I_NEG (cpu.rA & SIGN36);
           cpu.CY = 0;
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
 // Optimized to the top of the loop
@@ -3534,6 +3546,9 @@ static t_stat doInstruction (void)
           SC_I_ZERO (cpu.rQ == 0);
           SC_I_NEG (cpu.rQ & SIGN36);
           cpu.CY = 0;
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
                          // ldxn
@@ -3664,6 +3679,9 @@ static t_stat doInstruction (void)
             }
           else
             CLR_I_ZERO;
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
         case x0 (0654):  // stacq
@@ -3674,6 +3692,9 @@ static t_stat doInstruction (void)
             }
           else
             CLR_I_ZERO;
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
 // Optimized to the top of the loop
@@ -3691,6 +3712,9 @@ static t_stat doInstruction (void)
              ((i->tag & 004) ? 0000000000777u : 0);
           cpu.useZone = true;
           cpu.ou.crflag = true;
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
         case x0 (0552):  // stbq
@@ -3705,6 +3729,9 @@ static t_stat doInstruction (void)
              ((i->tag & 004) ? 0000000000777u : 0);
           cpu.useZone = true;
           cpu.ou.crflag = true;
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
         case x0 (0554):  // stc1
@@ -3730,6 +3757,9 @@ static t_stat doInstruction (void)
           cpu.CY = ((word36) ((cpu.PPR.IC + 2) & MASK18)) << 18;
           cpu.zone = 0777777000000;
           cpu.useZone = true;
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
         case x0 (0751): // stca
@@ -3747,6 +3777,9 @@ static t_stat doInstruction (void)
              ((i->tag & 001) ? 0000000000077u : 0);
           cpu.useZone = true;
           cpu.ou.crflag = true;
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
         case x0 (0752): // stcq
@@ -3763,6 +3796,9 @@ static t_stat doInstruction (void)
              ((i->tag & 001) ? 0000000000077u : 0);
           cpu.useZone = true;
           cpu.ou.crflag = true;
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
         case x0 (0357): //< stcd
@@ -4122,6 +4158,9 @@ static t_stat doInstruction (void)
             HDBGRegA ();
             overflow (ovf, false, "ada overflow fault");
           }
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
         case x0 (0077):   // adaq
@@ -4275,6 +4314,9 @@ static t_stat doInstruction (void)
             HDBGRegA ();
             overflow (ovf, true, "asa overflow fault");
           }
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
         case x0 (0056):   // asq
@@ -4287,9 +4329,12 @@ static t_stat doInstruction (void)
             cpu.CY = Add36b (cpu.rQ, cpu.CY, 0, I_ZNOC, & cpu.cu.IR, & ovf);
             overflow (ovf, true, "asq overflow fault");
           }
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
-                          // axxn
+                          // asxn
         case x0 (0040):   // asx0
         case x0 (0041):   // asx1
         case x0 (0042):   // asx2
@@ -4310,6 +4355,9 @@ static t_stat doInstruction (void)
                                    I_ZNOC, & cpu.cu.IR, & ovf);
             SETHI (cpu.CY, tmp18);
             overflow (ovf, true, "asxn overflow fault");
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           }
           break;
 
@@ -4499,6 +4547,9 @@ static t_stat doInstruction (void)
             cpu.CY = Sub36b (cpu.rA, cpu.CY, 1, I_ZNOC, & cpu.cu.IR, & ovf);
             overflow (ovf, true, "ssa overflow fault");
           }
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
         case x0 (0156):  // ssq
@@ -4512,6 +4563,9 @@ static t_stat doInstruction (void)
             cpu.CY = Sub36b (cpu.rQ, cpu.CY, 1, I_ZNOC, & cpu.cu.IR, & ovf);
             overflow (ovf, true, "ssq overflow fault");
           }
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
                          // ssxn
@@ -4537,6 +4591,9 @@ static t_stat doInstruction (void)
             SETHI (cpu.CY, tmp18);
             overflow (ovf, true, "ssxn overflow fault");
           }
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
 
@@ -4981,6 +5038,9 @@ static t_stat doInstruction (void)
           SC_I_NEG (cpu.CY & SIGN36);
           // ... and clear
           cpu.CY = 0;
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
         /// BOOLEAN OPERATION INSTRUCTIONS
@@ -5013,6 +5073,9 @@ static t_stat doInstruction (void)
             SC_I_ZERO (cpu.CY == 0);
             SC_I_NEG (cpu.CY & SIGN36);
           }
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
         case x0 (0356):  // ansq
@@ -5024,6 +5087,9 @@ static t_stat doInstruction (void)
               SC_I_ZERO (cpu.CY == 0);
               SC_I_NEG (cpu.CY & SIGN36);
           }
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
                          // ansxn
@@ -5047,6 +5113,9 @@ static t_stat doInstruction (void)
 
             SETHI (cpu.CY, tmp18);
           }
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
 
           break;
 
@@ -5119,6 +5188,9 @@ static t_stat doInstruction (void)
 
           SC_I_ZERO (cpu.CY == 0);
           SC_I_NEG (cpu.CY & SIGN36);
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
         case x0 (0256):  // orsq
@@ -5129,6 +5201,9 @@ static t_stat doInstruction (void)
 
           SC_I_ZERO (cpu.CY == 0);
           SC_I_NEG (cpu.CY & SIGN36);
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
                          // orsxn
@@ -5153,6 +5228,9 @@ static t_stat doInstruction (void)
 
             SETHI (cpu.CY, tmp18);
           }
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
                          // orxn
@@ -5210,6 +5288,9 @@ static t_stat doInstruction (void)
 
           SC_I_ZERO (cpu.CY == 0);
           SC_I_NEG (cpu.CY & SIGN36);
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
         case x0 (0656):  // ersq
@@ -5220,6 +5301,9 @@ static t_stat doInstruction (void)
 
           SC_I_ZERO (cpu.CY == 0);
           SC_I_NEG (cpu.CY & SIGN36);
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
 
           break;
 
@@ -5245,6 +5329,9 @@ static t_stat doInstruction (void)
 
             SETHI (cpu.CY, tmp18);
           }
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
                          // erxn
@@ -6572,6 +6659,9 @@ static t_stat doInstruction (void)
           cpu.CY = ((((word36) cpu.BAR.BASE) << 9) | cpu.BAR.BOUND) << 18;
           cpu.zone = 0777777000000;
           cpu.useZone = true;
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
 
@@ -8468,6 +8558,9 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
               }
             HDBGRegAR (n);
           }
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
           break;
 
         // Load Address Register n
@@ -8739,8 +8832,11 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
                 //putbits36 (& cpu.CY, 18, 6, GET_PR_BITNO (n));
                 cpu.zone = 0777777770000;
                 cpu.useZone = true;
-                break;
             }
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
+          break;
 
         // sareg Store Address Registers 
 

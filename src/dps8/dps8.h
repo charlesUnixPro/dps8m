@@ -595,4 +595,22 @@ typedef struct DCDstruct DCDstruct;
 
 #define MAX_DEV_NAME_LEN 64
 
+#ifdef TEST_OLIN
+extern int64_t cmpxchg_data;
+inline void cmpxchg (void)
+  {
+    __sync_val_compare_and_swap (& cmpxchg_data, 0, 1);
+    cmpxchg_data = 0;
+  }
+#endif
+
+#ifdef TEST_FENCE
+#include <pthread.h>
+extern pthread_mutex_t fenceLock;
+inline void fence (void)
+  {
+    pthread_mutex_lock (& fenceLock);
+    pthread_mutex_unlock (& fenceLock);
+  }
+#endif
 #endif // ifdef DPS8_H
