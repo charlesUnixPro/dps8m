@@ -522,6 +522,9 @@ static void cpu_reset_unit_idx (UNUSED uint cpun, bool clear_mem)
 
     tidy_cu ();
     set_cpu_idx (save);
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
 #ifdef TEST_FENCE
     fence ();
 #endif
@@ -1737,6 +1740,9 @@ setCPU:;
         cpu.cycleCnt ++;
 #endif // ! THREADZ
 
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
 #ifdef TEST_FENCE
     fence ();
 #endif

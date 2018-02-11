@@ -433,6 +433,9 @@ static void modifyDSPTW (word15 segno)
 
     word24 x1 = (2u * segno) / 1024u; // floor
     
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
 #ifdef TEST_FENCE
     fence ();
 #endif
@@ -966,6 +969,9 @@ static void fetchPTW (sdw_s *sdw, word18 offset)
     PNL (cpu.lastPTWOffset = offset;)
     PNL (cpu.lastPTWIsDS = false;)
 
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
 #ifdef TEST_FENCE
     fence ();
 #endif
@@ -1130,6 +1136,9 @@ static void modifyPTW (sdw_s *sdw, word18 offset)
     
     setAPUStatus (apuStatus_MPTW);
 
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
 #ifdef TEST_FENCE
     fence ();
 #endif

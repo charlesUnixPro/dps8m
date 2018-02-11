@@ -986,6 +986,9 @@ startCA:;
                            "IT_MOD(IT_AD): reading indirect word from %06o\n",
                            cpu.TPR.CA);
 
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
 #ifdef TEST_FENCE
     fence ();
 #endif
@@ -1054,6 +1057,9 @@ startCA:;
                 // otherwise it is set OFF. The computed address is the value
                 // of the decremented ADDRESS field of the indirect word.
 
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
 #ifdef TEST_FENCE
     fence ();
 #endif
@@ -1127,6 +1133,9 @@ startCA:;
                            "IT_MOD(IT_DI): reading indirect word from %06o\n",
                            cpu.TPR.CA);
 
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
 #ifdef TEST_FENCE
     fence ();
 #endif
@@ -1197,6 +1206,9 @@ startCA:;
                            "IT_MOD(IT_ID): fetching indirect word from %06o\n",
                            cpu.TPR.CA);
 
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
 #ifdef TEST_FENCE
     fence ();
 #endif
@@ -1280,6 +1292,9 @@ startCA:;
                            "IT_MOD(IT_DIC): fetching indirect word from %06o\n",
                            cpu.TPR.CA);
 
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
 #ifdef TEST_FENCE
     fence ();
 #endif
@@ -1386,6 +1401,9 @@ startCA:;
                            "IT_MOD(IT_IDC): fetching indirect word from %06o\n",
                            cpu.TPR.CA);
 
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
 #ifdef TEST_FENCE
     fence ();
 #endif

@@ -77,6 +77,10 @@
 word36 vol * M = NULL;                                          // memory
 #endif
 
+#ifdef TEST_OLIN
+int64_t cmpxchg_data;
+#endif
+
 #ifdef TEST_FENCE
 pthread_mutex_t fenceLock = PTHREAD_MUTEX_INITIALIZER;
 #endif
