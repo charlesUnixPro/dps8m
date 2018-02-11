@@ -34,6 +34,9 @@
 
 static inline void fnp_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
+#ifdef TEST_FENCE
+    fence ();
+#endif
 #ifdef THREADZ
     lock_mem_rd ();
 #endif
@@ -41,6 +44,9 @@ static inline void fnp_core_read (word24 addr, word36 *data, UNUSED const char *
     iom_core_read (addr, data, ctx);
 #else
     * data = M [addr] & DMASK;
+#endif
+#ifdef TEST_FENCE
+    fence ();
 #endif
 #ifdef THREADZ
     unlock_mem ();
@@ -479,6 +485,9 @@ void dia_init (void)
 
 static inline void fnp_core_write (word24 addr, word36 data, UNUSED const char * ctx)
   {
+#ifdef TEST_FENCE
+    fence ();
+#endif
 #ifdef THREADZ
     lock_mem_wr ();
 #endif
@@ -486,6 +495,9 @@ static inline void fnp_core_write (word24 addr, word36 data, UNUSED const char *
     iom_core_write (addr, data, ctx);
 #else
     M [addr] = data & DMASK;
+#endif
+#ifdef TEST_FENCE
+    fence ();
 #endif
 #ifdef THREADZ
     unlock_mem ();

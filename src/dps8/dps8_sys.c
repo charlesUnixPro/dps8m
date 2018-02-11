@@ -77,6 +77,9 @@
 word36 vol * M = NULL;                                          // memory
 #endif
 
+#ifdef TEST_FENCE
+pthread_mutex_t fenceLock = PTHREAD_MUTEX_INITIALIZER;
+#endif
 //
 // These are part of the simh interface
 //

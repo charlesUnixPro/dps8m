@@ -595,4 +595,13 @@ typedef struct DCDstruct DCDstruct;
 
 #define MAX_DEV_NAME_LEN 64
 
+#ifdef TEST_FENCE
+#include <pthread.h>
+extern pthread_mutex_t fenceLock;
+inline void fence (void)
+  {
+    pthread_mutex_lock (& fenceLock);
+    pthread_mutex_unlock (& fenceLock);
+  }
+#endif
 #endif // ifdef DPS8_H

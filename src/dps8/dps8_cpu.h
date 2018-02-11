@@ -1854,9 +1854,15 @@ void unlock_mem (void);
 #define LOCK_MEM_WR lock_mem_wr ();
 #define UNLOCK_MEM unlock_mem ();
 #else // ! THREADZ
+#ifdef TEST_FENCE
+#define LOCK_MEM_RD fence ();
+#define LOCK_MEM_WR fence ();
+#define UNLOCK_MEM fence ();
+#else
 #define LOCK_MEM_RD
 #define LOCK_MEM_WR
 #define UNLOCK_MEM
+#endif
 #endif // ! THREADZ
 
 #ifdef SPEED

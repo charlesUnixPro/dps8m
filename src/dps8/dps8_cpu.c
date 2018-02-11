@@ -522,6 +522,9 @@ static void cpu_reset_unit_idx (UNUSED uint cpun, bool clear_mem)
 
     tidy_cu ();
     set_cpu_idx (save);
+#ifdef TEST_FENCE
+    fence ();
+#endif
 #ifdef THREADZ
     fence ();
 #endif
@@ -1734,6 +1737,9 @@ setCPU:;
         cpu.cycleCnt ++;
 #endif // ! THREADZ
 
+#ifdef TEST_FENCE
+    fence ();
+#endif
 #ifdef THREADZ
         // If we faulted somewhere with the memory lock set, clear it.
         unlock_mem_force ();
