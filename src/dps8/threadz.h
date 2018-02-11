@@ -131,7 +131,7 @@ void createCPUThread (uint cpuNum);
 void cpuRdyWait (uint cpuNum);
 void setCPURun (uint cpuNum, bool run);
 void cpuRunningWait (void);
-unsigned long sleepCPU (unsigned long nsec);
+unsigned long sleepCPU (unsigned long usec);
 void wakeCPU (uint cpuNum);
 
 #ifdef IO_TRHEADZ
