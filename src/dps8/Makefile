@@ -48,6 +48,7 @@ endif
 
 ifeq ($(THREADZ),1)
 CFLAGS += -pthread -DTHREADZ
+LDFLAGS += -pthread
 LIBS += -lpthread
 endif
 
@@ -96,7 +97,7 @@ ifeq ($(OS),Windows_NT)
 else
   OSTYPE = $(shell uname -s)
   ifeq ($(OSTYPE),FreeBSD)
-    LIBS += -lm
+    LIBS += -lm -pthread
   endif
   ifeq ($(OSTYPE),Linux)
     ifeq ($(CROSS),MINGW64)
@@ -255,8 +256,8 @@ blinkenLightsCurses : blinkenLightsCurses.c shm.o
 #all : blinkenLightsCurses
 
 dps8$(EXE) : $(OBJS) $(LOCALOBJS) $(LOCALLIBS) 
-	@echo LD dps8$(EXE)
-	@$(LD)  -o dps8$(EXE) $(OBJS) $(LDFLAGS) $(LOCALOBJS) $(LOCALLIBS) $(LIBS)
+	#@echo LD dps8$(EXE)
+	$(LD)  -o dps8$(EXE) $(LDFLAGS) $(OBJS) $(LOCALOBJS) $(LOCALLIBS) $(LIBS)
 
 .PHONY: FORCE
 

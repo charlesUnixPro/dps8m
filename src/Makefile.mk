@@ -60,7 +60,7 @@ else
       LDFLAGS += -L/usr/local/lib
     endif
     ifeq ($(UNAME_S),FreeBSD)
-      CFLAGS += -I /usr/local/include
+      CFLAGS += -I /usr/local/include -pthread
       LDFLAGS += -L/usr/local/lib
     endif
 endif
@@ -92,8 +92,8 @@ LDFLAGS += -g
 MAKEFLAGS += --no-print-directory
 
 %.o : %.c
-	@echo CC $<
-	@$(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
+	#@echo CC $<
+	$(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
 
 # This file is included as '../Makefile.mk', so it's local include needs the ../
 ifneq (,$(wildcard ../Makefile.local))
