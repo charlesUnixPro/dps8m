@@ -2056,7 +2056,7 @@ H:;
         setAPUStatus (apuStatus_FABS);
       }
     else
-      {
+      ....
 #endif
     setAPUStatus (apuStatus_FANP);
 
