@@ -505,8 +505,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "words2scu sets XSF to %o\n", cpu.cu.XSF);
 
     // words[5]
 
-// XXX According to AL39 pg 75, RCU does not restore CA, but boot crashes
-// if not restored.
+// AL39 pg 75, RCU does not restore CA
     //cpu.TPR.CA          = getbits36_18 (words[5], 0);
     cpu.cu.repeat_first = getbits36_1  (words[5], 18);
     cpu.cu.rpt          = getbits36_1  (words[5], 19);
