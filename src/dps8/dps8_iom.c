@@ -219,8 +219,8 @@
 #include "dps8_scu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
-#include "dps8_cpu.h"
 #include "dps8_utils.h"
+#include "dps8_cpu.h"
 #include "dps8_console.h"
 #include "dps8_fnp2.h"
 #ifdef THREADZ

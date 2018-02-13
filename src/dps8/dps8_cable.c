@@ -20,6 +20,7 @@
 #include "dps8_sys.h"
 #include "dps8_faults.h"
 #include "dps8_cable.h"
+#include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_console.h"
 #include "dps8_disk.h"
@@ -31,7 +32,6 @@
 #ifndef __MINGW64__
 #include "dps8_absi.h"
 #endif
-#include "dps8_utils.h"
 #ifdef M_SHARED
 #include <unistd.h>
 #include "shm.h"

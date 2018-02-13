@@ -25,8 +25,8 @@
 #include "dps8_scu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
-#include "dps8_cpu.h"
 #include "dps8_utils.h"
+#include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_addrmods.h"
 #ifdef THREADZ
