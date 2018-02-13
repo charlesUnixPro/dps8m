@@ -181,7 +181,7 @@ static char * op_desc_str (char * temp)
     return temp;    //"op_desc_str (???)";
   }
 
-static void od_ITP (void)
+static void do_ITP (void)
   {
     sim_debug (DBG_APPENDING, & cpu_dev,
                "ITP Pair: PRNUM=%o BITNO=%o WORDNO=%o MOD=%o\n",
@@ -298,7 +298,7 @@ static void do_ITS_ITP (word6 Tag, word6 * newtag)
     if (ISITS (ind_tag))
         do_ITS ();
     else
-        od_ITP ();
+        do_ITP ();
 
     * newtag = GET_TAG (cpu.itxPair [1]);
     //set_went_appending ();
