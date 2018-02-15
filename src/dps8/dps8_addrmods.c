@@ -27,10 +27,10 @@
 #include "dps8_scu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
+#include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_ins.h"
-#include "dps8_utils.h"
 #include "dps8_iefp.h"
 #include "dps8_opcodetable.h"
 #ifdef THREADZ
@@ -181,7 +181,7 @@ static char * op_desc_str (char * temp)
     return temp;    //"op_desc_str (???)";
   }
 
-static void od_ITP (void)
+static void do_ITP (void)
   {
     sim_debug (DBG_APPENDING, & cpu_dev,
                "ITP Pair: PRNUM=%o BITNO=%o WORDNO=%o MOD=%o\n",
@@ -298,7 +298,7 @@ static void do_ITS_ITP (word6 Tag, word6 * newtag)
     if (ISITS (ind_tag))
         do_ITS ();
     else
-        od_ITP ();
+        do_ITP ();
 
     * newtag = GET_TAG (cpu.itxPair [1]);
     //set_went_appending ();
@@ -348,6 +348,19 @@ void updateIWB (word18 addr, word6 tag)
 
 void doComputedAddressFormation (void)
   {
+#ifdef CA_REWORK
+    if (getbits36_1 (cpu.cu.IWB, 29) == 0)
+      {
+        cpu.TPR.CA = GET_ADDR (IWB_IRODD);
+      }
+    else
+      {
+        word3 n = GET_PRN(IWB_IRODD);  // get PRn
+        word15 offset = GET_OFFSET(IWB_IRODD);
+        cpu.TPR.CA = (cpu.PAR[n].WORDNO + SIGNEXT15_18 (offset))
+                      & MASK18;
+      }
+#endif
     char buf [256];
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(Entry): operType:%s TPR.CA=%06o\n",
@@ -938,13 +951,14 @@ startCA:;
                     putbits36_3  (& indword, 33, os);
                     Write (indaddr, indword, APU_DATA_STORE);
 
+                    SC_I_TALLY (tally == 0);
+
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
                                "update IT wrote tally word %012"PRIo64
                                " to %06o\n",
                                indword, cpu.TPR.CA);
                   }
 
-                SC_I_TALLY (tally == 0);
 
 
                 // readOperand and writeOperand will not use cpu.TPR.CA; they
