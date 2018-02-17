@@ -52,6 +52,12 @@ LDFLAGS += -pthread
 LIBS += -lpthread
 endif
 
+ifeq ($(LOCKLESS),1)
+CFLAGS += -pthread -DLOCKLESS -DWAM
+LDFLAGS += -pthread
+LIBS += -lpthread
+endif
+
 ifndef LIBUV
 LIBUV = -luv
 endif
@@ -159,6 +165,9 @@ endif
 ifeq ($(THREADZ),1)
 C_SRCS += ./threadz.c
 endif
+ifeq ($(LOCKLESS),1)
+C_SRCS += ./threadz.c
+endif
 C_SRCS += ./uvutil.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
@@ -214,6 +223,9 @@ H_SRCS += utarray.h
 H_SRCS += uthash.h
 H_SRCS += utlist.h
 ifeq ($(THREADZ),1)
+H_SRCS += ./threadz.h
+endif
+ifeq ($(LOCKLESS),1)
 H_SRCS += ./threadz.h
 endif
 H_SRCS += ./uvutil.h

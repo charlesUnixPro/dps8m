@@ -228,7 +228,11 @@ static void readOperands (void)
         return;
       } // IT
 
+#ifdef LOCKLESS
+    read_operand (cpu.TPR.CA, ((i->info->flags & RMW) == RMW) ? OPERAND_RMW : OPERAND_READ);
+#else
     read_operand (cpu.TPR.CA, OPERAND_READ);
+#endif
 
     return;
   }
@@ -1976,7 +1980,14 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
             cpu.iefpFinalAddress = cpu.TPR.CA;
           }
 #endif
+#ifdef LOCKLESS
+	if ((ci->info->flags & RMW) == RMW)
+	  core_write_unlock (cpu.iefpFinalAddress, cpu.CY, __func__);
+	else
+	  writeOperands ();
+#else
         writeOperands ();
+#endif
       }
 
     else if (flags & PREPARE_CA)

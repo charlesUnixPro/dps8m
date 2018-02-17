@@ -839,7 +839,7 @@ sim_warn ("uncomfortable with this\n");
                   {
                     if (! csp->once_per_boot)
                       {
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
                         // 1K ~= 1 sec
                         sim_activate (& attn_unit[con_unit_idx], 1000);
 #else
@@ -859,7 +859,7 @@ sim_warn ("uncomfortable with this\n");
                   {
                     if (! csp->once_per_boot)
                       {
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
                         // 1K ~= 1 sec
                         sim_activate (& attn_unit[con_unit_idx], 1000);
 #else
@@ -915,7 +915,7 @@ sim_warn ("uncomfortable with this\n");
                     if (strncmp (text, (char *) (csp->autop + 1), expl) == 0)
                       {
                         csp->autop += expl + 2;
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
                         // 1K ~= 1 sec
                         sim_activate (& attn_unit[con_unit_idx], 1000);
 #else
@@ -938,7 +938,7 @@ sim_warn ("uncomfortable with this\n");
                     if (strstr (text, needle))
                       {
                         csp->autop += expl + 2;
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
                         // 1K ~= 1 sec
                         sim_activate (& attn_unit[con_unit_idx], 1000);
 #else

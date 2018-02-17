@@ -44,8 +44,11 @@
 #endif
 #include "dps8_opcodetable.h"
 #include "sim_defs.h"
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 #include "threadz.h"
+#if defined(LOCKLESS) && defined(__FreeBSD__)
+#include <machine/atomic.h>
+#endif
 
 __thread uint current_running_cpu_idx;
 #endif
@@ -440,12 +443,16 @@ static void set_cpu_cycle (cycles_e cycle)
 
 // DPS8M Memory of 36 bit words is implemented as an array of 64 bit words.
 // Put state information into the unused high order bits.
-#define MEM_UNINITIALIZED 0x4000000000000000LLU
+#define MEM_UNINITIALIZED (1LLU<<62)
+#ifdef LOCKLESS
+#define MEM_LOCKED_BIT    61
+#define MEM_LOCKED        (1LLU<<MEM_LOCKED_BIT)
+#endif
 
 uint set_cpu_idx (UNUSED uint cpu_idx)
   {
     uint prev = current_running_cpu_idx;
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
     current_running_cpu_idx = cpu_idx;
 #endif
 #ifdef ROUND_ROBIN
@@ -484,7 +491,7 @@ static void cpu_reset_unit_idx (UNUSED uint cpun, bool clear_mem)
     cpu.PPR.P = 1;
     cpu.RSDWH_R1 = 0;
     cpu.rTR = MASK27;
-//#ifdef THREADZ
+//#if defined(THREADZ) || defined(LOCKLESS)
 //    clock_gettime (CLOCK_BOOTTIME, & cpu.rTRTime);
 //#endif
 #if ISOLTS
@@ -1236,7 +1243,7 @@ cpu_state_t * cpus = NULL;
 #else
 cpu_state_t cpus [N_CPU_UNITS_MAX];
 #endif
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 __thread cpu_state_t * restrict cpup;
 #else
 cpu_state_t * restrict cpup; 
@@ -1301,7 +1308,7 @@ t_stat simh_hooks (void)
         
     sim_interval --;
 
-#ifndef THREADZ
+#if !defined(THREADZ) && !defined(LOCKLESS)
 // This is needed for BCE_TRAP in install scripts
     // sim_brk_test expects a 32 bit address; PPR.IC into the low 18, and
     // PPR.PSR into the high 12
@@ -1362,7 +1369,7 @@ static void panel_process_event (void)
 #endif
 
 
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 // The hypervisor CPU for the threadz model
 t_stat sim_instr (void)
   {
@@ -1472,7 +1479,7 @@ t_stat sim_instr (void)
   }
 #endif
 
-#ifndef THREADZ
+#if !defined(THREADZ) && !defined(LOCKLESS)
 #ifndef NO_EV_POLL
 static uint fast_queue_subsample = 0;
 #endif
@@ -1526,7 +1533,7 @@ static uint fast_queue_subsample = 0;
 // other extant cycles:
 //  ABORT_cycle
 
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 void * cpu_thread_main (void * arg)
   {
     int myid = * (int *) arg;
@@ -1582,7 +1589,7 @@ static void do_LUF_fault (void)
     doFault (FAULT_LUF, fst_zero, "instruction cycle lockup");
   }
 
-#ifndef THREADZ
+#if !defined(THREADZ) && !defined(LOCKLESS)
 #define threadz_sim_instr sim_instr
 #endif
 
@@ -1619,7 +1626,7 @@ t_stat threadz_sim_instr (void)
 
     t_stat reason = 0;
       
-#ifndef THREADZ
+#if !defined(THREADZ) && !defined(LOCKLESS)
     set_cpu_idx (0);
 #ifdef M_SHARED
 // simh needs to have the IC statically allocated, so a placeholder was
@@ -1695,7 +1702,7 @@ setCPU:;
       {
         reason = 0;
 
-#ifndef THREADZ
+#if !defined(THREADZ) && !defined(LOCKLESS)
         // Process deferred events and breakpoints
         reason = simh_hooks ();
         if (reason)
@@ -1754,13 +1761,18 @@ setCPU:;
         cpuRunningWait ();
 
 #endif // THREADZ
+#ifdef LOCKLESS
+	core_unlock_all();
+	// wait on run/switch
+        cpuRunningWait ();
+#endif
 
         int con_unit_idx = check_attn_key ();
         if (con_unit_idx != -1)
           console_attn_idx (con_unit_idx);
 
 #ifndef NO_EV_POLL
-#ifndef THREADZ
+#if !defined(THREADZ) && !defined(LOCKLESS)
 #ifdef ISOLTS
         if (cpu.cycle != FETCH_cycle)
           {
@@ -2279,7 +2291,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                     // *1000 is 10  milliseconds
                     // *1000 is 10000 microseconds
                     // in uSec;
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 
 // XXX If interupt inhibit set, then sleep forever instead of TRO
                     // rTR is 512KHz; sleepCPU is in 1Mhz
@@ -2571,7 +2583,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
 
 leave:
 
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
     setCPURun (current_running_cpu_idx, false);
 #endif
 
@@ -2881,6 +2893,27 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
   }
 #endif
 
+#ifdef LOCKLESS
+int32 core_read_lock (word24 addr, word36 *data, const char * ctx)
+{
+    int i = 1000000000;
+    while ( atomic_testandset_64(&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
+      //sim_warn ("core_read_lock: locked addr %x\n", addr);
+      i--;
+    }
+    if (i == 0) {
+      sim_warn ("core_read_lock: locked %x addr %x deadlock\n", cpu.locked_addr, addr);
+    }
+    if (cpu.locked_addr != 0) {
+      sim_warn ("core_read_lock: locked %x addr %x\n", cpu.locked_addr, addr);
+      core_unlock_all();
+    }
+    cpu.locked_addr = addr;
+    *data = M[addr] & DMASK;
+    return 0;
+}
+#endif
+
 #ifndef SPEED
 int core_write (word24 addr, word36 data, const char * ctx)
   {
@@ -2944,6 +2977,45 @@ int core_write (word24 addr, word36 data, const char * ctx)
     PNL (trackport (addr, data));
     return 0;
   }
+#endif
+
+#ifdef LOCKLESS
+int core_write_unlock (word24 addr, word36 data, const char * ctx)
+{
+    if (cpu.locked_addr == addr)
+      cpu.locked_addr = 0;
+    else
+      {
+       sim_warn ("core_write_unlock: locked %x addr %x\n", cpu.locked_addr, addr);
+       core_unlock_all();
+      }
+      
+    M[addr] = data & DMASK;
+    return 0;
+}
+
+int core_unlock (word24 addr, word36 data, const char * ctx)
+{
+    if (cpu.locked_addr == addr)
+      cpu.locked_addr = 0;
+    else
+      {
+       sim_warn ("core_unlock: locked %x addr %x\n", cpu.locked_addr, addr);
+       core_unlock_all();
+      }
+    atomic_testandclear_64(&M[addr], MEM_LOCKED_BIT);
+    return 0;
+}
+
+int core_unlock_all ()
+{
+  if (cpu.locked_addr != 0) {
+      sim_warn ("core_unlock_all: locked %x\n", cpu.locked_addr);
+      atomic_testandclear_64(&M[cpu.locked_addr], MEM_LOCKED_BIT);
+      cpu.locked_addr = 0;
+  }
+  return 0;
+}
 #endif
 
 #ifndef SPEED
@@ -3843,7 +3915,7 @@ void add_APU_history (enum APUH_e op)
 
 #endif
 
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 static pthread_mutex_t debug_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static const char * get_dbg_verb (uint32 dbits, DEVICE * dptr)

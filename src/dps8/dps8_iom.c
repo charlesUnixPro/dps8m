@@ -223,7 +223,7 @@
 #include "dps8_cpu.h"
 #include "dps8_console.h"
 #include "dps8_fnp2.h"
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 #include "threadz.h"
 #endif
 
@@ -1287,7 +1287,7 @@ static t_stat iom_boot (int unitNum, UNUSED DEVICE * dptr)
     
 #else
     //sim_activate (& boot_channel_unit[iom_unit_idx], sys_opts.iom_times.boot_time );
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
     sim_activate (& boot_channel_unit[iom_unit_idx], 1);
 #else
     sim_activate (& boot_channel_unit[iom_unit_idx], 1000);

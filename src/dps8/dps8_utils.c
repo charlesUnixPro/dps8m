@@ -2182,7 +2182,7 @@ void print_int128 (int128 n, char * p)
   }
 #endif
 
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 // https://gist.github.com/diabloneo/9619917
 
 void timespec_diff(struct timespec * start, struct timespec * stop,

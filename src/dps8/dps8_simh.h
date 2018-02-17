@@ -45,12 +45,12 @@ extern DEVICE scu_dev;
     ) 
 #endif
 
-#ifndef THREADZ
+#if !defined(THREADZ) && !defined(LOCKLESS)
 #define dps8_sim_debug _sim_debug
 #endif
 
 #undef sim_debug
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 #define sim_debug(dbits, dptr, ...) \
   if_sim_debug((dbits), dptr) \
     dps8_sim_debug ((dbits), dptr, DBG_CTR, __VA_ARGS__); \
@@ -146,7 +146,7 @@ extern DEVICE scu_dev;
 
 extern uint32 sim_brk_summ, sim_brk_types, sim_brk_dflt;
 extern FILE *sim_deb;
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 void dps8_sim_debug (uint32 dbits, DEVICE* dptr, unsigned long long cnt, const char* fmt, ...)
 #ifdef __GNUC__
   __attribute__ ((format (printf, 4, 5)))

@@ -648,7 +648,7 @@ sim_debug (DBG_FAULT, & cpu_dev, "cycle %u ndes %u fn %u v %u\n", cpu.cycle, cpu
         // XXX Does the CU or FR need fixing? ticket #36
         if (cpu . bTroubleFaultCycle)
           {
-#ifndef THREADZ
+#if !defined(THREADZ) && !defined(LOCKLESS)
 #ifndef PANEL
 #ifndef ROUND_ROBIN
             if ((! sample_interrupts ()) &&
@@ -789,7 +789,7 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
         // XXX Does the CU or FR need fixing? ticket #36
         if (cpu.bTroubleFaultCycle)
           {
-#ifndef THREADZ
+#if !defined(THREADZ) && !defined(LOCKLESS)
 #ifndef PANEL
 #ifndef ROUND_ROBIN
             if ((! sample_interrupts ()) &&

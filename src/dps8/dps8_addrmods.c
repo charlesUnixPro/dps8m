@@ -33,7 +33,7 @@
 #include "dps8_ins.h"
 #include "dps8_iefp.h"
 #include "dps8_opcodetable.h"
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 #include "threadz.h"
 #endif
 
@@ -1012,7 +1012,7 @@ startCA:;
 
                 word18 saveCA = cpu.TPR.CA;
                 word36 indword;
-                Read (cpu.TPR.CA, & indword, APU_DATA_READ);
+                Read (cpu.TPR.CA, & indword, APU_DATA_RMW);
 
                 cpu.AM_tally = GET_TALLY (indword); // 12-bits
                 delta = GET_DELTA (indword); // 6-bits
@@ -1041,7 +1041,11 @@ startCA:;
                 indword = (word36) (((word36) Yi << 18) |
                                     (((word36) cpu.AM_tally & 07777) << 6) |
                                     delta);
-                Write (saveCA, indword, APU_DATA_STORE);
+#ifdef LOCKLESS
+		core_write_unlock(cpu.iefpFinalAddress, indword, __func__);
+#else
+		Write (saveCA, indword, APU_DATA_STORE);
+#endif
 
 #ifdef TEST_FENCE
     fence ();
@@ -1083,7 +1087,7 @@ startCA:;
 
                 word18 saveCA = cpu.TPR.CA;
                 word36 indword;
-                Read (cpu.TPR.CA, & indword, APU_DATA_READ);
+		Read (cpu.TPR.CA, & indword, APU_DATA_RMW);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_SD): reading indirect word from %06o\n",
@@ -1113,7 +1117,11 @@ startCA:;
                 indword = (word36) (((word36) Yi << 18) |
                                     (((word36) cpu.AM_tally & 07777) << 6) |
                                     delta);
+#ifdef LOCKLESS
+		core_write_unlock(cpu.iefpFinalAddress, indword, __func__);
+#else
                 Write (saveCA, indword, APU_DATA_STORE);
+#endif
 
 #ifdef TEST_FENCE
     fence ();
@@ -1159,7 +1167,7 @@ startCA:;
 
                 word18 saveCA = cpu.TPR.CA;
                 word36 indword;
-                Read (cpu.TPR.CA, & indword, APU_DATA_READ);
+                Read (cpu.TPR.CA, & indword, APU_DATA_RMW);
 
                 Yi = GETHI (indword);
                 cpu.AM_tally = GET_TALLY (indword); // 12-bits
@@ -1191,7 +1199,11 @@ startCA:;
                            "addr %06o\n",
                            indword, saveCA);
 
+#ifdef LOCKLESS
+		core_write_unlock(cpu.iefpFinalAddress, indword, __func__);
+#else
                 Write (saveCA, indword, APU_DATA_STORE);
+#endif
 
 #ifdef TEST_FENCE
     fence ();
@@ -1231,7 +1243,7 @@ startCA:;
 #endif
 
                 word36 indword;
-                Read (cpu.TPR.CA, & indword, APU_DATA_READ);
+                Read (cpu.TPR.CA, & indword, APU_DATA_RMW);
 
                 Yi = GETHI (indword);
                 cpu.AM_tally = GET_TALLY (indword); // 12-bits
@@ -1266,7 +1278,11 @@ startCA:;
                            "addr %06o\n",
                            indword, saveCA);
 
+#ifdef LOCKLESS
+		core_write_unlock(cpu.iefpFinalAddress, indword, __func__);
+#else
                 Write (saveCA, indword, APU_DATA_STORE);
+#endif
 
 #ifdef TEST_FENCE
     fence ();
@@ -1318,7 +1334,7 @@ startCA:;
 
                 word18 saveCA = cpu.TPR.CA;
                 word36 indword;
-                Read (cpu.TPR.CA, & indword, APU_DATA_READ);
+                Read (cpu.TPR.CA, & indword, APU_DATA_RMW);
 
                 Yi = GETHI (indword);
                 cpu.AM_tally = GET_TALLY (indword); // 12-bits
@@ -1352,7 +1368,11 @@ startCA:;
                            "IT_MOD(IT_DIC): writing indword=%012"PRIo64" to "
                            "addr %06o\n", indword, saveCA);
 
+#ifdef LOCKLESS
+		core_write_unlock(cpu.iefpFinalAddress, indword, __func__);
+#else
                 Write (saveCA, indword, APU_DATA_STORE);
+#endif
 
 #ifdef TEST_FENCE
     fence ();
@@ -1427,7 +1447,7 @@ startCA:;
 
                 word18 saveCA = cpu.TPR.CA;
                 word36 indword;
-                Read (cpu.TPR.CA, & indword, APU_DATA_READ);
+                Read (cpu.TPR.CA, & indword, APU_DATA_RMW);
 
                 Yi = GETHI (indword);
                 cpu.AM_tally = GET_TALLY (indword); // 12-bits
@@ -1459,7 +1479,11 @@ startCA:;
                            " to addr %06o\n",
                            indword, saveCA);
 
+#ifdef LOCKLESS
+		core_write_unlock(cpu.iefpFinalAddress, indword, __func__);
+#else 
                 Write (saveCA, indword, APU_DATA_STORE);
+#endif
 
 #ifdef TEST_FENCE
     fence ();

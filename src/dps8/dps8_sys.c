@@ -53,7 +53,7 @@
 #include "dps8_urp.h"
 #include "dps8_absi.h"
 #include "utlist.h"
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 #include "threadz.h"
 #endif
 
@@ -1470,7 +1470,7 @@ static char * default_base_system_script [] =
     "set scu3 reset",
     "set iom0 reset",
 
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
     "set cpu nunits=6",
 #else
 #ifdef ISOTLTS
@@ -3584,7 +3584,7 @@ static void dps8_init (void)
 #ifdef PANEL
     panelScraperInit ();
 #endif
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
     initThreadz ();
 #endif
   }

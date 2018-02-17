@@ -13,7 +13,9 @@
 #include "dps8_utils.h"
 
 #include "threadz.h"
+#ifdef __FreeBSD__
 #include <pthread_np.h>
+#endif
 
 //
 // Resource locks
@@ -66,6 +68,7 @@ void unlock_libuv (void)
 // mem_lock -- memory atomicity lock
 // rmw_lock -- big R/M/W cycle lock
 
+#ifndef LOCKLESS
 pthread_rwlock_t mem_lock = PTHREAD_RWLOCK_INITIALIZER;
 static __thread bool have_mem_lock = false;
 static __thread bool have_rmw_lock = false;
@@ -176,6 +179,7 @@ void unlock_mem_force (void)
     have_mem_lock = false;
     have_rmw_lock = false;
   }
+#endif
 
 // SCU serializer
 
@@ -736,9 +740,11 @@ void initThreadz (void)
     memset (chnThreadz, 0, sizeof (chnThreadz));
 #endif
 
+#ifndef LOCKLESS
     //pthread_rwlock_init (& mem_lock, PTHREAD_PROCESS_PRIVATE);
     have_mem_lock = false;
     have_rmw_lock = false;
+#endif
 
     pthread_spin_init (& scu_lock, PTHREAD_PROCESS_PRIVATE);
     pthread_spin_init (& iom_lock, PTHREAD_PROCESS_PRIVATE);

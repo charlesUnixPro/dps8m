@@ -33,7 +33,7 @@
 
 #define DBG_CTR 1
 
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 #include "threadz.h"
 #endif
 
@@ -135,7 +135,7 @@ struct decoded_t
     uint cell;
   };
 
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 static __thread struct decoded_t decoded;
 #else
 static struct decoded_t decoded;
@@ -1889,22 +1889,22 @@ sim_printf ("reset??\n");
       }
     else if (command == 072) // bootload
       {
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
         lock_libuv ();
 #endif
         fnpcmdBootload (fnp_unit_idx);
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
         unlock_libuv ();
 #endif
         fudp -> fnpIsRunning = true;
       }
     else if (command == 071) // interrupt L6
       {
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
         lock_libuv ();
 #endif
         ok = interruptL66 (iomUnitIdx, chan) == 0;
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
         unlock_libuv ();
 #endif
       }

@@ -29,7 +29,7 @@
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_addrmods.h"
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 #include "threadz.h"
 #endif
 
@@ -446,9 +446,15 @@ static void modifyDSPTW (word15 segno)
 #endif
 
     word36 PTWx1;
+#ifdef LOCKLESS
+    core_read_lock ((cpu.DSBR.ADDR + x1) & PAMASK, & PTWx1, __func__);
+    PTWx1 = SETBIT (PTWx1, 9);
+    core_write_unlock ((cpu.DSBR.ADDR + x1) & PAMASK, PTWx1, __func__);
+#else
     core_read ((cpu.DSBR.ADDR + x1) & PAMASK, & PTWx1, __func__);
     PTWx1 = SETBIT (PTWx1, 9);
     core_write ((cpu.DSBR.ADDR + x1) & PAMASK, PTWx1, __func__);
+#endif
     
 #ifdef TEST_FENCE
     fence ();
@@ -980,7 +986,11 @@ static void fetchPTW (sdw_s *sdw, word18 offset)
     if (! lck)
       lock_rmw ();
 #endif
+#ifdef LOCKLESS
+    core_read_lock ((sdw->ADDR + x2) & PAMASK, & PTWx2, __func__);
+#else
     core_read ((sdw->ADDR + x2) & PAMASK, & PTWx2, __func__);
+#endif
     
     cpu.PTW0.ADDR = GETHI (PTWx2);
     cpu.PTW0.U = TSTBIT (PTWx2, 9);
@@ -992,9 +1002,19 @@ static void fetchPTW (sdw_s *sdw, word18 offset)
     if (! cpu.PTW0.U)
       {
         PTWx2 = SETBIT (PTWx2, 9);
+#ifdef LOCKLESS
+	core_write_unlock ((sdw->ADDR + x2) & PAMASK, PTWx2, __func__);
+#else
         core_write ((sdw->ADDR + x2) & PAMASK, PTWx2, __func__);
+#endif
         cpu.PTW0.U = 1;
       }
+#ifdef LOCKLESS
+    else
+      {
+        core_unlock ((sdw->ADDR + x2) & PAMASK, PTWx2, __func__);
+      }
+#endif
     
 #ifdef TEST_FENCE
     fence ();
@@ -1147,9 +1167,15 @@ static void modifyPTW (sdw_s *sdw, word18 offset)
     if (! lck)
       lock_rmw ();
 #endif
+#ifdef LOCKLESS
+    core_read_lock ((sdw->ADDR + x2) & PAMASK, & PTWx2, __func__);
+    PTWx2 = SETBIT (PTWx2, 6);
+    core_write_unlock ((sdw->ADDR + x2) & PAMASK, PTWx2, __func__);
+#else    
     core_read ((sdw->ADDR + x2) & PAMASK, & PTWx2, __func__);
     PTWx2 = SETBIT (PTWx2, 6);
     core_write ((sdw->ADDR + x2) & PAMASK, PTWx2, __func__);
+#endif
 #ifdef TEST_FENCE
     fence ();
 #endif
@@ -1278,6 +1304,10 @@ static char *strPCT (_processor_cycle_type t)
         case APU_DATA_READ: return "APU_DATA_READ";
         case APU_DATA_STORE: return "APU_DATA_STORE";
         case ABSA_CYCLE : return "ABSA_CYCLE";
+#ifdef LOCKLESS
+        case OPERAND_RMW : return "OPERAND_RMW";
+        case APU_DATA_RMW : return "APU_DATA_RMW";
+#endif
 
         default:
             return "Unhandled _processor_cycle_type";
@@ -1429,8 +1459,17 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data,
     word3 n = 0; // PRn to be saved to TSN_PRNO
 
     if (thisCycle == APU_DATA_READ ||
+#ifdef LOCKLESS
+	thisCycle == APU_DATA_RMW ||
+#endif
         thisCycle == APU_DATA_STORE)
       goto A;
+
+#ifdef LOCKLESS
+    // locked RMW
+    if (thisCycle == OPERAND_RMW)
+      goto A;
+#endif
 
     // R/M/W?
     if (thisCycle == OPERAND_STORE &&
@@ -1670,32 +1709,11 @@ A:;
          thisCycle != RTCD_OPERAND_FETCH))
       goto F;
     
-    if (StrOp)
-      {
-        DBGAPP ("doAppendCycle(B):STR-OP\n");
-        
-        // C(TPR.TRR) > C(SDW .R1)? Note typo in AL39, R2 should be R1
-        if (cpu.TPR.TRR > cpu.SDW->R1)
-          {
-            DBGAPP ("ACV5 TRR %o R1 %o\n",
-                    cpu.TPR.TRR, cpu.SDW->R1);
-            //Set fault ACV5 = OWB
-            cpu.acvFaults |= ACV5;
-            PNL (L68_ (cpu.apu.state |= apu_FLT;))
-            FMSG (acvFaultsMsg = "acvFaults(B) C(TPR.TRR) > C(SDW .R1)";)
-          }
-        
-        if (! cpu.SDW->W)
-          {
-            DBGAPP ("ACV6\n");
-            // Set fault ACV6 = W-OFF
-            cpu.acvFaults |= ACV6;
-            PNL (L68_ (cpu.apu.state |= apu_FLT;))
-            FMSG (acvFaultsMsg = "acvFaults(B) ACV6 = W-OFF";)
-          }
-        
-      }
-    else
+#ifdef LOCKLESS
+    if (!StrOp || thisCycle == OPERAND_RMW || thisCycle == APU_DATA_RMW)
+#else
+    if (!StrOp)
+#endif
       {
         DBGAPP ("doAppendCycle(B):!STR-OP\n");
         
@@ -1723,6 +1741,35 @@ A:;
                 PNL (L68_ (cpu.apu.state |= apu_FLT;))
                 FMSG (acvFaultsMsg = "acvFaults(B) C(PPR.PSR) = C(TPR.TSR)";)
               }
+          }
+        
+      }
+#ifdef LOCKLESS
+    if (StrOp || thisCycle == OPERAND_RMW || thisCycle == APU_DATA_RMW)
+#else
+    if (StrOp)
+#endif
+      {
+        DBGAPP ("doAppendCycle(B):STR-OP\n");
+        
+        // C(TPR.TRR) > C(SDW .R1)? Note typo in AL39, R2 should be R1
+        if (cpu.TPR.TRR > cpu.SDW->R1)
+          {
+            DBGAPP ("ACV5 TRR %o R1 %o\n",
+                    cpu.TPR.TRR, cpu.SDW->R1);
+            //Set fault ACV5 = OWB
+            cpu.acvFaults |= ACV5;
+            PNL (L68_ (cpu.apu.state |= apu_FLT;))
+            FMSG (acvFaultsMsg = "acvFaults(B) C(TPR.TRR) > C(SDW .R1)";)
+          }
+        
+        if (! cpu.SDW->W)
+          {
+            DBGAPP ("ACV6\n");
+            // Set fault ACV6 = W-OFF
+            cpu.acvFaults |= ACV6;
+            PNL (L68_ (cpu.apu.state |= apu_FLT;))
+            FMSG (acvFaultsMsg = "acvFaults(B) ACV6 = W-OFF";)
           }
         
       }
@@ -2088,7 +2135,13 @@ I:;
 // Set PTW.M
 
     DBGAPP ("doAppendCycle(I): FAP\n");
+#ifdef LOCKLESS
+    if ((StrOp ||
+        thisCycle == OPERAND_RMW ||
+        thisCycle == APU_DATA_RMW) && cpu.PTW->M == 0)  // is this the right way to do this?
+#else
     if (StrOp && cpu.PTW->M == 0)  // is this the right way to do this?
+#endif
       {
        modifyPTW (cpu.SDW, cpu.TPR.CA);
       }
@@ -2129,7 +2182,14 @@ HI:
       }
     else
       {
+#ifdef LOCKLESS
+	if (thisCycle == OPERAND_RMW || thisCycle == APU_DATA_RMW)
+	  core_read_lock (finalAddress, data, strPCT (thisCycle));
+	else
+	  core_readN (finalAddress, data, nWords, strPCT (thisCycle));
+#else
         core_readN (finalAddress, data, nWords, strPCT (thisCycle));
+#endif
       }
 
     // Was this an indirect word fetch?

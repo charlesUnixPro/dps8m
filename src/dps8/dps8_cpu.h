@@ -1547,7 +1547,7 @@ typedef struct
 
     word18   rX [8]; // index
     word27   rTR;    // timer [map: TR, 9 0's]
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
     struct timespec rTRTime; // time when rTR was set
     uint     rTRsample;
 #endif
@@ -1777,6 +1777,9 @@ typedef struct
     uint shadowTR;
     uint TR0; // The value that the TR was set to.
 #endif
+#ifdef LOCKLESS
+    word24 locked_addr;
+#endif
 //#ifdef THREADZ
 //    // Set if this thread has set memlock
 //    bool havelock; // Vetinari 
@@ -1790,7 +1793,7 @@ extern cpu_state_t * cpus;
 extern cpu_state_t cpus [N_CPU_UNITS_MAX];
 #endif
 
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 extern __thread cpu_state_t * restrict cpup;
 #else
 extern cpu_state_t * restrict cpup;
@@ -1798,7 +1801,7 @@ extern cpu_state_t * restrict cpup;
 #define cpu (* cpup)
 
 uint set_cpu_idx (uint cpuNum);
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 extern __thread uint current_running_cpu_idx;
 #else
 #ifdef ROUND_ROBIN
@@ -2149,6 +2152,13 @@ int core_write_zone (word24 addr, word36 data, const char * ctx);
 int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx);
 int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx);
 #endif
+#ifdef LOCKLESS
+int core_read_lock (word24 addr, word36 *data, const char * ctx);
+int core_write_unlock (word24 addr, word36 data, const char * ctx);
+int core_unlock (word24 addr, word36 data, const char * ctx);
+int core_unlock_all();
+#endif
+
 static inline void core_readN (word24 addr, word36 * data, uint n,
                                UNUSED const char * ctx)
   {
@@ -2201,7 +2211,7 @@ void add_APU_history (enum APUH_e op);
 #endif
 void add_history_force (uint hset, word36 w0, word36 w1);
 word18 get_BAR_address(word18 addr);
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 t_stat threadz_sim_instr (void);
 void * cpu_thread_main (void * arg);
 #endif
