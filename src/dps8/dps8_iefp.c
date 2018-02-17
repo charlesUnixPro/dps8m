@@ -899,7 +899,7 @@ t_stat ReadIndirect (void)
 
 void ReadTraOp (void)
   {
-    doComputedAddressFormation ();
+    //doComputedAddressFormation ();
     Read (cpu.TPR.CA, &cpu.CY, OPERAND_READ);
     if (! (get_addr_mode () == APPEND_mode || cpu.cu.TSN_VALID [0] ||
            cpu.cu.XSF /*get_went_appending ()*/))

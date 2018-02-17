@@ -2736,6 +2736,7 @@ static t_stat doInstruction (void)
         case x0 (0710):  // tra
           // C(TPR.CA) -> C(PPR.IC)
           // C(TPR.TSR) -> C(PPR.PSR)
+          doComputedAddressFormation ();
           ReadTraOp ();
           return CONT_TRA;
 
@@ -2753,6 +2754,7 @@ static t_stat doInstruction (void)
           // otherwise, no change to C(PPR)
           if (TST_I_ZERO)
             {
+              doComputedAddressFormation ();
               ReadTraOp ();
               return CONT_TRA;
             }
@@ -2764,6 +2766,7 @@ static t_stat doInstruction (void)
           //     C(TPR.TSR) -> C(PPR.PSR)
           if (!TST_I_ZERO)
             {
+              doComputedAddressFormation ();
               ReadTraOp ();
               return CONT_TRA;
             }
@@ -2922,6 +2925,7 @@ static t_stat doInstruction (void)
           {
             // We can't set Xn yet as the CAF may refer to Xn
             word18 ret = (cpu.PPR.IC + 1) & MASK18;
+            doComputedAddressFormation ();
             ReadTraOp ();
             cpu.rX[opcode10 & 07] = ret;
             HDBGRegX (opcode10 & 07);
@@ -3015,6 +3019,7 @@ static t_stat doInstruction (void)
             //  C(TPR.TSR) -> C(PPR.PSR)
             if (! (cpu.cu.IR & I_NEG) && ! (cpu.cu.IR & I_ZERO))
             {
+                doComputedAddressFormation ();
                 ReadTraOp ();
                 return CONT_TRA;
             }
@@ -3067,6 +3072,7 @@ static t_stat doInstruction (void)
               n = (opcode10 & 3) + 4;
             CPTUR (cptUsePRn + n);
 
+            doComputedAddressFormation ();
             // PR[n] is set in ReadTraOp().
             ReadTraOp ();
           }
@@ -3109,6 +3115,7 @@ static t_stat doInstruction (void)
           //  C(TPR.TSR) -> C(PPR.PSR)
           if (TST_I_NEG)
             {
+              doComputedAddressFormation ();
               ReadTraOp ();
               return CONT_TRA;
             }
@@ -3264,6 +3271,7 @@ static t_stat doInstruction (void)
             // C(TPR.TSR) -> C(PPR.PSR)
             if (cpu.cu.IR & (I_NEG | I_ZERO))
               {
+                doComputedAddressFormation ();
                 ReadTraOp ();
                 return CONT_TRA;
               }
@@ -5845,6 +5853,7 @@ static t_stat doInstruction (void)
 
           CPTUR (cptUsePRn + 7);
 
+          doComputedAddressFormation ();
           ReadTraOp ();
           sim_debug (DBG_TRACEEXT, & cpu_dev,
                      "call6 PRR %o PSR %o\n", cpu.PPR.PRR, cpu.PPR.PSR);
@@ -5864,6 +5873,7 @@ static t_stat doInstruction (void)
 
             // C(Y)0,17 -> C(PPR.IC)
             // C(Y)18,31 -> C(IR)
+            doComputedAddressFormation ();
             ReadTraOp ();
 
             cpu.PPR.IC = GETHI (cpu.CY);
@@ -5923,6 +5933,7 @@ static t_stat doInstruction (void)
           if (TST_I_EOFL)
             {
               CLR_I_EOFL;
+              doComputedAddressFormation ();
               ReadTraOp ();
               return CONT_TRA;
             }
@@ -5935,6 +5946,7 @@ static t_stat doInstruction (void)
           if (TST_I_EUFL)
             {
               CLR_I_EUFL;
+              doComputedAddressFormation ();
               ReadTraOp ();
               return CONT_TRA;
             }
@@ -5953,6 +5965,7 @@ static t_stat doInstruction (void)
           //   C(TPR.TSR) -> C(PPR.PSR)
           if (!TST_I_CARRY)
             {
+              doComputedAddressFormation ();
               ReadTraOp ();
               return CONT_TRA;
             }
@@ -5968,6 +5981,7 @@ static t_stat doInstruction (void)
           if (TST_I_OFLOW)
             {
               CLR_I_OFLOW;
+              doComputedAddressFormation ();
               ReadTraOp ();
               return CONT_TRA;
             }
@@ -5979,6 +5993,7 @@ static t_stat doInstruction (void)
           //   C(TPR.TSR) -> C(PPR.PSR)
           if (! (TST_I_NEG))
             {
+              doComputedAddressFormation ();
               ReadTraOp ();
               return CONT_TRA;
             }
@@ -5997,6 +6012,7 @@ static t_stat doInstruction (void)
           //    C(TPR.TSR) -> C(PPR.PSR)
           if (TST_I_CARRY)
             {
+              doComputedAddressFormation ();
               ReadTraOp ();
               return CONT_TRA;
             }
@@ -6008,6 +6024,7 @@ static t_stat doInstruction (void)
             //  C(TPR.TSR) -> C(PPR.PSR)
             if (!TST_I_TRUNC)
             {
+                doComputedAddressFormation ();
                 ReadTraOp ();
                 return CONT_TRA;
             }
@@ -6020,6 +6037,7 @@ static t_stat doInstruction (void)
             if (TST_I_TRUNC)
             {
                 CLR_I_TRUNC;
+                doComputedAddressFormation ();
                 ReadTraOp ();
                 return CONT_TRA;
             }
@@ -6038,6 +6056,7 @@ static t_stat doInstruction (void)
 
         case x0 (0715):  // tss
           CPTUR (cptUseBAR);
+          doComputedAddressFormation ();
           if (cpu.TPR.CA >= ((word18) cpu.BAR.BOUND) << 9)
             {
               doFault (FAULT_ACV, fst_acv15, "TSS boundary violation");
@@ -6064,6 +6083,7 @@ static t_stat doInstruction (void)
           // otherwise, no change to C(PPR)
           if (TST_I_TALLY == 0)
             {
+              doComputedAddressFormation ();
               ReadTraOp ();
               return CONT_TRA;
             }
@@ -6076,6 +6096,7 @@ static t_stat doInstruction (void)
             // otherwise, no change to C(PPR)
             if (TST_I_TALLY)
             {
+                doComputedAddressFormation ();
                 ReadTraOp ();
                 return CONT_TRA;
             }
