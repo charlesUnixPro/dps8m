@@ -13,6 +13,7 @@
 #include "dps8_utils.h"
 
 #include "threadz.h"
+#include <pthread_np.h>
 
 //
 // Resource locks
@@ -325,6 +326,8 @@ void createCPUThread (uint cpuNum)
     sprintf (nm, "CPU %c", 'a' + cpuNum);
 #ifndef __FreeBSD__
     pthread_setname_np (p->cpuThread, nm);
+#else
+    pthread_set_name_np (p->cpuThread, nm);
 #endif
   }
 
@@ -486,6 +489,8 @@ void createIOMThread (uint iomNum)
     sprintf (nm, "IOM %c", 'a' + iomNum);
 #ifndef __FreeBSD__
     pthread_setname_np (p->iomThread, nm);
+#else
+    pthread_set_name_np (p->cpuThread, nm);
 #endif
   }
 
@@ -641,6 +646,8 @@ void createChnThread (uint iomNum, uint chnNum, const char * devTypeStr)
     sprintf (nm, "chn %c/%u %s", 'a' + iomNum, chnNum, devTypeStr);
 #ifndef __FreeBSD__
     pthread_setname_np (p->chnThread, nm);
+#else
+    pthread_set_name_np (p->cpuThread, nm);
 #endif
   }
 
