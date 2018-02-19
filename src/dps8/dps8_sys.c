@@ -74,7 +74,7 @@
 // Building with SCUMEM defined puts the memory in the SCUs.
 
 #ifndef SCUMEM
-word36 vol * M = NULL;                                          // memory
+vol word36 * M = NULL;                                          // memory
 #endif
 
 #ifdef TEST_OLIN

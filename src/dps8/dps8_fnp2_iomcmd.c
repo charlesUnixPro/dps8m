@@ -57,7 +57,7 @@ static inline void fnp_core_read_n (word24 addr, word36 *data, uint n, UNUSED co
 #endif
 
 #ifdef THREADZ
-static inline void l_putbits36_1 (word36 vol * x, uint p, word1 val)
+static inline void l_putbits36_1 (vol word36 * x, uint p, word1 val)
 {
     const int n = 1;
     int shift = 36 - (int) p - (int) n;
@@ -127,9 +127,9 @@ struct decoded_t
     uint devUnitIdx;
     uint op_code;
     uint slot_no;
-    struct dn355_submailbox vol * smbxp;
-    struct fnp_submailbox vol * fsmbxp;
-    struct mailbox vol * mbxp;
+    vol struct dn355_submailbox * smbxp;
+    vol struct fnp_submailbox * fsmbxp;
+    vol struct mailbox * mbxp;
     struct fnpUnitData * fudp;
     iom_chan_data_t * p;
     uint cell;
@@ -1651,9 +1651,9 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
     word24 offset;
     int scuUnitNum =  query_IOM_SCU_bank_map (iomUnitIdx, decoded.fudp->mailboxAddress, & offset);
     uint scuUnitIdx = cables->iom_to_scu[iomUnitIdx][scuUnitNum].scu_unit_idx;
-    decoded.mbxp = (struct mailbox vol *) & scu [scuUnitIdx].M [decoded.fudp->mailboxAddress];
+    decoded.mbxp = (vol struct mailbox *) & scu [scuUnitIdx].M [decoded.fudp->mailboxAddress];
 #else
-    decoded.mbxp = (struct mailbox vol *) & M [decoded.fudp -> mailboxAddress];
+    decoded.mbxp = (vol struct mailbox *) & M [decoded.fudp -> mailboxAddress];
 #endif
     word36 dia_pcw = decoded.mbxp -> dia_pcw;
 
@@ -1769,7 +1769,7 @@ static void processMBX (uint iomUnitIdx, uint chan)
 // mailbox and 7 Channel mailboxes."
 
     bool ok = true;
-    struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr ((int) fnp_unit_idx, fudp->mailboxAddress);
+    vol struct mailbox * mbxp = (vol struct mailbox *) fnp_M_addr ((int) fnp_unit_idx, fudp->mailboxAddress);
 
     word36 dia_pcw;
     dia_pcw = mbxp -> dia_pcw;
