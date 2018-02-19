@@ -135,7 +135,7 @@ void cpuRunningWait (void);
 unsigned long sleepCPU (unsigned long usec);
 void wakeCPU (uint cpuNum);
 
-#ifdef IO_TRHEADZ
+#ifdef IO_THREADZ
 // IOM threads
 
 struct iomThreadz_t
