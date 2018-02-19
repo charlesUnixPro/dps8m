@@ -1408,16 +1408,8 @@ t_stat sim_instr (void)
         for (uint cpu_idx = 0; cpu_idx < cpu_dev.numunits; cpu_idx ++)
           {
             createCPUThread (cpu_idx);
-            //setCPURun (cpu_idx, false);
-            //cpuRdyWait (cpu_idx);
-            //setCPURun (cpu_idx, true);
           }
-
       }
-
-    setCPURun (0, true);
-    //for (uint cpu_idx = 0; cpu_idx < N_CPU_UNITS_MAX; cpu_idx ++)
-      //setCPURun (cpu_idx, cpu_idx < cpu_dev.numunits);
 
     do
       {
@@ -2312,7 +2304,12 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                       }
                     cpu.rTR = (cpu.rTR - ticks) & MASK27;
 #else // !NO_TIMEWAIT
-                    unsigned long left = sleepCPU (cpu.rTR * 125u / 64u);
+		    unsigned long left = cpu.rTR * 125u / 64u;
+		    lock_scu();
+		    if (!sample_interrupts()) {
+		        left = sleepCPU (left);
+		    }
+		    unlock_scu();
                     if (left)
                       {
                         cpu.rTR = (word27) (left * 64 / 125);

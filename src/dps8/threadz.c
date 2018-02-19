@@ -179,13 +179,13 @@ void unlock_mem_force (void)
 
 // SCU serializer
 
-static pthread_spinlock_t scu_lock;
+static pthread_mutex_t scu_lock;
 
 void lock_scu (void)
   {
     //sim_debug (DBG_TRACE, & cpu_dev, "lock_scu\n");
     int rc;
-    rc = pthread_spin_lock (& scu_lock);
+    rc = pthread_mutex_lock (& scu_lock);
     if (rc)
       sim_printf ("lock_scu pthread_spin_lock scu %d\n", rc);
   }
@@ -194,7 +194,7 @@ void unlock_scu (void)
   {
     //sim_debug (DBG_TRACE, & cpu_dev, "unlock_scu\n");
     int rc;
-    rc = pthread_spin_unlock (& scu_lock);
+    rc = pthread_mutex_unlock (& scu_lock);
     if (rc)
       sim_printf ("unlock_scu pthread_spin_lock scu %d\n", rc);
   }
@@ -306,13 +306,10 @@ void createCPUThread (uint cpuNum)
     rc = pthread_cond_init (& p->runCond, NULL);
     if (rc)
       sim_printf ("createCPUThread pthread_cond_init runCond %d\n", rc);
-    p->run = false;
-    //p->ready = false;
+
+    p->run = (cpuNum == 0);
 
     // initialize DIS sleep
-    rc = pthread_mutex_init (& p->sleepLock, NULL);
-    if (rc)
-      sim_printf ("createCPUThread pthread_mutex_init sleepLock %d\n", rc);
     rc = pthread_cond_init (& p->sleepCond, NULL);
     if (rc)
       sim_printf ("createCPUThread pthread_cond_init sleepCond %d\n", rc);
@@ -391,20 +388,13 @@ unsigned long  sleepCPU (unsigned long usec)
     abstime.tv_nsec += (long int) usec * 1000;
     abstime.tv_sec += abstime.tv_nsec / 1000000000;
     abstime.tv_nsec %= 1000000000;
-    rc = pthread_mutex_lock (& p->sleepLock);
-    if (rc)
-      sim_printf ("sleepCPU pthread_mutex_lock %d\n", rc);
+
     rc = pthread_cond_timedwait (& p->sleepCond,
                                  & p->sleepLock,
                                  & abstime);
     if (rc && rc != ETIMEDOUT)
       sim_printf ("sleepCPU pthread_cond_timedwait %d\n", rc);
-    bool timeout = rc == ETIMEDOUT;
-    rc = pthread_mutex_unlock (& p->sleepLock);
-    if (rc)
-      sim_printf ("sleepCPU pthread_mutex_unlock %d\n", rc);
-    //sim_printf ("pthread_cond_timedwait %lu %d\n", nsec, n);
-    if (timeout)
+    if (rc == ETIMEDOUT)
       return 0;
     struct timespec newtime, delta;
     clock_gettime (CLOCK_REALTIME, & newtime);
@@ -420,16 +410,10 @@ void wakeCPU (uint cpuNum)
   {
     int rc;
     struct cpuThreadz_t * p = & cpuThreadz[cpuNum];
-    rc = pthread_mutex_lock (& p->sleepLock);
-    if (rc)
-      sim_printf ("wakeCPU pthread_mutex_lock %d\n", rc);
-    //p->run = run;
+
     rc = pthread_cond_signal (& p->sleepCond);
     if (rc)
       sim_printf ("wakeCPU pthread_cond_signal %d\n", rc);
-    rc = pthread_mutex_unlock (& p->sleepLock);
-    if (rc)
-      sim_printf ("wakeCPU pthread_mutex_unlock %d\n", rc);
   }
 
 #ifdef IO_THREADZ
@@ -740,7 +724,7 @@ void initThreadz (void)
     have_mem_lock = false;
     have_rmw_lock = false;
 
-    pthread_spin_init (& scu_lock, PTHREAD_PROCESS_PRIVATE);
+    pthread_mutex_init (& scu_lock, PTHREAD_PROCESS_PRIVATE);
     pthread_spin_init (& iom_lock, PTHREAD_PROCESS_PRIVATE);
   }
 
