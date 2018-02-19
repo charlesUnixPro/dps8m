@@ -394,7 +394,7 @@ unsigned long  sleepCPU (unsigned long usec)
     abstime.tv_nsec %= 1000000000;
 
     rc = pthread_cond_timedwait (& p->sleepCond,
-                                 & p->sleepLock,
+                                 & scu_lock,
                                  & abstime);
     if (rc && rc != ETIMEDOUT)
       sim_printf ("sleepCPU pthread_cond_timedwait %d\n", rc);
@@ -478,7 +478,7 @@ void createIOMThread (uint iomNum)
 #ifndef __FreeBSD__
     pthread_setname_np (p->iomThread, nm);
 #else
-    pthread_set_name_np (p->cpuThread, nm);
+    pthread_set_name_np (p->iomThread, nm);
 #endif
   }
 
@@ -635,7 +635,7 @@ void createChnThread (uint iomNum, uint chnNum, const char * devTypeStr)
 #ifndef __FreeBSD__
     pthread_setname_np (p->chnThread, nm);
 #else
-    pthread_set_name_np (p->cpuThread, nm);
+    pthread_set_name_np (p->chnThread, nm);
 #endif
   }
 
