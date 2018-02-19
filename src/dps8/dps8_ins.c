@@ -1982,7 +1982,11 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
 #endif
 #ifdef LOCKLESS
 	if ((ci->info->flags & RMW) == RMW)
-	  core_write_unlock (cpu.iefpFinalAddress, cpu.CY, __func__);
+	  {
+	      if (operand_size() != 1)
+		  sim_warn("executeInstruction: operand_size!= 1\n");
+	      core_write_unlock (cpu.iefpFinalAddress, cpu.CY, __func__);
+         }
 	else
 	  writeOperands ();
 #else

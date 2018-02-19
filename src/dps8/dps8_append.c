@@ -999,7 +999,9 @@ static void fetchPTW (sdw_s *sdw, word18 offset)
     cpu.PTW0.FC = PTWx2 & 3;
 
     // ISOLTS-861 02
+#ifndef LOCKLESS
     if (! cpu.PTW0.U)
+#endif
       {
         PTWx2 = SETBIT (PTWx2, 9);
 #ifdef LOCKLESS
@@ -1009,12 +1011,6 @@ static void fetchPTW (sdw_s *sdw, word18 offset)
 #endif
         cpu.PTW0.U = 1;
       }
-#ifdef LOCKLESS
-    else
-      {
-        core_unlock ((sdw->ADDR + x2) & PAMASK, PTWx2, __func__);
-      }
-#endif
     
 #ifdef TEST_FENCE
     fence ();
@@ -2184,7 +2180,11 @@ HI:
       {
 #ifdef LOCKLESS
 	if (thisCycle == OPERAND_RMW || thisCycle == APU_DATA_RMW)
-	  core_read_lock (finalAddress, data, strPCT (thisCycle));
+	  {
+	    if (operand_size() != 1)
+	      sim_warn("doAppend operand size !=1\n");
+	    core_read_lock (finalAddress, data, strPCT (thisCycle));
+	  }
 	else
 	  core_readN (finalAddress, data, nWords, strPCT (thisCycle));
 #else

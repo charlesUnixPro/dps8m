@@ -2906,7 +2906,8 @@ int32 core_read_lock (word24 addr, word36 *data, const char * ctx)
       core_unlock_all();
     }
     cpu.locked_addr = addr;
-    *data = M[addr] & DMASK;
+    __storeload_barrier();
+    *data = atomic_load_acq_64(&M[addr]) & DMASK;
     return 0;
 }
 #endif
@@ -2979,28 +2980,15 @@ int core_write (word24 addr, word36 data, const char * ctx)
 #ifdef LOCKLESS
 int core_write_unlock (word24 addr, word36 data, const char * ctx)
 {
-    if (cpu.locked_addr == addr)
-      cpu.locked_addr = 0;
-    else
+    if (cpu.locked_addr != addr)
       {
        sim_warn ("core_write_unlock: locked %x addr %x\n", cpu.locked_addr, addr);
        core_unlock_all();
       }
       
-    M[addr] = data & DMASK;
-    return 0;
-}
-
-int core_unlock (word24 addr, word36 data, const char * ctx)
-{
-    if (cpu.locked_addr == addr)
-      cpu.locked_addr = 0;
-    else
-      {
-       sim_warn ("core_unlock: locked %x addr %x\n", cpu.locked_addr, addr);
-       core_unlock_all();
-      }
-    atomic_testandclear_64(&M[addr], MEM_LOCKED_BIT);
+    __storeload_barrier();
+    atomic_store_rel_64(&M[addr], data & DMASK);
+    cpu.locked_addr = 0;
     return 0;
 }
 
@@ -3008,7 +2996,8 @@ int core_unlock_all ()
 {
   if (cpu.locked_addr != 0) {
       sim_warn ("core_unlock_all: locked %x\n", cpu.locked_addr);
-      atomic_testandclear_64(&M[cpu.locked_addr], MEM_LOCKED_BIT);
+      __storeload_barrier();
+      atomic_store_rel_64(&M[cpu.locked_addr], M[cpu.locked_addr] & DMASK);
       cpu.locked_addr = 0;
   }
   return 0;

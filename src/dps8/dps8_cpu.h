@@ -2155,7 +2155,6 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx);
 #ifdef LOCKLESS
 int core_read_lock (word24 addr, word36 *data, const char * ctx);
 int core_write_unlock (word24 addr, word36 data, const char * ctx);
-int core_unlock (word24 addr, word36 data, const char * ctx);
 int core_unlock_all();
 #endif
 
