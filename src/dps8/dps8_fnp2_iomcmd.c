@@ -1376,8 +1376,11 @@ sim_printf ("']\n");
     // So apparently a flag indicating that there is output queued.
     word1 output_chain_present = 1;
 
-    l_putbits36_1 (& p->command_data, 16, output_chain_present);
-    l_putbits36_1 (& p->command_data, 17, linep->input_break ? 1 : 0);
+    word36 v;
+    fnp_core_read_lock ((int)iomUnitIdx, &p->command_data, &v, __func__);
+    l_putbits36_1 (& v, 16, output_chain_present);
+    l_putbits36_1 (& v, 17, linep->input_break ? 1 : 0);
+    fnp_core_write_unlock((int)iomUnitIdx, &p->command_data, v, __func__);
 
     // Mark the line as ready to receive more data
     linep->input_reply_pending = false;

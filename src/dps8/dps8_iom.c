@@ -226,6 +226,9 @@
 #if defined(THREADZ) || defined(LOCKLESS)
 #include "threadz.h"
 #endif
+#if defined(LOCKLESS) && defined(__FreeBSD__)
+#include <machine/atomic.h>
+#endif
 
 #define DBG_CTR 1
 
@@ -521,7 +524,11 @@ void iom_core_read (UNUSED uint iom_unit_idx, word24 addr, word36 *data, UNUSED 
     lock_mem_rd ();
 #endif
 #endif
+#ifdef LOCKLESS
+    * data = atomic_load_acq_64(&M[addr]) & DMASK;
+#else
     * data = M[addr] & DMASK;
+#endif
 #ifdef THREADZ
 #ifdef lockread
     unlock_mem ();
@@ -536,8 +543,13 @@ void iom_core_read2 (UNUSED uint iom_unit_idx, word24 addr, word36 *even, word36
     lock_mem_rd ();
 #endif
 #endif
+#ifdef LOCKLESS
+    * even = atomic_load_acq_64(&M[addr]) & DMASK; addr++;
+    * odd = atomic_load_acq_64(&M[addr]) & DMASK;
+#else
     * even = M[addr ++] & DMASK;
     * odd =  M[addr]    & DMASK;
+#endif
 #ifdef THREADZ
 #ifdef lockread
     unlock_mem ();
@@ -552,7 +564,11 @@ void iom_core_write (UNUSED uint iom_unit_idx, word24 addr, word36 data, UNUSED 
     lock_mem_wr ();
 #endif
 #endif
+#ifdef LOCKLESS
+    atomic_store_rel_64(&M[addr], data & DMASK);
+#else
     M[addr] = data & DMASK;
+#endif
 #ifdef THREADZ
 #ifdef lockread
     unlock_mem ();
@@ -567,13 +583,41 @@ void iom_core_write2 (UNUSED uint iom_unit_idx, word24 addr, word36 even, word36
     lock_mem_wr ();
 #endif
 #endif
+    #ifdef LOCKLESS
+    atomic_store_rel_64(&M[addr], even & DMASK); addr++;
+    atomic_store_rel_64(&M[addr], odd & DMASK);
+#else
     M[addr ++] = even;
     M[addr] =    odd;
+#endif
 #ifdef THREADZ
 #ifdef lockread
     unlock_mem ();
 #endif
 #endif
+  }
+#endif
+
+#ifdef LOCKLESS
+#define MEM_LOCKED_BIT    61
+
+void iom_core_read_lock (UNUSED uint iom_unit_idx, word24 addr, word36 *data, UNUSED const char * ctx)
+  {
+    int i = 1000000000;
+    while ( atomic_testandset_64(&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
+      i--;
+    }
+    if (i == 0) {
+      sim_warn ("iom_core_read_lock: locked %x addr %x deadlock\n", cpu.locked_addr, addr);
+    }
+    __storeload_barrier();
+    * data = atomic_load_acq_64(&M[addr]) & DMASK;
+  }
+
+void iom_core_write_unlock (UNUSED uint iom_unit_idx, word24 addr, word36 data, UNUSED const char * ctx)
+  {
+    __storeload_barrier();
+    atomic_store_rel_64(&M[addr], data & DMASK);
   }
 #endif
 
@@ -2306,7 +2350,7 @@ static int send_general_interrupt (uint iom_unit_idx, uint chan, enum iomImwPics
                __func__, 'A' + iom_unit_idx, chan, chan, pic, interrupt_num, 
                interrupt_num);
     word36 imw;
-    iom_core_read (iom_unit_idx, imw_addr, &imw, __func__);
+    iom_core_read_lock (iom_unit_idx, imw_addr, &imw, __func__);
     // The 5 least significant bits of the channel determine a bit to be
     // turned on.
     sim_debug (DBG_DEBUG, & iom_dev, 
@@ -2315,7 +2359,7 @@ static int send_general_interrupt (uint iom_unit_idx, uint chan, enum iomImwPics
     putbits36_1 (& imw, chan_in_group, 1);
     sim_debug (DBG_INFO, & iom_dev, 
                "%s: IMW at %#o now %012"PRIo64"\n", __func__, imw_addr, imw);
-    iom_core_write (iom_unit_idx, imw_addr, imw, __func__);
+    iom_core_write_unlock (iom_unit_idx, imw_addr, imw, __func__);
     
 #ifdef THREADZ
     unlock_mem ();
@@ -2386,12 +2430,12 @@ static void iom_fault (uint iom_unit_idx, uint chan, UNUSED const char * who,
     send_general_interrupt (iom_unit_idx, 1, imwSystemFaultPic);
 
     word36 ddcw;
-    iom_core_read (iom_unit_idx, mbx, & ddcw, __func__);
+    iom_core_read_lock (iom_unit_idx, mbx, & ddcw, __func__);
     // incr addr
     putbits36_18 (& ddcw, 0, (getbits36_18 (ddcw, 0) + 1u) & MASK18);
     // decr tally
     putbits36_12 (& ddcw, 24, (getbits36_12 (ddcw, 24) - 1u) & MASK12);
-    iom_core_write (iom_unit_idx, mbx, ddcw, __func__);
+    iom_core_write_unlock (iom_unit_idx, mbx, ddcw, __func__);
 
 #ifdef THREADZ
     unlock_mem ();
