@@ -1871,7 +1871,7 @@ void unlock_mem (void);
 #endif
 #endif // ! THREADZ
 
-#ifdef SPEED
+#if defined(SPEED) && defined(INLINE_CORE)
 // Ugh. Circular dependencies XXX
 void doFault (_fault faultNumber, _fault_subtype faultSubtype, 
               const char * faultMsg) NO_RETURN;
