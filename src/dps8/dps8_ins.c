@@ -1820,9 +1820,12 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                          & MASK18;
 #endif
 
-            if (!restart)
+// Fix tst880: 'call6 pr1|0'. The instruction does a DF1; the fault handler
+// updates PRR in the CU save data. On restart, TRR is not updated. 
+// Removing the 'if' appears to resolve the problem without regressions.
+            //if (!restart)
               {
-// Not EIS, bit 29 set, restart
+// Not EIS, bit 29 set, !restart
                 cpu.TPR.TBR = GET_PR_BITNO (n);
 
                 cpu.TPR.TSR = cpu.PAR[n].SNR;
@@ -1834,7 +1837,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            n, offset, cpu.TPR.CA, cpu.TPR.TBR, 
                            cpu.TPR.TSR, cpu.TPR.TRR);
                 cpu.cu.XSF = 1;
-sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction EIS sets XSF to %o\n", cpu.cu.XSF);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction !restart !EIS sets XSF to %o\n", cpu.cu.XSF);
                 //set_went_appending ();
             }
 
