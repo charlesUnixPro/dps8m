@@ -295,27 +295,27 @@ inline void fnp_core_read_lock (UNUSED int fnp_unit_idx, vol word36 *M_addr, wor
   {
     int i = 1000000000;
     word24 addr = (word24)(M_addr - M);
-    while ( atomic_testandset_64(&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
+    while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
       i--;
     }
     if (i == 0) {
       sim_warn ("fnp_core_read_lock: locked %x addr %x deadlock\n", cpu.locked_addr, addr);
     }
     __storeload_barrier();
-    * data = atomic_load_acq_64(&M[addr]) & DMASK;
+    * data = atomic_load_acq_64((volatile u_long *)&M[addr]) & DMASK;
   }
 
 inline void fnp_core_write (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 data, UNUSED const char * ctx)
   {
     word24 addr = (word24)(M_addr - M);
     __storeload_barrier();
-    atomic_store_rel_64(&M[addr], data & DMASK);
+    atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);
   }
 
 inline void fnp_core_write_unlock (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 data, UNUSED const char * ctx)
   {
     word24 addr = (word24)(M_addr - M);
     __storeload_barrier();
-    atomic_store_rel_64(&M[addr], data & DMASK);
+    atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);
   }
 #endif

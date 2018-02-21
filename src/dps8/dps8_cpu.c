@@ -2860,6 +2860,7 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
                     * data, ctx);
       }
 #else
+#ifndef LOCKLESS
     if (M[addr] & MEM_UNINITIALIZED)
       {
         sim_debug (DBG_WARN, & cpu_dev,
@@ -2867,6 +2868,7 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
                    "IC is 0%06o:0%06o (%s(\n",
                    addr, cpu.PPR.PSR, cpu.PPR.IC, ctx);
       }
+#endif
 #ifndef SPEED
     if (watch_bits [addr])
       {
@@ -2877,10 +2879,18 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
         traceInstruction (0);
       }
 #endif
-
+#ifdef LOCKLESS
+    word36 v;
+    __storeload_barrier();
+    v = atomic_load_acq_64((volatile u_long *)&M[addr]);
+    if (v & MEM_LOCKED)
+      sim_warn ("core_read: addr %x was locked\n", addr);
+    *data = v & DMASK;
+#else
     LOCK_MEM_RD;
     *data = M[addr] & DMASK;
     UNLOCK_MEM;
+#endif
 
 #endif
 #ifdef TR_WORK_MEM
@@ -2898,7 +2908,7 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
 int32 core_read_lock (word24 addr, word36 *data, const char * ctx)
 {
     int i = 1000000000;
-    while ( atomic_testandset_64(&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
+    while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
       //sim_warn ("core_read_lock: locked addr %x\n", addr);
       i--;
     }
@@ -2911,7 +2921,7 @@ int32 core_read_lock (word24 addr, word36 *data, const char * ctx)
     }
     cpu.locked_addr = addr;
     __storeload_barrier();
-    *data = atomic_load_acq_64(&M[addr]) & DMASK;
+    *data = atomic_load_acq_64((volatile u_long *)&M[addr]) & DMASK;
     return 0;
 }
 #endif
@@ -2961,9 +2971,22 @@ int core_write (word24 addr, word36 data, const char * ctx)
                     scu[sci_unit_idx].M[offset], ctx);
       }
 #else
+#ifdef LOCKLESS
+    int i = 1000000000;
+    while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
+      //sim_warn ("core_read_lock: locked addr %x\n", addr);
+      i--;
+    }
+    if (i == 0) {
+      sim_warn ("core_write: locked %x addr %x deadlock\n", cpu.locked_addr, addr);
+    }
+    __storeload_barrier();
+    atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);
+#else
     LOCK_MEM_WR;
     M[addr] = data & DMASK;
     UNLOCK_MEM;
+#endif
 #ifndef SPEED
     if (watch_bits [addr])
       {
@@ -2995,7 +3018,7 @@ int core_write_unlock (word24 addr, word36 data, const char * ctx)
       }
       
     __storeload_barrier();
-    atomic_store_rel_64(&M[addr], data & DMASK);
+    atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);
     cpu.locked_addr = 0;
     return 0;
 }
@@ -3005,7 +3028,7 @@ int core_unlock_all ()
   if (cpu.locked_addr != 0) {
       sim_warn ("core_unlock_all: locked %x\n", cpu.locked_addr);
       __storeload_barrier();
-      atomic_store_rel_64(&M[cpu.locked_addr], M[cpu.locked_addr] & DMASK);
+      atomic_store_rel_64((volatile u_long *)&M[cpu.locked_addr], M[cpu.locked_addr] & DMASK);
       cpu.locked_addr = 0;
   }
   return 0;
@@ -3059,9 +3082,16 @@ int core_write_zone (word24 addr, word36 data, const char * ctx)
                     scu[sci_unit_idx].M[offset], ctx);
       }
 #else
+#ifdef LOCKLESS
+    word36 v;
+    core_read_lock(addr,  &v, ctx);
+    v = (v & ~cpu.zone) | (data & cpu.zone);
+    core_write_unlock(addr, v, ctx);
+#else
     LOCK_MEM_WR;
     M[addr] = (M[addr] & ~cpu.zone) | (data & cpu.zone);
     UNLOCK_MEM;
+#endif
     cpu.useZone = false; // Safety
 #ifndef SPEED
     if (watch_bits [addr])
@@ -3160,6 +3190,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
                "core_read2 %08o %012"PRIo64" (%s)\n",
                 addr+1, * odd, ctx);
 #else
+#ifndef LOCKLESS
     if (M[addr] & MEM_UNINITIALIZED)
       {
         sim_debug (DBG_WARN, & cpu_dev,
@@ -3167,6 +3198,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
                    "IC is 0%06o:0%06o (%s)\n",
                    addr, cpu.PPR.PSR, cpu.PPR.IC, ctx);
       }
+#endif
 #ifndef SPEED
     if (watch_bits [addr])
       {
@@ -3176,15 +3208,26 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
         traceInstruction (0);
       }
 #endif
+#ifdef LOCKLESS
+    word36 v;
+    __storeload_barrier();
+    v = atomic_load_acq_64((volatile u_long *)&M[addr]);
+    if (v & MEM_LOCKED)
+      sim_warn ("core_read2: even addr %x was locked\n", addr);
+    *even = v & DMASK;
+    addr++;
+#else
     LOCK_MEM_RD;
     *even = M[addr++] & DMASK;
     UNLOCK_MEM;
+#endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012"PRIo64" (%s)\n",
                 addr - 1, * even, ctx);
 
     // if the even address is OK, the odd will be
     //nem_check (addr,  "core_read2 nem");
+#ifndef LOCKLESS
     if (M[addr] & MEM_UNINITIALIZED)
       {
         sim_debug (DBG_WARN, & cpu_dev,
@@ -3192,6 +3235,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
                    "IC is 0%06o:0%06o (%s)\n",
                     addr, cpu.PPR.PSR, cpu.PPR.IC, ctx);
       }
+#endif
 #ifndef SPEED
     if (watch_bits [addr])
       {
@@ -3201,10 +3245,17 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
         traceInstruction (0);
       }
 #endif
-
+#ifdef LOCKLESS
+    __storeload_barrier();
+    v = atomic_load_acq_64((volatile u_long *)&M[addr]);
+    if (v & MEM_LOCKED)
+      sim_warn ("core_read2: odd addr %x was locked\n", addr);
+    *odd = v & DMASK;
+#else
     LOCK_MEM_RD;
     *odd = M[addr] & DMASK;
     UNLOCK_MEM;
+#endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012"PRIo64" (%s)\n",
                 addr, * odd, ctx);
@@ -3286,9 +3337,23 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
         traceInstruction (0);
       }
 #endif
+#ifdef LOCKLESS
+    int i = 1000000000;
+    while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
+      //sim_warn ("core_read_lock: locked addr %x\n", addr);
+      i--;
+    }
+    if (i == 0) {
+      sim_warn ("core_write2: even locked %x addr %x deadlock\n", cpu.locked_addr, addr);
+    }
+    __storeload_barrier();
+    atomic_store_rel_64((volatile u_long *)&M[addr], even & DMASK);
+    addr++;
+#else
     LOCK_MEM_WR;
     M[addr++] = even & DMASK;
     UNLOCK_MEM;
+#endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write2 %08o %012"PRIo64" (%s)\n",
                 addr - 1, even, ctx);
@@ -3305,9 +3370,23 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
         traceInstruction (0);
       }
 #endif
+#ifdef LOCKLESS
+    i = 1000000000;
+    while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
+      //sim_warn ("core_read_lock: locked addr %x\n", addr);
+      i--;
+    }
+    if (i == 0) {
+      sim_warn ("core_write2: odd locked %x addr %x deadlock\n", cpu.locked_addr, addr);
+    }
+    __storeload_barrier();
+    atomic_store_rel_64((volatile u_long *)&M[addr], odd & DMASK);
+    addr++;
+#else
     LOCK_MEM_WR;
     M[addr] = odd & DMASK;
     UNLOCK_MEM;
+#endif
 #endif
 #ifdef TR_WORK_MEM
     cpu.rTRticks ++;

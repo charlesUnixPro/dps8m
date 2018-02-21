@@ -525,7 +525,7 @@ void iom_core_read (UNUSED uint iom_unit_idx, word24 addr, word36 *data, UNUSED 
 #endif
 #endif
 #ifdef LOCKLESS
-    * data = atomic_load_acq_64(&M[addr]) & DMASK;
+    * data = atomic_load_acq_64((volatile u_long *)&M[addr]) & DMASK;
 #else
     * data = M[addr] & DMASK;
 #endif
@@ -544,8 +544,8 @@ void iom_core_read2 (UNUSED uint iom_unit_idx, word24 addr, word36 *even, word36
 #endif
 #endif
 #ifdef LOCKLESS
-    * even = atomic_load_acq_64(&M[addr]) & DMASK; addr++;
-    * odd = atomic_load_acq_64(&M[addr]) & DMASK;
+    * even = atomic_load_acq_64((volatile u_long *)&M[addr]) & DMASK; addr++;
+    * odd = atomic_load_acq_64((volatile u_long *)&M[addr]) & DMASK;
 #else
     * even = M[addr ++] & DMASK;
     * odd =  M[addr]    & DMASK;
@@ -565,7 +565,7 @@ void iom_core_write (UNUSED uint iom_unit_idx, word24 addr, word36 data, UNUSED 
 #endif
 #endif
 #ifdef LOCKLESS
-    atomic_store_rel_64(&M[addr], data & DMASK);
+    atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);
 #else
     M[addr] = data & DMASK;
 #endif
@@ -584,8 +584,8 @@ void iom_core_write2 (UNUSED uint iom_unit_idx, word24 addr, word36 even, word36
 #endif
 #endif
     #ifdef LOCKLESS
-    atomic_store_rel_64(&M[addr], even & DMASK); addr++;
-    atomic_store_rel_64(&M[addr], odd & DMASK);
+    atomic_store_rel_64((volatile u_long *)&M[addr], even & DMASK); addr++;
+    atomic_store_rel_64((volatile u_long *)&M[addr], odd & DMASK);
 #else
     M[addr ++] = even;
     M[addr] =    odd;
@@ -604,20 +604,20 @@ void iom_core_write2 (UNUSED uint iom_unit_idx, word24 addr, word36 even, word36
 void iom_core_read_lock (UNUSED uint iom_unit_idx, word24 addr, word36 *data, UNUSED const char * ctx)
   {
     int i = 1000000000;
-    while ( atomic_testandset_64(&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
+    while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
       i--;
     }
     if (i == 0) {
       sim_warn ("iom_core_read_lock: locked %x addr %x deadlock\n", cpu.locked_addr, addr);
     }
     __storeload_barrier();
-    * data = atomic_load_acq_64(&M[addr]) & DMASK;
+    * data = atomic_load_acq_64((volatile u_long *)&M[addr]) & DMASK;
   }
 
 void iom_core_write_unlock (UNUSED uint iom_unit_idx, word24 addr, word36 data, UNUSED const char * ctx)
   {
     __storeload_barrier();
-    atomic_store_rel_64(&M[addr], data & DMASK);
+    atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);
   }
 #endif
 
