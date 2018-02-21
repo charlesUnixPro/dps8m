@@ -346,7 +346,7 @@ void updateIWB (word18 addr, word6 tag)
 //
 // CANFAULT
 
-void doComputedAddressFormation (void)
+void do_caf (void)
   {
 #ifdef CA_REWORK
     if (getbits36_1 (cpu.cu.IWB, 29) == 0)
@@ -1524,6 +1524,6 @@ startCA:;
         sim_printf ("IT_MOD/Td how did we get here?\n");
         return;
      } // IT_MOD
-  } // doComputedAddressFormation
+  } // do_caf
 
 
