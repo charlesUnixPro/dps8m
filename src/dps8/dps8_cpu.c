@@ -3891,7 +3891,7 @@ void add_APU_history (enum APUH_e op)
 #endif
 
 #if defined(THREADZ) || defined(LOCKLESS)
-static pthread_mutex_t debug_lock = PTHREAD_MUTEX_INITIALIZER;
+//static pthread_mutex_t debug_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static const char * get_dbg_verb (uint32 dbits, DEVICE * dptr)
   {
@@ -3920,7 +3920,7 @@ static const char * get_dbg_verb (uint32 dbits, DEVICE * dptr)
 
 void dps8_sim_debug (uint32 dbits, DEVICE * dptr, unsigned long long cnt, const char* fmt, ...)
   {
-    pthread_mutex_lock (& debug_lock);
+    //pthread_mutex_lock (& debug_lock);
     if (sim_deb && dptr && (dptr->dctrl & dbits))
       {
         const char * debug_type = get_dbg_verb (dbits, dptr);
@@ -3929,6 +3929,8 @@ void dps8_sim_debug (uint32 dbits, DEVICE * dptr, unsigned long long cnt, const 
         char * buf = stackbuf;
         va_list arglist;
         int32 i, j, len;
+	struct timespec t;
+	clock_gettime(CLOCK_REALTIME, &t);
 
         buf [bufsize-1] = '\0';
 
@@ -3970,7 +3972,7 @@ void dps8_sim_debug (uint32 dbits, DEVICE * dptr, unsigned long long cnt, const 
                   {
                     if ((i != j) || (i == 0))
                       {
-                          fprintf (sim_deb, "DBG(%lld) %o: %s %s %.*s\r\n", cnt, current_running_cpu_idx, dptr->name, debug_type, i-j, &buf[j]);
+			  fprintf (sim_deb, "%ld.%06ld: DBG(%lld) %o: %s %s %.*s\r\n", t.tv_sec, t.tv_nsec/1000, cnt, current_running_cpu_idx, dptr->name, debug_type, i-j, &buf[j]);
                       }
                   }
                 j = i + 1;
@@ -3982,6 +3984,6 @@ void dps8_sim_debug (uint32 dbits, DEVICE * dptr, unsigned long long cnt, const 
         if (buf != stackbuf)
           free (buf);
       }
-    pthread_mutex_unlock (& debug_lock);
+    //pthread_mutex_unlock (& debug_lock);
   }
 #endif
