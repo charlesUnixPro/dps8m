@@ -12,20 +12,18 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
-t_stat Read (word18 addr, word36 *dat, _processor_cycle_type cyctyp);
-t_stat Read2 (word18 addr, word36 *dat, _processor_cycle_type cyctyp);
-t_stat Write (word18 addr, word36 dat, _processor_cycle_type cyctyp);
-t_stat Write2 (word18 address, word36 * data, _processor_cycle_type cyctyp);
+void Read (word18 addr, word36 *dat, _processor_cycle_type cyctyp);
+void Read2 (word18 addr, word36 *dat, _processor_cycle_type cyctyp);
+void Write (word18 addr, word36 dat, _processor_cycle_type cyctyp);
+void Write2 (word18 address, word36 * data, _processor_cycle_type cyctyp);
 #ifdef CWO
-t_stat Write1 (word18 address, word36 data, bool isAR);
+void Write1 (word18 address, word36 data, bool isAR);
 #endif
-t_stat Write8 (word18 address, word36 * data, bool isAR);
-t_stat Write16 (word18 address, word36 * data);
-t_stat Write32 (word18 address, word36 * data);
-t_stat Read8 (word18 address, word36 * result, bool isAR);
-t_stat Read16 (word18 address, word36 * result);
-t_stat WritePage (word18 address, word36 * data, bool isAR);
-t_stat ReadPage (word18 address, word36 * result, bool isAR);
-t_stat ReadIndirect (void);
-void ReadTraOp (void);
-void ReadRTCDOp (void);
+void Write8 (word18 address, word36 * data, bool isAR);
+void Write16 (word18 address, word36 * data);
+void Write32 (word18 address, word36 * data);
+void Read8 (word18 address, word36 * result, bool isAR);
+void Read16 (word18 address, word36 * result);
+void WritePage (word18 address, word36 * data, bool isAR);
+void ReadPage (word18 address, word36 * result, bool isAR);
+void ReadIndirect (void);

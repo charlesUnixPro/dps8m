@@ -36,7 +36,7 @@
 
 // new Read/Write stuff ...
 
-t_stat Read (word18 address, word36 * result, _processor_cycle_type cyctyp)
+void Read (word18 address, word36 * result, _processor_cycle_type cyctyp)
   {
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
     bool isBAR = get_bar_mode ();
@@ -69,7 +69,7 @@ t_stat Read (word18 address, word36 * result, _processor_cycle_type cyctyp)
                            "Read (Actual) Read:       bar address=%08o  "
                            "readData=%012"PRIo64"\n", address, *result);
                 HDBGMRead (cpu.iefpFinalAddress, * result);
-                return SCPE_OK;
+                return;
               }
             else 
               {
@@ -87,7 +87,7 @@ t_stat Read (word18 address, word36 * result, _processor_cycle_type cyctyp)
                            "Read (Actual) Read:       abs address=%08o  "
                            "readData=%012"PRIo64"\n", address, *result);
                 HDBGMRead (address, * result);
-                return SCPE_OK;
+                return;
               }
           }
 
@@ -104,7 +104,7 @@ B29:;
                            cpu.iefpFinalAddress, * result);
                 HDBGMRead (cpu.iefpFinalAddress, * result);
 
-                return SCPE_OK;
+                return;
               }
             else 
               {
@@ -119,13 +119,13 @@ B29:;
                     HDBGMRead (cpu.iefpFinalAddress, * result);
                   }
               }
-            return SCPE_OK;
+            return;
           }
       }
-    return SCPE_UNK;
+    return ;//SCPE_UNK;
   }
 
-t_stat Read2 (word18 address, word36 * result, _processor_cycle_type cyctyp)
+void Read2 (word18 address, word36 * result, _processor_cycle_type cyctyp)
   {
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
 
@@ -162,7 +162,7 @@ t_stat Read2 (word18 address, word36 * result, _processor_cycle_type cyctyp)
                   }
                 HDBGMRead (cpu.iefpFinalAddress, * result);
                 HDBGMRead (cpu.iefpFinalAddress+1, * (result+1));
-                return SCPE_OK;
+                return;
               }
             else
               {
@@ -179,7 +179,7 @@ t_stat Read2 (word18 address, word36 * result, _processor_cycle_type cyctyp)
                   }
                 HDBGMRead (cpu.iefpFinalAddress, * result);
                 HDBGMRead (cpu.iefpFinalAddress+1, * (result+1));
-                return SCPE_OK;
+                return;
               }
           }
 
@@ -200,7 +200,7 @@ B29:;
                   }
                 HDBGMRead (cpu.iefpFinalAddress, * result);
                 HDBGMRead (cpu.iefpFinalAddress+1, * (result+1));
-                return SCPE_OK;
+                return;
               }
             else
               {
@@ -216,13 +216,13 @@ B29:;
                 HDBGMRead (cpu.iefpFinalAddress, * result);
                 HDBGMRead (cpu.iefpFinalAddress+1, * (result+1));
               }
-            return SCPE_OK;
+            return;
           }
       }
-    return SCPE_UNK;
+    return ;//SCPE_UNK;
   }
 
-t_stat Read8 (word18 address, word36 * result, bool isAR)
+void Read8 (word18 address, word36 * result, bool isAR)
   {
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
 
@@ -256,7 +256,7 @@ t_stat Read8 (word18 address, word36 * result, bool isAR)
                 for (uint i = 0; i < 8; i ++)
                   HDBGMRead (cpu.iefpFinalAddress + i, result [i]);
 #endif
-                return SCPE_OK;
+                return;
               }
             else
               {
@@ -275,7 +275,7 @@ t_stat Read8 (word18 address, word36 * result, bool isAR)
                 for (uint i = 0; i < 8; i ++)
                   HDBGMRead (address + i, result [i]);
 #endif
-                return SCPE_OK;
+                return;
               }
           }
 
@@ -298,7 +298,7 @@ B29:;
                 for (uint i = 0; i < 8; i ++)
                   HDBGMRead (cpu.iefpFinalAddress + i, result[i]);
 #endif
-                return SCPE_OK;
+                return;
               }
             else
               {
@@ -320,21 +320,21 @@ B29:;
 #endif
                   }
               }
-            return SCPE_OK;
+            return;
           }
       }
-    return SCPE_UNK;
+    return ;//SCPE_UNK;
   }
 
-t_stat Read16 (word18 address, word36 * result)
+void Read16 (word18 address, word36 * result)
   {
     address &= paragraphMask; // Round to 8 word boundary
     Read8 (address, result, false);
     Read8 (address + 8, result + 8, false);
-    return SCPE_OK;
+    return;
   }
 
-t_stat ReadPage (word18 address, word36 * result, bool isAR)
+void ReadPage (word18 address, word36 * result, bool isAR)
   {
     if ((address & PGMK) != 0)
       {
@@ -373,7 +373,7 @@ t_stat ReadPage (word18 address, word36 * result, bool isAR)
                 for (uint i = 0; i < PGSZ; i ++)
                   HDBGMRead (cpu.iefpFinalAddress + i, result [i]);
 #endif
-                return SCPE_OK;
+                return;
               }
             else
               {
@@ -392,7 +392,7 @@ t_stat ReadPage (word18 address, word36 * result, bool isAR)
                 for (uint i = 0; i < PGSZ; i ++)
                   HDBGMRead (address + i, result [i]);
 #endif
-                return SCPE_OK;
+                return;
               }
           }
 
@@ -417,7 +417,7 @@ B29:;
                   HDBGMRead (cpu.iefpFinalAddress + i, result [i]);
 #endif
 
-                return SCPE_OK;
+                return;
               }
             else
               {
@@ -440,13 +440,13 @@ B29:;
 #endif
                   }
               }
-            return SCPE_OK;
+            return;
           }
       }
-    return SCPE_UNK;
+    return ;//SCPE_UNK;
   }
 
-t_stat Write (word18 address, word36 data, _processor_cycle_type cyctyp)
+void Write (word18 address, word36 data, _processor_cycle_type cyctyp)
  {
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
 
@@ -478,7 +478,7 @@ t_stat Write (word18 address, word36 data, _processor_cycle_type cyctyp)
                            "Write(Actual) Write:      bar address=%08o "
                            "writeData=%012"PRIo64"\n", address, data);
                 HDBGMWrite (cpu.iefpFinalAddress, data);
-                return SCPE_OK;
+                return;
               }
             else
               {
@@ -497,7 +497,7 @@ t_stat Write (word18 address, word36 data, _processor_cycle_type cyctyp)
                            "writeData=%012"PRIo64"\n", 
                            address, data);
                 HDBGMWrite (address, data);
-                return SCPE_OK;
+                return;
               }
           }
 
@@ -513,7 +513,7 @@ B29:
                            "writeData=%012"PRIo64"\n",
                            cpu.iefpFinalAddress, data);
                 HDBGMWrite (cpu.iefpFinalAddress, data);
-                return SCPE_OK;
+                return;
               } 
             else 
               {
@@ -523,16 +523,16 @@ B29:
                            "writeData=%012"PRIo64"\n",
                            cpu.iefpFinalAddress, data);
                 HDBGMWrite (cpu.iefpFinalAddress, data);
-                return SCPE_OK;
+                return;
               }
           }
       }
     
-    return SCPE_UNK;
+    return ;//SCPE_UNK;
   }
 
 
-t_stat Write2 (word18 address, word36 * data, _processor_cycle_type cyctyp)
+void Write2 (word18 address, word36 * data, _processor_cycle_type cyctyp)
   {
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
     bool isBAR = get_bar_mode ();
@@ -601,11 +601,11 @@ B29:
           }
           break;
       }
-    return SCPE_UNK;
+    return ;//SCPE_UNK;
   }
 
 #ifdef CWO
-t_stat Write1 (word18 address, word36 data, bool isAR)
+void Write1 (word18 address, word36 data, bool isAR)
   {
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
     bool isBAR = get_bar_mode ();
@@ -626,7 +626,7 @@ t_stat Write1 (word18 address, word36 data, bool isAR)
                            "writeData=%012"PRIo64"\n", 
                            address, data);
                 HDBGMWrite (cpu.iefpFinalAddress, data);
-                return SCPE_OK;
+                return;
               }
             else
               {
@@ -638,7 +638,7 @@ t_stat Write1 (word18 address, word36 data, bool isAR)
                            "writeData=%012"PRIo64"\n",
                            address, data);
                 HDBGMWrite (address, data);
-                return SCPE_OK;
+                return;
               }
           }
 
@@ -654,7 +654,7 @@ B29:
                            "%08o writeData=%012"PRIo64"\n",
                            cpu.iefpFinalAddress, data);
                 HDBGMWrite (cpu.iefpFinalAddress, data);
-                return SCPE_OK;
+                return;
               }
             else
               {
@@ -664,15 +664,15 @@ B29:
                            "writeData=%012"PRIo64"\n",
                            cpu.iefpFinalAddress, data);
                 HDBGMWrite (cpu.iefpFinalAddress, data);
-                return SCPE_OK;
+                return;
               }
           }
       }
-    return SCPE_UNK;
+    return ;//SCPE_UNK;
   }
 #endif
 
-t_stat Write8 (word18 address, word36 * data, bool isAR)
+void Write8 (word18 address, word36 * data, bool isAR)
   {
     address &= paragraphMask; // Round to 8 word boundarryt
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
@@ -705,7 +705,7 @@ t_stat Write8 (word18 address, word36 * data, bool isAR)
                 for (uint i = 0; i < 8; i ++)
                   HDBGMWrite (cpu.iefpFinalAddress + i, data [i]);
 #endif
-                return SCPE_OK;
+                return;
               }
             else
               {
@@ -724,7 +724,7 @@ t_stat Write8 (word18 address, word36 * data, bool isAR)
                 for (uint i = 0; i < 8; i ++)
                   HDBGMWrite (address + i, data [i]);
 #endif
-                return SCPE_OK;
+                return;
               }
           }
 
@@ -748,7 +748,7 @@ B29:
                   HDBGMWrite (cpu.iefpFinalAddress + i, data [i]);
 #endif
         
-                return SCPE_OK;
+                return;
               }
             else
               {
@@ -766,22 +766,22 @@ B29:
                   HDBGMWrite (cpu.iefpFinalAddress + i, data [i]);
 #endif
         
-                return SCPE_OK;
+                return;
               }
           }
       }
-    return SCPE_UNK;
+    return ;//SCPE_UNK;
   }
 
-t_stat Write16 (word18 address, word36 * data)
+void Write16 (word18 address, word36 * data)
   {
     address &= paragraphMask; // Round to 8 word boundary
     Write8 (address, data, false);
     Write8 (address + 8, data + 8, false);
-    return SCPE_OK;
+    return;
   }
 
-t_stat Write32 (word18 address, word36 * data)
+void Write32 (word18 address, word36 * data)
   {
 //#define paragraphMask 077777770
     //address &= paragraphMask; // Round to 8 word boundary
@@ -790,10 +790,10 @@ t_stat Write32 (word18 address, word36 * data)
     Write8 (address + 8, data + 8, false);
     Write8 (address + 16, data + 16, false);
     Write8 (address + 24, data + 24, false);
-    return SCPE_OK;
+    return;
   }
 
-t_stat WritePage (word18 address, word36 * data, bool isAR)
+void WritePage (word18 address, word36 * data, bool isAR)
   {
     if ((address & PGMK) != 0)
       {
@@ -830,7 +830,7 @@ t_stat WritePage (word18 address, word36 * data, bool isAR)
                 for (uint i = 0; i < PGSZ; i ++)
                   HDBGMWrite (cpu.iefpFinalAddress + i, data [i]);
 #endif
-                return SCPE_OK;
+                return;
               }
             else
               {
@@ -849,7 +849,7 @@ t_stat WritePage (word18 address, word36 * data, bool isAR)
                 for (uint i = 0; i < PGSZ; i ++)
                   HDBGMWrite (address + i, data [i]);
 #endif
-                return SCPE_OK;
+                return;
               }
           }
 
@@ -870,7 +870,7 @@ B29:
                                  "\n",
                                  cpu.iefpFinalAddress + i, data [i]);
                   }
-                return SCPE_OK;
+                return;
               }
             else
               {
@@ -889,15 +889,15 @@ B29:
                   HDBGMWrite (cpu.iefpFinalAddress + i, data [i]);
 #endif
         
-                return SCPE_OK;
+                return;
               }
           }
       }
-    return SCPE_UNK;
+    return ;//SCPE_UNK;
   }
 
 
-t_stat ReadIndirect (void)
+void ReadIndirect (void)
   {
     if (cpu.TPR.CA & 1) // is odd?
       {
@@ -908,48 +908,6 @@ t_stat ReadIndirect (void)
       {
         Read2 (cpu.TPR.CA, cpu.itxPair, INDIRECT_WORD_FETCH);
       }
-    return SCPE_OK;
-  }
-
-void ReadTraOp (void)
-  {
-    //doComputedAddressFormation ();
-    Read (cpu.TPR.CA, &cpu.CY, OPERAND_READ);
-    if (! (get_addr_mode () == APPEND_mode || cpu.cu.TSN_VALID [0] ||
-           cpu.cu.XSF /*get_went_appending ()*/))
-      {
-        if (cpu.currentInstruction.info->flags & TSPN_INS)
-          {
-            word3 n;
-            if (cpu.currentInstruction.opcode <= 0273)
-              n = (cpu.currentInstruction.opcode & 3);
-            else
-              n = (cpu.currentInstruction.opcode & 3) + 4;
-
-            // C(PPR.PRR) -> C(PRn.RNR)
-            // C(PPR.PSR) -> C(PRn.SNR)
-            // C(PPR.IC) -> C(PRn.WORDNO)
-            // 000000 -> C(PRn.BITNO)
-            cpu.PR[n].RNR = cpu.PPR.PRR;
-// According the AL39, the PSR is 'undefined' in absolute mode.
-// ISOLTS thinks means don't change the operand
-            if (get_addr_mode () == APPEND_mode)
-              cpu.PR[n].SNR = cpu.PPR.PSR;
-            cpu.PR[n].WORDNO = (cpu.PPR.IC + 1) & MASK18;
-            SET_PR_BITNO (n, 0);
-            HDBGRegPR (n);
-          }
-        cpu.PPR.IC = cpu.TPR.CA;
-        // ISOLTS 870-02f
-        //cpu.PPR.PSR = 0;
-      }
-    sim_debug (DBG_TRACE, & cpu_dev, "ReadTraOp %05o:%06o\n",
-               cpu.PPR.PSR, cpu.PPR.IC);
-  }
-
-void ReadRTCDOp (void)
-  {
-    doComputedAddressFormation ();
-    Read2 (cpu.TPR.CA, cpu.Ypair, RTCD_OPERAND_FETCH);
+    return;
   }
 
