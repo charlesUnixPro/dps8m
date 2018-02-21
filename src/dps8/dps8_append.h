@@ -110,7 +110,6 @@ typedef enum apuStatusBits
 
 void setAPUStatus (apuStatusBits status);
 
-void doPtrReg (void);        ///< used by EIS stuff
 t_stat dumpSDWAM (void);
 word24 doAppendCycle (_processor_cycle_type thisCycle, 
                       word36 * data, uint nWords);

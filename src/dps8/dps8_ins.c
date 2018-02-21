@@ -93,8 +93,8 @@ static void writeOperands (void)
     DCDstruct * i = & cpu.currentInstruction;
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
-               "writeOperands (%s):mne=%s flags=%x\n",
-               disAssemble (buf, IWB_IRODD), i->info->mne, i->info->flags);
+               "%s (%s):mne=%s flags=%x\n",
+               __func__, disAssemble (buf, IWB_IRODD), i->info->mne, i->info->flags);
 
     PNL (cpu.prepare_state |= ps_RAW);
 
@@ -134,9 +134,9 @@ static void writeOperands (void)
         Write (cpu.ou.character_address, cpu.ou.character_data, OPERAND_STORE);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "writeOperands IT wrote char/byte %012"PRIo64" to %06o "
+                   "%s IT wrote char/byte %012"PRIo64" to %06o "
                    "tTB=%o tCF=%o\n",
-                   cpu.ou.character_data, cpu.ou.character_address,
+                   __func__, cpu.ou.character_data, cpu.ou.character_address,
                    cpu.ou.characterOperandSize, cpu.ou.characterOperandOffset);
 
         // Restore the CA; Read/Write() updates it.
@@ -158,10 +158,10 @@ static void readOperands (void)
     DCDstruct * i = & cpu.currentInstruction;
 
     sim_debug (DBG_ADDRMOD, &cpu_dev,
-               "readOperands (%s):mne=%s flags=%x\n",
-               disAssemble (buf, cpu.cu.IWB), i->info->mne, i->info->flags);
+               "%s (%s):mne=%s flags=%x\n",
+               __func__, disAssemble (buf, cpu.cu.IWB), i->info->mne, i->info->flags);
     sim_debug (DBG_ADDRMOD, &cpu_dev,
-              "readOperands a %d address %08o\n", i->b29, cpu.TPR.CA);
+              "%s a %d address %08o\n", __func__, i->b29, cpu.TPR.CA);
 
     PNL (cpu.prepare_state |= ps_POA);
 
@@ -180,7 +180,7 @@ static void readOperands (void)
         cpu.CY = 0;
         SETHI (cpu.CY, cpu.TPR.CA);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands DU CY=%012"PRIo64"\n", cpu.CY);
+                   "%s DU CY=%012"PRIo64"\n", __func__, cpu.CY);
         return;
       }
 
@@ -193,7 +193,7 @@ static void readOperands (void)
         cpu.CY = 0;
         SETLO (cpu.CY, cpu.TPR.CA);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands DL CY=%012"PRIo64"\n", cpu.CY);
+                   "%s DL CY=%012"PRIo64"\n", __func__, cpu.CY);
         return;
       }
 
@@ -219,9 +219,9 @@ static void readOperands (void)
           }
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands IT read operand %012"PRIo64" from"
+                   "%s IT read operand %012"PRIo64" from"
                    " %06o char/byte=%"PRIo64"\n",
-                   cpu.ou.character_data, cpu.ou.character_address, cpu.CY);
+                   __func__, cpu.ou.character_data, cpu.ou.character_address, cpu.CY);
 
         // Restore the CA; Read/Write() updates it.
         cpu.TPR.CA = cpu.ou.character_address;
@@ -231,6 +231,41 @@ static void readOperands (void)
     read_operand (cpu.TPR.CA, OPERAND_READ);
 
     return;
+  }
+
+static void read_tra_op (void)
+  {
+    Read (cpu.TPR.CA, &cpu.CY, OPERAND_READ);
+    if (! (get_addr_mode () == APPEND_mode || cpu.cu.TSN_VALID [0] ||
+           cpu.cu.XSF /*get_went_appending ()*/))
+      {
+        if (cpu.currentInstruction.info->flags & TSPN_INS)
+          {
+            word3 n;
+            if (cpu.currentInstruction.opcode <= 0273)
+              n = (cpu.currentInstruction.opcode & 3);
+            else
+              n = (cpu.currentInstruction.opcode & 3) + 4;
+
+            // C(PPR.PRR) -> C(PRn.RNR)
+            // C(PPR.PSR) -> C(PRn.SNR)
+            // C(PPR.IC) -> C(PRn.WORDNO)
+            // 000000 -> C(PRn.BITNO)
+            cpu.PR[n].RNR = cpu.PPR.PRR;
+// According the AL39, the PSR is 'undefined' in absolute mode.
+// ISOLTS thinks means don't change the operand
+            if (get_addr_mode () == APPEND_mode)
+              cpu.PR[n].SNR = cpu.PPR.PSR;
+            cpu.PR[n].WORDNO = (cpu.PPR.IC + 1) & MASK18;
+            SET_PR_BITNO (n, 0);
+            HDBGRegPR (n);
+          }
+        cpu.PPR.IC = cpu.TPR.CA;
+        // ISOLTS 870-02f
+        //cpu.PPR.PSR = 0;
+      }
+    sim_debug (DBG_TRACE, & cpu_dev, "%s %05o:%06o\n",
+               __func__, cpu.PPR.PSR, cpu.PPR.IC);
   }
 
 static void scu2words (word36 *words)
@@ -427,7 +462,7 @@ static void words2scu (word36 * words)
     cpu.PPR.PSR         = getbits36_15 (words[0], 3);
     cpu.PPR.P           = getbits36_1  (words[0], 18);
     cpu.cu.XSF          = getbits36_1  (words[0], 19);
-sim_debug (DBG_TRACEEXT, & cpu_dev, "words2scu sets XSF to %o\n", cpu.cu.XSF);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "%s sets XSF to %o\n", __func__, cpu.cu.XSF);
     //cpu.cu.SDWAMM       = getbits36_1  (words[0], 20);
     //cpu.cu.SD_ON        = getbits36_1  (words[0], 21);
     //cpu.cu.PTWAMM       = getbits36_1  (words[0], 22);
@@ -1279,7 +1314,7 @@ IF1 sim_printf ("trapping opcode match......\n");
 //
 
     cpu.cu.XSF = 0;
-sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction sets XSF to %o\n", cpu.cu.XSF);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "%s sets XSF to %o\n", __func__, cpu.cu.XSF);
 
     CPT (cpt2U, 14); // non-restart processing
     // Set Address register empty
@@ -1810,7 +1845,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
             CPTUR (cptUsePRn + n);
 
             sim_debug (DBG_APPENDING, &cpu_dev,
-                       "doPtrReg(): PR[%o] SNR=%05o RNR=%o WORDNO=%06o "
+                       "doPtrReg: PR[%o] SNR=%05o RNR=%o WORDNO=%06o "
                        "BITNO=%02o\n",
                        n, cpu.PAR[n].SNR, cpu.PAR[n].RNR,
                        cpu.PAR[n].WORDNO, GET_PR_BITNO (n));
@@ -1832,7 +1867,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 cpu.TPR.TRR = max3 (cpu.PAR[n].RNR, cpu.TPR.TRR, cpu.PPR.PRR);
 
                 sim_debug (DBG_APPENDING, &cpu_dev,
-                           "doPtrReg(): n=%o offset=%05o TPR.CA=%06o "
+                           "doPtrReg: n=%o offset=%05o TPR.CA=%06o "
                            "TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n",
                            n, offset, cpu.TPR.CA, cpu.TPR.TBR, 
                            cpu.TPR.TSR, cpu.TPR.TRR);
@@ -1892,7 +1927,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
           }
 #endif
 
-        // These are set by doComputedAddressFormation
+        // These are set by do_caf
         cpu.ou.directOperandFlag = false;
         cpu.ou.directOperand = 0;
         cpu.ou.characterOperandSize = 0;
@@ -1904,7 +1939,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
         if ((flags & PREPARE_CA) || WRITEOP (ci) || READOP (ci))
           {
             CPT (cpt2L, 1); // CAF
-            doComputedAddressFormation ();
+            do_caf ();
             PNL (L68_ (cpu.AR_F_E = true;))
             cpu.iefpFinalAddress = cpu.TPR.CA;
           }
@@ -1940,13 +1975,13 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
 #else
         if (flags & PREPARE_CA)
           {
-            doComputedAddressFormation ();
+            do_caf ();
             L68_ (cpu.AR_F_E = true;)
             cpu.iefpFinalAddress = cpu.TPR.CA;
           }
         else if (READOP (ci))
           {
-            doComputedAddressFormation ();
+            do_caf ();
             cpu.iefpFinalAddress = cpu.TPR.CA;
             readOperands ();
           }
@@ -1975,7 +2010,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
 #ifndef REORDER
         if (! READOP (ci))
           {
-            doComputedAddressFormation ();
+            do_caf ();
             cpu.iefpFinalAddress = cpu.TPR.CA;
           }
 #endif
@@ -2739,8 +2774,8 @@ static t_stat doInstruction (void)
         case x0 (0710):  // tra
           // C(TPR.CA) -> C(PPR.IC)
           // C(TPR.TSR) -> C(PPR.PSR)
-          doComputedAddressFormation ();
-          ReadTraOp ();
+          do_caf ();
+          read_tra_op ();
           return CONT_TRA;
 
         case x0 (0236):  // ldq
@@ -2757,8 +2792,8 @@ static t_stat doInstruction (void)
           // otherwise, no change to C(PPR)
           if (TST_I_ZERO)
             {
-              doComputedAddressFormation ();
-              ReadTraOp ();
+              do_caf ();
+              read_tra_op ();
               return CONT_TRA;
             }
           break;
@@ -2769,8 +2804,8 @@ static t_stat doInstruction (void)
           //     C(TPR.TSR) -> C(PPR.PSR)
           if (!TST_I_ZERO)
             {
-              doComputedAddressFormation ();
-              ReadTraOp ();
+              do_caf ();
+              read_tra_op ();
               return CONT_TRA;
             }
           break;
@@ -2928,8 +2963,8 @@ static t_stat doInstruction (void)
           {
             // We can't set Xn yet as the CAF may refer to Xn
             word18 ret = (cpu.PPR.IC + 1) & MASK18;
-            doComputedAddressFormation ();
-            ReadTraOp ();
+            do_caf ();
+            read_tra_op ();
             cpu.rX[opcode10 & 07] = ret;
             HDBGRegX (opcode10 & 07);
           }
@@ -3022,8 +3057,8 @@ static t_stat doInstruction (void)
             //  C(TPR.TSR) -> C(PPR.PSR)
             if (! (cpu.cu.IR & I_NEG) && ! (cpu.cu.IR & I_ZERO))
             {
-                doComputedAddressFormation ();
-                ReadTraOp ();
+                do_caf ();
+                read_tra_op ();
                 return CONT_TRA;
             }
             break;
@@ -3075,9 +3110,9 @@ static t_stat doInstruction (void)
               n = (opcode10 & 3) + 4;
             CPTUR (cptUsePRn + n);
 
-            doComputedAddressFormation ();
-            // PR[n] is set in ReadTraOp().
-            ReadTraOp ();
+            do_caf ();
+            // PR[n] is set in read_tra_op().
+            read_tra_op ();
           }
           return CONT_TRA;
 
@@ -3106,7 +3141,8 @@ static t_stat doInstruction (void)
           // If an access violation fault occurs when fetching the SDW for
           // the Y-pair, the C(PPR.PSR) and C(PPR.PRR) are not altered.
 
-          ReadRTCDOp ();
+          do_caf ();
+          Read2 (cpu.TPR.CA, cpu.Ypair, RTCD_OPERAND_FETCH);
           // RTCD always ends up in append mode.
           set_addr_mode (APPEND_mode);
             
@@ -3118,8 +3154,8 @@ static t_stat doInstruction (void)
           //  C(TPR.TSR) -> C(PPR.PSR)
           if (TST_I_NEG)
             {
-              doComputedAddressFormation ();
-              ReadTraOp ();
+              do_caf ();
+              read_tra_op ();
               return CONT_TRA;
             }
           break;
@@ -3274,8 +3310,8 @@ static t_stat doInstruction (void)
             // C(TPR.TSR) -> C(PPR.PSR)
             if (cpu.cu.IR & (I_NEG | I_ZERO))
               {
-                doComputedAddressFormation ();
-                ReadTraOp ();
+                do_caf ();
+                read_tra_op ();
                 return CONT_TRA;
               }
             break;
@@ -5856,8 +5892,8 @@ static t_stat doInstruction (void)
 
           CPTUR (cptUsePRn + 7);
 
-          doComputedAddressFormation ();
-          ReadTraOp ();
+          do_caf ();
+          read_tra_op ();
           sim_debug (DBG_TRACEEXT, & cpu_dev,
                      "call6 PRR %o PSR %o\n", cpu.PPR.PRR, cpu.PPR.PSR);
 
@@ -5876,8 +5912,8 @@ static t_stat doInstruction (void)
 
             // C(Y)0,17 -> C(PPR.IC)
             // C(Y)18,31 -> C(IR)
-            doComputedAddressFormation ();
-            ReadTraOp ();
+            do_caf ();
+            read_tra_op ();
 
             cpu.PPR.IC = GETHI (cpu.CY);
             word18 tempIR = GETLO (cpu.CY) & 0777770;
@@ -5936,8 +5972,8 @@ static t_stat doInstruction (void)
           if (TST_I_EOFL)
             {
               CLR_I_EOFL;
-              doComputedAddressFormation ();
-              ReadTraOp ();
+              do_caf ();
+              read_tra_op ();
               return CONT_TRA;
             }
           break;
@@ -5949,8 +5985,8 @@ static t_stat doInstruction (void)
           if (TST_I_EUFL)
             {
               CLR_I_EUFL;
-              doComputedAddressFormation ();
-              ReadTraOp ();
+              do_caf ();
+              read_tra_op ();
               return CONT_TRA;
             }
           break;
@@ -5968,8 +6004,8 @@ static t_stat doInstruction (void)
           //   C(TPR.TSR) -> C(PPR.PSR)
           if (!TST_I_CARRY)
             {
-              doComputedAddressFormation ();
-              ReadTraOp ();
+              do_caf ();
+              read_tra_op ();
               return CONT_TRA;
             }
           break;
@@ -5984,8 +6020,8 @@ static t_stat doInstruction (void)
           if (TST_I_OFLOW)
             {
               CLR_I_OFLOW;
-              doComputedAddressFormation ();
-              ReadTraOp ();
+              do_caf ();
+              read_tra_op ();
               return CONT_TRA;
             }
           break;
@@ -5996,8 +6032,8 @@ static t_stat doInstruction (void)
           //   C(TPR.TSR) -> C(PPR.PSR)
           if (! (TST_I_NEG))
             {
-              doComputedAddressFormation ();
-              ReadTraOp ();
+              do_caf ();
+              read_tra_op ();
               return CONT_TRA;
             }
           break;
@@ -6015,8 +6051,8 @@ static t_stat doInstruction (void)
           //    C(TPR.TSR) -> C(PPR.PSR)
           if (TST_I_CARRY)
             {
-              doComputedAddressFormation ();
-              ReadTraOp ();
+              do_caf ();
+              read_tra_op ();
               return CONT_TRA;
             }
           break;
@@ -6027,8 +6063,8 @@ static t_stat doInstruction (void)
             //  C(TPR.TSR) -> C(PPR.PSR)
             if (!TST_I_TRUNC)
             {
-                doComputedAddressFormation ();
-                ReadTraOp ();
+                do_caf ();
+                read_tra_op ();
                 return CONT_TRA;
             }
             break;
@@ -6040,8 +6076,8 @@ static t_stat doInstruction (void)
             if (TST_I_TRUNC)
             {
                 CLR_I_TRUNC;
-                doComputedAddressFormation ();
-                ReadTraOp ();
+                do_caf ();
+                read_tra_op ();
                 return CONT_TRA;
             }
             break;
@@ -6059,12 +6095,12 @@ static t_stat doInstruction (void)
 
         case x0 (0715):  // tss
           CPTUR (cptUseBAR);
-          doComputedAddressFormation ();
+          do_caf ();
           if (cpu.TPR.CA >= ((word18) cpu.BAR.BOUND) << 9)
             {
               doFault (FAULT_ACV, fst_acv15, "TSS boundary violation");
             }
-          ReadTraOp ();
+          read_tra_op ();
           CLR_I_NBAR;
           return CONT_TRA;
 
@@ -6086,8 +6122,8 @@ static t_stat doInstruction (void)
           // otherwise, no change to C(PPR)
           if (TST_I_TALLY == 0)
             {
-              doComputedAddressFormation ();
-              ReadTraOp ();
+              do_caf ();
+              read_tra_op ();
               return CONT_TRA;
             }
           break;
@@ -6099,8 +6135,8 @@ static t_stat doInstruction (void)
             // otherwise, no change to C(PPR)
             if (TST_I_TALLY)
             {
-                doComputedAddressFormation ();
-                ReadTraOp ();
+                do_caf ();
+                read_tra_op ();
                 return CONT_TRA;
             }
             break;
@@ -9424,14 +9460,14 @@ elapsedtime ();
 //   0         0      sdf      Shutdown               27 7
 //   1         2      str      Store                  10 4                                  get_BAR_address, instruction execution
 //   2         4      mme      Master mode entry 1    11 5      JMP_SYNC_FAULT_RETURN       instruction execution
-//   3         6      f1       Fault tag 1            17 5      (JMP_REFETCH/JMP_RESTART)   doComputedAddressFormation
+//   3         6      f1       Fault tag 1            17 5      (JMP_REFETCH/JMP_RESTART)   do_caf
 //   4        10      tro      Timer runout           26 7      JMP_REFETCH                 FETCH_cycle
 //   5        12      cmd      Command                 9 4      JMP_REFETCH/JMP_RESTART     instruction execution
 //   6        14      drl      Derail                 15 5      JMP_REFETCH/JMP_RESTART     instruction execution
-//   7        16      luf      Lockup                  5 4      JMP_REFETCH                 doComputedAddressFormation, FETCH_cycle
+//   7        16      luf      Lockup                  5 4      JMP_REFETCH                 do_caf, FETCH_cycle
 //   8        20      con      Connect                25 7      JMP_REFETCH                 FETCH_cycle
 //   9        22      par      Parity                  8 4
-//  10        24      ipr      Illegal procedure      16 5                                  doITSITP, doComputedAddressFormation, instruction execution
+//  10        24      ipr      Illegal procedure      16 5                                  doITSITP, do_caf, instruction execution
 //  11        26      onc      Operation not complete  4 2                                  nem_check, instruction execution
 //  12        30      suf      Startup                 1 1
 //  13        32      ofl      Overflow                7 3      JMP_REFETCH/JMP_RESTART     instruction execution
@@ -9445,8 +9481,8 @@ elapsedtime ();
 //  21        52      mme2     Master mode entry 2    12 5      JMP_SYNC_FAULT_RETURN       instruction execution
 //  22        54      mme3     Master mode entry 3    13 5      (JMP_SYNC_FAULT_RETURN)     instruction execution
 //  23        56      mme4     Master mode entry 4    14 5      (JMP_SYNC_FAULT_RETURN)     instruction execution
-//  24        60      f2       Fault tag 2            18 5      JMP_REFETCH/JMP_RESTART     doComputedAddressFormation
-//  25        62      f3       Fault tag 3            19 5      JMP_REFETCH/JMP_RESTART     doComputedAddressFormation
+//  24        60      f2       Fault tag 2            18 5      JMP_REFETCH/JMP_RESTART     do_caf
+//  25        62      f3       Fault tag 3            19 5      JMP_REFETCH/JMP_RESTART     do_caf
 //  26        64               Unassigned
 //  27        66               Unassigned
 //  28        70               Unassigned
