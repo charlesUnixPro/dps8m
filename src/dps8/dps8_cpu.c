@@ -2982,6 +2982,7 @@ int core_write (word24 addr, word36 data, const char * ctx)
     }
     __storeload_barrier();
     atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);
+    __storeload_barrier();
 #else
     LOCK_MEM_WR;
     M[addr] = data & DMASK;
@@ -3019,6 +3020,7 @@ int core_write_unlock (word24 addr, word36 data, const char * ctx)
       
     __storeload_barrier();
     atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);
+    __storeload_barrier();
     cpu.locked_addr = 0;
     return 0;
 }
@@ -3348,6 +3350,7 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
     }
     __storeload_barrier();
     atomic_store_rel_64((volatile u_long *)&M[addr], even & DMASK);
+    __storeload_barrier();
     addr++;
 #else
     LOCK_MEM_WR;
@@ -3381,6 +3384,7 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
     }
     __storeload_barrier();
     atomic_store_rel_64((volatile u_long *)&M[addr], odd & DMASK);
+    __storeload_barrier();
     addr++;
 #else
     LOCK_MEM_WR;
