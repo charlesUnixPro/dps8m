@@ -71,7 +71,6 @@
 
 #include "dps8.h"
 #include "dps8_sys.h"
-#include "dps8_utils.h"
 #include "dps8_faults.h"
 #include "dps8_scu.h"
 #include "dps8_iom.h"
@@ -80,6 +79,7 @@
 #include "dps8_fnp2.h"
 #include "fnptelnet.h"
 #include "fnpuv.h"
+#include "dps8_utils.h"
 #include "utlist.h"
 #include "uthash.h"
 
@@ -1704,11 +1704,11 @@ static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, const char * cptr, UN
     for (;;)
       {
         int64_t v;
-        int rc = cfgparse ("fnpSetConfig", cptr, fnp_config_list, & cfg_state, & v);
+        int rc = cfg_parse ("fnpSetConfig", cptr, fnp_config_list, & cfg_state, & v);
         switch (rc)
           {
             case -2: // error
-              cfgparse_done (& cfg_state);
+              cfg_parse_done (& cfg_state);
               return SCPE_ARG; 
 
             case -1: // done
@@ -1719,15 +1719,14 @@ static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, const char * cptr, UN
               break;
 
             default:
-              sim_debug (DBG_ERR, & fnp_dev, "fnpSetConfig: Invalid cfgparse rc <%d>\n", rc);
-              sim_printf ("error: fnpSetConfig: invalid cfgparse rc <%d>\n", rc);
-              cfgparse_done (& cfg_state);
+              sim_printf ("error: fnpSetConfig: invalid cfg_parse rc <%d>\n", rc);
+              cfg_parse_done (& cfg_state);
               return SCPE_ARG; 
           } // switch
         if (rc < 0)
           break;
       } // process statements
-    cfgparse_done (& cfg_state);
+    cfg_parse_done (& cfg_state);
     return SCPE_OK;
   }
 

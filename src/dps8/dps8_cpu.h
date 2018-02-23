@@ -667,7 +667,7 @@ typedef struct EISstruct
 
 struct DCDstruct
   {
-    opCode * info;        // opCode *
+    struct opcode_s * info;        // opcode_s *
     uint32 opcode;        // opcode
     bool   opcodeX;       // opcode extension
     uint32 opcode10;      // opcode | (opcodeX ? 01000 : 0)

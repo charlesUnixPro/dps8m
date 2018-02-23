@@ -146,6 +146,32 @@ extern DEVICE scu_dev;
 
 extern uint32 sim_brk_summ, sim_brk_types, sim_brk_dflt;
 extern FILE *sim_deb;
+void sim_printf( const char * format, ... )    // not really simh, by my impl
+#ifdef __GNUC__
+  __attribute__ ((format (printf, 1, 2)))
+#endif
+;
+void sim_puts (char * str);
+#if 0
+void sim_fatal (const char * format, ...) NO_RETURN
+#ifdef __GNUC__
+  __attribute__ ((format (printf, 1, 2)))
+#endif
+;
+#endif
+void sim_printl (const char * format, ...)
+#ifdef __GNUC__
+  __attribute__ ((format (printf, 1, 2)))
+#endif
+;
+#if 0
+void sim_warn (const char * format, ...)
+#ifdef __GNUC__
+  __attribute__ ((format (printf, 1, 2)))
+#endif
+;
+#endif
+
 #ifdef THREADZ
 void dps8_sim_debug (uint32 dbits, DEVICE* dptr, unsigned long long cnt, const char* fmt, ...)
 #ifdef __GNUC__
@@ -156,3 +182,12 @@ void dps8_sim_debug (uint32 dbits, DEVICE* dptr, unsigned long long cnt, const c
 //#define sim_warn(format, ...) _sim_err (format, ##__VA_ARGS__)
 //#define sim_err(format, ...) { _sim_err (format, ##__VA_ARGS__); longjmp (cpu.jmpMain, JMP_STOP); }
 #define sim_fatal(format, ...) { _sim_err (format, ##__VA_ARGS__); exit (1); }
+#ifdef COLOR
+void sim_msg (const char * fmt, ...);
+void sim_warn (const char * fmt, ...);
+void sim_print (const char * fmt, ...);
+#else
+#define sim_msg sim_printf
+#define sim_warn sim_printf
+#define sim_print sim_printf
+#endif

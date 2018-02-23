@@ -1,7 +1,7 @@
 /*
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
- Copyright 2013-2016 by Charles Anthony
+ Copyright 2013-2018 by Charles Anthony
 
  All rights reserved.
 
@@ -11,36 +11,36 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
-// Interface for cfgparse
+// Interface for cfg_parse
 
-typedef struct config_value_list
+typedef struct config_value_list_s
   {
     const char * value_name;
     int64_t value;
   } config_value_list_t;
 
-typedef struct config_list
+typedef struct config_list_s
   {
     const char * name; // opt name
     int64_t min, max; // value limits
     config_value_list_t * value_list;
   } config_list_t;
 
-typedef struct config_state
+typedef struct config_state_s
   {
     char * copy;
     char * statement_save;
   } config_state_t;
 
-int cfgparse (const char * tag, const char * cptr, config_list_t * clist, config_state_t * state, int64_t * result);
-void cfgparse_done (config_state_t * state);
+int cfg_parse (const char * tag, const char * cptr, config_list_t * clist, config_state_t * state, int64_t * result);
+void cfg_parse_done (config_state_t * state);
 
-struct opCode *getIWBInfo(DCDstruct *i);
-char * dumpFlags(char * buffer, word18 flags);
-char *disAssemble(char * result, word36 instruction);
-char *getModString(char * msg, word6 tag);
-word72 convertToWord72(word36 even, word36 odd);
-void convertToWord36(word72 src, word36 *even, word36 *odd);
+struct opcode_s * get_iwb_info (DCDstruct *i);
+char * dump_flags(char * buffer, word18 flags);
+char *disassemble(char * result, word36 instruction);
+char *get_mod_string(char * msg, word6 tag);
+word72 convert_to_word72 (word36 even, word36 odd);
+void convert_to_word36 (word72 src, word36 *even, word36 *odd);
 
 word36 compl36(word36 op1, word18 *flags, bool * ovf);
 word18 compl18(word18 op1, word18 *flags, bool * ovf);
@@ -63,12 +63,6 @@ char *stripquotes(char *s);
 char *trim(char *s);
 char *ltrim(char *s);
 char *rtrim(char *s);
-
-void sim_printf( const char * format, ... )    // not really simh, by my impl
-#ifdef __GNUC__
-  __attribute__ ((format (printf, 1, 2)))
-#endif
-;
 
 //
 // getbitsNN/setbitsNN/putbitsNN
@@ -868,32 +862,6 @@ int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed,
 int insertASCII36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 word);
 int insertWord36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 word);
 void print_int128 (int128 n, char * p);
-void sim_puts (char * str);
-#if 0
-void sim_fatal (const char * format, ...) NO_RETURN
-#ifdef __GNUC__
-  __attribute__ ((format (printf, 1, 2)))
-#endif
-;
-#endif
-void sim_printl (const char * format, ...)
-#ifdef __GNUC__
-  __attribute__ ((format (printf, 1, 2)))
-#endif
-;
-#if 0
-void sim_warn (const char * format, ...)
-#ifdef __GNUC__
-  __attribute__ ((format (printf, 1, 2)))
-#endif
-;
-#endif
-void sim_printl (const char * format, ...)
-#ifdef __GNUC__
-  __attribute__ ((format (printf, 1, 2)))
-#endif
-;
-
 word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf);
 word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf);
 word18 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf);
@@ -905,13 +873,4 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 void timespec_diff(struct timespec *start, struct timespec *stop,
                    struct timespec *result);
 void currentTR (word27 * trunits, bool * ovf);
-#endif
-#ifdef COLOR
-void sim_msg (const char * fmt, ...);
-void sim_warn (const char * fmt, ...);
-void sim_print (const char * fmt, ...);
-#else
-#define sim_msg sim_printf
-#define sim_warn sim_printf
-#define sim_print sim_printf
 #endif
