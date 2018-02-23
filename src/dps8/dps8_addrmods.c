@@ -348,7 +348,7 @@ void updateIWB (word18 addr, word6 tag)
 
 void do_caf (void)
   {
-#ifdef CA_REWORK
+//#ifdef CA_REWORK
     if (getbits36_1 (cpu.cu.IWB, 29) == 0)
       {
         cpu.TPR.CA = GET_ADDR (IWB_IRODD);
@@ -360,7 +360,7 @@ void do_caf (void)
         cpu.TPR.CA = (cpu.PAR[n].WORDNO + SIGNEXT15_18 (offset))
                       & MASK18;
       }
-#endif
+//#endif
     char buf [256];
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(Entry): operType:%s TPR.CA=%06o\n",

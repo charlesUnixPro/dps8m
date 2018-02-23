@@ -1585,7 +1585,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "%s sets XSF to %o\n", __func__, cpu.cu.XSF)
     ///
 restart_1:
 
-#ifndef CA_REWORK
+#if 0 // #ifndef CA_REWORK
 #if 1
     cpu.TPR.CA = ci->address;
     cpu.iefpFinalAddress = cpu.TPR.CA;
@@ -1851,7 +1851,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                        n, cpu.PAR[n].SNR, cpu.PAR[n].RNR,
                        cpu.PAR[n].WORDNO, GET_PR_BITNO (n));
 
-#ifndef CA_REWORK
+#if 0 // #ifndef CA_REWORK
             cpu.TPR.CA = (cpu.PAR[n].WORDNO + SIGNEXT15_18 (offset))
                          & MASK18;
 #endif
@@ -1912,7 +1912,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
           }
 
 
-#ifndef CA_REWORK
+#if 0 // #ifndef CA_REWORK
         //
         // If POT is set, a page fault occured during the fetch of the data word
         // pointed to by an indirect addressing word, and the saved CA points
