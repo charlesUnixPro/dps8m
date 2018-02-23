@@ -6579,12 +6579,6 @@ static int mopSES (void)
     return 0;
 }
 
-struct MOP_struct
-{
-    char *mopName;             // name of microoperation
-    int (*f)(void);    // pointer to mop() [returns character to be stored]
-};
-
 // Table 4-9. Micro Operation Code Assignment Map
 #ifndef QUIET_UNUSED 
 static char * mopCodes [040] =

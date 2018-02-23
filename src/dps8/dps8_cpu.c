@@ -2638,7 +2638,7 @@ int operand_size (void)
 
 // read instruction operands
 
-t_stat read_operand (word18 addr, _processor_cycle_type cyctyp)
+t_stat read_operand (word18 addr, processor_cycle_type cyctyp)
   {
     CPT (cpt1L, 6); // read_operand
 
@@ -2698,7 +2698,7 @@ t_stat read_operand (word18 addr, _processor_cycle_type cyctyp)
 
 // write instruction operands
 
-t_stat write_operand (word18 addr, UNUSED _processor_cycle_type cyctyp)
+t_stat write_operand (word18 addr, UNUSED processor_cycle_type cyctyp)
   {
     switch (operand_size ())
       {
@@ -3248,7 +3248,7 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
 void decode_instruction (word36 inst, DCDstruct * p)
   {
     CPT (cpt1L, 17); // instruction decoder
-    memset (p, 0, sizeof (struct DCDstruct));
+    memset (p, 0, sizeof (DCDstruct));
 
     p->opcode  = GET_OP (inst);   // get opcode
     p->opcodeX = GET_OPX(inst);   // opcode extension
