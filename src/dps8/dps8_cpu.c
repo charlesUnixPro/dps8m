@@ -1028,7 +1028,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
     consoleProcess ();
     machine_room_process ();
 #ifndef __MINGW64__
-    absiProcessEvent ();
+    absi_process_event ();
 #endif
     PNL (panel_process_event ());
   }
@@ -1733,7 +1733,7 @@ setCPU:;
             fnpProcessEvent ();
             consoleProcess ();
             machine_room_process ();
-            absiProcessEvent ();
+            absi_process_event ();
             PNL (panel_process_event ());
           }
 #endif

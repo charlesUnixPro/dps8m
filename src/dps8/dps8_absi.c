@@ -295,7 +295,7 @@ int absi_iom_cmd (uint iomUnitIdx, uint chan)
     return -1;
   }
 
-void absiProcessEvent (void)
+void absi_process_event (void)
   {
 #define psz 17000
     uint16_t pkt[psz];
