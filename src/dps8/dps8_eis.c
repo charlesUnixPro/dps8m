@@ -7724,7 +7724,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
     }
 
 
-    EISWriteIdx(p, 0, w); // XXX this is the ineffecient part!
+    EISWriteIdx(p, 0, w); // XXX this is the inefficient part!
 
     *pos += 1;       // to next char.
 }
@@ -7772,7 +7772,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
             break;
     }
 
-    EISWriteIdx (p, 0, w); // XXX this is the ineffecient part!
+    EISWriteIdx (p, 0, w); // XXX this is the inefficient part!
 
     *pos += 1;       // to next byte.
 }
@@ -8715,7 +8715,7 @@ void csr (bool isSZTR)
 /*
  * get a bit from memory ....
  */
-// XXX this is terribly ineffecient, but it'll do for now ......
+// XXX this is terribly inefficient, but it'll do for now ......
 
 static bool EISgetBit(EISaddr *p, int *cpos, int *bpos)
 {
@@ -8969,8 +8969,8 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
             break;
     }
     
-    //Write (*dstAddr, w, OperandWrite, 0); // XXX this is the ineffecient part!
-    EISWriteIdx(p, 0, w); // XXX this is the ineffecient part!
+    //Write (*dstAddr, w, OperandWrite, 0); // XXX this is the inefficient part!
+    EISWriteIdx(p, 0, w); // XXX this is the inefficient part!
     
     *pos -= 1;       // to prev byte.
 }
@@ -9019,8 +9019,8 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
             break;
     }
     
-    //Write (*dstAddr, w, OperandWrite, 0); // XXX this is the ineffecient part!
-    EISWriteIdx(p, 0, w); // XXX this is the ineffecient part!
+    //Write (*dstAddr, w, OperandWrite, 0); // XXX this is the inefficient part!
+    EISWriteIdx(p, 0, w); // XXX this is the inefficient part!
     
     *pos -= 1;       // to prev byte.
 }

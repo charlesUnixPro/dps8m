@@ -3443,8 +3443,10 @@ static CTAB dps8_cmds[] =
 #endif
     // doesn't work
     //{"DUMPKST",             dumpKST,                  0, "dumpkst: dump the Known Segment Table\n", NULL},
+#ifndef SPEED
     {"WATCH",               set_mem_watch,            1, "watch: Watch memory location\n", NULL, NULL},
     {"NOWATCH",             set_mem_watch,            0, "watch: Unwatch memory location\n", NULL, NULL},
+#endif
 #ifndef SCUMEM
     {"SEARCHMEMORY",        search_memory,            0, "searchmemory: Search memory for value\n", NULL, NULL},
 #endif
@@ -3563,7 +3565,6 @@ static void dps8_init (void)
     // sys_poll_check_rate in CPU cycles
     sys_opts.sys_poll_check_rate = 1024;
 
-    init_opcodes();
     sysCableInit ();
     iom_init ();
     disk_init ();

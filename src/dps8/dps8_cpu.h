@@ -2178,9 +2178,10 @@ int is_priv_mode (void);
 bool get_bar_mode (void);
 addr_modes_e get_addr_mode (void);
 void set_addr_mode (addr_modes_e mode);
-void init_opcodes (void);
 void decode_instruction (word36 inst, DCDstruct * p);
+#ifndef SPEED
 t_stat set_mem_watch (int32 arg, const char * buf);
+#endif
 char *str_SDW0 (char * buf, sdw_s *SDW);
 #ifdef SCUMEM
 int lookup_cpu_mem_map (word24 addr, word24 * offset);
