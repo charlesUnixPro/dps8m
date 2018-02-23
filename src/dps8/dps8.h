@@ -449,14 +449,13 @@ enum reg_use { is_WRD =  0174000,
 #define ru_Xn(n) (1 << (7 - (n)))
 
 // Basic + EIS opcodes .....
-struct opCode {
+struct opcode_s {
     const char *mne;    // mnemonic
     opc_flag flags;     // various and sundry flags
     opc_mod mods;       // disallowed addr mods
     uint ndes;          // number of operand descriptor words for instruction (mw EIS)
     enum reg_use reg_use;            // register usage
 };
-typedef struct opCode opCode;
 
 // operations stuff
 

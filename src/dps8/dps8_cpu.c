@@ -28,7 +28,6 @@
 #include "dps8_scu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
-#include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_ins.h"
@@ -39,6 +38,7 @@
 #include "dps8_fnp2.h"
 #include "dps8_crdrdr.h"
 #include "dps8_absi.h"
+#include "dps8_utils.h"
 #ifdef M_SHARED
 #include "shm.h"
 #endif
@@ -319,7 +319,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value,
     for (;;)
       {
         int64_t v;
-        int rc = cfgparse (__func__, cptr, cpu_config_list,
+        int rc = cfg_parse (__func__, cptr, cpu_config_list,
                            & cfg_state, & v);
         if (rc == -1) // done
           {
@@ -327,7 +327,7 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value,
           }
         if (rc == -2) // error
           {
-            cfgparse_done (& cfg_state);
+            cfg_parse_done (& cfg_state);
             return SCPE_ARG; 
           }
 
@@ -378,13 +378,13 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value,
           cpus[cpu_unit_idx].switches.disable_cache = v;
         else
           {
-            sim_warn ("error: cpu_set_config: invalid cfgparse rc <%d>\n",
+            sim_warn ("error: cpu_set_config: invalid cfg_parse rc <%d>\n",
                         rc);
-            cfgparse_done (& cfg_state);
+            cfg_parse_done (& cfg_state);
             return SCPE_ARG; 
           }
       } // process statements
-    cfgparse_done (& cfg_state);
+    cfg_parse_done (& cfg_state);
 
     return SCPE_OK;
   }
@@ -3255,7 +3255,7 @@ void decode_instruction (word36 inst, DCDstruct * p)
     p->i       = GET_I (inst);    // "I" inhibit interrupt flag
     p->tag     = GET_TAG (inst);  // instruction tag
     
-    p->info = getIWBInfo (p);     // get info for IWB instruction
+    p->info = get_iwb_info  (p);     // get info for IWB instruction
     
     if (p->info->flags & IGN_B29)
         p->b29 = 0;   // make certain 'a' bit is valid always

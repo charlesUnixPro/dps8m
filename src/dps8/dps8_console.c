@@ -33,13 +33,13 @@
 #include "dps8_iom.h"
 #include "dps8_console.h"
 #include "dps8_sys.h"
-#include "dps8_utils.h"
 #include "dps8_faults.h"
 #include "dps8_scu.h"
 #include "dps8_cable.h"
 #include "dps8_cpu.h"
 #include "dps8_mt.h"  // attachTape
 #include "dps8_disk.h"  // attachDisk
+#include "dps8_utils.h"
 
 #include "libtelnet.h"
 
@@ -1396,12 +1396,12 @@ static t_stat opc_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
     for (;;)
       {
         int64_t v;
-        int rc = cfgparse (__func__, cptr, opc_config_list,
+        int rc = cfg_parse (__func__, cptr, opc_config_list,
                            & cfg_state, & v);
         switch (rc)
           {
             case -2: // error
-              cfgparse_done (& cfg_state);
+              cfg_parse_done (& cfg_state);
               return SCPE_ARG;
 
             case -1: // done
@@ -1414,15 +1414,15 @@ static t_stat opc_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
 #endif
     
             default:
-              sim_warn ("error: opc_set_config: invalid cfgparse rc <%d>\n",
+              sim_warn ("error: opc_set_config: invalid cfg_parse rc <%d>\n",
                           rc);
-              cfgparse_done (& cfg_state);
+              cfg_parse_done (& cfg_state);
               return SCPE_ARG;
           } // switch
         if (rc < 0)
           break;
       } // process statements
-    cfgparse_done (& cfg_state);
+    cfg_parse_done (& cfg_state);
     return SCPE_OK;
   }
 
