@@ -2883,8 +2883,8 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
     word36 v;
     __storeload_barrier();
     v = atomic_load_acq_64((volatile u_long *)&M[addr]);
-    if (v & MEM_LOCKED)
-      sim_warn ("core_read: addr %x was locked\n", addr);
+    //    if (v & MEM_LOCKED)
+    //  sim_warn ("core_read: addr %x was locked\n", addr);
     *data = v & DMASK;
 #else
     LOCK_MEM_RD;
