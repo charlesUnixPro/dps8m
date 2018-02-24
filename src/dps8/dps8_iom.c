@@ -600,9 +600,11 @@ void iom_core_write2 (UNUSED uint iom_unit_idx, word24 addr, word36 even, word36
 
 #ifdef LOCKLESS
 #define MEM_LOCKED_BIT    61
+#endif
 
 void iom_core_read_lock (UNUSED uint iom_unit_idx, word24 addr, word36 *data, UNUSED const char * ctx)
   {
+#ifdef LOCKLESS
     int i = 1000000000;
     while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
       i--;
@@ -612,14 +614,20 @@ void iom_core_read_lock (UNUSED uint iom_unit_idx, word24 addr, word36 *data, UN
     }
     __storeload_barrier();
     * data = atomic_load_acq_64((volatile u_long *)&M[addr]) & DMASK;
+#else
+    * data = M[addr] & DMASK;
+#endif
   }
 
 void iom_core_write_unlock (UNUSED uint iom_unit_idx, word24 addr, word36 data, UNUSED const char * ctx)
   {
+#ifdef LOCKLESS
     __storeload_barrier();
     atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);
-  }
+#else
+    M[addr] = data & DMASK;
 #endif
+  }
 
 static t_stat iom_action (UNIT *up)
   {

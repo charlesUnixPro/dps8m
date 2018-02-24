@@ -318,4 +318,17 @@ inline void fnp_core_write_unlock (UNUSED int fnp_unit_idx, vol word36 *M_addr, 
     __storeload_barrier();
     atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);
   }
+#else
+inline void fnp_core_read_lock (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 *data, UNUSED const char * ctx)
+  {
+    *data = *M_addr & DMASK;
+  }
+
+inline void fnp_core_write (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 data, UNUSED const char * ctx)
+  {
+    *M_addr = data & DMASK;
+  }
+
+#define fnp_core_write_unlock fnp_core_write
+
 #endif
