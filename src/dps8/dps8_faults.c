@@ -32,6 +32,9 @@
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_ins.h"
+#if defined(THREADZ) || defined(LOCKLESS)
+#include "threadz.h"
+#endif
 
 #define DBG_CTR cpu.cycleCnt
 
@@ -870,6 +873,9 @@ void setG7fault (uint cpuNo, _fault faultNo, _fault_subtype subFault)
     cpus[cpuNo].g7FaultsPreset |= (1u << faultNo);
     //cpu.g7SubFaultsPreset [faultNo] = subFault;
     cpus[cpuNo].g7SubFaults [faultNo] = subFault;
+#if defined(THREADZ) || defined(LOCKLESS)
+    wakeCPU(cpuNo);
+#endif
   }
 
 #ifdef L68
