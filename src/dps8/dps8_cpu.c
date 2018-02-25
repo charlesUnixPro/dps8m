@@ -2881,8 +2881,13 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
 #endif
 #ifdef LOCKLESS
     word36 v;
+#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
     __storeload_barrier();
     v = atomic_load_acq_64((volatile u_long *)&M[addr]);
+#else
+    __sync_synchronize();
+    v = M[addr];
+#endif
     //    if (v & MEM_LOCKED)
     //  sim_warn ("core_read: addr %x was locked\n", addr);
     *data = v & DMASK;
@@ -2908,7 +2913,11 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
 int32 core_read_lock (word24 addr, word36 *data, const char * ctx)
 {
     int i = 1000000000;
+#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
     while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
+#else
+    while ( (__sync_fetch_and_or((volatile u_long *)&M[addr], MEM_LOCKED) & MEM_LOCKED) == MEM_LOCKED &&  i > 0) {
+#endif
       //sim_warn ("core_read_lock: locked addr %x\n", addr);
       i--;
     }
@@ -2920,8 +2929,13 @@ int32 core_read_lock (word24 addr, word36 *data, const char * ctx)
       core_unlock_all();
     }
     cpu.locked_addr = addr;
+#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
     __storeload_barrier();
     *data = atomic_load_acq_64((volatile u_long *)&M[addr]) & DMASK;
+#else
+    __sync_synchronize();
+    *data = M[addr] & DMASK;
+#endif
     return 0;
 }
 #endif
@@ -2973,16 +2987,26 @@ int core_write (word24 addr, word36 data, const char * ctx)
 #else
 #ifdef LOCKLESS
     int i = 1000000000;
+#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
     while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
+#else
+    while ( (__sync_fetch_and_or((volatile u_long *)&M[addr], MEM_LOCKED) & MEM_LOCKED) == MEM_LOCKED &&  i > 0) {
+#endif
       //sim_warn ("core_read_lock: locked addr %x\n", addr);
       i--;
     }
     if (i == 0) {
       sim_warn ("core_write: locked %x addr %x deadlock\n", cpu.locked_addr, addr);
     }
+#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
     __storeload_barrier();
     atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);
     __storeload_barrier();
+#else
+    __sync_synchronize();
+    M[addr] = data & DMASK;
+    __sync_synchronize();
+#endif
 #else
     LOCK_MEM_WR;
     M[addr] = data & DMASK;
@@ -3018,9 +3042,15 @@ int core_write_unlock (word24 addr, word36 data, const char * ctx)
        core_unlock_all();
       }
       
+#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
     __storeload_barrier();
     atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);
     __storeload_barrier();
+#else
+    __sync_synchronize();
+    M[addr] = data & DMASK;
+    __sync_synchronize();
+#endif
     cpu.locked_addr = 0;
     return 0;
 }
@@ -3029,8 +3059,13 @@ int core_unlock_all ()
 {
   if (cpu.locked_addr != 0) {
       sim_warn ("core_unlock_all: locked %x\n", cpu.locked_addr);
+#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
       __storeload_barrier();
       atomic_store_rel_64((volatile u_long *)&M[cpu.locked_addr], M[cpu.locked_addr] & DMASK);
+#else
+      __sync_synchronize();
+      __sync_fetch_and_and((volatile u_long *)&M[cpu.locked_addr], DMASK);
+#endif
       cpu.locked_addr = 0;
   }
   return 0;
@@ -3212,8 +3247,13 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
 #endif
 #ifdef LOCKLESS
     word36 v;
+#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
     __storeload_barrier();
     v = atomic_load_acq_64((volatile u_long *)&M[addr]);
+#else
+    __sync_synchronize();
+    v = M[addr];
+#endif
     if (v & MEM_LOCKED)
       sim_warn ("core_read2: even addr %x was locked\n", addr);
     *even = v & DMASK;
@@ -3248,8 +3288,13 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
       }
 #endif
 #ifdef LOCKLESS
+#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
     __storeload_barrier();
     v = atomic_load_acq_64((volatile u_long *)&M[addr]);
+#else
+    __sync_synchronize();
+    v = M[addr];
+#endif
     if (v & MEM_LOCKED)
       sim_warn ("core_read2: odd addr %x was locked\n", addr);
     *odd = v & DMASK;
@@ -3341,16 +3386,26 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
 #endif
 #ifdef LOCKLESS
     int i = 1000000000;
+#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
     while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
+#else
+    while ( (__sync_fetch_and_or((volatile u_long *)&M[addr], MEM_LOCKED) & MEM_LOCKED) == MEM_LOCKED &&  i > 0) {
+#endif
       //sim_warn ("core_read_lock: locked addr %x\n", addr);
       i--;
     }
     if (i == 0) {
       sim_warn ("core_write2: even locked %x addr %x deadlock\n", cpu.locked_addr, addr);
     }
+#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
     __storeload_barrier();
     atomic_store_rel_64((volatile u_long *)&M[addr], even & DMASK);
     __storeload_barrier();
+#else
+    __sync_synchronize();
+    M[addr] = even & DMASK;
+    __sync_synchronize();
+#endif
     addr++;
 #else
     LOCK_MEM_WR;
@@ -3375,17 +3430,26 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
 #endif
 #ifdef LOCKLESS
     i = 1000000000;
+#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
     while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
+#else
+    while ( (__sync_fetch_and_or((volatile u_long *)&M[addr], MEM_LOCKED) & MEM_LOCKED) == MEM_LOCKED &&  i > 0) {
+#endif
       //sim_warn ("core_read_lock: locked addr %x\n", addr);
       i--;
     }
     if (i == 0) {
       sim_warn ("core_write2: odd locked %x addr %x deadlock\n", cpu.locked_addr, addr);
     }
+#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
     __storeload_barrier();
     atomic_store_rel_64((volatile u_long *)&M[addr], odd & DMASK);
     __storeload_barrier();
-    addr++;
+#else
+    __sync_synchronize();
+    M[addr] = odd & DMASK;
+    __sync_synchronize();
+#endif
 #else
     LOCK_MEM_WR;
     M[addr] = odd & DMASK;

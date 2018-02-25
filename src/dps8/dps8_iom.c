@@ -524,7 +524,7 @@ void iom_core_read (UNUSED uint iom_unit_idx, word24 addr, word36 *data, UNUSED 
     lock_mem_rd ();
 #endif
 #endif
-#ifdef LOCKLESS
+#if defined(LOCKLESS) && defined(__FreeBSD__)
     * data = atomic_load_acq_64((volatile u_long *)&M[addr]) & DMASK;
 #else
     * data = M[addr] & DMASK;
@@ -543,7 +543,7 @@ void iom_core_read2 (UNUSED uint iom_unit_idx, word24 addr, word36 *even, word36
     lock_mem_rd ();
 #endif
 #endif
-#ifdef LOCKLESS
+#if defined(LOCKLESS) && defined(__FreeBSD__)
     * even = atomic_load_acq_64((volatile u_long *)&M[addr]) & DMASK; addr++;
     * odd = atomic_load_acq_64((volatile u_long *)&M[addr]) & DMASK;
 #else
@@ -564,7 +564,7 @@ void iom_core_write (UNUSED uint iom_unit_idx, word24 addr, word36 data, UNUSED 
     lock_mem_wr ();
 #endif
 #endif
-#ifdef LOCKLESS
+#if defined(LOCKLESS) && defined(__FreeBSD__)
     atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);
 #else
     M[addr] = data & DMASK;
@@ -583,7 +583,7 @@ void iom_core_write2 (UNUSED uint iom_unit_idx, word24 addr, word36 even, word36
     lock_mem_wr ();
 #endif
 #endif
-    #ifdef LOCKLESS
+#if defined(LOCKLESS) && defined(__FreeBSD__)
     atomic_store_rel_64((volatile u_long *)&M[addr], even & DMASK); addr++;
     atomic_store_rel_64((volatile u_long *)&M[addr], odd & DMASK);
 #else
@@ -600,20 +600,30 @@ void iom_core_write2 (UNUSED uint iom_unit_idx, word24 addr, word36 even, word36
 
 #ifdef LOCKLESS
 #define MEM_LOCKED_BIT    61
+#define MEM_LOCKED        (1LLU<<MEM_LOCKED_BIT)
 #endif
 
 void iom_core_read_lock (UNUSED uint iom_unit_idx, word24 addr, word36 *data, UNUSED const char * ctx)
   {
 #ifdef LOCKLESS
     int i = 1000000000;
+#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
     while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
+#else
+    while ( (__sync_fetch_and_or((volatile u_long *)&M[addr], MEM_LOCKED) & MEM_LOCKED) == MEM_LOCKED &&  i > 0) {
+#endif
       i--;
     }
     if (i == 0) {
       sim_warn ("iom_core_read_lock: locked %x addr %x deadlock\n", cpu.locked_addr, addr);
     }
+#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
     __storeload_barrier();
     * data = atomic_load_acq_64((volatile u_long *)&M[addr]) & DMASK;
+#else
+    __sync_synchronize();
+    * data = M[addr] & DMASK;
+#endif
 #else
     * data = M[addr] & DMASK;
 #endif
@@ -622,8 +632,13 @@ void iom_core_read_lock (UNUSED uint iom_unit_idx, word24 addr, word36 *data, UN
 void iom_core_write_unlock (UNUSED uint iom_unit_idx, word24 addr, word36 data, UNUSED const char * ctx)
   {
 #ifdef LOCKLESS
+#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
     __storeload_barrier();
     atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);
+#else
+    __sync_synchronize();
+    M[addr] = data & DMASK;
+#endif
 #else
     M[addr] = data & DMASK;
 #endif

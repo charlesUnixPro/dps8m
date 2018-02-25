@@ -8470,7 +8470,7 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
 #endif
           if (i->address == 0777)
               {
-                sim_printf ("Multics DIS disables CPU: CY: %"PRIo64"\n",cpu.CY);
+                sim_printf ("Multics DIS disables CPU: CA: 0x%x\n",cpu.TPR.CA);
                 sim_debug (DBG_MSG, & cpu_dev, "Multics DIS disables CPU\n");
                 longjmp (cpu.jmpMain, JMP_STOP);
               }
