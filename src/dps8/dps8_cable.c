@@ -1,4 +1,3 @@
-// XXX XXX XXX add code to new cable to check for end of line (strtok_r fail)
 /*
  Copyright 2013-2016 by Charles Anthony
 
@@ -20,7 +19,6 @@
 #include "dps8_sys.h"
 #include "dps8_faults.h"
 #include "dps8_cable.h"
-#include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_console.h"
 #include "dps8_disk.h"
@@ -29,6 +27,7 @@
 #include "dps8_crdrdr.h"
 #include "dps8_crdpun.h"
 #include "dps8_prt.h"
+#include "dps8_utils.h"
 #ifndef __MINGW64__
 #include "dps8_absi.h"
 #endif

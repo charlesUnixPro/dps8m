@@ -1,6 +1,6 @@
 /*
  Copyright 2012-2016 by Harry Reed
- Copyright 2013-2017 by Charles Anthony
+ Copyright 2013-2018 by Charles Anthony
  Copyright 2016 by Jean-Michel Merliot
 
  All rights reserved.
@@ -68,12 +68,9 @@ typedef struct { int64_t h; uint64_t l; } __int128_t;
 //#define M_SHARED
 //LDFLAGS += -lrt
 
-// Enable IPC
-#define VM_DPS8
-
 #ifdef TESTING
 #else
-// Enable speed over debugibility
+// Enable speed over debuggibility
 #define SPEED
 #endif
 
@@ -84,6 +81,8 @@ typedef struct { int64_t h; uint64_t l; } __int128_t;
 //#define PANEL
 
 // Enable history debugger
+// NB. This has an large impact on ARM architectures, probably due to cache 
+// misses.
 //#define HDBG
 
 // XXX FixMe
@@ -91,9 +90,6 @@ typedef struct { int64_t h; uint64_t l; } __int128_t;
 #ifdef __APPLE__
 #undef HDBG
 #endif
-
-// RALR register fixes
-#define RALRx
 
 // Enable round-robin multi-CPU
 //#define ROUND_ROBIN
@@ -158,7 +154,7 @@ typedef struct { int64_t h; uint64_t l; } __int128_t;
 #define IF1 if (0)
 #endif
 
-#define OSCAR
+//#define OSCAR
 
 // DPS8-M support Hex Mode Floating Point
 #ifdef DPS8M
@@ -271,18 +267,14 @@ typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 #define CLRBIT(dst, bitno)      ((dst) & ~(1LLU << (bitno)))
 #define TSTBIT(dst, bitno)      (((dst) &  (1LLU << (bitno))) ? 1: 0)
 
-/////
-
-
-enum _processor_cycle_type {
+typedef enum
+  {
     UNKNOWN_CYCLE = 0,
     OPERAND_STORE,
     OPERAND_READ,
     INDIRECT_WORD_FETCH,
     RTCD_OPERAND_FETCH,
-    //SEQUENTIAL_INSTRUCTION_FETCH,
     INSTRUCTION_FETCH,
-    //APU_DATA_MOVEMENT,
     APU_DATA_READ,
     APU_DATA_STORE,
     ABSA_CYCLE,
@@ -290,34 +282,28 @@ enum _processor_cycle_type {
     OPERAND_RMW,
     APU_DATA_RMW,
 #endif
-};
+  } processor_cycle_type;
 
 #ifndef LOCKLESS
 #define OPERAND_RMW   OPERAND_READ
 #define APU_DATA_RMW  APU_DATA_READ
 #endif
 
-typedef enum _processor_cycle_type _processor_cycle_type;
-
 #ifndef EIS_PTR4
 // some breakpoint stuff ...
-enum eMemoryAccessType {
+typedef enum
+  {
     UnknownMAT       = 0,
     OperandRead,
     OperandWrite,
     viaPR
-};
-
-typedef enum eMemoryAccessType MemoryAccessType;
+  } MemoryAccessType;
 #endif
 
-#define MA_IF  0   /* fetch */
-#define MA_ID  1   /* indirect */
-#define MA_RD  2   /* data read */
-#define MA_WR  3   /* data write */
-
-#define GETCHAR(src, pos) (word6)(((word36)src >> (word36)((5 - pos) * 6)) & 077)      ///< get 6-bit char @ pos
-#define GETBYTE(src, pos) (word9)(((word36)src >> (word36)((3 - pos) * 9)) & 0777)     ///< get 9-bit byte @ pos
+// get 6-bit char @ pos
+#define GETCHAR(src, pos) (word6)(((word36)src >> (word36)((5 - pos) * 6)) & 077)
+// get 9-bit byte @ pos
+#define GETBYTE(src, pos) (word9)(((word36)src >> (word36)((3 - pos) * 9)) & 0777)
 
 #ifdef NEED_128
 #define YPAIRTO72(ypair) construct_128 ((ypair[0] >> 28) & MASK8, \
@@ -344,11 +330,11 @@ typedef enum eMemoryAccessType MemoryAccessType;
 #define min3(a,b,c) min((a), min((b),(c)))
 
 // opcode metadata (flag) ...
-typedef enum opc_flag
+typedef enum
   {
     READ_OPERAND    = (1U <<  0),  // fetches/reads operand (CA) from memory
     STORE_OPERAND   = (1U <<  1),  // stores/writes operand to memory (its a STR-OP)
-#define RMW             (READ_OPERAND | STORE_OPERAND) ///< a Read-Modify-Write instruction
+#define RMW             (READ_OPERAND | STORE_OPERAND) // a Read-Modify-Write instruction
     READ_YPAIR      = (1U <<  2),  // fetches/reads Y-pair operand (CA) from memory
     STORE_YPAIR     = (1U <<  3),  // stores/writes Y-pair operand to memory
     READ_YBLOCK8    = (1U <<  4),  // fetches/reads Y-block8 operand (CA) from memory
@@ -367,8 +353,8 @@ typedef enum opc_flag
     NO_TAG          = (1U << 16), // tag is interpreted differently and for addressing purposes is effectively 0
     PRIV_INS        = (1U << 17), // priveleged instruction
     NO_BAR          = (1U << 18), // not allowed in BAR mode
-    NO_XEC          = (1U << 19), // can't be executed via xec/xed
-    NO_XED          = (1U << 20), // No execution via XED instruction
+//    NO_XEC          = (1U << 19), // can't be executed via xec/xed
+    NO_XED          = (1U << 20), // No execution via XEC/XED instruction
 
 // EIS operand types
 
@@ -389,27 +375,27 @@ typedef enum opc_flag
     EOP3_MASK       = (3U << 25),
 #define EOP3_SHIFT 25
 
-    READ_YBLOCK32   = (1U << 26),  // fetches/reads Y-block16 operands from memory
-    STORE_YBLOCK32  = (1U << 27),  // fetches/reads Y-block16 operands from memory
+    READ_YBLOCK32   = (1U << 27),  // fetches/reads Y-block16 operands from memory
+    STORE_YBLOCK32  = (1U << 28),  // fetches/reads Y-block16 operands from memory
   } opc_flag;
 
 
 // opcode metadata (disallowed) modifications
 typedef enum opc_mod
   {
-    NO_DU                 = (1U << 0),   ///< No DU modification allowed (Can these 2 be combined into 1?)
-    NO_DL                 = (1U << 1),   ///< No DL modification allowed
+    NO_DU                 = (1U << 0),   // No DU modification allowed (Can these 2 be combined into 1?)
+    NO_DL                 = (1U << 1),   // No DL modification allowed
 #define NO_DUDL         (NO_DU | NO_DL)    
 
-    NO_CI                 = (1U << 2),   ///< No character indirect modification (can these next 3 be combined?_
-    NO_SC                 = (1U << 3),   ///< No sequence character modification
-    NO_SCR                = (1U << 4),   ///< No sequence character reverse modification
+    NO_CI                 = (1U << 2),   // No character indirect modification (can these next 3 be combined?_
+    NO_SC                 = (1U << 3),   // No sequence character modification
+    NO_SCR                = (1U << 4),   // No sequence character reverse modification
 #define NO_CSS          (NO_CI | NO_SC | NO_SCR)
 
 #define NO_DLCSS        (NO_DU   | NO_CSS)
 #define NO_DDCSS        (NO_DUDL | NO_CSS)
 
-    ONLY_AU_QU_AL_QL_XN   = (1U << 5)    ///< None except au, qu, al, ql, xn
+    ONLY_AU_QU_AL_QL_XN   = (1U << 5)    // None except au, qu, al, ql, xn
   } opc_mod;
 
 // None except au, qu, al, ql, xn for MF1 and REG
@@ -458,14 +444,13 @@ enum reg_use { is_WRD =  0174000,
 #define ru_Xn(n) (1 << (7 - (n)))
 
 // Basic + EIS opcodes .....
-struct opCode {
+struct opcode_s {
     const char *mne;    // mnemonic
     opc_flag flags;     // various and sundry flags
     opc_mod mods;       // disallowed addr mods
     uint ndes;          // number of operand descriptor words for instruction (mw EIS)
     enum reg_use reg_use;            // register usage
 };
-typedef struct opCode opCode;
 
 // operations stuff
 
@@ -516,9 +501,22 @@ enum eCAFoper {
 };
 typedef enum eCAFoper eCAFoper;
 
-#define READOP(i)  ((bool) (i->info->flags & ( READ_OPERAND |  READ_YPAIR |  READ_YBLOCK8 | READ_YBLOCK16 | READ_YBLOCK32)) )
-#define WRITEOP(i) ((bool) (i->info->flags & (STORE_OPERAND | STORE_YPAIR | STORE_YBLOCK8 | STORE_YBLOCK16 | STORE_YBLOCK32)) )
-#define RMWOP(i)   ((bool) READOP(i) && WRITEOP(i)) // if it's both read and write it's a RMW
+#define READOP(i) ((bool) (i->info->flags & \
+                           (READ_OPERAND | \
+                            READ_YPAIR | \
+                            READ_YBLOCK8 | \
+                            READ_YBLOCK16 | \
+                            READ_YBLOCK32)))
+
+#define WRITEOP(i) ((bool) (i->info->flags & \
+                            (STORE_OPERAND | \
+                             STORE_YPAIR | \
+                             STORE_YBLOCK8 | \
+                             STORE_YBLOCK16 | \
+                             STORE_YBLOCK32)) )
+
+// if it's both read and write it's a RMW
+#define RMWOP(i) ((bool) READOP(i) && WRITEOP(i))
 
 #define TRANSOP(i) ((bool) (i->info->flags & (TRANSFER_INS) ))
 
@@ -530,62 +528,71 @@ typedef enum eCAFoper eCAFoper;
 
 
 // AL39 Table 4-3. Alphanumeric Data Type (TA) Codes
-typedef enum _CTA
-{
+enum
+  {
     CTA9 = 0U,       // 9-bit bytes
     CTA6 = 1U,       // 6-bit characters
     CTA4 = 2U,       // 4-bit decimal
     CTAILL = 3U      // Illegal
-} _CTA;
-
-//#define CTA9   0
-//#define CTA6   1
-//#define CTA4   2
-
+  };
 
 // TN - Type Numeric AL39 Table 4-3. Alphanumeric Data Type (TN) Codes
-typedef enum _CTN
-{
-    CTN9 = 0U,   ///< 9-bit
-    CTN4 = 1U    ///< 4-bit
-} _CTN;
-//#define CTN9    0   ///< 9-bit
-//#define CTN4    1   ///< 4-bit
+enum
+  {
+    CTN9 = 0U,   // 9-bit
+    CTN4 = 1U    // 4-bit
+  };
 
 // S - Sign and Decimal Type (AL39 Table 4-4. Sign and Decimal Type (S) Codes)
 
-#define CSFL    0U   ///< Floating-point, leading sign
-#define CSLS    1U   ///< Scaled fixed-point, leading sign
-#define CSTS    2U   ///< Scaled fixed-point, trailing sign
-#define CSNS    3U   ///< Scaled fixed-point, unsigned
+enum
+  {
+    CSFL = 0U,  // Floating-point, leading sign
+    CSLS = 1U,  // Scaled fixed-point, leading sign
+    CSTS = 2U,  // Scaled fixed-point, trailing sign
+    CSNS = 3U   // Scaled fixed-point, unsigned
+  };
 
 
-#define MFkAR   0x40U ///< Address register flag. This flag controls interpretation of the ADDRESS field of the operand descriptor just as the "A" flag controls interpretation of the ADDRESS field of the basic and EIS single-word instructions.
-#define MFkPR   0x40U ///< ""
-#define MFkRL   0x20U ///< Register length control. If RL = 0, then the length (N) field of the operand descriptor contains the length of the operand. If RL = 1, then the length (N) field of the operand descriptor contains a selector value specifying a register holding the operand length. Operand length is interpreted as units of the data size (1-, 4-, 6-, or 9-bit) given in the associated operand descriptor.
-#define MFkID   0x10U ///< Indirect descriptor control. If ID = 1 for Mfk, then the kth word following the instruction word is an indirect pointer to the operand descriptor for the kth operand; otherwise, that word is the operand descriptor.
+enum
+  {
+    // Address register flag. This flag controls interpretation of the ADDRESS
+    // field of the operand descriptor just as the "A" flag controls
+    // interpretation of the ADDRESS field of the basic and EIS single-word
+    // instructions.
+    MFkAR = 0x40U,
+    // Register length control. If RL = 0, then the length (N) field of the
+    // operand descriptor contains the length of the operand. If RL = 1, then
+    // the length (N) field of the operand descriptor contains a selector value
+    // specifying a register holding the operand length. Operand length is
+    // interpreted as units of the data size (1-, 4-, 6-, or 9-bit) given in
+    // the associated operand descriptor.
+    MFkRL = 0x20U,
+    // Indirect descriptor control. If ID = 1 for Mfk, then the kth word
+    // following the instruction word is an indirect pointer to the operand
+    // descriptor for the kth operand; otherwise, that word is the operand
+    // descriptor.
+    MFkID = 0x10U,
 
-#define MFkREGMASK  0xfU
+    MFkREGMASK = 0xfU
+  };
 
 
-// EIS instruction take on a life of their own. Need to take into account RNR/SNR/BAR etc.
-typedef enum eisDataType
-{
-    eisUnknown = 0, ///< uninitialized
-    eisTA = 1,      ///< type alphanumeric
-    eisTN = 2,      ///< type numeric
-    eisBIT = 3      ///< bit string
-} eisDataType;
+// EIS instruction take on a life of their own. Need to take into account
+// RNR/SNR/BAR etc.
+typedef enum
+  {
+    eisUnknown = 0, // uninitialized
+    eisTA = 1,      // type alphanumeric
+    eisTN = 2,      // type numeric
+    eisBIT = 3      // bit string
+  } eisDataType;
 
-enum eRW
-{
+typedef enum
+  {
     eRWreadBit = 0,
     eRWwriteBit
-};
-
-typedef enum eRW eRW;
-
-typedef struct DCDstruct DCDstruct;
+  } eRW;
 
 // Misc constants and macros
 
@@ -622,4 +629,5 @@ inline void fence (void)
     pthread_mutex_unlock (& fenceLock);
   }
 #endif
+
 #endif // ifdef DPS8_H

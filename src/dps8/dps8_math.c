@@ -31,10 +31,10 @@
 #include "dps8_scu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
-#include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_ins.h"
 #include "dps8_math.h"
+#include "dps8_utils.h"
 
 #define DBG_CTR cpu.cycleCnt
 
@@ -58,7 +58,7 @@ long double exp2l (long double e) {
 long double EAQToIEEElongdouble(void)
 {
     // mantissa
-    word72 Mant = convertToWord72 (cpu.rA, cpu.rQ);
+    word72 Mant = convert_to_word72 (cpu.rA, cpu.rQ);
 #ifdef NEED_128
 
     if (iszero_128 (Mant))
@@ -116,7 +116,7 @@ long double EAQToIEEElongdouble(void)
 double EAQToIEEEdouble(void)
 {
     // mantissa
-    word72 Mant = convertToWord72 (cpu.rA, cpu.rQ);
+    word72 Mant = convert_to_word72 (cpu.rA, cpu.rQ);
 
 #ifdef NEED_128
     if (iszero_128 (Mant))
@@ -492,7 +492,7 @@ IF1 sim_printf ("UFA Y %lf\n", float36ToIEEEdouble (cpu.CY));
     //word72 sign_msk = isHex() ? HEX_SIGN : SIGN72;
     //word72 sign_msb = isHex() ? HEX_MSB  : BIT71;
 #endif
-    word72 m1 = convertToWord72 (cpu.rA, cpu.rQ);
+    word72 m1 = convert_to_word72 (cpu.rA, cpu.rQ);
 #ifdef NEED_128
     // 28-bit mantissa (incl sign)
     word72 m2 = lshift_128 (construct_128 (0, (uint64_t) getbits36_28 (cpu.CY, 8)), 44u); // 28-bit mantissa (incl sign)
@@ -759,7 +759,7 @@ IF1 sim_printf ("UFA now e3 %03o m3 now %012"PRIo64" %012"PRIo64"\n", e3, (word3
 #endif // NEED_128
     }
 
-    convertToWord36 (m3, & cpu.rA, & cpu.rQ);
+    convert_to_word36 (m3, & cpu.rA, & cpu.rQ);
     HDBGRegA ();
     cpu . rE = e3 & 0377;
 
@@ -841,7 +841,7 @@ IF1 sim_printf ("FNO EAQ %f\n", EAQToIEEEdouble ());
 #endif
     *A &= DMASK;
     *Q &= DMASK;
-    float72 m = convertToWord72 (* A, * Q);
+    float72 m = convert_to_word72 (* A, * Q);
     if (TST_I_OFLOW)
     {
 IF1 sim_printf ("FNO OVF\n");
@@ -933,7 +933,7 @@ IF1 sim_printf ("FNO OVF\n");
             *E &= MASK8;
         }
 #endif // NEED_128
-        convertToWord36 (m, A, Q);
+        convert_to_word36 (m, A, Q);
         SC_I_NEG ((*A) & SIGN36);
 
         return;
@@ -1101,7 +1101,7 @@ IF1 sim_printf ("FNO NOW %012"PRIo64" %012"PRIo64"\n", (word36)((m >> 36) & DMAS
     }
 
     *E = (word8) e & MASK8;
-    convertToWord36 (m, A, Q);
+    convert_to_word36 (m, A, Q);
 
     // EAQ is normalized, so if A is 0, so is Q, and the check can be elided
     if (*A == 0)    // set to normalized 0
@@ -1268,7 +1268,7 @@ void fneg (void)
     CPTUR (cptUseE);
     // Form the mantissa from AQ
 
-    word72 m = convertToWord72 (cpu.rA, cpu.rQ);
+    word72 m = convert_to_word72 (cpu.rA, cpu.rQ);
 
     // If the mantissa is 4000...00 (least negative value, it is negable in
     // two's complement arithmetic. Divide it by 2, losing a bit of precision,
@@ -1306,7 +1306,7 @@ void fneg (void)
         m = -m;
 #endif
       }
-    convertToWord36 (m, & cpu.rA, & cpu.rQ);
+    convert_to_word36 (m, & cpu.rA, & cpu.rQ);
 #endif
     fno (& cpu.rE, & cpu.rA, & cpu.rQ);  // normalize
     HDBGRegA ();
@@ -1327,7 +1327,7 @@ void ufm (void)
     // Exp Undr: If exponent is less than -128, then ON
     
     CPTUR (cptUseE);
-    word72 m1 = convertToWord72 (cpu.rA, cpu.rQ);
+    word72 m1 = convert_to_word72 (cpu.rA, cpu.rQ);
     int    e1 = SIGNEXT8_int (cpu . rE & MASK8);
 
 #ifdef NEED_128
@@ -1422,7 +1422,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "m3a %016lx%016lx\n", (uint64_t) (m3a>>64), 
         e3 += 1;
     }
 
-    convertToWord36 (m3a, & cpu.rA, & cpu.rQ);
+    convert_to_word36 (m3a, & cpu.rA, & cpu.rQ);
     HDBGRegA ();
     cpu . rE = (word8) e3 & MASK8;
 sim_debug (DBG_TRACEEXT, & cpu_dev, "fmp A %012"PRIo64" Q %012"PRIo64" E %03o\n", cpu.rA, cpu.rQ, cpu.rE);
@@ -1471,7 +1471,7 @@ static void fdvX(bool bInvert)
     
     if (!bInvert)
     {
-        m1 = convertToWord72 (cpu.rA, cpu.rQ);
+        m1 = convert_to_word72 (cpu.rA, cpu.rQ);
         e1 = SIGNEXT8_int (cpu . rE & MASK8);
 
 #ifdef NEED_128
@@ -1483,7 +1483,7 @@ static void fdvX(bool bInvert)
 
     } else { // invert
 
-        m2 = convertToWord72 (cpu.rA, cpu.rQ);
+        m2 = convert_to_word72 (cpu.rA, cpu.rQ);
         e2 = SIGNEXT8_int (cpu . rE & MASK8);
 
         // round divisor per RJ78
@@ -1624,7 +1624,7 @@ IF1 sim_printf ("FDV abs e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (
         // FDI: If the divisor mantissa C(AQ) is zero, the division does not take place.
         // Instead, a divide check fault occurs and all the registers remain unchanged.
         if (!bInvert) {
-            convertToWord36 (m1, & cpu.rA, & cpu.rQ);
+            convert_to_word36 (m1, & cpu.rA, & cpu.rQ);
             HDBGRegA ();
         }
 
@@ -1803,7 +1803,7 @@ void frd (void)
 IF1 sim_printf ("FRD E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
 #endif
 
-    word72 m = convertToWord72 (cpu.rA, cpu.rQ);
+    word72 m = convert_to_word72 (cpu.rA, cpu.rQ);
 #ifdef NEED_128
     if (iszero_128 (m))
 #else
@@ -1872,7 +1872,7 @@ IF1 sim_printf ("FRD E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, (word36) (
 
     bool savedovf = TST_I_OFLOW;
     SC_I_OFLOW(ovf);
-    convertToWord36 (m, & cpu.rA, & cpu.rQ);
+    convert_to_word36 (m, & cpu.rA, & cpu.rQ);
 
     fno (& cpu.rE, & cpu.rA, & cpu.rQ);
     HDBGRegA ();
@@ -1899,7 +1899,7 @@ void fstr (word36 *Y)
     //Q &= DMASK;
     //E &= (int) MASK8;
    
-    float72 m = convertToWord72 (A, Q);
+    float72 m = convert_to_word72 (A, Q);
 #ifdef NEED_128
     if (iszero_128 (m))
 #else
@@ -1950,7 +1950,7 @@ IF1 sim_printf ("FSTR E %03o A %012"PRIo64" Q %012"PRIo64"\n", E, (word36) (m >>
 
     bool savedovf = TST_I_OFLOW;
     SC_I_OFLOW(ovf);
-    convertToWord36 (m, & A, & Q);
+    convert_to_word36 (m, & A, & Q);
     fno (& E, & A, & Q);
     SC_I_OFLOW(savedovf);
 IF1 sim_printf ("FSTR normalized E %03o A %012"PRIo64" Q %012"PRIo64"\n", E, A, Q);
@@ -2462,7 +2462,7 @@ IF1 sim_printf ("%s testno %d\n", subtract ? "DUFS" : "DUFA", testno ++);
     uint shift_amt = isHex() ? 4 : 1;
 #endif
 
-    word72 m1 = convertToWord72 (cpu.rA, cpu.rQ);
+    word72 m1 = convert_to_word72 (cpu.rA, cpu.rQ);
     int e1 = SIGNEXT8_int (cpu . rE & MASK8); 
 
     // 64-bit mantissa (incl sign)
@@ -2719,7 +2719,7 @@ IF1 sim_printf ("DUFA e3 now %d\n", e3);
 #endif
       }
 
-    convertToWord36 (m3, & cpu.rA, & cpu.rQ);
+    convert_to_word36 (m3, & cpu.rA, & cpu.rQ);
     HDBGRegA ();
     cpu.rE = e3 & 0377;
 
@@ -2836,7 +2836,7 @@ void dufm (void)
 #ifdef L68
     cpu.ou.cycle |= ou_GOS;
 #endif
-    word72 m1 = convertToWord72 (cpu.rA, cpu.rQ);
+    word72 m1 = convert_to_word72 (cpu.rA, cpu.rQ);
     int    e1 = SIGNEXT8_int (cpu . rE & MASK8);
     
 #ifndef NEED_128
@@ -3000,7 +3000,7 @@ IF1 sim_printf ("DUFM aligned e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (wor
         e3 += 1;
     }
 
-    convertToWord36 (m3a, & cpu.rA, & cpu.rQ);
+    convert_to_word36 (m3a, & cpu.rA, & cpu.rQ);
     HDBGRegA ();
     cpu . rE = (word8) e3 & MASK8;
 
@@ -3058,7 +3058,7 @@ IF1 sim_printf ("UFA E %03o A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu
 
     if (!bInvert)
       {
-        m1 = convertToWord72 (cpu.rA, cpu.rQ);
+        m1 = convert_to_word72 (cpu.rA, cpu.rQ);
         e1 = SIGNEXT8_int (cpu . rE & MASK8); 
 
         // 64-bit mantissa (incl sign)
@@ -3075,7 +3075,7 @@ IF1 sim_printf ("UFA E %03o A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu
       }
     else
       { // invert
-        m2 = convertToWord72 (cpu.rA, cpu.rQ);
+        m2 = convert_to_word72 (cpu.rA, cpu.rQ);
         e2 = SIGNEXT8_int (cpu . rE & MASK8); 
 
         // round divisor per RJ78
@@ -3236,7 +3236,7 @@ IF1 sim_printf ("DFDV m2==0\n");
         // FDI: If the divisor mantissa C(AQ) is zero, the division does not take place.
         // Instead, a divide check fault occurs and all the registers remain unchanged.
         if (!bInvert) {
-          convertToWord36 (m1, & cpu.rA, & cpu.rQ);
+          convert_to_word36 (m1, & cpu.rA, & cpu.rQ);
           HDBGRegA ();
         }
          
@@ -3325,7 +3325,7 @@ IF1 sim_printf ("DFDV final e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word3
 IF1 sim_printf ("DFDV final e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36); 
 #endif
 
-    convertToWord36 (m3, & cpu.rA, & cpu.rQ);
+    convert_to_word36 (m3, & cpu.rA, & cpu.rQ);
     HDBGRegA ();
     cpu.rE = (word8) e3 & MASK8;
 IF1 sim_printf ("rA %012"PRIo64" rQ %012"PRIo64" rE %o\n", cpu.rA, cpu.rQ, cpu.rE);
@@ -3652,7 +3652,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "zfrac %016llx %016llx\n", (uint64) (zFrac>>
     // divisor format: . d(0) .... d(34) 0 0 0 .... 0 
     
     // divisor goes in the low half
-    uint128 dFrac = convertToWord72 (0, cpu.CY & MASK35);
+    uint128 dFrac = convert_to_word72 (0, cpu.CY & MASK35);
 #ifdef NEED_128
 sim_debug (DBG_TRACEEXT, & cpu_dev, "dfrac %016llx %016llx\n", dFrac.h, dFrac.l);
 #else
@@ -3852,7 +3852,7 @@ void dfrd (void)
     // * If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
         
     CPTUR (cptUseE);
-    float72 m = convertToWord72 (cpu.rA, cpu.rQ);
+    float72 m = convert_to_word72 (cpu.rA, cpu.rQ);
 #ifdef NEED_128
     if (iszero_128 (m))
 #else
@@ -3902,7 +3902,7 @@ IF1 sim_printf ("DFRD E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, (word36) 
 
     bool savedovf = TST_I_OFLOW;
     SC_I_OFLOW(ovf);
-    convertToWord36 (m, & cpu.rA, & cpu.rQ);
+    convert_to_word36 (m, & cpu.rA, & cpu.rQ);
 
     fno (& cpu.rE, & cpu.rA, & cpu.rQ);
     HDBGRegA ();
@@ -3937,7 +3937,7 @@ void dfstr (word36 *Ypair)
     //A &= DMASK;
     //Q &= DMASK;
 
-    float72 m = convertToWord72 (A, Q);
+    float72 m = convert_to_word72 (A, Q);
 #ifdef NEED_128
     if (iszero_128 (m))
 #else
@@ -3991,7 +3991,7 @@ IF1 sim_printf ("DFSTR E %03o A %012"PRIo64" Q %012"PRIo64"\n", E, (word36) (m >
 
     bool savedovf = TST_I_OFLOW;
     SC_I_OFLOW(ovf);
-    convertToWord36 (m, & A, & Q);
+    convert_to_word36 (m, & A, & Q);
 
     fno (& E, & A, & Q);
     SC_I_OFLOW(savedovf);
@@ -4074,7 +4074,7 @@ void dfcmp (void)
 #ifdef HEX_MODE
     uint shift_amt = isHex() ? 4 : 1;
 #endif
-    word72 m1 = convertToWord72 (cpu.rA, cpu.rQ & 0777777777400LL);
+    word72 m1 = convert_to_word72 (cpu.rA, cpu.rQ & 0777777777400LL);
     int   e1 = SIGNEXT8_int (cpu . rE & MASK8);
 
 //IF1 sim_printf ("DFCMP e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
@@ -4259,7 +4259,7 @@ void dfcmg (void)
     uint shift_amt = isHex() ? 4 : 1;
 #endif
     // C(AQ)0,63
-    word72 m1 = convertToWord72 (cpu.rA & MASK36, cpu.rQ & 0777777777400LL);
+    word72 m1 = convert_to_word72 (cpu.rA & MASK36, cpu.rQ & 0777777777400LL);
     int    e1 = SIGNEXT8_int (cpu.rE & MASK8);
 
 //IF1 sim_printf ("DFCMG e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);

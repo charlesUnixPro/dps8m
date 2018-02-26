@@ -38,7 +38,6 @@
 #include "dps8_scu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
-#include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_ins.h"
 #include "dps8_loader.h"
@@ -52,6 +51,7 @@
 #include "dps8_prt.h"
 #include "dps8_urp.h"
 #include "dps8_absi.h"
+#include "dps8_utils.h"
 #include "utlist.h"
 #if defined(THREADZ) || defined(LOCKLESS)
 #include "threadz.h"
@@ -3443,8 +3443,10 @@ static CTAB dps8_cmds[] =
 #endif
     // doesn't work
     //{"DUMPKST",             dumpKST,                  0, "dumpkst: dump the Known Segment Table\n", NULL},
+#ifndef SPEED
     {"WATCH",               set_mem_watch,            1, "watch: Watch memory location\n", NULL, NULL},
     {"NOWATCH",             set_mem_watch,            0, "watch: Unwatch memory location\n", NULL, NULL},
+#endif
 #ifndef SCUMEM
     {"SEARCHMEMORY",        search_memory,            0, "searchmemory: Search memory for value\n", NULL, NULL},
 #endif
@@ -3563,7 +3565,6 @@ static void dps8_init (void)
     // sys_poll_check_rate in CPU cycles
     sys_opts.sys_poll_check_rate = 1024;
 
-    init_opcodes();
     sysCableInit ();
     iom_init ();
     disk_init ();
@@ -3788,7 +3789,7 @@ t_stat fprint_sym (UNUSED FILE * ofile, UNUSED t_addr addr,
         word36 word1 = *val;
         char buf[256];
         // get base syntax
-        char *d = disAssemble(buf, word1);
+        char *d = disassemble(buf, word1);
         
         fprintf(ofile, "%s", d);
         
@@ -3802,7 +3803,7 @@ t_stat fprint_sym (UNUSED FILE * ofile, UNUSED t_addr addr,
         {
             // Yup, just output word values (for now)
             
-            // XXX Need to complete MW EIS support in disAssemble()
+            // XXX Need to complete MW EIS support in disassemble()
             
             for(uint n = 0 ; n < p->info->ndes; n += 1)
                 fprintf(ofile, " %012"PRIo64"", val[n + 1]);
@@ -3887,7 +3888,7 @@ static t_stat sys_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
     for (;;)
       {
         int64_t v;
-        int rc = cfgparse ("sys_set_config", cptr, sys_config_list, & cfg_state,
+        int rc = cfg_parse ("sys_set_config", cptr, sys_config_list, & cfg_state,
                            & v);
         if (rc == -1) // done
           {
@@ -3895,7 +3896,7 @@ static t_stat sys_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
           }
         if (rc == -2) // error
           {
-            cfgparse_done (& cfg_state);
+            cfg_parse_done (& cfg_state);
             return SCPE_ARG;
           }
 
@@ -3906,12 +3907,12 @@ static t_stat sys_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
           sys_opts.no_color = ! v;
         else
           {
-            sim_msg ("error: sys_set_config: invalid cfgparse rc <%d>\n", rc);
-            cfgparse_done (& cfg_state);
+            sim_msg ("error: sys_set_config: invalid cfg_parse rc <%d>\n", rc);
+            cfg_parse_done (& cfg_state);
             return SCPE_ARG;
           } 
       } // process statements
-    cfgparse_done (& cfg_state);
+    cfg_parse_done (& cfg_state);
     return SCPE_OK;
   }
 

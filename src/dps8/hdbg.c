@@ -16,11 +16,13 @@
 #include <fcntl.h>
 
 #include "dps8.h"
+#include "dps8_sys.h"
+#include "dps8_cpu.h"
+#include "dps8_utils.h"
 #include "hdbg.h"
 
 
 #ifdef HDBG
-#include "dps8_utils.h"
 #include "dps8_sys.h"
 #include "dps8_faults.h"
 #include "dps8_cpu.h"
@@ -328,14 +330,14 @@ static void printTrace (struct hevt * p)
         fprintf (hdbgOut, "DBG(%"PRId64")> CPU TRACE: %06o %o %012"PRIo64" (%s)\n",
                     p -> time, 
                     p -> trace . ic, p -> trace . ring,
-                    p -> trace . inst, disAssemble (buf, p -> trace . inst));
+                    p -> trace . inst, disassemble (buf, p -> trace . inst));
       }
     else
       {
         fprintf (hdbgOut, "DBG(%"PRId64")> CPU TRACE: %05o:%06o %o %012"PRIo64" (%s)\n",
                     p -> time, p -> trace . segno,
                     p -> trace . ic, p -> trace . ring,
-                    p -> trace . inst, disAssemble (buf, p -> trace . inst));
+                    p -> trace . inst, disassemble (buf, p -> trace . inst));
       }
   }
 
@@ -522,7 +524,6 @@ t_stat hdbg_print (UNUSED int32 arg, const char * buf)
     return SCPE_OK;
   }
 #else
-#include "dps8_utils.h"
 t_stat hdbg_size (UNUSED int32 arg, UNUSED const char * buf)
   {
     sim_printf ("hdbg not enabled; ignoring\n");

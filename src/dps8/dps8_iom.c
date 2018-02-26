@@ -219,10 +219,10 @@
 #include "dps8_scu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
-#include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_console.h"
 #include "dps8_fnp2.h"
+#include "dps8_utils.h"
 #if defined(THREADZ) || defined(LOCKLESS)
 #include "threadz.h"
 #endif
@@ -865,11 +865,11 @@ static t_stat iom_set_config (UNIT * uptr, UNUSED int value, const char * cptr, 
     for (;;)
       {
         int64_t v;
-        int rc = cfgparse (__func__, cptr, iom_config_list, & cfg_state, & v);
+        int rc = cfg_parse (__func__, cptr, iom_config_list, & cfg_state, & v);
         switch (rc)
           {
             case -2: // error
-              cfgparse_done (& cfg_state);
+              cfg_parse_done (& cfg_state);
               return SCPE_ARG; 
 
             case -1: // done
@@ -956,14 +956,14 @@ static t_stat iom_set_config (UNIT * uptr, UNUSED int value, const char * cptr, 
               break;
 
             default:
-              sim_printf ("error: %s: invalid cfgparse rc <%d>\n", __func__, rc);
-              cfgparse_done (& cfg_state);
+              sim_printf ("error: %s: invalid cfg_parse rc <%d>\n", __func__, rc);
+              cfg_parse_done (& cfg_state);
               return SCPE_ARG; 
           } // switch
         if (rc < 0)
           break;
       } // process statements
-    cfgparse_done (& cfg_state);
+    cfg_parse_done (& cfg_state);
     return SCPE_OK;
   }
 

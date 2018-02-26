@@ -26,17 +26,17 @@
 #include "dps8_scu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
-#include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_iefp.h"
 #include "dps8_addrmods.h"
+#include "dps8_utils.h"
 
 #define DBG_CTR cpu.cycleCnt
 
 // new Read/Write stuff ...
 
-void Read (word18 address, word36 * result, _processor_cycle_type cyctyp)
+void Read (word18 address, word36 * result, processor_cycle_type cyctyp)
   {
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
     bool isBAR = get_bar_mode ();
@@ -125,7 +125,7 @@ B29:;
     return ;//SCPE_UNK;
   }
 
-void Read2 (word18 address, word36 * result, _processor_cycle_type cyctyp)
+void Read2 (word18 address, word36 * result, processor_cycle_type cyctyp)
   {
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
 
@@ -446,7 +446,7 @@ B29:;
     return ;//SCPE_UNK;
   }
 
-void Write (word18 address, word36 data, _processor_cycle_type cyctyp)
+void Write (word18 address, word36 data, processor_cycle_type cyctyp)
  {
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
 
@@ -532,7 +532,7 @@ B29:
   }
 
 
-void Write2 (word18 address, word36 * data, _processor_cycle_type cyctyp)
+void Write2 (word18 address, word36 * data, processor_cycle_type cyctyp)
   {
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
     bool isBAR = get_bar_mode ();

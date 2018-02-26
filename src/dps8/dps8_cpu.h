@@ -465,11 +465,15 @@ typedef struct mode_register_s
 
 extern DEVICE cpu_dev;
 
-typedef struct MOP_struct MOP_struct;
+typedef struct MOP_struct_s
+  {
+    char * mopName;   // name of microoperation
+    int (* f) (void); // pointer to mop() [returns character to be stored]
+  } MOP_struct;
 
 // address of an EIS operand
-typedef struct EISaddr
-{
+typedef struct EISaddr_s
+  {
 #ifndef EIS_PTR
     word18  address;    // 18-bit virtual address
 #endif
@@ -523,8 +527,9 @@ typedef struct EISaddr
 #endif
     word18 cachedAddr;
 
-} EISaddr;
-typedef struct EISstruct
+  } EISaddr;
+
+typedef struct EISstruct_s
   {
     word36  op [3];         // raw operand descriptors
 #define OP1 op [0]          // 1st descriptor (2nd ins word)
@@ -665,9 +670,9 @@ typedef struct EISstruct
 
 // Instruction decode structure. Used to represent instrucion information
 
-struct DCDstruct
+typedef struct DCDstruct_s
   {
-    opCode * info;        // opCode *
+    struct opcode_s * info;        // opcode_s *
     uint32 opcode;        // opcode
     bool   opcodeX;       // opcode extension
     uint32 opcode10;      // opcode | (opcodeX ? 01000 : 0)
@@ -678,7 +683,7 @@ struct DCDstruct
     
     bool stiTally;      // for sti instruction
     bool restart;         // instruction is to be restarted
-  };
+  } DCDstruct;
 
 // Emulator-only interrupt and fault info
 
@@ -821,9 +826,7 @@ enum {
 
 typedef struct
   {
-#ifdef RALRx
-    _processor_cycle_type lastCycle;
-#endif
+    processor_cycle_type lastCycle;
 #ifdef PANEL
     word34 state;
 #endif
@@ -1833,8 +1836,8 @@ static inline void SET_AR_CHAR_BITNO (uint n, word2 c, word4 b)
 bool sample_interrupts (void);
 t_stat simh_hooks (void);
 int operand_size (void);
-t_stat read_operand (word18 addr, _processor_cycle_type cyctyp);
-t_stat write_operand (word18 addr, _processor_cycle_type acctyp);
+t_stat read_operand (word18 addr, processor_cycle_type cyctyp);
+t_stat write_operand (word18 addr, processor_cycle_type acctyp);
 
 #ifdef PANEL
 static inline void trackport (word24 a, word36 d)
@@ -2184,9 +2187,10 @@ int is_priv_mode (void);
 bool get_bar_mode (void);
 addr_modes_e get_addr_mode (void);
 void set_addr_mode (addr_modes_e mode);
-void init_opcodes (void);
 void decode_instruction (word36 inst, DCDstruct * p);
+#ifndef SPEED
 t_stat set_mem_watch (int32 arg, const char * buf);
+#endif
 char *str_SDW0 (char * buf, sdw_s *SDW);
 #ifdef SCUMEM
 int lookup_cpu_mem_map (word24 addr, word24 * offset);

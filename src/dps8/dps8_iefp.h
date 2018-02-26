@@ -12,10 +12,10 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
-void Read (word18 addr, word36 *dat, _processor_cycle_type cyctyp);
-void Read2 (word18 addr, word36 *dat, _processor_cycle_type cyctyp);
-void Write (word18 addr, word36 dat, _processor_cycle_type cyctyp);
-void Write2 (word18 address, word36 * data, _processor_cycle_type cyctyp);
+void Read (word18 addr, word36 *dat, processor_cycle_type cyctyp);
+void Read2 (word18 addr, word36 *dat, processor_cycle_type cyctyp);
+void Write (word18 addr, word36 dat, processor_cycle_type cyctyp);
+void Write2 (word18 address, word36 * data, processor_cycle_type cyctyp);
 #ifdef CWO
 void Write1 (word18 address, word36 data, bool isAR);
 #endif

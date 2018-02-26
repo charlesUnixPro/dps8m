@@ -28,10 +28,10 @@
 #include "dps8_scu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
-#include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_ins.h"
 #include "dps8_opcodetable.h"
+#include "dps8_utils.h"
 
 #define DBG_CTR 1
 
@@ -39,7 +39,7 @@
  * misc utility routines used by simulator
  */
 
-char * dumpFlags(char * buffer, word18 flags)
+char * dump_flags(char * buffer, word18 flags)
 {
     //static char buffer[256] = "";
     
@@ -80,15 +80,15 @@ static char * dps8_strupr(char *str)
 
 //! get instruction info for IWB ...
 
-static opCode UnImp = {"(unimplemented)", 0, 0, 0, 0};
+static struct opcode_s unimplented = {"(unimplemented)", 0, 0, 0, 0};
 
-struct opCode * getIWBInfo (DCDstruct * i)
+struct opcode_s * get_iwb_info  (DCDstruct * i)
   {
-    opCode * p = &opcodes10[i->opcode10];
-    return p->mne ? p : &UnImp;
+    struct opcode_s * p = &opcodes10[i->opcode10];
+    return p->mne ? p : &unimplented;
   }
 
-char *disAssemble(char * result, word36 instruction)
+char *disassemble(char * result, word36 instruction)
 {
     uint32 opcode  = GET_OP(instruction);   ///< get opcode
     uint32 opcodeX = GET_OPX(instruction);  ///< opcode extension
@@ -141,14 +141,14 @@ char *disAssemble(char * result, word36 instruction)
 }
 
 /*
- * getModString ()
+ * get_mod__string ()
  *
  * Convert instruction address modifier tag to printable string
  * WARNING: returns pointer to statically allocated string
  *
  */
 
-char *getModString(char * msg, word6 tag)
+char *get_mod_string(char * msg, word6 tag)
 {
     strcpy(msg, "none");
     
@@ -1009,7 +1009,7 @@ void putChar(word36 *dst, word6 data, int posn)
     putbits36_6 (dst, (uint) posn * 6, data);
 }
 
-word72 convertToWord72(word36 even, word36 odd)
+word72 convert_to_word72(word36 even, word36 odd)
 {
 #ifdef NEED_128
     return or_128 (lshift_128 (construct_128 (0, even), 36), construct_128 (0, odd));
@@ -1018,7 +1018,7 @@ word72 convertToWord72(word36 even, word36 odd)
 #endif
 }
 
-void convertToWord36(word72 src, word36 *even, word36 *odd)
+void convert_to_word36 (word72 src, word36 *even, word36 *odd)
 {
 #ifdef NEED_128
     *even = rshift_128 (src, 36).l & DMASK;
@@ -1699,7 +1699,7 @@ void sim_puts (char * str)
 // XXX what about config=addr7=123, where clist has a "addr%"?
 
 // return -2: error; -1: done; >= 0 option found
-int cfgparse (const char * tag, const char * cptr, config_list_t * clist, config_state_t * state, int64_t * result)
+int cfg_parse (const char * tag, const char * cptr, config_list_t * clist, config_state_t * state, int64_t * result)
   {
     if (! cptr)
       return -2;
@@ -1819,7 +1819,7 @@ done:
     return ret;
   }
 
-void cfgparse_done (config_state_t * state)
+void cfg_parse_done (config_state_t * state)
   {
     if (state -> copy)
       free (state -> copy);
@@ -2234,232 +2234,3 @@ void currentTR (word27 * trunits, bool * ovf)
   }
 #endif
 
-#ifdef COLOR
-//                FG BG
-// Black          30 40
-// Red            31 41
-// Green          32 42
-// Yellow         33 43
-// Blue           34 44
-// Magenta        35 45
-// Cyan           36 46
-// White          37 47
-// Bright Black   90 100
-// Bright Red     91 101
-// Bright Green   92 102
-// Bright Yellow  93 103
-// Bright Blue    94 104
-// Bright Magenta 95 105
-// Bright Cyan    96 106
-// Bright White   97 107
-// Reset all       0
-
-#define GRN "\033[32m"
-#define WHT "\033[97m"
-#define YEL "\033[33m"
-#define RST "\033[0m"
-
-void sim_msg (const char * fmt, ...)
-  {
-    char stackbuf[STACKBUFSIZE];
-    int32 bufsize = sizeof (stackbuf);
-    char * buf = stackbuf;
-    int32 len;
-    va_list arglist;
-
-    /* format passed string, args */
-    while (1) 
-      {
-        va_start (arglist, fmt);
-#if defined(NO_vsnprintf)
-        len = vsprintf (buf, fmt, arglist);
-#else                                               /* !defined(NO_vsnprintf) */
-        len = vsnprintf (buf, (unsigned long) bufsize-1, fmt, arglist);
-#endif                                              /* NO_vsnprintf */
-        va_end (arglist);
-
-/* If the formatted result didn't fit into the buffer, then grow the buffer and try again */
-
-        if ((len < 0) || (len >= bufsize-1))
-          {
-            if (buf != stackbuf)
-                free (buf);
-            bufsize = bufsize * 2;
-            if (bufsize < len + 2)
-                bufsize = len + 2;
-            buf = (char *) malloc ((unsigned long) bufsize);
-            if (buf == NULL)                            /* out of memory */
-                return;
-            buf[bufsize-1] = '\0';
-            continue;
-          }
-        break;
-      }
-
-    if (! sys_opts.no_color)
-      printf (GRN);
-
-    if (sim_is_running)
-      {
-        char *c, *remnant = buf;
-
-        while ((c = strchr(remnant, '\n')))
-          {
-            if ((c != buf) && (*(c - 1) != '\r'))
-              printf("%.*s\r\n", (int)(c-remnant), remnant);
-            else
-              printf("%.*s\n", (int)(c-remnant), remnant);
-            remnant = c + 1;
-          }
-        printf("%s", remnant);
-      }
-    else
-      printf("%s", buf);
-
-    if (! sys_opts.no_color)
-      sim_printf (RST);
-
-    if (sim_log && (sim_log != stdout))
-      fprintf (sim_log, "%s", buf);
-    if (sim_deb && (sim_deb != stdout) && (sim_deb != sim_log))
-      fprintf (sim_deb, "%s", buf);
-
-    if (buf != stackbuf)
-      free (buf);
-  }
-
-void sim_warn (const char * fmt, ...)
-  {
-    char stackbuf[STACKBUFSIZE];
-    int32 bufsize = sizeof (stackbuf);
-    char * buf = stackbuf;
-    int32 len;
-    va_list arglist;
-
-    /* format passed string, args */
-    while (1) 
-      {
-        va_start (arglist, fmt);
-#if defined(NO_vsnprintf)
-        len = vsprintf (buf, fmt, arglist);
-#else                                               /* !defined(NO_vsnprintf) */
-        len = vsnprintf (buf, (unsigned long) bufsize-1, fmt, arglist);
-#endif                                              /* NO_vsnprintf */
-        va_end (arglist);
-
-/* If the formatted result didn't fit into the buffer, then grow the buffer and try again */
-
-        if ((len < 0) || (len >= bufsize-1))
-          {
-            if (buf != stackbuf)
-                free (buf);
-            bufsize = bufsize * 2;
-            if (bufsize < len + 2)
-                bufsize = len + 2;
-            buf = (char *) malloc ((unsigned long) bufsize);
-            if (buf == NULL)                            /* out of memory */
-                return;
-            buf[bufsize-1] = '\0';
-            continue;
-          }
-        break;
-      }
-
-    if (! sys_opts.no_color)
-      printf (YEL);
-
-    if (sim_is_running)
-      {
-        char *c, *remnant = buf;
-
-        while ((c = strchr(remnant, '\n')))
-          {
-            if ((c != buf) && (*(c - 1) != '\r'))
-              printf("%.*s\r\n", (int)(c-remnant), remnant);
-            else
-              printf("%.*s\n", (int)(c-remnant), remnant);
-            remnant = c + 1;
-          }
-        printf("%s", remnant);
-      }
-    else
-      printf("%s", buf);
-
-    if (! sys_opts.no_color)
-      printf (RST);
-
-    if (sim_log && (sim_log != stdout))
-      fprintf (sim_log, "%s", buf);
-    if (sim_deb && (sim_deb != stdout) && (sim_deb != sim_log))
-      fprintf (sim_deb, "%s", buf);
-
-    if (buf != stackbuf)
-      free (buf);
-  }
-
-void sim_print (const char * fmt, ...)
-  {
-    char stackbuf[STACKBUFSIZE];
-    int32 bufsize = sizeof (stackbuf);
-    char * buf = stackbuf;
-    int32 len;
-    va_list arglist;
-
-    /* format passed string, args */
-    while (1) 
-      {
-        va_start (arglist, fmt);
-#if defined(NO_vsnprintf)
-        len = vsprintf (buf, fmt, arglist);
-#else                                               /* !defined(NO_vsnprintf) */
-        len = vsnprintf (buf, (unsigned long) bufsize-1, fmt, arglist);
-#endif                                              /* NO_vsnprintf */
-        va_end (arglist);
-
-/* If the formatted result didn't fit into the buffer, then grow the buffer and try again */
-
-        if ((len < 0) || (len >= bufsize-1))
-          {
-            if (buf != stackbuf)
-                free (buf);
-            bufsize = bufsize * 2;
-            if (bufsize < len + 2)
-                bufsize = len + 2;
-            buf = (char *) malloc ((unsigned long) bufsize);
-            if (buf == NULL)                            /* out of memory */
-                return;
-            buf[bufsize-1] = '\0';
-            continue;
-          }
-        break;
-      }
-
-    if (! sys_opts.no_color)
-      printf (RST);
-
-    if (sim_is_running)
-      {
-        char *c, *remnant = buf;
-
-        while ((c = strchr(remnant, '\n')))
-          {
-            if ((c != buf) && (*(c - 1) != '\r'))
-              printf("%.*s\r\n", (int)(c-remnant), remnant);
-            else
-              printf("%.*s\n", (int)(c-remnant), remnant);
-            remnant = c + 1;
-          }
-        printf("%s", remnant);
-      }
-    else
-      printf("%s", buf);
-
-    if (sim_log && (sim_log != stdout))
-      fprintf (sim_log, "%s", buf);
-    if (sim_deb && (sim_deb != stdout) && (sim_deb != sim_log))
-      fprintf (sim_deb, "%s", buf);
-
-    if (buf != stackbuf)
-      free (buf);
-  }
-#endif

@@ -50,12 +50,12 @@
 #include "dps8_scu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
-#include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_iefp.h"
 #include "dps8_decimal.h"
 #include "dps8_ins.h"
 #include "dps8_eis.h"
+#include "dps8_utils.h"
 
 #define DBG_CTR cpu.cycleCnt
 
@@ -6579,12 +6579,6 @@ static int mopSES (void)
     return 0;
 }
 
-struct MOP_struct
-{
-    char *mopName;             // name of microoperation
-    int (*f)(void);    // pointer to mop() [returns character to be stored]
-};
-
 // Table 4-9. Micro Operation Code Assignment Map
 #ifndef QUIET_UNUSED 
 static char * mopCodes [040] =
@@ -7730,7 +7724,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
     }
 
 
-    EISWriteIdx(p, 0, w); // XXX this is the ineffecient part!
+    EISWriteIdx(p, 0, w); // XXX this is the inefficient part!
 
     *pos += 1;       // to next char.
 }
@@ -7778,7 +7772,7 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
             break;
     }
 
-    EISWriteIdx (p, 0, w); // XXX this is the ineffecient part!
+    EISWriteIdx (p, 0, w); // XXX this is the inefficient part!
 
     *pos += 1;       // to next byte.
 }
@@ -8721,7 +8715,7 @@ void csr (bool isSZTR)
 /*
  * get a bit from memory ....
  */
-// XXX this is terribly ineffecient, but it'll do for now ......
+// XXX this is terribly inefficient, but it'll do for now ......
 
 static bool EISgetBit(EISaddr *p, int *cpos, int *bpos)
 {
@@ -8975,8 +8969,8 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
             break;
     }
     
-    //Write (*dstAddr, w, OperandWrite, 0); // XXX this is the ineffecient part!
-    EISWriteIdx(p, 0, w); // XXX this is the ineffecient part!
+    //Write (*dstAddr, w, OperandWrite, 0); // XXX this is the inefficient part!
+    EISWriteIdx(p, 0, w); // XXX this is the inefficient part!
     
     *pos -= 1;       // to prev byte.
 }
@@ -9025,8 +9019,8 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
             break;
     }
     
-    //Write (*dstAddr, w, OperandWrite, 0); // XXX this is the ineffecient part!
-    EISWriteIdx(p, 0, w); // XXX this is the ineffecient part!
+    //Write (*dstAddr, w, OperandWrite, 0); // XXX this is the inefficient part!
+    EISWriteIdx(p, 0, w); // XXX this is the inefficient part!
     
     *pos -= 1;       // to prev byte.
 }

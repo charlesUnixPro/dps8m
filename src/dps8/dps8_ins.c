@@ -30,7 +30,6 @@
 #include "dps8_scu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
-#include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_eis.h"
@@ -39,6 +38,7 @@
 #include "dps8_opcodetable.h"
 #include "dps8_decimal.h"
 #include "dps8_iefp.h"
+#include "dps8_utils.h"
 
 #define DBG_CTR cpu.cycleCnt
 
@@ -94,7 +94,7 @@ static void writeOperands (void)
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s (%s):mne=%s flags=%x\n",
-               __func__, disAssemble (buf, IWB_IRODD), i->info->mne, i->info->flags);
+               __func__, disassemble (buf, IWB_IRODD), i->info->mne, i->info->flags);
 
     PNL (cpu.prepare_state |= ps_RAW);
 
@@ -159,7 +159,7 @@ static void readOperands (void)
 
     sim_debug (DBG_ADDRMOD, &cpu_dev,
                "%s (%s):mne=%s flags=%x\n",
-               __func__, disAssemble (buf, cpu.cu.IWB), i->info->mne, i->info->flags);
+               __func__, disassemble (buf, cpu.cu.IWB), i->info->mne, i->info->flags);
     sim_debug (DBG_ADDRMOD, &cpu_dev,
               "%s a %d address %08o\n", __func__, i->b29, cpu.TPR.CA);
 
@@ -930,7 +930,7 @@ t_stat display_the_matrix (UNUSED int32 arg, UNUSED const char * buf)
     for (int tag = 0; tag < 64; tag ++)
     if ((count = theMatrix[opcode][opcodeX][a][tag]))
     {
-        // disAssemble doesn't quite do what we want so copy the good bits
+        // disassemble doesn't quite do what we want so copy the good bits
         static char result[132] = "???";
         strcpy (result, "???");
         // get mnemonic ...
@@ -1080,7 +1080,7 @@ force:;
                   cpu.BAR.BASE,
                   cpu.PPR.IC,
                   IWB_IRODD,
-                  disAssemble (buf, IWB_IRODD),
+                  disassemble (buf, IWB_IRODD),
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
@@ -1097,7 +1097,7 @@ force:;
                   current_running_cpu_idx,
                   cpu.PPR.IC,
                   IWB_IRODD,
-                  disAssemble (buf, IWB_IRODD),
+                  disassemble (buf, IWB_IRODD),
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
@@ -1120,7 +1120,7 @@ force:;
                   cpu.PPR.IC,
                   cpu.PPR.PRR,
                   IWB_IRODD,
-                  disAssemble (buf, IWB_IRODD),
+                  disassemble (buf, IWB_IRODD),
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
@@ -1138,7 +1138,7 @@ force:;
                   cpu.PPR.IC,
                   cpu.PPR.PRR,
                   IWB_IRODD,
-                  disAssemble (buf, IWB_IRODD),
+                  disassemble (buf, IWB_IRODD),
                   cpu.currentInstruction.address,
                   cpu.currentInstruction.opcode,
                   cpu.currentInstruction.opcodeX,
@@ -1243,7 +1243,8 @@ t_stat executeInstruction (void)
     decode_instruction (IWB_IRODD, ci);
     //cpu.isb29 = ci->b29;
     //ISB29 = ci->b29;
-    const opCode *info = ci->info;       // opCode *
+    const struct opcode_s *info = ci->info;
+
 // Local caches of frequently accessed data
 
     const uint ndes = info->ndes;
@@ -1588,7 +1589,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "%s sets XSF to %o\n", __func__, cpu.cu.XSF)
     ///
 restart_1:
 
-#ifndef CA_REWORK
+#if 0 // #ifndef CA_REWORK
 #if 1
     cpu.TPR.CA = ci->address;
     cpu.iefpFinalAddress = cpu.TPR.CA;
@@ -1854,7 +1855,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                        n, cpu.PAR[n].SNR, cpu.PAR[n].RNR,
                        cpu.PAR[n].WORDNO, GET_PR_BITNO (n));
 
-#ifndef CA_REWORK
+#if 0 // #ifndef CA_REWORK
             cpu.TPR.CA = (cpu.PAR[n].WORDNO + SIGNEXT15_18 (offset))
                          & MASK18;
 #endif
@@ -1915,7 +1916,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
           }
 
 
-#ifndef CA_REWORK
+#if 0 // #ifndef CA_REWORK
         //
         // If POT is set, a page fault occured during the fetch of the data word
         // pointed to by an indirect addressing word, and the saved CA points
@@ -2307,7 +2308,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
         char buf [256];
         sim_debug (DBG_REGDUMPAQI, &cpu_dev,
                    "A=%012"PRIo64" Q=%012"PRIo64" IR:%s\n",
-                   cpu.rA, cpu.rQ, dumpFlags (buf, cpu.cu.IR));
+                   cpu.rA, cpu.rQ, dump_flags (buf, cpu.cu.IR));
 
 #ifndef __MINGW64__
         sim_debug (DBG_REGDUMPFLT, &cpu_dev,
@@ -2839,7 +2840,7 @@ static t_stat doInstruction (void)
           // C(AQ)i & C(Y-pair)i -> C(AQ)i for i = (0, 1, ..., 71)
           {
               word72 tmp72 = YPAIRTO72 (cpu.Ypair);
-              word72 trAQ = convertToWord72 (cpu.rA, cpu.rQ);
+              word72 trAQ = convert_to_word72 (cpu.rA, cpu.rQ);
 #ifdef NEED_128
               trAQ = and_128 (trAQ, tmp72);
               trAQ = and_128 (trAQ, MASK72);
@@ -2853,7 +2854,7 @@ static t_stat doInstruction (void)
               SC_I_ZERO (trAQ == 0);
               SC_I_NEG (trAQ & SIGN72);
 #endif
-              convertToWord36 (trAQ, &cpu.rA, &cpu.rQ);
+              convert_to_word36 (trAQ, &cpu.rA, &cpu.rQ);
               HDBGRegA ();
               HDBGRegQ ();
           }
@@ -3275,7 +3276,7 @@ static t_stat doInstruction (void)
           // C(AQ)i XOR C(Y-pair)i -> C(AQ)i for i = (0, 1, ..., 71)
           {
             word72 tmp72 = YPAIRTO72 (cpu.Ypair);
-            word72 trAQ = convertToWord72 (cpu.rA, cpu.rQ);
+            word72 trAQ = convert_to_word72 (cpu.rA, cpu.rQ);
 #ifdef NEED_128
             trAQ = xor_128 (trAQ, tmp72);
             trAQ = and_128 (trAQ, MASK72);
@@ -3290,7 +3291,7 @@ static t_stat doInstruction (void)
             SC_I_NEG (trAQ & SIGN72);
 #endif
 
-            convertToWord36 (trAQ, &cpu.rA, &cpu.rQ);
+            convert_to_word36 (trAQ, &cpu.rA, &cpu.rQ);
             HDBGRegA ();
             HDBGRegQ ();
           }
@@ -3568,13 +3569,13 @@ static t_stat doInstruction (void)
               }
             else
               {
-                word72 tmp72 = convertToWord72 (cpu.Ypair[0], cpu.Ypair[1]);
+                word72 tmp72 = convert_to_word72 (cpu.Ypair[0], cpu.Ypair[1]);
 #ifdef NEED_128
                 tmp72 = negate_128 (tmp72);
 #else
                 tmp72 = ~tmp72 + 1;
 #endif
-                convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
+                convert_to_word36 (tmp72, & cpu.rA, & cpu.rQ);
                 HDBGRegA ();
                 HDBGRegQ ();
 
@@ -4238,9 +4239,9 @@ static t_stat doInstruction (void)
 #endif
             bool ovf;
             word72 tmp72 = YPAIRTO72 (cpu.Ypair);
-            tmp72 = Add72b (convertToWord72 (cpu.rA, cpu.rQ), tmp72, 0,
+            tmp72 = Add72b (convert_to_word72 (cpu.rA, cpu.rQ), tmp72, 0,
                             I_ZNOC, & cpu.cu.IR, & ovf);
-            convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
+            convert_to_word36 (tmp72, & cpu.rA, & cpu.rQ);
             HDBGRegA ();
             HDBGRegQ ();
             overflow (ovf, false, "adaq overflow fault");
@@ -4255,10 +4256,10 @@ static t_stat doInstruction (void)
 #endif
             bool ovf;
             word72 tmp72 = SIGNEXT36_72 (cpu.CY); // sign extend Cy
-            tmp72 = Add72b (convertToWord72 (cpu.rA, cpu.rQ), tmp72, 0,
+            tmp72 = Add72b (convert_to_word72 (cpu.rA, cpu.rQ), tmp72, 0,
                             I_ZNOC,
                             & cpu.cu.IR, & ovf);
-            convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
+            convert_to_word36 (tmp72, & cpu.rA, & cpu.rQ);
             HDBGRegA ();
             HDBGRegQ ();
             overflow (ovf, false, "adl overflow fault");
@@ -4278,9 +4279,9 @@ static t_stat doInstruction (void)
             bool ovf;
             word72 tmp72 = YPAIRTO72 (cpu.Ypair);
 
-            tmp72 = Add72b (convertToWord72 (cpu.rA, cpu.rQ), tmp72, 0,
+            tmp72 = Add72b (convert_to_word72 (cpu.rA, cpu.rQ), tmp72, 0,
                             I_ZNC, & cpu.cu.IR, & ovf);
-            convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
+            convert_to_word36 (tmp72, & cpu.rA, & cpu.rQ);
             HDBGRegA ();
             HDBGRegQ ();
           }
@@ -4484,10 +4485,10 @@ static t_stat doInstruction (void)
 #endif
             bool ovf;
             word72 tmp72 = YPAIRTO72 (cpu.Ypair);
-            tmp72 = Sub72b (convertToWord72 (cpu.rA, cpu.rQ), tmp72, 1,
+            tmp72 = Sub72b (convert_to_word72 (cpu.rA, cpu.rQ), tmp72, 1,
                             I_ZNOC, & cpu.cu.IR,
                             & ovf);
-            convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
+            convert_to_word36 (tmp72, & cpu.rA, & cpu.rQ);
             HDBGRegA ();
             HDBGRegQ ();
             overflow (ovf, false, "sbaq overflow fault");
@@ -4521,9 +4522,9 @@ static t_stat doInstruction (void)
             bool ovf;
             word72 tmp72 = YPAIRTO72 (cpu.Ypair);
 
-            tmp72 = Sub72b (convertToWord72 (cpu.rA, cpu.rQ), tmp72, 1,
+            tmp72 = Sub72b (convert_to_word72 (cpu.rA, cpu.rQ), tmp72, 1,
                             I_ZNC, & cpu.cu.IR, & ovf);
-            convertToWord36 (tmp72, & cpu.rA, & cpu.rQ);
+            convert_to_word36 (tmp72, & cpu.rA, & cpu.rQ);
             HDBGRegA ();
             HDBGRegQ ();
           }
@@ -4733,7 +4734,7 @@ static t_stat doInstruction (void)
                 overflow (true, false, "mpf overflow fault");
               }
 
-            convertToWord36 (tmp72, &cpu.rA, &cpu.rQ);
+            convert_to_word36 (tmp72, &cpu.rA, &cpu.rQ);
             HDBGRegA ();
             HDBGRegQ ();
             SC_I_ZERO (cpu.rA == 0 && cpu.rQ == 0);
@@ -4752,14 +4753,14 @@ static t_stat doInstruction (void)
             int128 prod = multiply_s128 (
               SIGNEXT36_128 (cpu.rQ & DMASK),
               SIGNEXT36_128 (cpu.CY & DMASK));
-            convertToWord36 (cast_128 (prod), &cpu.rA, &cpu.rQ);
+            convert_to_word36 (cast_128 (prod), &cpu.rA, &cpu.rQ);
 #else
             int64_t t0 = SIGNEXT36_64 (cpu.rQ & DMASK);
             int64_t t1 = SIGNEXT36_64 (cpu.CY & DMASK);
 
             __int128_t prod = (__int128_t) t0 * (__int128_t) t1;
 
-            convertToWord36 ((word72)prod, &cpu.rA, &cpu.rQ);
+            convert_to_word36 ((word72)prod, &cpu.rA, &cpu.rQ);
 #endif
             HDBGRegA ();
             HDBGRegQ ();
@@ -4958,7 +4959,7 @@ static t_stat doInstruction (void)
                 overflow (true, false, "negl overflow fault");
             }
 
-            word72 tmp72 = convertToWord72 (cpu.rA, cpu.rQ);
+            word72 tmp72 = convert_to_word72 (cpu.rA, cpu.rQ);
 #ifdef NEED_128
             tmp72 = negate_128 (tmp72);
 
@@ -4971,7 +4972,7 @@ static t_stat doInstruction (void)
             SC_I_NEG (tmp72 & SIGN72);
 #endif
 
-            convertToWord36 (tmp72, &cpu.rA, &cpu.rQ);
+            convert_to_word36 (tmp72, &cpu.rA, &cpu.rQ);
             HDBGRegA ();
             HDBGRegQ ();
           }
@@ -5047,7 +5048,7 @@ static t_stat doInstruction (void)
           // C(AQ) :: C(Y-pair)
           {
             word72 tmp72 = YPAIRTO72 (cpu.Ypair);
-            word72 trAQ = convertToWord72 (cpu.rA, cpu.rQ);
+            word72 trAQ = convert_to_word72 (cpu.rA, cpu.rQ);
 #ifdef NEED_128
             trAQ = and_128 (trAQ, MASK72);
 #else
@@ -5217,7 +5218,7 @@ static t_stat doInstruction (void)
           // C(AQ)i | C(Y-pair)i -> C(AQ)i for i = (0, 1, ..., 71)
           {
               word72 tmp72 = YPAIRTO72 (cpu.Ypair);
-              word72 trAQ = convertToWord72 (cpu.rA, cpu.rQ);
+              word72 trAQ = convert_to_word72 (cpu.rA, cpu.rQ);
 #ifdef NEED_128
               trAQ = or_128 (trAQ, tmp72);
               trAQ = and_128 (trAQ, MASK72);
@@ -5231,7 +5232,7 @@ static t_stat doInstruction (void)
               SC_I_ZERO (trAQ == 0);
               SC_I_NEG (trAQ & SIGN72);
 #endif
-              convertToWord36 (trAQ, &cpu.rA, &cpu.rQ);
+              convert_to_word36 (trAQ, &cpu.rA, &cpu.rQ);
               HDBGRegA ();
               HDBGRegQ ();
           }
@@ -5432,7 +5433,7 @@ static t_stat doInstruction (void)
           // C(Z)i = C(AQ)i & C(Y-pair)i for i = (0, 1, ..., 71)
           {
             word72 tmp72 = YPAIRTO72 (cpu.Ypair);
-            word72 trAQ = convertToWord72 (cpu.rA, cpu.rQ);
+            word72 trAQ = convert_to_word72 (cpu.rA, cpu.rQ);
 #ifdef NEED_128
             trAQ = and_128 (trAQ, tmp72);
             trAQ = and_128 (trAQ, MASK72);
@@ -5503,7 +5504,7 @@ static t_stat doInstruction (void)
           {
             word72 tmp72 = YPAIRTO72 (cpu.Ypair);   //
 
-            word72 trAQ = convertToWord72 (cpu.rA, cpu.rQ);
+            word72 trAQ = convert_to_word72 (cpu.rA, cpu.rQ);
 #ifdef NEED_128
             trAQ = and_128 (trAQ, complement_128 (tmp72));
             trAQ = and_128 (trAQ, MASK72);
@@ -6540,7 +6541,7 @@ static t_stat doInstruction (void)
                 uint64 MulticsuSecs = 2177452800000000LL + UnixuSecs;
 
                 // Back into 72 bits
-               word72 big = convertToWord72 (cpu.rA, cpu.rQ);
+               word72 big = convert_to_word72 (cpu.rA, cpu.rQ);
 #ifdef NEED_128
                 // Convert to time since boot
                 big = subtract_128 (big, construct_128 (0, MulticsuSecs));

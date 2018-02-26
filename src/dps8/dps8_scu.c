@@ -549,8 +549,8 @@
 #include "dps8_scu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
-#include "dps8_utils.h"
 #include "dps8_cpu.h"
+#include "dps8_utils.h"
 #if defined(THREADZ) || defined(LOCKLESS)
 #include "threadz.h"
 #endif
@@ -846,14 +846,14 @@ static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value,
     for (;;)
       {
         int64_t v;
-        int rc = cfgparse ("scu_set_config", cptr, scu_config_list, 
+        int rc = cfg_parse ("scu_set_config", cptr, scu_config_list, 
                            & cfg_state, & v);
         if (rc == -1) // done
           break;
 
         if (rc == -2) // error
           {
-            cfgparse_done (& cfg_state);
+            cfg_parse_done (& cfg_state);
             return SCPE_ARG; 
           }
 
@@ -918,15 +918,13 @@ static t_stat scu_set_config (UNIT * uptr, UNUSED int32 value,
           scu [scu_unit_idx].y2k = (uint) v;
         else
           {
-            sim_debug (DBG_ERR, & scu_dev, 
-                       "scu_set_config: Invalid cfgparse rc <%d>\n", rc);
-            sim_printf ("error: scu_set_config: invalid cfgparse rc <%d>\n", 
+            sim_printf ("error: scu_set_config: invalid cfg_parse rc <%d>\n", 
                          rc);
-            cfgparse_done (& cfg_state);
+            cfg_parse_done (& cfg_state);
             return SCPE_ARG; 
           }
       } // process statements
-    cfgparse_done (& cfg_state);
+    cfg_parse_done (& cfg_state);
     return SCPE_OK;
   }
 

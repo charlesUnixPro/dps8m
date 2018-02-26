@@ -149,6 +149,7 @@ C_SRCS += ./dps8_mt.c
 C_SRCS += ./dps8_opcodetable.c
 C_SRCS += ./dps8_prt.c
 C_SRCS += ./dps8_scu.c
+C_SRCS += ./dps8_simh.c
 C_SRCS += ./dps8_sys.c
 C_SRCS += ./dps8_urp.c
 C_SRCS += ./dps8_utils.c

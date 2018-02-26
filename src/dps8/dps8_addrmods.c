@@ -27,12 +27,12 @@
 #include "dps8_scu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
-#include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_ins.h"
 #include "dps8_iefp.h"
 #include "dps8_opcodetable.h"
+#include "dps8_utils.h"
 #if defined(THREADZ) || defined(LOCKLESS)
 #include "threadz.h"
 #endif
@@ -348,7 +348,7 @@ void updateIWB (word18 addr, word6 tag)
 
 void do_caf (void)
   {
-#ifdef CA_REWORK
+//#ifdef CA_REWORK
     if (getbits36_1 (cpu.cu.IWB, 29) == 0)
       {
         cpu.TPR.CA = GET_ADDR (IWB_IRODD);
@@ -360,7 +360,7 @@ void do_caf (void)
         cpu.TPR.CA = (cpu.PAR[n].WORDNO + SIGNEXT15_18 (offset))
                       & MASK18;
       }
-#endif
+//#endif
     char buf [256];
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(Entry): operType:%s TPR.CA=%06o\n",
@@ -411,7 +411,7 @@ startCA:;
       }
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(startCA): TAG=%02o(%s) Tm=%o Td=%o\n",
-               __func__, cpu.rTAG, getModString (buf, cpu.rTAG), Tm, Td);
+               __func__, cpu.rTAG, get_mod_string (buf, cpu.rTAG), Tm, Td);
 
     switch (Tm)
       {
@@ -626,7 +626,7 @@ startCA:;
                    "IR_MOD1: cpu.itxPair[0]=%012"PRIo64
                    " TPR.CA=%06o Tm=%o Td=%02o (%s)\n",
                    cpu.itxPair[0], cpu.TPR.CA, Tm, Td,
-                   getModString (buf, GET_TAG (cpu.itxPair[0])));
+                   get_mod_string (buf, GET_TAG (cpu.itxPair[0])));
 
         switch (Tm)
           {
