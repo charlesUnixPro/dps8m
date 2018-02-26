@@ -16,8 +16,10 @@
 #include <fcntl.h>
 
 #include "dps8.h"
-#include "hdbg.h"
+#include "dps8_sys.h"
+#include "dps8_cpu.h"
 #include "dps8_utils.h"
+#include "hdbg.h"
 
 
 #ifdef HDBG

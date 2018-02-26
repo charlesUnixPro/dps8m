@@ -111,7 +111,7 @@ typedef enum apuStatusBits
 void setAPUStatus (apuStatusBits status);
 
 t_stat dumpSDWAM (void);
-word24 doAppendCycle (_processor_cycle_type thisCycle, 
+word24 doAppendCycle (processor_cycle_type thisCycle, 
                       word36 * data, uint nWords);
 void do_ldbr (word36 * Ypair);
 void do_sdbr (word36 * Ypair);
@@ -121,7 +121,7 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
                       char * * msg);
 sdw0_s * getSDW (word15 segno);
 
-static inline void fauxDoAppendCycle (_processor_cycle_type thisCycle)
+static inline void fauxDoAppendCycle (processor_cycle_type thisCycle)
   {
     cpu.apu.lastCycle = thisCycle;
   }

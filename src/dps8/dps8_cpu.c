@@ -302,8 +302,6 @@ static config_list_t cpu_config_list [] =
 static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value,
                               const char * cptr, UNUSED void * desc)
   {
-// XXX Minor bug; this code doesn't check for trailing garbage
-
     long cpu_unit_idx = UNIT_IDX (uptr);
     if (cpu_unit_idx < 0 || cpu_unit_idx >= N_CPU_UNITS_MAX)
       {
@@ -735,53 +733,11 @@ const char *sim_stop_messages[] =
  *
  */
 
-/*
- * init_opcodes ()
- *
- * This initializes the is_eis[] array which we use to detect whether or
- * not an instruction is an EIS instruction.
- *
- * TODO: Change the array values to show how many operand words are
- * used.  This would allow for better symbolic disassembly.
- *
- * BUG: unimplemented instructions may not be represented
- */
-
+#ifndef SPEED
 static bool watch_bits [MEMSIZE];
-
-static int is_eis[1024];    // hack
+#endif
 
 // XXX PPR.IC oddly incremented. ticket #6
-
-void init_opcodes (void)
-  {
-    memset (is_eis, 0, sizeof (is_eis));
-    
-#define IS_EIS(opc) is_eis [(opc << 1) | 1] = 1;
-    IS_EIS (opcode1_cmpc);
-    IS_EIS (opcode1_scd);
-    IS_EIS (opcode1_scdr);
-    IS_EIS (opcode1_scm);
-    IS_EIS (opcode1_scmr);
-    IS_EIS (opcode1_tct);
-    IS_EIS (opcode1_tctr);
-    IS_EIS (opcode1_mlr);
-    IS_EIS (opcode1_mrl);
-    IS_EIS (opcode1_mve);
-    IS_EIS (opcode1_mvt);
-    IS_EIS (opcode1_cmpn);
-    IS_EIS (opcode1_mvn);
-    IS_EIS (opcode1_mvne);
-    IS_EIS (opcode1_csl);
-    IS_EIS (opcode1_csr);
-    IS_EIS (opcode1_cmpb);
-    IS_EIS (opcode1_sztl);
-    IS_EIS (opcode1_sztr);
-    IS_EIS (opcode1_btd);
-    IS_EIS (opcode1_dtb);
-    IS_EIS (opcode1_dv3d);
-  }
-
 
 
 char * str_SDW0 (char * buf, sdw0_s * SDW)
@@ -1028,7 +984,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
     consoleProcess ();
     machine_room_process ();
 #ifndef __MINGW64__
-    absiProcessEvent ();
+    absi_process_event ();
 #endif
     PNL (panel_process_event ());
   }
@@ -1075,7 +1031,9 @@ void cpu_init (void)
       }
 #endif
 
+#ifndef SPEED
     memset (& watch_bits, 0, sizeof (watch_bits));
+#endif
 
     set_cpu_idx (0);
 
@@ -1725,7 +1683,7 @@ setCPU:;
             fnpProcessEvent ();
             consoleProcess ();
             machine_room_process ();
-            absiProcessEvent ();
+            absi_process_event ();
             PNL (panel_process_event ());
           }
 #endif
@@ -2635,7 +2593,7 @@ int operand_size (void)
 
 // read instruction operands
 
-t_stat read_operand (word18 addr, _processor_cycle_type cyctyp)
+t_stat read_operand (word18 addr, processor_cycle_type cyctyp)
   {
     CPT (cpt1L, 6); // read_operand
 
@@ -2695,7 +2653,7 @@ t_stat read_operand (word18 addr, _processor_cycle_type cyctyp)
 
 // write instruction operands
 
-t_stat write_operand (word18 addr, UNUSED _processor_cycle_type cyctyp)
+t_stat write_operand (word18 addr, UNUSED processor_cycle_type cyctyp)
   {
     switch (operand_size ())
       {
@@ -2739,6 +2697,7 @@ t_stat write_operand (word18 addr, UNUSED _processor_cycle_type cyctyp)
     
   }
 
+#ifndef SPEED
 t_stat set_mem_watch (int32 arg, const char * buf)
   {
     if (strlen (buf) == 0)
@@ -2762,6 +2721,7 @@ t_stat set_mem_watch (int32 arg, const char * buf)
     watch_bits [n] = arg != 0;
     return SCPE_OK;
   }
+#endif
 
 /*!
  * "Raw" core interface ....
@@ -3245,7 +3205,7 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
 void decode_instruction (word36 inst, DCDstruct * p)
   {
     CPT (cpt1L, 17); // instruction decoder
-    memset (p, 0, sizeof (struct DCDstruct));
+    memset (p, 0, sizeof (DCDstruct));
 
     p->opcode  = GET_OP (inst);   // get opcode
     p->opcodeX = GET_OPX(inst);   // opcode extension

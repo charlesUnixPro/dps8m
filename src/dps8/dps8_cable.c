@@ -1,4 +1,3 @@
-// XXX XXX XXX add code to new cable to check for end of line (strtok_r fail)
 /*
  Copyright 2013-2016 by Charles Anthony
 

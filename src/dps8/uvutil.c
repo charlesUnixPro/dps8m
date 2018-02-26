@@ -1,9 +1,11 @@
 #include <uv.h>
 #include <ctype.h>
 #include "dps8.h"
-#include "uvutil.h"
-#include "libtelnet.h"
+#include "dps8_sys.h"
+#include "dps8_cpu.h"
 #include "dps8_utils.h"
+#include "libtelnet.h"
+#include "uvutil.h"
 
 static void accessTelnetReadCallback (uv_tcp_t * client,
                             ssize_t nread,

@@ -1265,7 +1265,7 @@ static char *strACV (_fault_subtype acv)
   }
 #endif
 
-static char *strPCT (_processor_cycle_type t)
+static char *strPCT (processor_cycle_type t)
   {
     switch (t)
       {
@@ -1280,7 +1280,7 @@ static char *strPCT (_processor_cycle_type t)
         case ABSA_CYCLE : return "ABSA_CYCLE";
 
         default:
-            return "Unhandled _processor_cycle_type";
+            return "Unhandled processor_cycle_type";
       }
   
   }
@@ -1361,7 +1361,7 @@ static char *strPCT (_processor_cycle_type t)
 
 // CANFAULT
 
-word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data,
+word24 doAppendCycle (processor_cycle_type thisCycle, word36 * data,
                       uint nWords)
   {
     DCDstruct * i = & cpu.currentInstruction;
@@ -1401,7 +1401,7 @@ word24 doAppendCycle (_processor_cycle_type thisCycle, word36 * data,
                      ! i->opcodeX);
 #endif
 
-    _processor_cycle_type lastCycle = cpu.apu.lastCycle;
+    processor_cycle_type lastCycle = cpu.apu.lastCycle;
     cpu.apu.lastCycle = thisCycle;
 
     DBGAPP ("doAppendCycle(Entry) XSF %o\n", cpu.cu.XSF);
