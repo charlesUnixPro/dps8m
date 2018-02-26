@@ -730,7 +730,15 @@ void initThreadz (void)
     have_rmw_lock = false;
 #endif
 
-    pthread_mutex_init (& scu_lock, PTHREAD_PROCESS_PRIVATE);
+#ifdef __FreeBSD__
+    pthread_mutexattr_t scu_attr;
+    pthread_mutexattr_init(&scu_attr);
+    pthread_mutexattr_settype(&scu_attr, PTHREAD_MUTEX_ADAPTIVE_NP);
+
+    pthread_mutex_init (& scu_lock, &scu_attr);
+#else
+    pthread_mutex_init (& scu_lock, NULL);
+#endif
     pthread_spin_init (& iom_lock, PTHREAD_PROCESS_PRIVATE);
   }
 

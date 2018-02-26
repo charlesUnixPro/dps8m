@@ -17,12 +17,12 @@
 #include "dps8.h"
 #include "dps8_dia.h"
 #include "dps8_sys.h"
-#include "dps8_utils.h"
 #include "dps8_faults.h"
 #include "dps8_scu.h"
 #include "dps8_cpu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
+#include "dps8_utils.h"
 
 #include "udplib.h"
 
@@ -79,11 +79,11 @@ static t_stat set_config (UNIT * uptr, UNUSED int value, const char * cptr, UNUS
     for (;;)
       {
         int64_t v;
-        int rc = cfgparse ("DIA SET CONFIG", cptr, dia_config_list, & cfg_state, & v);
+        int rc = cfg_parse ("DIA SET CONFIG", cptr, dia_config_list, & cfg_state, & v);
         switch (rc)
           {
             case -2: // error
-              cfgparse_done (& cfg_state);
+              cfg_parse_done (& cfg_state);
               return SCPE_ARG; 
 
             case -1: // done
@@ -94,15 +94,14 @@ static t_stat set_config (UNIT * uptr, UNUSED int value, const char * cptr, UNUS
               break;
 
             default:
-              sim_debug (DBG_ERR, & dia_dev, "DIA SET CONFIG: Invalid cfgparse rc <%d>\n", rc);
-              sim_printf ("error: DIA SET CONFIG: invalid cfgparse rc <%d>\n", rc);
-              cfgparse_done (& cfg_state);
+              sim_printf ("error: DIA SET CONFIG: invalid cfg_parse rc <%d>\n", rc);
+              cfg_parse_done (& cfg_state);
               return SCPE_ARG; 
           } // switch
         if (rc < 0)
           break;
       } // process statements
-    cfgparse_done (& cfg_state);
+    cfg_parse_done (& cfg_state);
     return SCPE_OK;
   }
 

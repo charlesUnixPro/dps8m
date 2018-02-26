@@ -25,10 +25,10 @@
 #include "dps8_scu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
-#include "dps8_utils.h"
 #include "dps8_cpu.h"
 #include "dps8_fnp2.h"
 #include "dps8_fnp2_iomcmd.h"
+#include "dps8_utils.h"
 #include "fnpuv.h"
 
 #define DBG_CTR 1

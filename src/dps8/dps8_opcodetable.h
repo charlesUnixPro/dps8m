@@ -30,8 +30,7 @@ struct adrMods {
 typedef struct adrMods adrMods;
 
 extern struct adrMods extMods[0100]; ///< extended address modifiers
-extern struct opCode NonEISopcodes[01000], EISopcodes[01000];
-extern struct opCode opcodes10[02000];
+extern struct opcode_s opcodes10[02000];
 #ifdef PANEL
 extern word8 insGrp [02000];
 // CPT 3U 0-35, 3L 0-17

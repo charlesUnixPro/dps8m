@@ -21,19 +21,9 @@
 #include "dps8.h"
 #include "dps8_opcodetable.h"
 
-/*
- * struct opCode {
- * const char *mne;///< mnemonic
- * int32 flags;    ///< various and sundry flags
- * int32 mods;     ///< disallowed addr mods
- * int32 ndes;     ///< number of operand descriptor words for instruction (mw EIS)
- * };
-
- */
-
 #define _EIS_ NO_TAG | NO_XED | NO_RPT | IGN_B29
 
-struct opCode opcodes10[02000] = {
+struct opcode_s opcodes10[02000] = {
 // NonEIS
     /* 000 */
     {NULL, 0, 0, 0, 0},
