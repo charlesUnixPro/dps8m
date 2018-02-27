@@ -499,7 +499,7 @@ struct opcode_s opcodes10[02000] = {
     {"tra", TRANSFER_INS | NO_RPT, NO_DDCSS, 0, 0},
     {NULL, 0, 0, 0, 0},
     {NULL, 0, 0, 0, 0},
-    // CALL6 must fetch the destination instruction to force doAppendCycle
+    // CALL6 must fetch the destination instruction to force do_append_cycle
     // to do all of the ring checks and processing.
     //{"call6", PREPARE_CA | TRANSFER_INS | CALL6_INS | NO_RPT, NO_DDCSS, 0},
     {"call6", TRANSFER_INS | CALL6_INS | NO_RPT, NO_DDCSS, 0, 0},

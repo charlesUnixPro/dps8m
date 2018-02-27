@@ -7385,7 +7385,21 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
           break;
 
         case x0 (0154):  // sdbr
-          do_sdbr (cpu.Ypair);
+          {
+            CPTUR (cptUseDSBR);
+            // C(DSBR.ADDR) -> C(Y-pair) 0,23
+            // 00...0 -> C(Y-pair) 24,36
+            cpu.Ypair[0] = ((word36) (cpu.DSBR.ADDR & PAMASK)) << (35 - 23); 
+
+            // C(DSBR.BOUND) -> C(Y-pair) 37,50
+            // 0000 -> C(Y-pair) 51,54
+            // C(DSBR.U) -> C(Y-pair) 55
+            // 000 -> C(Y-pair) 56,59
+            // C(DSBR.STACK) -> C(Y-pair) 60,71
+            cpu.Ypair[1] = ((word36) (cpu.DSBR.BND & 037777)) << (71 - 50) |
+                           ((word36) (cpu.DSBR.U & 1)) << (71 - 55) |
+                           ((word36) (cpu.DSBR.STACK & 07777)) << (71 - 71);
+          }
           break;
 
         case x1 (0557):  // sptp
@@ -7670,11 +7684,116 @@ IF1 sim_printf ("get mode register %012"PRIo64"\n", cpu.Ypair[0]);
         /// Privileged - Clear Associative Memory
 
         case x1 (0532):  // camp
-          do_camp (cpu.TPR.CA);
+          {
+            // C(TPR.CA) 16,17 control disabling or enabling the associative
+            // memory.
+            // This may be done to either or both halves.
+            // The full/empty bit of cache PTWAM register is set to zero and
+            // the LRU counters are initialized.
+#ifdef WAM
+            if (! cpu.switches.disable_wam)
+              { // disabled by simh, do nothing
+#ifdef DPS8M
+                if (cpu.cu.PT_ON) // only clear when enabled
+#endif
+                    for (uint i = 0; i < N_WAM_ENTRIES; i ++)
+                      {
+                        cpu.PTWAM[i].FE = 0;
+#ifdef L68
+                        cpu.PTWAM[i].USE = (word4) i;
+#endif
+#ifdef DPS8M
+                        cpu.PTWAM[i].USE = 0;
+#endif
+                      }
+
+// 58009997-040 A level of the associative memory is disabled if
+// C(TPR.CA) 16,17 = 01
+// 58009997-040 A level of the associative memory is enabled if
+// C(TPR.CA) 16,17 = 10
+// Level j is selected to be enabled/disable if
+// C(TPR.CA) 10+j = 1; j=1,2,3,4
+// All levels are selected to be enabled/disabled if
+// C(TPR.CA) 11,14 = 0
+// This is contrary to what AL39 says, so I'm not going to implement it. In
+// fact, I'm not even going to implement the halves.
+
+#ifdef DPS8M
+                if (cpu.TPR.CA != 0000002 && (cpu.TPR.CA & 3) != 0)
+                  sim_warn ("CAMP ignores enable/disable %06o\n", cpu.TPR.CA);
+#endif
+                if ((cpu.TPR.CA & 3) == 02)
+                  cpu.cu.PT_ON = 1;
+                else if ((cpu.TPR.CA & 3) == 01)
+                  cpu.cu.PT_ON = 0;
+              }
+            else
+              {
+                cpu.PTW0.FE = 0;
+                cpu.PTW0.USE = 0;
+              }
+#else
+            cpu.PTW0.FE = 0;
+            cpu.PTW0.USE = 0;
+#endif
+          }
           break;
 
         case x0 (0532):  // cams
-          do_cams (cpu.TPR.CA);
+          {
+            // The full/empty bit of each SDWAM register is set to zero and the
+            // LRU counters are initialized. The remainder of the contents of
+            // the registers are unchanged. If the associative memory is
+            // disabled, F and LRU are unchanged.
+            // C(TPR.CA) 16,17 control disabling or enabling the associative
+            // memory.
+            // This may be done to either or both halves.
+#ifdef WAM
+            if (!cpu.switches.disable_wam)
+              { // disabled by simh, do nothing
+#ifdef DPS8M
+                if (cpu.cu.SD_ON) // only clear when enabled
+#endif
+                    for (uint i = 0; i < N_WAM_ENTRIES; i ++)
+                      {
+                        cpu.SDWAM[i].FE = 0;
+#ifdef L68
+                        cpu.SDWAM[i].USE = (word4) i;
+#endif
+#ifdef DPS8M
+                        cpu.SDWAM[i].USE = 0;
+#endif
+                      }
+// 58009997-040 A level of the associative memory is disabled if
+// C(TPR.CA) 16,17 = 01
+// 58009997-040 A level of the associative memory is enabled if
+// C(TPR.CA) 16,17 = 10
+// Level j is selected to be enabled/disable if
+// C(TPR.CA) 10+j = 1; j=1,2,3,4
+// All levels are selected to be enabled/disabled if
+// C(TPR.CA) 11,14 = 0
+// This is contrary to what AL39 says, so I'm not going to implement it. In
+// fact, I'm not even going to implement the halves.
+
+#ifdef DPS8M
+                if (cpu.TPR.CA != 0000006 && (cpu.TPR.CA & 3) != 0)
+                  sim_warn ("CAMS ignores enable/disable %06o\n", cpu.TPR.CA);
+#endif
+                if ((cpu.TPR.CA & 3) == 02)
+                  cpu.cu.SD_ON = 1;
+                else if ((cpu.TPR.CA & 3) == 01)
+                  cpu.cu.SD_ON = 0;
+              }
+            else
+              {
+                cpu.SDW0.FE = 0;
+                cpu.SDW0.USE = 0;
+              }
+#else
+            cpu.SDW0.FE = 0;
+            cpu.SDW0.USE = 0;
+#endif
+  }
           break;
 
         /// Privileged - Configuration and Status
@@ -9387,10 +9506,13 @@ static int doABSA (word36 * result)
         return SCPE_OK;
       }
 
-    // ABSA handles directed faults differently, so a special append cycle is needed.
-    // doAppendCycle also provides WAM support, which is required by ISOLTS-860 02
-    //res = (word36) doAppendCycle (cpu.TPR.CA & MASK18, ABSA_CYCLE, NULL, 0) << 12;
-    res = (word36) doAppendCycle (ABSA_CYCLE, NULL, 0) << 12;
+    // ABSA handles directed faults differently, so a special append cycle is
+    // needed.
+    // do_append_cycle also provides WAM support, which is required by
+    // ISOLTS-860 02
+    //   res = (word36) do_append_cycle (cpu.TPR.CA & MASK18, ABSA_CYCLE, NULL,
+    //                                   0) << 12;
+    res = (word36) do_append_cycle (ABSA_CYCLE, NULL, 0) << 12;
 
     * result = res;
 
@@ -9474,11 +9596,11 @@ elapsedtime ();
 //  13        32      ofl      Overflow                7 3      JMP_REFETCH/JMP_RESTART     instruction execution
 //  14        34      div      Divide check            6 3                                  instruction execution
 //  15        36      exf      Execute                 2 1      JMP_REFETCH/JMP_RESTART     FETCH_cycle
-//  16        40      df0      Directed fault 0       20 6      JMP_REFETCH/JMP_RESTART     getSDW, doAppendCycle
-//  17        42      df1      Directed fault 1       21 6      JMP_REFETCH/JMP_RESTART     getSDW, doAppendCycle
-//  18        44      df2      Directed fault 2       22 6      (JMP_REFETCH/JMP_RESTART)   getSDW, doAppendCycle
-//  19        46      df3      Directed fault 3       23 6      JMP_REFETCH/JMP_RESTART     getSDW, doAppendCycle
-//  20        50      acv      Access violation       24 6      JMP_REFETCH/JMP_RESTART     fetchDSPTW, modifyDSPTW, fetchNSDW, doAppendCycle, EXEC_cycle (ring alarm)
+//  16        40      df0      Directed fault 0       20 6      JMP_REFETCH/JMP_RESTART     getSDW, do_append_cycle
+//  17        42      df1      Directed fault 1       21 6      JMP_REFETCH/JMP_RESTART     getSDW, do_append_cycle
+//  18        44      df2      Directed fault 2       22 6      (JMP_REFETCH/JMP_RESTART)   getSDW, do_append_cycle
+//  19        46      df3      Directed fault 3       23 6      JMP_REFETCH/JMP_RESTART     getSDW, do_append_cycle
+//  20        50      acv      Access violation       24 6      JMP_REFETCH/JMP_RESTART     fetchDSPTW, modifyDSPTW, fetchNSDW, do_append_cycle, EXEC_cycle (ring alarm)
 //  21        52      mme2     Master mode entry 2    12 5      JMP_SYNC_FAULT_RETURN       instruction execution
 //  22        54      mme3     Master mode entry 3    13 5      (JMP_SYNC_FAULT_RETURN)     instruction execution
 //  23        56      mme4     Master mode entry 4    14 5      (JMP_SYNC_FAULT_RETURN)     instruction execution
