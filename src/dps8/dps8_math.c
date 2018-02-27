@@ -473,18 +473,6 @@ void ufa (bool sub)
     // * C(AQ)0 is inverted to restore the sign.
     // * C(E) is increased by one.
 
-#ifdef ISOLTS
-static int testno = 1;
-IF1 sim_printf ("%s testno %d\n", sub ? "UFS" : "UFA", testno ++);
-IF1 sim_printf ("UFA E %03o A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
-#ifndef __MINGW64__
-IF1 sim_printf ("UFA EAQ %Lf\n", EAQToIEEElongdouble ());
-#else
-IF1 sim_printf ("UFA EAQ %f\n", EAQToIEEEdouble ());
-#endif
-IF1 sim_printf ("UFA Y %lf\n", float36ToIEEEdouble (cpu.CY));
-#endif
-
     CPTUR (cptUseE);
 #ifdef HEX_MODE
     uint shift_amt = isHex() ? 4 : 1;
@@ -520,35 +508,29 @@ IF1 sim_printf ("UFA Y %lf\n", float36ToIEEEdouble (cpu.CY));
 #ifdef HEX_MODE
            m2 = rshift_128 (m2, shift_amt);
            e2 += 1;
-#else
+#else // ! HEX_MODE
            m2 = rshift_128 (m2, 1);
            e2 += 1;
-#endif
+#endif // ! HEX_MODE
        } else
-#ifdef NEED_128
            m2 = and_128 (negate_128 (m2), MASK72);
-#else
-           m2 = (-m2) & MASK72;
-#endif
     }
-#else
+#else // ! NEED_128
        if (m2 == 0) 
            m2zero = 1;
        if (m2 == SIGN72) {  // -1.0 -> 0.5, increase exponent, ISOLTS-735 08i,j
 #ifdef HEX_MODE
            m2 >>= shift_amt;
            e2 += 1;
-#else
+#else // ! HEX_MODE
            m2 >>= 1;
            e2 += 1;
-#endif
+#endif // ! HEX_MODE
        } else
            m2 = (-m2) & MASK72;
     }
 
-IF1 sim_printf ("UFA e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-IF1 sim_printf ("UFA e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
-#endif
+#endif // ! NEED_128
 
     int e3 = -1;
 
@@ -572,7 +554,6 @@ IF1 sim_printf ("UFA e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 
 #else
         shift_count = abs(e2 - e1);
 #endif
-IF1 sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
 #ifdef NEED_128
         bool sign = isnonzero_128 (and_128 (m1, SIGN72)); // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
@@ -604,7 +585,6 @@ IF1 sim_printf ("UFA e1 < e2; shift m1 %d right\n", shift_count);
             if (sign)
                 m1 |= SIGN72;
         }
-IF1 sim_printf ("UFA m1 shifted %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
         
 #ifdef HEX_MODE
         if (m1 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
@@ -615,7 +595,6 @@ IF1 sim_printf ("UFA m1 shifted %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36
 #endif
         m1 &= MASK72;
         e3 = e2;
-IF1 sim_printf ("UFA m1 now %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
 #endif // NEED_128
     }
     else
@@ -647,7 +626,6 @@ IF1 sim_printf ("UFA m1 now %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36) & 
         m2 = and_128 (m2, MASK72);
         e3 = e1;
 #else
-IF1 sim_printf ("UFA e1 > e2; shift m2 %d right\n", shift_count);
         bool sign = m2 & SIGN72;   // mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
         {
@@ -658,7 +636,6 @@ IF1 sim_printf ("UFA e1 > e2; shift m2 %d right\n", shift_count);
             if (sign)
                 m2 |= SIGN72;
         }
-IF1 sim_printf ("UFA m2 shifted %012"PRIo64" %012"PRIo64"\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 #ifdef HEX_MODE
         if (m2 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
           m2 = 0;
@@ -668,12 +645,9 @@ IF1 sim_printf ("UFA m2 shifted %012"PRIo64" %012"PRIo64"\n", (word36) (m2 >> 36
 #endif
         m2 &= MASK72;
         e3 = e1;
-IF1 sim_printf ("UFA m2 now %012"PRIo64" %012"PRIo64"\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 #endif // NEED_128
     }
     
-IF1 sim_printf ("UFA e3 %d\n", e3);
-
     bool ovf;
     word72 m3;
     m3 = Add72b (m1, m2, 0, I_CARRY, & cpu.cu.IR, & ovf);
@@ -681,8 +655,6 @@ IF1 sim_printf ("UFA e3 %d\n", e3);
     // if 2's complement carried, OR it in now.
     if (m2zero)
         SET_I_CARRY;
-
-IF1 sim_printf ("UFA IR after add: %06o\n", cpu.cu.IR);
 
     if (ovf)
     {
@@ -722,7 +694,6 @@ IF1 sim_printf ("UFA IR after add: %06o\n", cpu.cu.IR);
         e3 += 1;
 #endif
 #else // NEED_128
-IF1 sim_printf ("UFA correcting ovf %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
 #ifdef HEX_MODE
 //        word72 signbit = m3 & sign_msk;
 //        m3 >>= shift_amt;
@@ -755,7 +726,6 @@ IF1 sim_printf ("UFA correcting ovf %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >
         m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
         e3 += 1;
 #endif
-IF1 sim_printf ("UFA now e3 %03o m3 now %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
 #endif // NEED_128
     }
 
@@ -790,8 +760,6 @@ IF1 sim_printf ("UFA now e3 %03o m3 now %012"PRIo64" %012"PRIo64"\n", e3, (word3
         if (tstOVFfault ())
             dlyDoFault (FAULT_OFL, fst_zero, "ufa exp underflow fault");
     }
-
-IF1 sim_printf ("UFA returning E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ);
 }
 
 
@@ -819,17 +787,6 @@ void fno (word8 * E, word36 * A, word36 * Q)
     //
     // If C(AQ) = 0, then C(E) is set to -128 and the zero indicator is set ON.
     
-#ifdef ISOLTS
-static int testno = 1;
-IF1 sim_printf ("FNO testno %d\n", testno ++);
-IF1 sim_printf ("FNO E %03o A %012"PRIo64" Q %012"PRIo64"\n", *E, *A, *Q);
-#ifndef __MINGW64__
-IF1 sim_printf ("FNO EAQ %Lf\n", EAQToIEEElongdouble ());
-#else
-IF1 sim_printf ("FNO EAQ %f\n", EAQToIEEEdouble ());
-#endif
-#endif
-
 #ifdef L68
     cpu.ou.cycle |= ou_GON;
 #endif
@@ -844,7 +801,6 @@ IF1 sim_printf ("FNO EAQ %f\n", EAQToIEEEdouble ());
     float72 m = convert_to_word72 (* A, * Q);
     if (TST_I_OFLOW)
     {
-IF1 sim_printf ("FNO OVF\n");
         CLR_I_OFLOW;
 #ifdef NEED_128
         word72 s = and_128 (m, SIGN72); // save the sign bit
@@ -938,7 +894,6 @@ IF1 sim_printf ("FNO OVF\n");
 
         return;
     }
-IF1 sim_printf ("FNO !OVF\n");
     
     // only normalize C(EAQ) if C(AQ) ≠ 0 and the overflow indicator is OFF
 #ifdef NEED_128
@@ -947,7 +902,6 @@ IF1 sim_printf ("FNO !OVF\n");
     if (m == 0) // C(AQ) == 0.
 #endif
     {
-IF1 sim_printf ("FNO 0\n");
         //*A = (m >> 36) & MASK36;
         //*Q = m & MASK36;
         *E = 0200U; /*-128*/
@@ -978,8 +932,6 @@ IF1 sim_printf ("FNO 0\n");
 #ifdef NEED_128
             while (iseq_128 (and_128 (m, HEX_NORM), HEX_NORM))
               {
-//IF1 sim_printf ("NEG %012"PRIo64" %012"PRIo64"\n", (word36)((m >> 36) & DMASK), (word36)(m & DMASK));
-//IF1 sim_printf ("msk %012"PRIo64" %012"PRIo64"\n", (word36)((((~m) & HEX_NORM) >> 36) & DMASK), (word36)(((~m) & HEX_NORM) & DMASK));
 //if (m == 0) // XXX: necessary??
 //    break;
                 m = lshift_128 (m, 4);
@@ -988,11 +940,8 @@ IF1 sim_printf ("FNO 0\n");
             m = and_128 (m, MASK71);
             m = or_128 (m, SIGN72);
 #else
-IF1 sim_printf ("HEX NEG %012"PRIo64" %012"PRIo64"\n", (word36)((m >> 36) & DMASK), (word36)(m & DMASK));
             while ((m & HEX_NORM) == HEX_NORM) 
               {
-//IF1 sim_printf ("NEG %012"PRIo64" %012"PRIo64"\n", (word36)((m >> 36) & DMASK), (word36)(m & DMASK));
-//IF1 sim_printf ("msk %012"PRIo64" %012"PRIo64"\n", (word36)((((~m) & HEX_NORM) >> 36) & DMASK), (word36)(((~m) & HEX_NORM) & DMASK));
 //if (m == 0) // XXX: necessary??
 //    break;
                 m <<= 4;
@@ -1016,7 +965,6 @@ IF1 sim_printf ("HEX NEG %012"PRIo64" %012"PRIo64"\n", (word36)((m >> 36) & DMAS
               }
             m = and_128 (m, MASK71);
 #else
-IF1 sim_printf ("HEX POS %012"PRIo64" %012"PRIo64"\n", (word36)((m >> 36) & DMASK), (word36)(m & DMASK));
             // Positive
             // Until bits 1-4 != 0
             // Termination guarantee: m is known to be non-zero; a non-zero
@@ -1090,9 +1038,6 @@ IF1 sim_printf ("HEX POS %012"PRIo64" %012"PRIo64"\n", (word36)((m >> 36) & DMAS
 #endif
 #endif
       
-#ifndef NEED_128
-IF1 sim_printf ("FNO NOW %012"PRIo64" %012"PRIo64"\n", (word36)((m >> 36) & DMASK), (word36)(m & DMASK));
-#endif
     if (e < -128)
     {
         SET_I_EUFL;
@@ -1354,11 +1299,6 @@ void ufm (void)
         return; // normalized 0
     }
 
-#ifndef NEED_128
-IF1 sim_printf ("UFM e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-IF1 sim_printf ("UFM e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
-#endif
-
     int e3 = e1 + e2;
     
     if (e3 >  127)
@@ -1387,7 +1327,6 @@ IF1 sim_printf ("UFM e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >
 sim_debug (DBG_TRACEEXT, & cpu_dev, "m3 %016llx%016llx\n", m3.h, m3.l);
 #else
     int128 m3 = (SIGNEXT72_128(m1) * (SIGNEXT72_128(m2) >> 44));
-IF1 sim_printf ("UFM raw e3 %03o m3 %09"PRIo64"%012"PRIo64"%012"PRIo64"\n", e3, (word36) (m3 >> 72) & MASK36, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
 sim_debug (DBG_TRACEEXT, & cpu_dev, "m3 %016lx%016lx\n", (uint64_t) (m3>>64), (uint64_t) m3);
 #endif
     // realign to 72bits
@@ -1396,7 +1335,6 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "m3 %016lx%016lx\n", (uint64_t) (m3>>64), (u
 sim_debug (DBG_TRACEEXT, & cpu_dev, "m3a %016llx%016llx\n", m3a.h, m3a.l);
 #else
     word72 m3a = ((word72) m3 >> (98-71)) & MASK72;
-IF1 sim_printf ("UFM aligned e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3a >> 36) & MASK36, (word36) m3a & MASK36);
 sim_debug (DBG_TRACEEXT, & cpu_dev, "m3a %016lx%016lx\n", (uint64_t) (m3a>>64), (uint64_t) m3a);
 #endif
 
@@ -1530,11 +1468,6 @@ static void fdvX(bool bInvert)
         return; // normalized 0
     }
 
-#ifndef NEED_128
-IF1 sim_printf ("FDV e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-IF1 sim_printf ("FDV e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
-#endif
-
     // make everything positive, but save sign info for later....
     int sign = 1;
 #ifdef NEED_128
@@ -1602,9 +1535,6 @@ IF1 sim_printf ("FDV e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >
             m2 = (~m2 + 1) & MASK72;
         sign = -sign;
     }
-
-IF1 sim_printf ("FDV abs e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-IF1 sim_printf ("FDV abs e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
 #endif
 
 #ifdef NEED_128
@@ -1657,10 +1587,6 @@ IF1 sim_printf ("FDV abs e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (
     }
 #endif
 
-#ifndef NEED_128
-IF1 sim_printf ("FDV shifted e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-#endif
-        
     int e3 = e1 - e2;
 
     if (e3 > 127)
@@ -1688,8 +1614,6 @@ IF1 sim_printf ("FDV shifted e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word3
       m3 = divide_128_16 (rshift_128 (m1, (44u-35u)), (uint16_t) divisor, NULL);
 #else
     word72 m3 = (m1 >> (44-35)) / (m2 >> 44);
-
-IF1 sim_printf ("FDV raw e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
 #endif
     
 #ifdef NEED_128
@@ -1700,8 +1624,6 @@ IF1 sim_printf ("FDV raw e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) 
     m3 <<= 36; // convert back to float
     if (sign == -1)
         m3 = (~m3 + 1) & MASK72;
-
-IF1 sim_printf ("FDV final e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
 #endif
     
     cpu . rE = (word8) e3 & MASK8;
@@ -1799,9 +1721,6 @@ void frd (void)
 #ifdef L68
     cpu.ou.cycle |= ou_GOS;
 #endif
-#ifndef NEED_128
-IF1 sim_printf ("FRD E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
-#endif
 
     word72 m = convert_to_word72 (cpu.rA, cpu.rQ);
 #ifdef NEED_128
@@ -1836,7 +1755,6 @@ IF1 sim_printf ("FRD E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64"\n", cp
     m = Add72b (m, construct_128 (0, 0177777777777777LL), carry, I_OFLOW, & flags1, & ovf);
 #else
     m = Add72b (m, 0177777777777777LL, carry, I_OFLOW, & flags1, & ovf);
-IF1 sim_printf ("FRD add ones E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36, flags1);
 #endif
 #endif
 
@@ -1846,13 +1764,11 @@ IF1 sim_printf ("FRD add ones E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n", 
     word18 flags1 = 0;
     word18 flags2 = 0;
     m = Add72b (m, 0177777777777777LL, 0, I_OFLOW, & flags1, & ovf);
-IF1 sim_printf ("FRD add ones E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36, flags1);
 
     // If C(AQ)0 = 0, then a carry is added at AQ71
     if ((m & SIGN72) == 0)
     {
         m = Add72b (m, 1, 0, I_OFLOW, & flags2, & ovf);
-IF1 sim_printf ("FRD add carry E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36, flags2);
     }
 #endif
 
@@ -1861,8 +1777,6 @@ IF1 sim_printf ("FRD add carry E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n",
     m = and_128 (m, lshift_128 (construct_128 (0, 0777777777400), 36));
 #else
     m &= ((word72)0777777777400 << 36);
-
-IF1 sim_printf ("FRD E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36);
 #endif
 
     // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is
@@ -1877,9 +1791,6 @@ IF1 sim_printf ("FRD E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, (word36) (
     fno (& cpu.rE, & cpu.rA, & cpu.rQ);
     HDBGRegA ();
     SC_I_OFLOW(savedovf);
-IF1 sim_printf ("FRD normalized E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ);
-
-//IF1 sim_printf ("FRD final E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ);
   }
 
 void fstr (word36 *Y)
@@ -1931,7 +1842,6 @@ void fstr (word36 *Y)
     m = Add72b (m, construct_128 (0, 0177777777777777LL), carry, I_OFLOW, & flags1, & ovf);
 #else
     m = Add72b (m, 0177777777777777LL, carry, I_OFLOW, & flags1, & ovf);
-IF1 sim_printf ("FSTR add ones E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n", E, (word36) (m >> 36) & MASK36, (word36) m & MASK36, flags1);
 #endif
 
     // 0 -> C(AQ)28,71  (per. RJ78)
@@ -1939,8 +1849,6 @@ IF1 sim_printf ("FSTR add ones E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n",
     m = and_128 (m, lshift_128 (construct_128 (0, 0777777777400), 36));
 #else
     m &= ((word72)0777777777400 << 36);
-
-IF1 sim_printf ("FSTR E %03o A %012"PRIo64" Q %012"PRIo64"\n", E, (word36) (m >> 36) & MASK36, (word36) m & MASK36);
 #endif
 
     // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is
@@ -1953,7 +1861,6 @@ IF1 sim_printf ("FSTR E %03o A %012"PRIo64" Q %012"PRIo64"\n", E, (word36) (m >>
     convert_to_word36 (m, & A, & Q);
     fno (& E, & A, & Q);
     SC_I_OFLOW(savedovf);
-IF1 sim_printf ("FSTR normalized E %03o A %012"PRIo64" Q %012"PRIo64"\n", E, A, Q);
     
     * Y = setbits36_8 (A >> 8, 0, (word8) E);
   }
@@ -2155,7 +2062,6 @@ void fcmg ()
 #ifdef HEX_MODE
     uint shift_amt = isHex() ? 4 : 1;
 #endif
-IF1 sim_printf ("FCMG E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
 #if 1
     // C(AQ)0,27
 #ifdef NEED_128
@@ -2165,10 +2071,6 @@ IF1 sim_printf ("FCMG E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64"\n", c
 #endif
     int    e1 = SIGNEXT8_int (cpu.rE & MASK8);
 
-#ifndef NEED_128
-IF1 sim_printf ("FCMG e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-#endif
-
      // C(Y)0,7
     // 28-bit mantissa (incl sign)
 #ifdef NEED_128
@@ -2177,10 +2079,6 @@ IF1 sim_printf ("FCMG e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >>
     word72 m2 = ((word72) getbits36_28 (cpu.CY, 8)) << 44;
 #endif
     int    e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
-
-#ifndef NEED_128
-IF1 sim_printf ("FCMG e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
-#endif
 
     //int e3 = -1;
 
@@ -2303,11 +2201,6 @@ IF1 sim_printf ("FCMG e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >>
         //e3 = e1;
     }
     
-#ifndef NEED_128
-IF1 sim_printf ("FCMG m1 %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-IF1 sim_printf ("FCMG m2 %012"PRIo64" %012"PRIo64"\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
-#endif
-
 #ifdef NEED_128
     SC_I_ZERO (iseq_128 (m1, m2));
 #else
@@ -2328,9 +2221,6 @@ IF1 sim_printf ("FCMG m2 %012"PRIo64" %012"PRIo64"\n", (word36) (m2 >> 36) & MAS
     int128 sm2 = SIGNEXT72_128 (m2);
     if (sm2 < 0)
       sm2 = - sm2;
-IF1 sim_printf ("FCMG sm1 %012"PRIo64" %012"PRIo64"\n", (word36) (sm1 >> 36) & MASK36, (word36) sm1 & MASK36);
-IF1 sim_printf ("FCMG sm2 %012"PRIo64" %012"PRIo64"\n", (word36) (sm2 >> 36) & MASK36, (word36) sm2 & MASK36);
-IF1 sim_printf ("FCMG sm1 < sm2 %d\n", sm1 < sm2);
     SC_I_NEG (sm1 < sm2);
 #endif
 #else
@@ -2338,14 +2228,10 @@ IF1 sim_printf ("FCMG sm1 < sm2 %d\n", sm1 < sm2);
     int   e2 = SIGNEXT8_int (getbits36_8 (cpu.CY, 0));
     word36 m1 = cpu . rA & 0777777777400LL;
     word36 m2 = ((word36) getbits36_28 (cpu.CY, 8)) << 8;      ///< 28-bit mantissa (incl sign)
-IF1 sim_printf ("FCMG e1 %d m1 %012"PRIo64"\n", e1, m1);
-IF1 sim_printf ("FCMG e2 %d m2 %012"PRIo64"\n", e2, m2);
     if (m1 & SIGN36)
       m1 = ((~m1) + 1) & MASK36;
     if (m2 & SIGN36)
       m2 = ((~m2) + 1) & MASK36;
-IF1 sim_printf ("FCMG abs e1 %d m1 %012"PRIo64"\n", e1, m1);
-IF1 sim_printf ("FCMG abs e2 %d m2 %012"PRIo64"\n", e2, m2);
     bool m1waszero = m1 == 0;
     bool m2waszero = m2 == 0;
 
@@ -2377,8 +2263,6 @@ IF1 sim_printf ("FCMG abs e2 %d m2 %012"PRIo64"\n", e2, m2);
         e2 = e1;
     }
 
-IF1 sim_printf ("FCMG shft e1 %d m1 %012"PRIo64"\n", e1, m1);
-IF1 sim_printf ("FCMG shft e2 %d m2 %012"PRIo64"\n", e2, m2);
     if (m1 < m2)
       {
         SET_I_NEG;
@@ -2430,10 +2314,6 @@ static void ExpMantToYpair(word72 mant, int exp, word36 *yPair)
  */
 void dufa (bool subtract)
   {
-#ifdef ISOLTS
-static int testno = 1;
-IF1 sim_printf ("%s testno %d\n", subtract ? "DUFS" : "DUFA", testno ++);
-#endif
     // Except for the precision of the mantissa of the operand from main
     // memory, the dufa instruction is identical to the ufa instruction.
     
@@ -2510,11 +2390,6 @@ IF1 sim_printf ("%s testno %d\n", subtract ? "DUFS" : "DUFA", testno ++);
 #endif
     }
 
-#ifndef NEED_128
-IF1 sim_printf ("DUFA e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-IF1 sim_printf ("DUFA e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
-#endif
-
     int e3 = -1;
 
     // which exponent is smaller?
@@ -2540,7 +2415,6 @@ IF1 sim_printf ("DUFA e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 
 #else
         shift_count = abs(e2 - e1);
 #endif
-IF1 sim_printf ("DUFA e1 < e2; shift m1 %d right\n", shift_count);
         // mantissa negative?
 #ifdef NEED_128
         bool s = isnonzero_128 (and_128 (m1, SIGN72));
@@ -2583,9 +2457,6 @@ IF1 sim_printf ("DUFA e1 < e2; shift m1 %d right\n", shift_count);
         m1 &= MASK72;
 #endif
         e3 = e2;
-#ifndef NEED_128
-IF1 sim_printf ("DUFA m1 now %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-#endif
       }
     else
       {
@@ -2598,7 +2469,6 @@ IF1 sim_printf ("DUFA m1 now %012"PRIo64" %012"PRIo64"\n", (word36) (m1 >> 36) &
 #else
         shift_count = abs(e1 - e2);
 #endif
-IF1 sim_printf ("DUFA e1 > e2; shift m2 %d right\n", shift_count);
 #ifdef NEED_128
         bool s = isnonzero_128 (and_128 (m2, SIGN72));
 #else
@@ -2640,27 +2510,16 @@ IF1 sim_printf ("DUFA e1 > e2; shift m2 %d right\n", shift_count);
         m2 &= MASK72;
 #endif
         e3 = e1;
-#ifndef NEED_128
-IF1 sim_printf ("DUFA m2 now %012"PRIo64" %012"PRIo64"\n", (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
-#endif
       }
     //sim_printf ("shift_count = %d\n", shift_count);
     
-IF1 sim_printf ("DUFA e3 %d\n", e3);
-
     bool ovf;
     word72 m3 = Add72b (m1, m2, 0, I_CARRY, & cpu.cu.IR, & ovf);
     if (m2zero)
         SET_I_CARRY;
-#ifndef NEED_128
-IF1 sim_printf ("DUFA m3 %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
-#endif
 
     if (ovf)
       {
-#ifndef NEED_128
-IF1 sim_printf ("DUFA correcting ovf %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
-#endif
 #ifdef HEX_MODE
 //        word72 signbit = m3 & sign_msk;
 //        m3 >>= shift_amt;
@@ -2714,8 +2573,6 @@ IF1 sim_printf ("DUFA correcting ovf %012"PRIo64" %012"PRIo64"\n", (word36) (m3 
         m3 = (m3 & MASK71) | signbit;
         m3 ^= SIGN72; // C(AQ)0 is inverted to restore the sign
         e3 += 1;
-IF1 sim_printf ("DUFA m3 now %012"PRIo64" %012"PRIo64"\n", (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36);
-IF1 sim_printf ("DUFA e3 now %d\n", e3);
 #endif
       }
 
@@ -2878,11 +2735,6 @@ void dufm (void)
         return; // normalized 0
       }
     
-#ifndef NEED_128
-IF1 sim_printf ("DUFM e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-IF1 sim_printf ("DUFM e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
-#endif
-
     int e3 = e1 + e2;
     
     if (e3 >  127)
@@ -2928,9 +2780,6 @@ IF1 sim_printf ("DUFM e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 
     uint128 m3l = (m1a & (((uint128)1<<64)-1)) * m2a; // lo partial product
     uint128 m3h = (m1a >> 64) * m2a; // hi partial product
 
-IF1 sim_printf ("DUFM m3h %012"PRIo64" %012"PRIo64"\n", (word36) (m3h >> 36) & MASK36, (word36) m3h & MASK36);
-IF1 sim_printf ("DUFM m3l %012"PRIo64" %012"PRIo64"\n", (word36) (m3l >> 36) & MASK36, (word36) m3l & MASK36);
-
     // realign to 72bits  XXX this is wrong, arithmetic shift is required
     m3l >>= 63; // 134-71
     m3h <<= 1;
@@ -2972,10 +2821,6 @@ IF1 sim_printf ("DUFM m3l %012"PRIo64" %012"PRIo64"\n", (word36) (m3l >> 36) & M
     m3h <<= 1; // m3h is hi by 64, align it for addition. The result is 135 bits so this cannot overflow.
     word72 m3a = ((word72) (m3h+m3l)) & MASK72;
 #endif
-#endif
-
-#ifndef NEED_128
-IF1 sim_printf ("DUFM aligned e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3a >> 36) & MASK36, (word36) m3a & MASK36);
 #endif
 
     // A normalization is performed only in the case of both factor mantissas being 100...0 
@@ -3023,12 +2868,6 @@ IF1 sim_printf ("DUFM aligned e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (wor
 // CANFAULT 
 static void dfdvX (bool bInvert)
   {
-#ifdef ISOLTS
-static int testno = 1;
-IF1 sim_printf ("DFDI testno %d\n", testno ++);
-IF1 sim_printf ("UFA E %03o A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.CY);
-#endif
-
     // C(EAQ) / C (Y) → C(EA)
     // C(Y) / C(EAQ) → C(EA) (Inverted)
     
@@ -3133,14 +2972,6 @@ IF1 sim_printf ("UFA E %03o A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu
         return;	// normalized 0 
       }
 
-#ifdef NEED_128
-IF1 sim_printf ("DFDV e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) rshift_128 (m1, 36).l & MASK36, (word36) m1.l & MASK36);
-IF1 sim_printf ("DFDV e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) rshift_128 (m2, 36).l & MASK36, (word36) m2.l & MASK36);
-#else
-IF1 sim_printf ("DFDV e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-IF1 sim_printf ("DFDV e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
-#endif
-     
     // make everything positive, but save sign info for later....
     int sign = 1;
 #ifdef NEED_128
@@ -3210,13 +3041,6 @@ IF1 sim_printf ("DFDV e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 
         sign = -sign;
     }
 #endif
-#ifdef NEED_128
-IF1 sim_printf ("DFDV abs e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) rshift_128 (m1, 36).l & MASK36, (word36) m1.l & MASK36);
-IF1 sim_printf ("DFDV abs e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) rshift_128 (m2, 36).l & MASK36, (word36) m2.l & MASK36); 
-#else
-IF1 sim_printf ("DFDV abs e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-IF1 sim_printf ("DFDV abs e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36); 
-#endif
     
 #ifdef NEED_128
     if (iszero_128 (m2))
@@ -3224,7 +3048,6 @@ IF1 sim_printf ("DFDV abs e2 %03o m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) 
     if (m2 == 0)
 #endif
       {
-IF1 sim_printf ("DFDV m2==0\n");
         // NB: If C(Y-pair)8,71 == 0 then the alignment loop will never exit! That's why it been moved before the alignment
 
         SET_I_ZERO;
@@ -3239,8 +3062,6 @@ IF1 sim_printf ("DFDV m2==0\n");
           convert_to_word36 (m1, & cpu.rA, & cpu.rQ);
           HDBGRegA ();
         }
-         
-IF1 sim_printf ("rA %012"PRIo64" rQ %012"PRIo64"\n", cpu.rA, cpu.rQ);
         doFault (FAULT_DIV, fst_zero, "DFDV: divide check fault");
       }
     
@@ -3268,13 +3089,7 @@ IF1 sim_printf ("rA %012"PRIo64" rQ %012"PRIo64"\n", cpu.rA, cpu.rQ);
         e1 += 1;
       }
 #endif
-#ifdef NEED_128
-IF1 sim_printf ("DFDV shifted e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) rshift_128 (m1, 36).l & MASK36, (word36) m1.l & MASK36); 
-#else
-IF1 sim_printf ("DFDV shifted e1 %03o m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36); 
-#endif
     int e3 = e1 - e2;
-IF1 sim_printf ("DFDV e3 %o\n", e3);
     if (e3 > 127)
       {
         SET_I_EOFL;
@@ -3300,11 +3115,6 @@ IF1 sim_printf ("DFDV e3 %o\n", e3);
 #else
     word72 m3 = ((uint128)m1 << (63-8)) / ((uint128)m2 >> 8);
 #endif
-#ifdef NEED_128
-IF1 sim_printf ("DFDV raw e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) rshift_128 (m3, 36).l & MASK36, (word36) m3.l & MASK36); 
-#else
-IF1 sim_printf ("DFDV raw e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36); 
-#endif
 #ifdef L68
     cpu.ou.cycle |= ou_GD2;
 #endif
@@ -3319,16 +3129,9 @@ IF1 sim_printf ("DFDV raw e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36)
         m3 = (~m3 + 1) & MASK72;
 #endif
 
-#ifdef NEED_128
-IF1 sim_printf ("DFDV final e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) rshift_128 (m3, 36).l & MASK36, (word36) m3.l & MASK36); 
-#else
-IF1 sim_printf ("DFDV final e3 %03o m3a %012"PRIo64" %012"PRIo64"\n", e3, (word36) (m3 >> 36) & MASK36, (word36) m3 & MASK36); 
-#endif
-
     convert_to_word36 (m3, & cpu.rA, & cpu.rQ);
     HDBGRegA ();
     cpu.rE = (word8) e3 & MASK8;
-IF1 sim_printf ("rA %012"PRIo64" rQ %012"PRIo64" rE %o\n", cpu.rA, cpu.rQ, cpu.rE);
     
     SC_I_ZERO (cpu.rA == 0 && cpu . rQ == 0);
     SC_I_NEG (cpu.rA & SIGN36); 
@@ -3448,9 +3251,6 @@ void dvf (void)
 
 // canonial code
 #ifdef DVF_FRACTIONAL
-
-IF1 sim_printf ("DVF A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64"\n", cpu.rA, cpu.rQ, cpu.CY);
-
 // http://www.ece.ucsb.edu/~parhami/pres_folder/f31-book-arith-pres-pt4.pdf
 // slide 10: sequential algorithim
 
@@ -3503,9 +3303,6 @@ IF1 sim_printf ("DVF A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64"\n", cpu.rA, c
       }
     dFrac &= MASK35;
 #endif
-//sim_printf ("dFrac "); print_int128 (dFrac); sim_printf ("\n");
-IF1 sim_printf ("zFrac %012"PRIo64" %02"PRIo64"\n", (word36) (zFrac >> 36) & MASK36, (word36) zFrac & MASK36);
-IF1 sim_printf ("dFrac %012"PRIo64" %02"PRIo64"\n", (word36) (dFrac >> 36) & MASK36, (word36) dFrac & MASK36);
 
     if (dFrac == 0)
       {
@@ -3547,9 +3344,6 @@ sim_printf ("DVFa A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.r
     if (dividendNegative)
       remainder = ~remainder + 1;
 
-IF1 sim_printf ("quot %012"PRIo64" %012"PRIo64"\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
-IF1 sim_printf ("rem  %012"PRIo64" %012"PRIo64"\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
-
 #ifdef L68
     cpu.ou.cycle |= ou_GD2;
 #endif
@@ -3559,12 +3353,6 @@ IF1 sim_printf ("rem  %012"PRIo64" %012"PRIo64"\n", (word36) (remainder >> 36) &
 
     if (quot & ~MASK35)
       {
-IF1 sim_printf ("DVFb A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.rQ, cpu.CY);
-        //cpu . rA = (zFrac >> 35) & MASK35;
-        //cpu . rQ = (zFrac & MASK35) << 1;
-
-        //SC_I_ZERO (dFrac == 0);
-        //SC_I_NEG (cpu . rA & SIGN36);
         SC_I_ZERO (cpu.rA == 0);
         SC_I_NEG (cpu.rA & SIGN36);
         
@@ -3579,11 +3367,6 @@ IF1 sim_printf ("DVFb A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, c
 // MM code
 #ifdef DVF_CAC
 
-//sim_debug (DBG_CAC, & cpu_dev, "dvf [%"PRId64"]\n", cpu.cycleCnt);
-//sim_debug (DBG_CAC, & cpu_dev, "rA %llu\n", cpu . rA);
-//sim_debug (DBG_CAC, & cpu_dev, "rQ %llu\n", cpu . rQ);
-//sim_debug (DBG_CAC, & cpu_dev, "CY %llu\n", cpu.CY);
-IF1 sim_printf ("DVF A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64"\n", cpu.rA, cpu.rQ, cpu.CY);
 #if 0
     if (cpu.CY == 0)
       {
@@ -3675,10 +3458,6 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "dfrac %016llx %016llx\n", dFrac.h, dFrac.l)
 sim_debug (DBG_TRACEEXT, & cpu_dev, "dfrac %016llx %016llx\n", (uint64) (dFrac>>64), (uint64) dFrac);
 #endif
 
-#ifndef NEED_128
-IF1 sim_printf ("zFrac %012"PRIo64" %02"PRIo64"\n", (word36) (zFrac >> 36) & MASK36, (word36) zFrac & MASK36);
-IF1 sim_printf ("dFrac %012"PRIo64" %02"PRIo64"\n", (word36) (dFrac >> 36) & MASK36, (word36) dFrac & MASK36);
-#endif
     //char buf2 [128] = "";
     //print_int128 (dFrac, buf2);
     //sim_debug (DBG_CAC, & cpu_dev, "dFrac %s\n", buf2);
@@ -3691,7 +3470,6 @@ IF1 sim_printf ("dFrac %012"PRIo64" %02"PRIo64"\n", (word36) (dFrac >> 36) & MAS
     if (dFrac == 0)
 #endif
       {
-IF1 sim_printf ("DVFa A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.rQ, cpu.CY);
 // case 1: 400000000000 000000000000 000000000000 --> 400000000000 000000000000
 //         dFrac 000000000000 000000000000
 
@@ -3723,12 +3501,6 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "quot %016llx %016llx\n", quot.h, quot.l);
 sim_debug (DBG_TRACEEXT, & cpu_dev, "remainder %016llx %016llx\n", (uint64) (remainder>>64), (uint64) remainder);
 sim_debug (DBG_TRACEEXT, & cpu_dev, "quot %016llx %016llx\n", (uint64) (quot>>64), (uint64) quot);
 #endif
-#ifndef NEED_128
-IF1 sim_printf ("quot %012"PRIo64" %012"PRIo64"\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
-IF1 sim_printf ("rem  %012"PRIo64" %012"PRIo64"\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
-#endif
-
-
 
     // I am surmising that the "If | dividend | >= | divisor |" is an
     // overflow prediction; implement it by checking that the calculated
@@ -3740,10 +3512,6 @@ IF1 sim_printf ("rem  %012"PRIo64" %012"PRIo64"\n", (word36) (remainder >> 36) &
     if (quot & ~MASK35)
 #endif
       {
-#ifndef NEED_128
-IF1 sim_printf ("DVFb A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.rQ, cpu.CY);
-IF1 sim_printf ("quot %012"PRIo64" %012"PRIo64"\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
-#endif
 //
 // this got:
 //            s/b 373737373737 373737373740 200200
@@ -3754,14 +3522,11 @@ IF1 sim_printf ("quot %012"PRIo64" %012"PRIo64"\n", (word36) (quot >> 36) & MASK
         bool AQzero = cpu.rA == 0 && cpu.rQ == 0;
         if (cpu.rA & SIGN36)
           {
-IF1 sim_printf ("negating AQ\n");
             cpu.rA = (~cpu.rA) & MASK36;
             cpu.rQ = (~cpu.rQ) & MASK36;
             cpu.rQ += 1;
-IF1 sim_printf ("Q after incr: %012"PRIo64"\n", cpu.rQ);
             if (cpu.rQ & BIT37) // overflow?
               {
-IF1 sim_printf ("incr. A\n");
                 cpu.rQ &= MASK36;
                 cpu.rA = (cpu.rA + 1) & MASK36;
               }
@@ -3804,11 +3569,6 @@ IF1 sim_printf ("incr. A\n");
       remainder = negate_128 (remainder);
 #else
       remainder = ~remainder + 1;
-#endif
-
-#ifndef NEED_128
-IF1 sim_printf ("quot %012"PRIo64" %012"PRIo64"\n", (word36) (quot >> 36) & MASK36, (word36) quot & MASK36);
-IF1 sim_printf ("rem  %012"PRIo64" %012"PRIo64"\n", (word36) (remainder >> 36) & MASK36, (word36) remainder & MASK36);
 #endif
 
 #ifdef NEED_128
@@ -3883,7 +3643,6 @@ void dfrd (void)
     m = Add72b (m, construct_128 (0, 0177), carry, I_OFLOW, & flags1, & ovf);
 #else
     m = Add72b (m, 0177, carry, I_OFLOW, & flags1, & ovf);
-IF1 sim_printf ("DFRD add ones E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36, flags1);
 #endif
 
     // 0 -> C(AQ)64,71 
@@ -3891,8 +3650,6 @@ IF1 sim_printf ("DFRD add ones E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n",
     putbits72 (& m, 64, 8, construct_128 (0, 0));  // 64-71 => 0 per DH02
 #else
     putbits72 (& m, 64, 8, 0);  // 64-71 => 0 per DH02
-
-IF1 sim_printf ("DFRD E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, (word36) (m >> 36) & MASK36, (word36) m & MASK36);
 #endif
 
     // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is
@@ -3907,7 +3664,6 @@ IF1 sim_printf ("DFRD E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, (word36) 
     fno (& cpu.rE, & cpu.rA, & cpu.rQ);
     HDBGRegA ();
     SC_I_OFLOW(savedovf);
-IF1 sim_printf ("DFRD normalized E %03o A %012"PRIo64" Q %012"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ);
   }
 
 void dfstr (word36 *Ypair)
@@ -3972,7 +3728,6 @@ void dfstr (word36 *Ypair)
     m = Add72b (m, construct_128 (0, 0177), carry, I_OFLOW, & flags1, & ovf);
 #else
     m = Add72b (m, 0177, carry, I_OFLOW, & flags1, & ovf);
-IF1 sim_printf ("DFSTR add ones E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n", E, (word36) (m >> 36) & MASK36, (word36) m & MASK36, flags1);
 #endif
 
     // 0 -> C(AQ)65,71  (per. RJ78)
@@ -3981,7 +3736,6 @@ IF1 sim_printf ("DFSTR add ones E %03o m %012"PRIo64" %012"PRIo64" flags %06o\n"
 #else
     putbits72 (& m, 64, 8, 0);  // 64-71 => 0 per DH02
 
-IF1 sim_printf ("DFSTR E %03o A %012"PRIo64" Q %012"PRIo64"\n", E, (word36) (m >> 36) & MASK36, (word36) m & MASK36);
 #endif
 
     // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is
@@ -3995,7 +3749,6 @@ IF1 sim_printf ("DFSTR E %03o A %012"PRIo64" Q %012"PRIo64"\n", E, (word36) (m >
 
     fno (& E, & A, & Q);
     SC_I_OFLOW(savedovf);
-IF1 sim_printf ("DFSTR normalized E %03o A %012"PRIo64" Q %012"PRIo64"\n", E, A, Q);
 
     Ypair[0] = (((word36)E & MASK8) << 28) | ((A & 0777777777400LL) >> 8);
     Ypair[1] = ((A & 0377) << 28) | ((Q & 0777777777400LL) >> 8);
@@ -4068,7 +3821,6 @@ void dfcmp (void)
     // equal to the difference in the two exponents.
     // The aligned mantissas are compared and the indicators set accordingly.
     
-//IF1 sim_printf ("DFCMP E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64" %12"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.Ypair[0], cpu.Ypair[1]);
     // C(AQ)0,63
     CPTUR (cptUseE);
 #ifdef HEX_MODE
@@ -4076,8 +3828,6 @@ void dfcmp (void)
 #endif
     word72 m1 = convert_to_word72 (cpu.rA, cpu.rQ & 0777777777400LL);
     int   e1 = SIGNEXT8_int (cpu . rE & MASK8);
-
-//IF1 sim_printf ("DFCMP e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
 
     // C(Y-pair)8,71
 #ifdef NEED_128
@@ -4090,8 +3840,6 @@ void dfcmp (void)
 #endif
     int   e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
     
-//IF1 sim_printf ("DFCMP e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
-
     //int e3 = -1;
 
     //which exponent is smaller???
@@ -4158,8 +3906,6 @@ void dfcmp (void)
         //e3 = e1;
     }
     
-//IF1 sim_printf ("DFCMP shifted e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-//IF1 sim_printf ("DFCMP shifted e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
     SC_I_ZERO (iseq_128 (m1, m2));
     int128 sm1 = SIGNEXT72_128 (m1);
     int128 sm2 = SIGNEXT72_128 (m2);
@@ -4223,8 +3969,6 @@ void dfcmp (void)
         //e3 = e1;
     }
     
-//IF1 sim_printf ("DFCMP shifted e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-//IF1 sim_printf ("DFCMP shifted e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
     SC_I_ZERO (m1 == m2);
     int128 sm1 = SIGNEXT72_128 (m1);
     int128 sm2 = SIGNEXT72_128 (m2);
@@ -4253,7 +3997,6 @@ void dfcmg (void)
     // the magnitudes of the mantissas are compared instead of the algebraic
     // values.
     
-//IF1 sim_printf ("DFCMG E %03o A %012"PRIo64" Q %012"PRIo64" CY %012"PRIo64" %12"PRIo64"\n", cpu.rE, cpu.rA, cpu.rQ, cpu.Ypair[0], cpu.Ypair[1]);
     CPTUR (cptUseE);
 #ifdef HEX_MODE
     uint shift_amt = isHex() ? 4 : 1;
@@ -4261,8 +4004,6 @@ void dfcmg (void)
     // C(AQ)0,63
     word72 m1 = convert_to_word72 (cpu.rA & MASK36, cpu.rQ & 0777777777400LL);
     int    e1 = SIGNEXT8_int (cpu.rE & MASK8);
-
-//IF1 sim_printf ("DFCMG e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
 
     // C(Y-pair)8,71
 #ifdef NEED_128
@@ -4276,10 +4017,6 @@ void dfcmg (void)
 #endif
     int    e2 = SIGNEXT8_int (getbits36_8 (cpu.Ypair[0], 0));
     
-#ifndef NEED_128
-IF1 sim_printf ("DFCMG e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
-#endif
-
     //int e3 = -1;
 
     //which exponent is smaller???
@@ -4330,7 +4067,6 @@ IF1 sim_printf ("DFCMG e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >
             m1 >>= 1;
             if (s)
               m1 |= SIGN72;
-IF1 sim_printf ("DFCMG >>1 e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
           }
 #ifdef HEX_MODE
         if (m1 == MASK72 && notallzeros == 1 && shift_count * (int) shift_amt > 71)
@@ -4390,10 +4126,6 @@ IF1 sim_printf ("DFCMG >>1 e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (
 #endif
       }
     
-#ifndef NEED_128
-IF1 sim_printf ("DFCMG shifted e1 %d m1 %012"PRIo64" %012"PRIo64"\n", e1, (word36) (m1 >> 36) & MASK36, (word36) m1 & MASK36);
-IF1 sim_printf ("DFCMG shifted e2 %d m2 %012"PRIo64" %012"PRIo64"\n", e2, (word36) (m2 >> 36) & MASK36, (word36) m2 & MASK36);
-#endif
 #ifdef NEED_128
     SC_I_ZERO (iseq_128 (m1, m2));
     int128 sm1 = SIGNEXT72_128 (m1);

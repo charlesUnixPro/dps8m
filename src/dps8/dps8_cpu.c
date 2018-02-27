@@ -3536,8 +3536,6 @@ void add_CU_history (void)
     if (! cpu.MR_cache.ihr)
       return;
 
-//IF1 if (cpu.MR.hrhlt) sim_msg ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
-//IF1 sim_msg ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
     word36 w0 = 0, w1 = 0;
 
     // 0 PIA
@@ -3602,7 +3600,6 @@ void add_CU_history (void)
           {
             cpu.MR.ihr = 0;
           }
-//IF1 sim_msg ("trapping......\n");
         set_FFV_fault (4);
         return;
       }
