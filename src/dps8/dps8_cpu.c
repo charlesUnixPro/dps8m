@@ -2469,7 +2469,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                 // last append cycle has made it as far as H/I without a fault.
                 // Also reset it on TRB fault. ISOLTS-870 05a
                 if (cpu.cu.APUCycleBits & 060 || cpu.secret_addressing_mode)
-                    setAPUStatus (apuStatus_FABS);
+                    set_apu_status (apuStatus_FABS);
 
                 // XXX the whole fault cycle should be rewritten as an xed 
                 // instruction pushed to IWB and executed 
@@ -3623,8 +3623,6 @@ void add_CU_history (void)
     if (! cpu.MR_cache.ihr)
       return;
 
-//IF1 if (cpu.MR.hrhlt) sim_msg ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
-//IF1 sim_msg ("%u\n", cpu.history_cyclic[CU_HIST_REG]);
     word36 w0 = 0, w1 = 0;
 
     // 0 PIA
@@ -3689,7 +3687,6 @@ void add_CU_history (void)
           {
             cpu.MR.ihr = 0;
           }
-//IF1 sim_msg ("trapping......\n");
         set_FFV_fault (4);
         return;
       }
