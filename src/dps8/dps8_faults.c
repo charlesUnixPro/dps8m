@@ -695,7 +695,6 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
     sim_debug (DBG_FAULT, & cpu_dev, 
                "Floating fault %d '%s'\n", 
                fault_number, fault_msg);
-//IF1 sim_printf ("Floating fault %d '%s'\n", fault_number, fault_msg);
 #ifndef SPEED
     if_sim_debug (DBG_FAULT, & cpu_dev)
       traceInstruction (DBG_FAULT);

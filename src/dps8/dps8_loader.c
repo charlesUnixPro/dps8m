@@ -1731,7 +1731,7 @@ t_stat dpsCmd_Dump (UNUSED int32 arg, const char *buf)
 #ifdef WAM
 #ifdef L68
     if (nParams == 1 && !strcasecmp (cmds[0], "sdwam"))
-        return dumpSDWAM ();
+        return dump_sdwam ();
 #endif
 #endif
     
