@@ -284,61 +284,29 @@ static inline vol word36 * fnp_M_addr (UNUSED int fnp_unit_idx, uint addr)
   }
 #endif
 
-#if defined(LOCKLESS) && defined(__FreeBSD__)
-#include <machine/atomic.h>
-#endif
-
 #ifdef LOCKLESS
-#define MEM_LOCKED_BIT    61
-#define MEM_LOCKED        (1LLU<<MEM_LOCKED_BIT)
 
 inline void fnp_core_read_lock (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 *data, UNUSED const char * ctx)
   {
-    int i = 1000000000;
     word24 addr = (word24)(M_addr - M);
-#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
-    while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
-#else
-    while ( (__sync_fetch_and_or((volatile u_long *)&M[addr], MEM_LOCKED) & MEM_LOCKED) == MEM_LOCKED &&  i > 0) {
-#endif
-      i--;
-    }
-    if (i == 0) {
-      sim_warn ("fnp_core_read_lock: locked %x addr %x deadlock\n", cpu.locked_addr, addr);
-    }
-#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
-    __storeload_barrier();
-    * data = atomic_load_acq_64((volatile u_long *)&M[addr]) & DMASK;
-#else
-    __sync_synchronize();
-    *data = M[addr] & DMASK;
-#endif
+    LOCK_CORE_WORD(addr);
+    word36 v;
+    LOAD_ACQ_CORE_WORD(v, addr);
+    * data = v & DMASK;
   }
 
 inline void fnp_core_write (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 data, UNUSED const char * ctx)
   {
     word24 addr = (word24)(M_addr - M);
-#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
-    __storeload_barrier();
-    atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);
-#else
-    __sync_synchronize();
-    M[addr] = data & DMASK;
-#endif
+    STORE_REL_CORE_WORD(addr, data);
   }
 
 inline void fnp_core_write_unlock (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 data, UNUSED const char * ctx)
   {
     word24 addr = (word24)(M_addr - M);
-#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
-    __storeload_barrier();
-    atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);
-#else
-    __sync_synchronize();
-    M[addr] = data & DMASK;
-#endif
+    STORE_REL_CORE_WORD(addr, data);
   }
-#else
+#else // LOCKLESS
 inline void fnp_core_read_lock (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 *data, UNUSED const char * ctx)
   {
     *data = *M_addr & DMASK;
@@ -351,4 +319,4 @@ inline void fnp_core_write (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 
 
 #define fnp_core_write_unlock fnp_core_write
 
-#endif
+#endif // LOCKLESS

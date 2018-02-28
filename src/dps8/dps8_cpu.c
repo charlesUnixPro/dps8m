@@ -46,9 +46,6 @@
 #include "sim_defs.h"
 #if defined(THREADZ) || defined(LOCKLESS)
 #include "threadz.h"
-#if defined(LOCKLESS) && defined(__FreeBSD__)
-#include <machine/atomic.h>
-#endif
 
 __thread uint current_running_cpu_idx;
 #endif
@@ -442,10 +439,6 @@ static void set_cpu_cycle (cycles_e cycle)
 // DPS8M Memory of 36 bit words is implemented as an array of 64 bit words.
 // Put state information into the unused high order bits.
 #define MEM_UNINITIALIZED (1LLU<<62)
-#ifdef LOCKLESS
-#define MEM_LOCKED_BIT    61
-#define MEM_LOCKED        (1LLU<<MEM_LOCKED_BIT)
-#endif
 
 uint set_cpu_idx (UNUSED uint cpu_idx)
   {
@@ -2841,15 +2834,7 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
 #endif
 #ifdef LOCKLESS
     word36 v;
-#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
-    __storeload_barrier();
-    v = atomic_load_acq_64((volatile u_long *)&M[addr]);
-#else
-    __sync_synchronize();
-    v = M[addr];
-#endif
-    //    if (v & MEM_LOCKED)
-    //  sim_warn ("core_read: addr %x was locked\n", addr);
+    LOAD_ACQ_CORE_WORD(v, addr);
     *data = v & DMASK;
 #else
     LOCK_MEM_RD;
@@ -2872,30 +2857,15 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
 #ifdef LOCKLESS
 int32 core_read_lock (word24 addr, word36 *data, const char * ctx)
 {
-    int i = 1000000000;
-#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
-    while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
-#else
-    while ( (__sync_fetch_and_or((volatile u_long *)&M[addr], MEM_LOCKED) & MEM_LOCKED) == MEM_LOCKED &&  i > 0) {
-#endif
-      //sim_warn ("core_read_lock: locked addr %x\n", addr);
-      i--;
-    }
-    if (i == 0) {
-      sim_warn ("core_read_lock: locked %x addr %x deadlock\n", cpu.locked_addr, addr);
-    }
+    LOCK_CORE_WORD(addr);
     if (cpu.locked_addr != 0) {
       sim_warn ("core_read_lock: locked %x addr %x\n", cpu.locked_addr, addr);
       core_unlock_all();
     }
     cpu.locked_addr = addr;
-#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
-    __storeload_barrier();
-    *data = atomic_load_acq_64((volatile u_long *)&M[addr]) & DMASK;
-#else
-    __sync_synchronize();
-    *data = M[addr] & DMASK;
-#endif
+    word36 v;
+    LOAD_ACQ_CORE_WORD(v, addr);
+    * data = v & DMASK;
     return 0;
 }
 #endif
@@ -2946,27 +2916,8 @@ int core_write (word24 addr, word36 data, const char * ctx)
       }
 #else
 #ifdef LOCKLESS
-    int i = 1000000000;
-#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
-    while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
-#else
-    while ( (__sync_fetch_and_or((volatile u_long *)&M[addr], MEM_LOCKED) & MEM_LOCKED) == MEM_LOCKED &&  i > 0) {
-#endif
-      //sim_warn ("core_read_lock: locked addr %x\n", addr);
-      i--;
-    }
-    if (i == 0) {
-      sim_warn ("core_write: locked %x addr %x deadlock\n", cpu.locked_addr, addr);
-    }
-#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
-    __storeload_barrier();
-    atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);
-    __storeload_barrier();
-#else
-    __sync_synchronize();
-    M[addr] = data & DMASK;
-    __sync_synchronize();
-#endif
+    LOCK_CORE_WORD(addr);
+    STORE_REL_CORE_WORD(addr, data);
 #else
     LOCK_MEM_WR;
     M[addr] = data & DMASK;
@@ -3002,15 +2953,7 @@ int core_write_unlock (word24 addr, word36 data, const char * ctx)
        core_unlock_all();
       }
       
-#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
-    __storeload_barrier();
-    atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);
-    __storeload_barrier();
-#else
-    __sync_synchronize();
-    M[addr] = data & DMASK;
-    __sync_synchronize();
-#endif
+    STORE_REL_CORE_WORD(addr, data);
     cpu.locked_addr = 0;
     return 0;
 }
@@ -3019,13 +2962,7 @@ int core_unlock_all ()
 {
   if (cpu.locked_addr != 0) {
       sim_warn ("core_unlock_all: locked %x\n", cpu.locked_addr);
-#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
-      __storeload_barrier();
-      atomic_store_rel_64((volatile u_long *)&M[cpu.locked_addr], M[cpu.locked_addr] & DMASK);
-#else
-      __sync_synchronize();
-      __sync_fetch_and_and((volatile u_long *)&M[cpu.locked_addr], DMASK);
-#endif
+      STORE_REL_CORE_WORD(cpu.locked_addr, M[cpu.locked_addr]);
       cpu.locked_addr = 0;
   }
   return 0;
@@ -3207,13 +3144,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
 #endif
 #ifdef LOCKLESS
     word36 v;
-#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
-    __storeload_barrier();
-    v = atomic_load_acq_64((volatile u_long *)&M[addr]);
-#else
-    __sync_synchronize();
-    v = M[addr];
-#endif
+    LOAD_ACQ_CORE_WORD(v, addr);
     if (v & MEM_LOCKED)
       sim_warn ("core_read2: even addr %x was locked\n", addr);
     *even = v & DMASK;
@@ -3248,13 +3179,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
       }
 #endif
 #ifdef LOCKLESS
-#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
-    __storeload_barrier();
-    v = atomic_load_acq_64((volatile u_long *)&M[addr]);
-#else
-    __sync_synchronize();
-    v = M[addr];
-#endif
+    LOAD_ACQ_CORE_WORD(v, addr);
     if (v & MEM_LOCKED)
       sim_warn ("core_read2: odd addr %x was locked\n", addr);
     *odd = v & DMASK;
@@ -3345,27 +3270,8 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
       }
 #endif
 #ifdef LOCKLESS
-    int i = 1000000000;
-#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
-    while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
-#else
-    while ( (__sync_fetch_and_or((volatile u_long *)&M[addr], MEM_LOCKED) & MEM_LOCKED) == MEM_LOCKED &&  i > 0) {
-#endif
-      //sim_warn ("core_read_lock: locked addr %x\n", addr);
-      i--;
-    }
-    if (i == 0) {
-      sim_warn ("core_write2: even locked %x addr %x deadlock\n", cpu.locked_addr, addr);
-    }
-#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
-    __storeload_barrier();
-    atomic_store_rel_64((volatile u_long *)&M[addr], even & DMASK);
-    __storeload_barrier();
-#else
-    __sync_synchronize();
-    M[addr] = even & DMASK;
-    __sync_synchronize();
-#endif
+    LOCK_CORE_WORD(addr);
+    STORE_REL_CORE_WORD(addr, even);
     addr++;
 #else
     LOCK_MEM_WR;
@@ -3389,27 +3295,8 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
       }
 #endif
 #ifdef LOCKLESS
-    i = 1000000000;
-#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
-    while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) {
-#else
-    while ( (__sync_fetch_and_or((volatile u_long *)&M[addr], MEM_LOCKED) & MEM_LOCKED) == MEM_LOCKED &&  i > 0) {
-#endif
-      //sim_warn ("core_read_lock: locked addr %x\n", addr);
-      i--;
-    }
-    if (i == 0) {
-      sim_warn ("core_write2: odd locked %x addr %x deadlock\n", cpu.locked_addr, addr);
-    }
-#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
-    __storeload_barrier();
-    atomic_store_rel_64((volatile u_long *)&M[addr], odd & DMASK);
-    __storeload_barrier();
-#else
-    __sync_synchronize();
-    M[addr] = odd & DMASK;
-    __sync_synchronize();
-#endif
+    LOCK_CORE_WORD(addr);
+    STORE_REL_CORE_WORD(addr, odd);
 #else
     LOCK_MEM_WR;
     M[addr] = odd & DMASK;
