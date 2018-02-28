@@ -108,10 +108,14 @@ typedef enum apuStatusBits
     apuStatus_MPTW   = 1u << (35 - 28)  //  Fetch PTW
   } apuStatusBits;
 
-void setAPUStatus (apuStatusBits status);
+static inline void set_apu_status (apuStatusBits status)
+  {
+    word12 FCT = cpu.cu.APUCycleBits & MASK3;
+    cpu.cu.APUCycleBits = (status & 07770) | FCT;
+  }
 
-t_stat dumpSDWAM (void);
-word24 doAppendCycle (processor_cycle_type thisCycle, 
+t_stat dump_sdwam (void);
+word24 do_append_cycle (processor_cycle_type thisCycle, 
                       word36 * data, uint nWords);
 void do_ldbr (word36 * Ypair);
 void do_sdbr (word36 * Ypair);
