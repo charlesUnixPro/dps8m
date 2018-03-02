@@ -302,6 +302,8 @@ void createCPUThread (uint cpuNum)
   {
     int rc;
     struct cpuThreadz_t * p = & cpuThreadz[cpuNum];
+    if (p->run)
+      return;
     p->cpuThreadArg = (int) cpuNum;
     // initialize run/stop switch
     rc = pthread_mutex_init (& p->runLock, NULL);
@@ -311,7 +313,7 @@ void createCPUThread (uint cpuNum)
     if (rc)
       sim_printf ("createCPUThread pthread_cond_init runCond %d\n", rc);
 
-    p->run = (cpuNum == 0);
+    p->run = true;
 
     // initialize DIS sleep
     rc = pthread_cond_init (& p->sleepCond, NULL);
@@ -330,6 +332,13 @@ void createCPUThread (uint cpuNum)
 #else
     pthread_set_name_np (p->cpuThread, nm);
 #endif
+  }
+
+void stopCPUThread()
+  {
+    struct cpuThreadz_t * p = & cpuThreadz[current_running_cpu_idx];
+    p->run = false;
+    pthread_exit(NULL);
   }
 
 #if 0
