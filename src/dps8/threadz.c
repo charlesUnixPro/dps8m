@@ -13,6 +13,9 @@
 #include "dps8_utils.h"
 
 #include "threadz.h"
+#ifdef __FreeBSD__
+#include <pthread_np.h>
+#endif
 
 //
 // Resource locks
@@ -65,6 +68,7 @@ void unlock_libuv (void)
 // mem_lock -- memory atomicity lock
 // rmw_lock -- big R/M/W cycle lock
 
+#ifndef LOCKLESS
 pthread_rwlock_t mem_lock = PTHREAD_RWLOCK_INITIALIZER;
 static __thread bool have_mem_lock = false;
 static __thread bool have_rmw_lock = false;
@@ -175,16 +179,17 @@ void unlock_mem_force (void)
     have_mem_lock = false;
     have_rmw_lock = false;
   }
+#endif
 
 // SCU serializer
 
-static pthread_spinlock_t scu_lock;
+static pthread_mutex_t scu_lock;
 
 void lock_scu (void)
   {
     //sim_debug (DBG_TRACE, & cpu_dev, "lock_scu\n");
     int rc;
-    rc = pthread_spin_lock (& scu_lock);
+    rc = pthread_mutex_lock (& scu_lock);
     if (rc)
       sim_printf ("lock_scu pthread_spin_lock scu %d\n", rc);
   }
@@ -193,7 +198,7 @@ void unlock_scu (void)
   {
     //sim_debug (DBG_TRACE, & cpu_dev, "unlock_scu\n");
     int rc;
-    rc = pthread_spin_unlock (& scu_lock);
+    rc = pthread_mutex_unlock (& scu_lock);
     if (rc)
       sim_printf ("unlock_scu pthread_spin_lock scu %d\n", rc);
   }
@@ -305,13 +310,10 @@ void createCPUThread (uint cpuNum)
     rc = pthread_cond_init (& p->runCond, NULL);
     if (rc)
       sim_printf ("createCPUThread pthread_cond_init runCond %d\n", rc);
-    p->run = false;
-    //p->ready = false;
+
+    p->run = (cpuNum == 0);
 
     // initialize DIS sleep
-    rc = pthread_mutex_init (& p->sleepLock, NULL);
-    if (rc)
-      sim_printf ("createCPUThread pthread_mutex_init sleepLock %d\n", rc);
     rc = pthread_cond_init (& p->sleepCond, NULL);
     if (rc)
       sim_printf ("createCPUThread pthread_cond_init sleepCond %d\n", rc);
@@ -323,7 +325,11 @@ void createCPUThread (uint cpuNum)
 
     char nm [17];
     sprintf (nm, "CPU %c", 'a' + cpuNum);
+#ifndef __FreeBSD__
     pthread_setname_np (p->cpuThread, nm);
+#else
+    pthread_set_name_np (p->cpuThread, nm);
+#endif
   }
 
 #if 0
@@ -377,33 +383,28 @@ void cpuRunningWait (void)
 
 // Called by CPU thread to sleep until time up or signaled
 // Return time left
-unsigned long  sleepCPU (unsigned long nsec)
+unsigned long  sleepCPU (unsigned long usec)
   {
     int rc;
     struct cpuThreadz_t * p = & cpuThreadz[current_running_cpu_idx];
     struct timespec abstime;
     clock_gettime (CLOCK_REALTIME, & abstime);
-    abstime.tv_nsec += (long int) nsec;
+    abstime.tv_nsec += (long int) usec * 1000;
     abstime.tv_sec += abstime.tv_nsec / 1000000000;
     abstime.tv_nsec %= 1000000000;
-    rc = pthread_mutex_lock (& p->sleepLock);
-    if (rc)
-      sim_printf ("sleepCPU pthread_mutex_lock %d\n", rc);
+
     rc = pthread_cond_timedwait (& p->sleepCond,
-                                 & p->sleepLock,
+                                 & scu_lock,
                                  & abstime);
+//sim_printf ("wake %u %u %lu\n", cpu.rTR, current_running_cpu_idx, usec);
     if (rc && rc != ETIMEDOUT)
       sim_printf ("sleepCPU pthread_cond_timedwait %d\n", rc);
-    bool timeout = rc == ETIMEDOUT;
-    rc = pthread_mutex_unlock (& p->sleepLock);
-    if (rc)
-      sim_printf ("sleepCPU pthread_mutex_unlock %d\n", rc);
-    //sim_printf ("pthread_cond_timedwait %lu %d\n", nsec, n);
-    if (timeout)
+    if (rc == ETIMEDOUT)
       return 0;
     struct timespec newtime, delta;
     clock_gettime (CLOCK_REALTIME, & newtime);
     timespec_diff (& abstime, & newtime, & delta);
+//sim_printf ("wake %u %u %lu %lu\n", cpu.rTR, current_running_cpu_idx, usec, delta.tv_nsec / 1000);
     if (delta.tv_nsec < 0)
       return 0; // safety
     return (unsigned long) delta.tv_nsec / 1000;
@@ -415,16 +416,10 @@ void wakeCPU (uint cpuNum)
   {
     int rc;
     struct cpuThreadz_t * p = & cpuThreadz[cpuNum];
-    rc = pthread_mutex_lock (& p->sleepLock);
-    if (rc)
-      sim_printf ("wakeCPU pthread_mutex_lock %d\n", rc);
-    //p->run = run;
+
     rc = pthread_cond_signal (& p->sleepCond);
     if (rc)
       sim_printf ("wakeCPU pthread_cond_signal %d\n", rc);
-    rc = pthread_mutex_unlock (& p->sleepLock);
-    if (rc)
-      sim_printf ("wakeCPU pthread_mutex_unlock %d\n", rc);
   }
 
 #ifdef IO_THREADZ
@@ -482,7 +477,11 @@ void createIOMThread (uint iomNum)
 
     char nm [17];
     sprintf (nm, "IOM %c", 'a' + iomNum);
+#ifndef __FreeBSD__
     pthread_setname_np (p->iomThread, nm);
+#else
+    pthread_set_name_np (p->iomThread, nm);
+#endif
   }
 
 // Called by IOM thread to block until CIOC call
@@ -635,7 +634,11 @@ void createChnThread (uint iomNum, uint chnNum, const char * devTypeStr)
 
     char nm [17];
     sprintf (nm, "chn %c/%u %s", 'a' + iomNum, chnNum, devTypeStr);
+#ifndef __FreeBSD__
     pthread_setname_np (p->chnThread, nm);
+#else
+    pthread_set_name_np (p->chnThread, nm);
+#endif
   }
 
 // Called by channel thread to block until I/O command presented
@@ -723,11 +726,20 @@ void initThreadz (void)
     memset (chnThreadz, 0, sizeof (chnThreadz));
 #endif
 
+#ifndef LOCKLESS
     //pthread_rwlock_init (& mem_lock, PTHREAD_PROCESS_PRIVATE);
     have_mem_lock = false;
     have_rmw_lock = false;
+#endif
+#ifdef __FreeBSD__
+    pthread_mutexattr_t scu_attr;
+    pthread_mutexattr_init(&scu_attr);
+    pthread_mutexattr_settype(&scu_attr, PTHREAD_MUTEX_ADAPTIVE_NP);
 
-    pthread_spin_init (& scu_lock, PTHREAD_PROCESS_PRIVATE);
+    pthread_mutex_init (& scu_lock, &scu_attr);
+#else
+    pthread_mutex_init (& scu_lock, NULL);
+#endif
     pthread_spin_init (& iom_lock, PTHREAD_PROCESS_PRIVATE);
   }
 

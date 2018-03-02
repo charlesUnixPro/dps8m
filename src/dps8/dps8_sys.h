@@ -63,7 +63,7 @@ typedef struct
 } sysinfo_t;
 
 #ifndef SCUMEM
-extern word36 vol * M;
+extern vol word36 * M;
 #endif
 extern sysinfo_t sys_opts;
 extern uint64 sim_deb_start;

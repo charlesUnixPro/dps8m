@@ -48,6 +48,14 @@ endif
 
 ifeq ($(THREADZ),1)
 CFLAGS += -pthread -DTHREADZ
+LDFLAGS += -pthread
+LIBS += -lpthread
+endif
+
+ifeq ($(LOCKLESS),1)
+#CFLAGS += -pthread -DLOCKLESS -DWAM
+CFLAGS += -pthread -DLOCKLESS 
+LDFLAGS += -pthread
 LIBS += -lpthread
 endif
 
@@ -96,7 +104,7 @@ ifeq ($(OS),Windows_NT)
 else
   OSTYPE = $(shell uname -s)
   ifeq ($(OSTYPE),FreeBSD)
-    LIBS += -lm
+    LIBS += -lm -pthread
   endif
   ifeq ($(OSTYPE),Linux)
     ifeq ($(CROSS),MINGW64)
@@ -159,6 +167,9 @@ endif
 ifeq ($(THREADZ),1)
 C_SRCS += ./threadz.c
 endif
+ifeq ($(LOCKLESS),1)
+C_SRCS += ./threadz.c
+endif
 C_SRCS += ./uvutil.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
@@ -216,6 +227,9 @@ H_SRCS += utlist.h
 ifeq ($(THREADZ),1)
 H_SRCS += ./threadz.h
 endif
+ifeq ($(LOCKLESS),1)
+H_SRCS += ./threadz.h
+endif
 H_SRCS += ./uvutil.h
 
 
@@ -257,7 +271,7 @@ blinkenLightsCurses : blinkenLightsCurses.c shm.o
 
 dps8$(EXE) : $(OBJS) $(LOCALOBJS) $(LOCALLIBS) 
 	@echo LD dps8$(EXE)
-	@$(LD)  -o dps8$(EXE) $(OBJS) $(LDFLAGS) $(LOCALOBJS) $(LOCALLIBS) $(LIBS)
+	@$(LD)  -o dps8$(EXE) $(LDFLAGS) $(OBJS) $(LOCALOBJS) $(LOCALLIBS) $(LIBS)
 
 .PHONY: FORCE
 

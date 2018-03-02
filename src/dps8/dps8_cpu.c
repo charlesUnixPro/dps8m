@@ -44,7 +44,7 @@
 #endif
 #include "dps8_opcodetable.h"
 #include "sim_defs.h"
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 #include "threadz.h"
 
 __thread uint current_running_cpu_idx;
@@ -438,12 +438,12 @@ static void set_cpu_cycle (cycles_e cycle)
 
 // DPS8M Memory of 36 bit words is implemented as an array of 64 bit words.
 // Put state information into the unused high order bits.
-#define MEM_UNINITIALIZED 0x4000000000000000LLU
+#define MEM_UNINITIALIZED (1LLU<<62)
 
 uint set_cpu_idx (UNUSED uint cpu_idx)
   {
     uint prev = current_running_cpu_idx;
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
     current_running_cpu_idx = cpu_idx;
 #endif
 #ifdef ROUND_ROBIN
@@ -482,7 +482,7 @@ static void cpu_reset_unit_idx (UNUSED uint cpun, bool clear_mem)
     cpu.PPR.P = 1;
     cpu.RSDWH_R1 = 0;
     cpu.rTR = MASK27;
-//#ifdef THREADZ
+//#if defined(THREADZ) || defined(LOCKLESS)
 //    clock_gettime (CLOCK_BOOTTIME, & cpu.rTRTime);
 //#endif
 #if ISOLTS
@@ -1194,7 +1194,7 @@ cpu_state_t * cpus = NULL;
 #else
 cpu_state_t cpus [N_CPU_UNITS_MAX];
 #endif
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 __thread cpu_state_t * restrict cpup;
 #else
 cpu_state_t * restrict cpup; 
@@ -1259,7 +1259,7 @@ t_stat simh_hooks (void)
         
     sim_interval --;
 
-#ifndef THREADZ
+#if !defined(THREADZ) && !defined(LOCKLESS)
 // This is needed for BCE_TRAP in install scripts
     // sim_brk_test expects a 32 bit address; PPR.IC into the low 18, and
     // PPR.PSR into the high 12
@@ -1320,7 +1320,7 @@ static void panel_process_event (void)
 #endif
 
 
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 // The hypervisor CPU for the threadz model
 t_stat sim_instr (void)
   {
@@ -1366,16 +1366,8 @@ t_stat sim_instr (void)
         for (uint cpu_idx = 0; cpu_idx < cpu_dev.numunits; cpu_idx ++)
           {
             createCPUThread (cpu_idx);
-            //setCPURun (cpu_idx, false);
-            //cpuRdyWait (cpu_idx);
-            //setCPURun (cpu_idx, true);
           }
-
       }
-
-    setCPURun (0, true);
-    //for (uint cpu_idx = 0; cpu_idx < N_CPU_UNITS_MAX; cpu_idx ++)
-      //setCPURun (cpu_idx, cpu_idx < cpu_dev.numunits);
 
     do
       {
@@ -1396,7 +1388,11 @@ t_stat sim_instr (void)
           }
 #endif
 #if 1
+
 // Check for all CPUs stopped
+
+// This doesn't work for multiple CPU Multics; only one processor does the
+// BCE dis; the other processors are doing the pxss 'dis 0776' dance; 
 
         uint n_running = 0;
         for (uint i = 0; i < cpu_dev.numunits; i ++)
@@ -1430,7 +1426,7 @@ t_stat sim_instr (void)
   }
 #endif
 
-#ifndef THREADZ
+#if !defined(THREADZ) && !defined(LOCKLESS)
 #ifndef NO_EV_POLL
 static uint fast_queue_subsample = 0;
 #endif
@@ -1484,7 +1480,7 @@ static uint fast_queue_subsample = 0;
 // other extant cycles:
 //  ABORT_cycle
 
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 void * cpu_thread_main (void * arg)
   {
     int myid = * (int *) arg;
@@ -1540,7 +1536,7 @@ static void do_LUF_fault (void)
     doFault (FAULT_LUF, fst_zero, "instruction cycle lockup");
   }
 
-#ifndef THREADZ
+#if !defined(THREADZ) && !defined(LOCKLESS)
 #define threadz_sim_instr sim_instr
 #endif
 
@@ -1577,7 +1573,7 @@ t_stat threadz_sim_instr (void)
 
     t_stat reason = 0;
       
-#ifndef THREADZ
+#if !defined(THREADZ) && !defined(LOCKLESS)
     set_cpu_idx (0);
 #ifdef M_SHARED
 // simh needs to have the IC statically allocated, so a placeholder was
@@ -1653,7 +1649,7 @@ setCPU:;
       {
         reason = 0;
 
-#ifndef THREADZ
+#if !defined(THREADZ) && !defined(LOCKLESS)
         // Process deferred events and breakpoints
         reason = simh_hooks ();
         if (reason)
@@ -1712,13 +1708,18 @@ setCPU:;
         cpuRunningWait ();
 
 #endif // THREADZ
+#ifdef LOCKLESS
+	core_unlock_all();
+	// wait on run/switch
+        cpuRunningWait ();
+#endif
 
         int con_unit_idx = check_attn_key ();
         if (con_unit_idx != -1)
           console_attn_idx (con_unit_idx);
 
 #ifndef NO_EV_POLL
-#ifndef THREADZ
+#if !defined(THREADZ) && !defined(LOCKLESS)
 #ifdef ISOLTS
         if (cpu.cycle != FETCH_cycle)
           {
@@ -2237,7 +2238,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                     // *1000 is 10  milliseconds
                     // *1000 is 10000 microseconds
                     // in uSec;
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 
 // XXX If interupt inhibit set, then sleep forever instead of TRO
                     // rTR is 512KHz; sleepCPU is in 1Mhz
@@ -2270,7 +2271,12 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                       }
                     cpu.rTR = (cpu.rTR - ticks) & MASK27;
 #else // !NO_TIMEWAIT
-                    unsigned long left = sleepCPU (cpu.rTR * 125u / 64u);
+		    unsigned long left = cpu.rTR * 125u / 64u;
+		    lock_scu();
+		    if (!sample_interrupts()) {
+		        left = sleepCPU (left);
+		    }
+		    unlock_scu();
                     if (left)
                       {
                         cpu.rTR = (word27) (left * 64 / 125);
@@ -2529,7 +2535,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
 
 leave:
 
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
     setCPURun (current_running_cpu_idx, false);
 #endif
 
@@ -2763,7 +2769,7 @@ static uint get_scu_unit_idx (word24 addr, word24 * offset)
 #endif
 #endif
 
-#ifndef SPEED
+#if !defined(SPEED) || !defined(INLINE_CORE)
 int32 core_read (word24 addr, word36 *data, const char * ctx)
   {
     PNL (cpu.portBusy = true;)
@@ -2780,7 +2786,9 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
       }
     else
 #endif
+#ifndef SPEED
       nem_check (addr,  "core_read nem");
+#endif
 
 #if 0 // XXX Controlled by TEST/NORMAL switch
 #ifdef ISOLTS
@@ -2809,6 +2817,7 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
                     * data, ctx);
       }
 #else
+#ifndef LOCKLESS
     if (M[addr] & MEM_UNINITIALIZED)
       {
         sim_debug (DBG_WARN, & cpu_dev,
@@ -2816,6 +2825,8 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
                    "IC is 0%06o:0%06o (%s(\n",
                    addr, cpu.PPR.PSR, cpu.PPR.IC, ctx);
       }
+#endif
+#ifndef SPEED
     if (watch_bits [addr])
       {
         sim_msg ("WATCH [%"PRId64"] %05o:%06o read   %08o %012"PRIo64" "
@@ -2824,10 +2835,16 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
                     ctx);
         traceInstruction (0);
       }
-
+#endif
+#ifdef LOCKLESS
+    word36 v;
+    LOAD_ACQ_CORE_WORD(v, addr);
+    *data = v & DMASK;
+#else
     LOCK_MEM_RD;
     *data = M[addr] & DMASK;
     UNLOCK_MEM;
+#endif
 
 #endif
 #ifdef TR_WORK_MEM
@@ -2841,7 +2858,23 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
   }
 #endif
 
-#ifndef SPEED
+#ifdef LOCKLESS
+int32 core_read_lock (word24 addr, word36 *data, const char * ctx)
+{
+    LOCK_CORE_WORD(addr);
+    if (cpu.locked_addr != 0) {
+      sim_warn ("core_read_lock: locked %x addr %x\n", cpu.locked_addr, addr);
+      core_unlock_all();
+    }
+    cpu.locked_addr = addr;
+    word36 v;
+    LOAD_ACQ_CORE_WORD(v, addr);
+    * data = v & DMASK;
+    return 0;
+}
+#endif
+
+#if !defined(SPEED) || !defined(INLINE_CORE)
 int core_write (word24 addr, word36 data, const char * ctx)
   {
     PNL (cpu.portBusy = true;)
@@ -2858,7 +2891,9 @@ int core_write (word24 addr, word36 data, const char * ctx)
       }
     else
 #endif
+#ifndef SPEED
       nem_check (addr,  "core_write nem");
+#endif
 #ifdef ISOLTS
     if (cpu.MR.sdpap)
       {
@@ -2884,9 +2919,15 @@ int core_write (word24 addr, word36 data, const char * ctx)
                     scu[sci_unit_idx].M[offset], ctx);
       }
 #else
+#ifdef LOCKLESS
+    LOCK_CORE_WORD(addr);
+    STORE_REL_CORE_WORD(addr, data);
+#else
     LOCK_MEM_WR;
     M[addr] = data & DMASK;
     UNLOCK_MEM;
+#endif
+#ifndef SPEED
     if (watch_bits [addr])
       {
         sim_msg ("WATCH [%"PRId64"] %05o:%06o write  %08o %012"PRIo64" "
@@ -2894,6 +2935,7 @@ int core_write (word24 addr, word36 data, const char * ctx)
                     M [addr], ctx);
         traceInstruction (0);
       }
+#endif
 #endif
 #ifdef TR_WORK_MEM
     cpu.rTRticks ++;
@@ -2906,7 +2948,32 @@ int core_write (word24 addr, word36 data, const char * ctx)
   }
 #endif
 
-#ifndef SPEED
+#ifdef LOCKLESS
+int core_write_unlock (word24 addr, word36 data, const char * ctx)
+{
+    if (cpu.locked_addr != addr)
+      {
+       sim_warn ("core_write_unlock: locked %x addr %x\n", cpu.locked_addr, addr);
+       core_unlock_all();
+      }
+      
+    STORE_REL_CORE_WORD(addr, data);
+    cpu.locked_addr = 0;
+    return 0;
+}
+
+int core_unlock_all ()
+{
+  if (cpu.locked_addr != 0) {
+      sim_warn ("core_unlock_all: locked %x\n", cpu.locked_addr);
+      STORE_REL_CORE_WORD(cpu.locked_addr, M[cpu.locked_addr]);
+      cpu.locked_addr = 0;
+  }
+  return 0;
+}
+#endif
+
+#if !defined(SPEED) || !defined(INLINE_CORE)
 int core_write_zone (word24 addr, word36 data, const char * ctx)
   {
     PNL (cpu.portBusy = true;)
@@ -2923,7 +2990,9 @@ int core_write_zone (word24 addr, word36 data, const char * ctx)
       }
     else
 #endif
+#ifndef SPEED
       nem_check (addr,  "core_write_zone nem");
+#endif
 #ifdef ISOLTS
     if (cpu.MR.sdpap)
       {
@@ -2951,10 +3020,18 @@ int core_write_zone (word24 addr, word36 data, const char * ctx)
                     scu[sci_unit_idx].M[offset], ctx);
       }
 #else
+#ifdef LOCKLESS
+    word36 v;
+    core_read_lock(addr,  &v, ctx);
+    v = (v & ~cpu.zone) | (data & cpu.zone);
+    core_write_unlock(addr, v, ctx);
+#else
     LOCK_MEM_WR;
     M[addr] = (M[addr] & ~cpu.zone) | (data & cpu.zone);
     UNLOCK_MEM;
+#endif
     cpu.useZone = false; // Safety
+#ifndef SPEED
     if (watch_bits [addr])
       {
         sim_msg ("WATCH [%"PRId64"] %05o:%06o writez %08o %012"PRIo64" "
@@ -2962,6 +3039,7 @@ int core_write_zone (word24 addr, word36 data, const char * ctx)
                     M [addr], ctx);
         traceInstruction (0);
       }
+#endif
 #endif
 #ifdef TR_WORK_MEM
     cpu.rTRticks ++;
@@ -2974,7 +3052,7 @@ int core_write_zone (word24 addr, word36 data, const char * ctx)
   }
 #endif
 
-#ifndef SPEED
+#if !defined(SPEED) || !defined(INLINE_CORE)
 int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
   {
     PNL (cpu.portBusy = true;)
@@ -2998,7 +3076,9 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
       }
     else
 #endif
-      nem_check (addr,  "core_read2 nem");
+#ifndef SPEED
+    nem_check (addr,  "core_read2 nem");
+#endif
 
 #if 0 // XXX Controlled by TEST/NORMAL switch
 #ifdef ISOLTS
@@ -3020,29 +3100,35 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
     LOCK_MEM_RD;
     *even = scu [sci_unit_idx].M[offset++] & DMASK;
     UNLOCK_MEM;
+#ifndef SPEED
     if (watch_bits [addr])
       {
         sim_msg ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" "
                     "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr,
                     * even, ctx);
       }
+#endif
+
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012"PRIo64" (%s)\n",
                 addr, * even, ctx);
     LOCK_MEM_RD;
     *odd = scu [sci_unit_idx].M[offset] & DMASK;
     UNLOCK_MEM;
+#ifndef SPEED
     if (watch_bits [addr+1])
       {
         sim_msg ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" "
                     "(%s)\n", cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC, addr+1,
                     * odd, ctx);
       }
+#endif
 
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012"PRIo64" (%s)\n",
                 addr+1, * odd, ctx);
 #else
+#ifndef LOCKLESS
     if (M[addr] & MEM_UNINITIALIZED)
       {
         sim_debug (DBG_WARN, & cpu_dev,
@@ -3050,6 +3136,8 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
                    "IC is 0%06o:0%06o (%s)\n",
                    addr, cpu.PPR.PSR, cpu.PPR.IC, ctx);
       }
+#endif
+#ifndef SPEED
     if (watch_bits [addr])
       {
         sim_msg ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" "
@@ -3057,15 +3145,26 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
                     M [addr], ctx);
         traceInstruction (0);
       }
+#endif
+#ifdef LOCKLESS
+    word36 v;
+    LOAD_ACQ_CORE_WORD(v, addr);
+    if (v & MEM_LOCKED)
+      sim_warn ("core_read2: even addr %x was locked\n", addr);
+    *even = v & DMASK;
+    addr++;
+#else
     LOCK_MEM_RD;
     *even = M[addr++] & DMASK;
     UNLOCK_MEM;
+#endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012"PRIo64" (%s)\n",
                 addr - 1, * even, ctx);
 
     // if the even address is OK, the odd will be
     //nem_check (addr,  "core_read2 nem");
+#ifndef LOCKLESS
     if (M[addr] & MEM_UNINITIALIZED)
       {
         sim_debug (DBG_WARN, & cpu_dev,
@@ -3073,6 +3172,8 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
                    "IC is 0%06o:0%06o (%s)\n",
                     addr, cpu.PPR.PSR, cpu.PPR.IC, ctx);
       }
+#endif
+#ifndef SPEED
     if (watch_bits [addr])
       {
         sim_msg ("WATCH [%"PRId64"] %05o:%06o read2  %08o %012"PRIo64" "
@@ -3080,10 +3181,17 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
                     M [addr], ctx);
         traceInstruction (0);
       }
-
+#endif
+#ifdef LOCKLESS
+    LOAD_ACQ_CORE_WORD(v, addr);
+    if (v & MEM_LOCKED)
+      sim_warn ("core_read2: odd addr %x was locked\n", addr);
+    *odd = v & DMASK;
+#else
     LOCK_MEM_RD;
     *odd = M[addr] & DMASK;
     UNLOCK_MEM;
+#endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_read2 %08o %012"PRIo64" (%s)\n",
                 addr, * odd, ctx);
@@ -3096,7 +3204,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
   }
 #endif
 
-#ifndef SPEED
+#if !defined(SPEED) || !defined(INLINE_CORE)
 int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
   {
     PNL (cpu.portBusy = true;)
@@ -3120,7 +3228,9 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
       }
     else
 #endif
+#ifndef SPEED
       nem_check (addr,  "core_write2 nem");
+#endif
 #ifdef ISOLTS
     if (cpu.MR.sdpap)
       {
@@ -3154,6 +3264,7 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
                     odd, ctx);
       }
 #else
+#ifndef SPEED
     if (watch_bits [addr])
       {
         sim_msg ("WATCH [%"PRId64"] %05o:%06o write2 %08o %012"PRIo64" "
@@ -3161,9 +3272,16 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
                     even, ctx);
         traceInstruction (0);
       }
+#endif
+#ifdef LOCKLESS
+    LOCK_CORE_WORD(addr);
+    STORE_REL_CORE_WORD(addr, even);
+    addr++;
+#else
     LOCK_MEM_WR;
     M[addr++] = even & DMASK;
     UNLOCK_MEM;
+#endif
     sim_debug (DBG_CORE, & cpu_dev,
                "core_write2 %08o %012"PRIo64" (%s)\n",
                 addr - 1, even, ctx);
@@ -3171,6 +3289,7 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
     // If the even address is OK, the odd will be
     //nem_check (addr,  "core_write2 nem");
 
+#ifndef SPEED
     if (watch_bits [addr])
       {
         sim_msg ("WATCH [%"PRId64"] %05o:%06o write2 %08o %012"PRIo64" "
@@ -3178,9 +3297,15 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
                     odd, ctx);
         traceInstruction (0);
       }
+#endif
+#ifdef LOCKLESS
+    LOCK_CORE_WORD(addr);
+    STORE_REL_CORE_WORD(addr, odd);
+#else
     LOCK_MEM_WR;
     M[addr] = odd & DMASK;
     UNLOCK_MEM;
+#endif
 #endif
 #ifdef TR_WORK_MEM
     cpu.rTRticks ++;
@@ -3800,8 +3925,8 @@ void add_APU_history (enum APUH_e op)
 
 #endif
 
-#ifdef THREADZ
-static pthread_mutex_t debug_lock = PTHREAD_MUTEX_INITIALIZER;
+#if defined(THREADZ) || defined(LOCKLESS)
+//static pthread_mutex_t debug_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static const char * get_dbg_verb (uint32 dbits, DEVICE * dptr)
   {
@@ -3830,7 +3955,7 @@ static const char * get_dbg_verb (uint32 dbits, DEVICE * dptr)
 
 void dps8_sim_debug (uint32 dbits, DEVICE * dptr, unsigned long long cnt, const char* fmt, ...)
   {
-    pthread_mutex_lock (& debug_lock);
+    //pthread_mutex_lock (& debug_lock);
     if (sim_deb && dptr && (dptr->dctrl & dbits))
       {
         const char * debug_type = get_dbg_verb (dbits, dptr);
@@ -3839,6 +3964,8 @@ void dps8_sim_debug (uint32 dbits, DEVICE * dptr, unsigned long long cnt, const 
         char * buf = stackbuf;
         va_list arglist;
         int32 i, j, len;
+	struct timespec t;
+	clock_gettime(CLOCK_REALTIME, &t);
 
         buf [bufsize-1] = '\0';
 
@@ -3880,7 +4007,7 @@ void dps8_sim_debug (uint32 dbits, DEVICE * dptr, unsigned long long cnt, const 
                   {
                     if ((i != j) || (i == 0))
                       {
-                          fprintf (sim_deb, "DBG(%lld) %o: %s %s %.*s\r\n", cnt, current_running_cpu_idx, dptr->name, debug_type, i-j, &buf[j]);
+			  fprintf (sim_deb, "%ld.%06ld: DBG(%lld) %o: %s %s %.*s\r\n", t.tv_sec, t.tv_nsec/1000, cnt, current_running_cpu_idx, dptr->name, debug_type, i-j, &buf[j]);
                       }
                   }
                 j = i + 1;
@@ -3892,6 +4019,6 @@ void dps8_sim_debug (uint32 dbits, DEVICE * dptr, unsigned long long cnt, const 
         if (buf != stackbuf)
           free (buf);
       }
-    pthread_mutex_unlock (& debug_lock);
+    //pthread_mutex_unlock (& debug_lock);
   }
 #endif

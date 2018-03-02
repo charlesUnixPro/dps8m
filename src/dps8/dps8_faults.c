@@ -32,6 +32,9 @@
 #include "dps8_append.h"
 #include "dps8_ins.h"
 #include "dps8_utils.h"
+#if defined(THREADZ) || defined(LOCKLESS)
+#include "threadz.h"
+#endif
 
 #define DBG_CTR cpu.cycleCnt
 
@@ -648,7 +651,7 @@ sim_debug (DBG_FAULT, & cpu_dev, "cycle %u ndes %u fn %u v %u\n", cpu.cycle, cpu
         // XXX Does the CU or FR need fixing? ticket #36
         if (cpu . bTroubleFaultCycle)
           {
-#ifndef THREADZ
+#if !defined(THREADZ) && !defined(LOCKLESS)
 #ifndef PANEL
 #ifndef ROUND_ROBIN
             if ((! sample_interrupts ()) &&
@@ -788,7 +791,7 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
         // XXX Does the CU or FR need fixing? ticket #36
         if (cpu.bTroubleFaultCycle)
           {
-#ifndef THREADZ
+#if !defined(THREADZ) && !defined(LOCKLESS)
 #ifndef PANEL
 #ifndef ROUND_ROBIN
             if ((! sample_interrupts ()) &&
@@ -869,6 +872,9 @@ void setG7fault (uint cpuNo, _fault faultNo, _fault_subtype subFault)
     cpus[cpuNo].g7FaultsPreset |= (1u << faultNo);
     //cpu.g7SubFaultsPreset [faultNo] = subFault;
     cpus[cpuNo].g7SubFaults [faultNo] = subFault;
+#if defined(THREADZ) || defined(LOCKLESS)
+    wakeCPU(cpuNo);
+#endif
   }
 
 #ifdef L68

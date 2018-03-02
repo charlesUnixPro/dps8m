@@ -1160,7 +1160,7 @@ t_stat sys_cable (int32 arg, const char * buf)
         sim_printf ("error: cable: invalid name <%s>\n", name);
         goto exit;
       }
-    if (strlen (name_save))
+    if (name_save && strlen (name_save))
       {
         sim_printf ("cable ignored '%s'\n", name_save);
       }

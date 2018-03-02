@@ -40,6 +40,10 @@
 #include "dps8_iefp.h"
 #include "dps8_utils.h"
 
+#if defined(THREADZ) || defined(LOCKLESS)
+#include "threadz.h"
+#endif
+
 #define DBG_CTR cpu.cycleCnt
 
 // Forward declarations
@@ -228,7 +232,11 @@ static void readOperands (void)
         return;
       } // IT
 
+#ifdef LOCKLESS
+    read_operand (cpu.TPR.CA, ((i->info->flags & RMW) == RMW) ? OPERAND_RMW : OPERAND_READ);
+#else
     read_operand (cpu.TPR.CA, OPERAND_READ);
+#endif
 
     return;
   }
@@ -2014,7 +2022,18 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
             cpu.iefpFinalAddress = cpu.TPR.CA;
           }
 #endif
+#ifdef LOCKLESS
+	if ((ci->info->flags & RMW) == RMW)
+	  {
+	      if (operand_size() != 1)
+		  sim_warn("executeInstruction: operand_size!= 1\n");
+	      core_write_unlock (cpu.iefpFinalAddress, cpu.CY, __func__);
+         }
+	else
+	  writeOperands ();
+#else
         writeOperands ();
+#endif
       }
 
     else if (flags & PREPARE_CA)
@@ -8556,6 +8575,18 @@ elapsedtime ();
                 sim_debug (DBG_MSG, & cpu_dev, "BCE DIS causes CPU halt\n");
                 //longjmp (cpu.jmpMain, JMP_STOP);
                 cpu.isRunning = false;
+              }
+#endif
+#if 0
+          if (i->address == 0777)
+              {
+                sim_printf ("Multics DIS disables CPU: CA: 0x%x\n",cpu.TPR.CA);
+                sim_debug (DBG_MSG, & cpu_dev, "Multics DIS disables CPU\n");
+#if 1
+                setCPURun (current_running_cpu_idx, false);
+#else
+                longjmp (cpu.jmpMain, JMP_STOP);
+#endif
               }
 #endif
 

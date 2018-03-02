@@ -39,7 +39,7 @@ typedef enum chanStat
     chanStatParityErrBus = 7
   } chanStat;
 
-typedef struct
+typedef volatile struct
   {
 
 // scratch pad
