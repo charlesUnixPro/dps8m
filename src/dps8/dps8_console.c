@@ -658,7 +658,6 @@ static int opc_cmd (uint iomUnitIdx, uint chan)
             csp->io_mode = opc_read_mode;
             sim_debug (DBG_NOTIFY, & opc_dev, 
                        "%s: Read ASCII command received\n", __func__);
-sim_printf ("Read ASCII command received\n");
             if (csp->tailp != csp->buf)
               {
                 sim_debug (DBG_WARN, & opc_dev,
@@ -1018,7 +1017,6 @@ static void consoleProcessIdx (int conUnitIdx)
     if (csp->io_mode == opc_read_mode &&
         csp->autop != NULL)
       {
-sim_printf ("read & auto_input\n");
         if (csp->autop == '\0')
           {
             free (csp->auto_input);
