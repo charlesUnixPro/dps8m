@@ -114,7 +114,7 @@ typedef struct { int64_t h; uint64_t l; } __int128_t;
 
 // ISOLTS requires multiple CPU support
 #ifdef ISOLTS
-#ifndef ROUND_ROBIN
+#if !defined(ROUND_ROBIN) && !defined(LOCKLESS)
 #define ROUND_ROBIN
 #endif
 #endif

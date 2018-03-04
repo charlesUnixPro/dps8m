@@ -1473,7 +1473,7 @@ static char * default_base_system_script [] =
 #if defined(THREADZ) || defined(LOCKLESS)
     "set cpu nunits=6",
 #else
-#ifdef ISOTLTS
+#ifdef ISOLTS
     "set cpu nunits=2",
 #else
     "set cpu nunits=1",

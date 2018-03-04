@@ -2782,7 +2782,7 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
         uint pgnum = addr / SCBANK;
         int os = cpu.scbank_pg_os [pgnum];
         if (os < 0)
-          { 
+          {
             doFault (FAULT_STR, fst_str_nea,  __func__);
           }
         addr = (uint) os + addr % SCBANK;
@@ -2864,6 +2864,22 @@ int32 core_read (word24 addr, word36 *data, const char * ctx)
 #ifdef LOCKLESS
 int32 core_read_lock (word24 addr, word36 *data, const char * ctx)
 {
+#ifdef ISOLTS
+    if (cpu.switches.useMap)
+      {
+        uint pgnum = addr / SCBANK;
+        int os = cpu.scbank_pg_os [pgnum];
+        if (os < 0)
+          {
+            doFault (FAULT_STR, fst_str_nea,  __func__);
+          }
+        addr = (uint) os + addr % SCBANK;
+      }
+    else
+#endif
+#ifndef SPEED
+      nem_check (addr,  "core_read nem");
+#endif
     LOCK_CORE_WORD(addr);
     if (cpu.locked_addr != 0) {
       sim_warn ("core_read_lock: locked %x addr %x\n", cpu.locked_addr, addr);
@@ -2887,7 +2903,7 @@ int core_write (word24 addr, word36 data, const char * ctx)
         uint pgnum = addr / SCBANK;
         int os = cpu.scbank_pg_os [pgnum];
         if (os < 0)
-          { 
+          {
             doFault (FAULT_STR, fst_str_nea,  __func__);
           }
         addr = (uint) os + addr % SCBANK;
@@ -2954,6 +2970,22 @@ int core_write (word24 addr, word36 data, const char * ctx)
 #ifdef LOCKLESS
 int core_write_unlock (word24 addr, word36 data, const char * ctx)
 {
+#ifdef ISOLTS
+    if (cpu.switches.useMap)
+      {
+        uint pgnum = addr / SCBANK;
+        int os = cpu.scbank_pg_os [pgnum];
+        if (os < 0)
+          {
+            doFault (FAULT_STR, fst_str_nea,  __func__);
+          }
+        addr = (uint) os + addr % SCBANK;
+      }
+    else
+#endif
+#ifndef SPEED
+      nem_check (addr,  "core_read nem");
+#endif
     if (cpu.locked_addr != addr)
       {
        sim_warn ("core_write_unlock: locked %x addr %x\n", cpu.locked_addr, addr);
@@ -2980,22 +3012,6 @@ int core_unlock_all ()
 int core_write_zone (word24 addr, word36 data, const char * ctx)
   {
     PNL (cpu.portBusy = true;)
-#ifdef ISOLTS
-    if (cpu.switches.useMap)
-      {
-        uint pgnum = addr / SCBANK;
-        int os = cpu.scbank_pg_os [pgnum];
-        if (os < 0)
-          { 
-            doFault (FAULT_STR, fst_str_nea,  __func__);
-          }
-        addr = (uint) os + addr % SCBANK;
-      }
-    else
-#endif
-#ifndef SPEED
-      nem_check (addr,  "core_write_zone nem");
-#endif
 #ifdef ISOLTS
     if (cpu.MR.sdpap)
       {
@@ -3029,6 +3045,22 @@ int core_write_zone (word24 addr, word36 data, const char * ctx)
     v = (v & ~cpu.zone) | (data & cpu.zone);
     core_write_unlock(addr, v, ctx);
 #else
+#ifdef ISOLTS
+    if (cpu.switches.useMap)
+      {
+        uint pgnum = addr / SCBANK;
+        int os = cpu.scbank_pg_os [pgnum];
+        if (os < 0)
+          {
+            doFault (FAULT_STR, fst_str_nea,  __func__);
+          }
+        addr = (uint) os + addr % SCBANK;
+      }
+    else
+#endif
+#ifndef SPEED
+      nem_check (addr,  "core_read nem");
+#endif
     LOCK_MEM_WR;
     M[addr] = (M[addr] & ~cpu.zone) | (data & cpu.zone);
     UNLOCK_MEM;
@@ -3072,7 +3104,7 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
         uint pgnum = addr / SCBANK;
         int os = cpu.scbank_pg_os [pgnum];
         if (os < 0)
-          { 
+          {
             doFault (FAULT_STR, fst_str_nea,  __func__);
           }
         addr = (uint) os + addr % SCBANK;
@@ -3224,7 +3256,7 @@ int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx)
         uint pgnum = addr / SCBANK;
         int os = cpu.scbank_pg_os [pgnum];
         if (os < 0)
-          { 
+          {
             doFault (FAULT_STR, fst_str_nea,  __func__);
           }
         addr = (word24)os + addr % SCBANK;
