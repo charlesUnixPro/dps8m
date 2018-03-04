@@ -3524,6 +3524,9 @@ static void dps8_init (void)
 #ifdef ROUND_ROBIN
     sim_msg ("#### ROUND_ROBIN BUILD ####\n");
 #endif
+#ifdef LOCKLESS
+    sim_msg ("#### LOCKLESS BUILD ####\n");
+#endif
 
     // special dps8 initialization stuff that cant be done in reset, etc .....
 
