@@ -1397,7 +1397,7 @@ static void deliver_interrupts (uint scu_unit_idx)
 #ifdef HDBG
                 hdbgIntrSet (inum, cpu_unit_udx, scu_unit_idx);
 #endif
-                setCPURun ((uint) cpu_unit_udx, true);
+                createCPUThread((uint) cpu_unit_udx);
 #ifndef NO_TIMEWAIT
                 wakeCPU ((uint) cpu_unit_udx);
 #endif

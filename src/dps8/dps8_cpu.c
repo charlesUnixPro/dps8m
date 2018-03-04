@@ -1326,6 +1326,7 @@ t_stat sim_instr (void)
   {
     t_stat reason = 0;
 
+#if 0
     static bool inited = false;
     if (! inited)
       {
@@ -1368,7 +1369,9 @@ t_stat sim_instr (void)
             createCPUThread (cpu_idx);
           }
       }
-
+#endif
+    if (cpuThreadz[0].run == false)
+          createCPUThread (0);
     do
       {
         reason = 0;
@@ -1711,7 +1714,7 @@ setCPU:;
 #ifdef LOCKLESS
 	core_unlock_all();
 	// wait on run/switch
-        cpuRunningWait ();
+	//        cpuRunningWait ();
 #endif
 
         int con_unit_idx = check_attn_key ();
@@ -2536,7 +2539,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
 leave:
 
 #if defined(THREADZ) || defined(LOCKLESS)
-    setCPURun (current_running_cpu_idx, false);
+    //    setCPURun (current_running_cpu_idx, false);
 #endif
 
 #ifdef HDBG
@@ -2554,6 +2557,10 @@ leave:
       }
 #endif
 
+#if defined(THREADZ) || defined(LOCKLESS)
+    stopCPUThread();
+#endif
+    
 #ifdef M_SHARED
 // simh needs to have the IC statically allocated, so a placeholder was
 // created. Update the placeholder in so the IC can be seen by simh, and
