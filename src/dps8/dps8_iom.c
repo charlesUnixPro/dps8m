@@ -440,7 +440,7 @@ __thread uint this_chan_num;
 #endif
 
 #ifdef SCUMEM
-void iom_core_read (uint iom_unit_idx, word24 addr, word36 *data, UNUSED const char * ctx)
+void iom_core_read (uint iom_unit_idx, word24 addr, vol word36 *data, UNUSED const char * ctx)
   {
     word24 offset;
     int scuUnitNum = query_IOM_SCU_bank_map (iom_unit_idx, addr, & offset);
@@ -458,7 +458,7 @@ void iom_core_read (uint iom_unit_idx, word24 addr, word36 *data, UNUSED const c
 #endif
   }
 
-void iom_core_read2 (uint iom_unit_idx, word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
+void iom_core_read2 (uint iom_unit_idx, word24 addr, vol word36 *even, vol word36 *odd, UNUSED const char * ctx)
   {
     word24 offset;
     int scuUnitNum = query_IOM_SCU_bank_map (iom_unit_idx, addr & PAEVEN, & offset);
@@ -516,7 +516,7 @@ void iom_core_write2 (uint iom_unit_idx, word24 addr, word36 even, word36 odd, U
 
 #else // SCUMEM
 
-void iom_core_read (UNUSED uint iom_unit_idx, word24 addr, word36 *data, UNUSED const char * ctx)
+void iom_core_read (UNUSED uint iom_unit_idx, word24 addr, vol word36 *data, UNUSED const char * ctx)
   {
 #ifdef THREADZ
 #ifdef lockread
@@ -537,7 +537,7 @@ void iom_core_read (UNUSED uint iom_unit_idx, word24 addr, word36 *data, UNUSED 
 #endif
   }
 
-void iom_core_read2 (UNUSED uint iom_unit_idx, word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
+void iom_core_read2 (UNUSED uint iom_unit_idx, word24 addr, vol word36 *even, vol word36 *odd, UNUSED const char * ctx)
   {
 #ifdef THREADZ
 #ifdef lockread

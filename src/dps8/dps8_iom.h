@@ -39,7 +39,7 @@ typedef enum chanStat
     chanStatParityErrBus = 7
   } chanStat;
 
-typedef volatile struct
+typedef vol struct
   {
 
 // scratch pad
@@ -270,8 +270,8 @@ void * chan_thread_main (void * arg);
 int query_IOM_SCU_bank_map (uint iom_unit_idx, word24 addr, word24 * offset);
 #endif
 
-void iom_core_read (uint iom_unit_idx, word24 addr, word36 *data, UNUSED const char * ctx);
-void iom_core_read2 (uint iom_unit_idx, word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx);
+void iom_core_read (uint iom_unit_idx, word24 addr, vol word36 *data, UNUSED const char * ctx);
+void iom_core_read2 (uint iom_unit_idx, word24 addr, vol word36 *even, vol word36 *odd, UNUSED const char * ctx);
 void iom_core_write (uint iom_unit_idx, word24 addr, word36 data, UNUSED const char * ctx);
 void iom_core_write2 (uint iom_unit_idx, word24 addr, word36 even, word36 odd, UNUSED const char * ctx);
 t_stat boot2 (UNUSED int32 arg, UNUSED const char * buf);

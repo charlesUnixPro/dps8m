@@ -466,7 +466,7 @@ static inline void putbits36 (word36 * x, uint p, uint n, word36 val)
     return;
   }
 
-static inline void putbits36_1 (word36 * x, uint p, word1 val)
+static inline void putbits36_1 (vol word36 * x, uint p, word1 val)
 {
     const int n = 1;
     int shift = 36 - (int) p - (int) n;
@@ -496,7 +496,7 @@ static inline void putbits36_2 (word36 * x, uint p, word2 val)
     * x = (* x & ~ smask) | (((word36) val & mask) << shift);
 }
 
-static inline void putbits36_3 (word36 * x, uint p, word3 val)
+static inline void putbits36_3 (vol word36 * x, uint p, word3 val)
 {
     const int n = 3;
     int shift = 36 - (int) p - (int) n;
@@ -616,7 +616,7 @@ static inline void putbits36_10 (word36 * x, uint p, word10 val)
     * x = (* x & ~ smask) | (((word36) val & mask) << shift);
 }
 
-static inline void putbits36_12 (word36 * x, uint p, word12 val)
+static inline void putbits36_12 (vol word36 * x, uint p, word12 val)
 {
     const int n = 12;
     int shift = 36 - (int) p - (int) n;
@@ -706,7 +706,7 @@ static inline void putbits36_17 (word36 * x, uint p, word17 val)
     * x = (* x & ~ smask) | (((word36) val & mask) << shift);
 }
 
-static inline void putbits36_18 (word36 * x, uint p, word18 val)
+static inline void putbits36_18 (vol word36 * x, uint p, word18 val)
 {
     const int n = 18;
     int shift = 36 - (int) p - (int) n;
