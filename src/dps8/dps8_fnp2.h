@@ -298,6 +298,7 @@ inline void fnp_core_read_lock (UNUSED int fnp_unit_idx, vol word36 *M_addr, wor
 inline void fnp_core_write (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 data, UNUSED const char * ctx)
   {
     word24 addr = (word24)(M_addr - M);
+    LOCK_CORE_WORD(addr);
     STORE_REL_CORE_WORD(addr, data);
   }
 

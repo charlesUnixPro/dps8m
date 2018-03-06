@@ -570,6 +570,7 @@ void iom_core_write (UNUSED uint iom_unit_idx, word24 addr, word36 data, UNUSED 
 #endif
 #endif
 #ifdef LOCKLESS
+    LOCK_CORE_WORD(addr);
     STORE_REL_CORE_WORD(addr, data);
 #else
     M[addr] = data & DMASK;
@@ -589,8 +590,10 @@ void iom_core_write2 (UNUSED uint iom_unit_idx, word24 addr, word36 even, word36
 #endif
 #endif
 #ifdef LOCKLESS
+    LOCK_CORE_WORD(addr);
     STORE_REL_CORE_WORD(addr, even);
     addr++;
+    LOCK_CORE_WORD(addr);
     STORE_REL_CORE_WORD(addr, odd);
 #else
     M[addr ++] = even;
