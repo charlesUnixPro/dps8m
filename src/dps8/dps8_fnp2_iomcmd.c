@@ -1190,7 +1190,7 @@ static void fnp_wtx_output (uint tally, uint dataAddr)
 
 //sim_printf ("   %03o %c\n", data [i], isgraph (data [i]) ? data [i] : '.');
        }
-//#if 0
+#if 0
 if_sim_debug (DBG_TRACE, & fnp_dev) {
 { sim_printf ("[%u][FNP emulator: OUT: '", decoded.slot_no);
 for (uint i = 0; i < tally; i ++)
@@ -1203,6 +1203,7 @@ sim_printf ("\\%03o", data [i]);
 sim_printf ("']\n");
 }
 }
+#endif
 #ifdef TUN
     if (linep->is_tun && tally > 0)
       {
@@ -1318,6 +1319,7 @@ static void fnp_rtx_input_accepted (void)
     struct t_line * linep = & decoded.fudp->MState.line[decoded.slot_no];
     unsigned char * data = linep -> buffer;
 
+#if 0
 if_sim_debug (DBG_TRACE, & fnp_dev) {
 { sim_printf ("[%u][FNP emulator: long IN: '", decoded.slot_no);
 for (int i = 0; i < linep->nPos; i ++)
@@ -1330,6 +1332,7 @@ sim_printf ("\\%03o", linep->buffer [i]);
 sim_printf ("']\n");
 }
 }
+#endif
     uint ctlr_port_no = 0; // FNPs are single port
     uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
 //sim_printf ("long  in; line %d tally %d\n", decoded.slot_no, linep->nPos);

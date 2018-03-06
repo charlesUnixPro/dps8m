@@ -511,6 +511,7 @@ static void fnp_rcd_input_in_mailbox (int mbx, int fnp_unit_idx, int lineno)
 // data goes in mystery [0..24]
 
 //sim_printf ("short in; line %d tally %d\n", lineno, linep->nPos);
+#if 0
 if_sim_debug (DBG_TRACE, & fnp_dev) {
 { sim_printf ("[[%d]FNP emulator: short IN: '", lineno);
 for (int i = 0; i < linep->nPos; i ++)
@@ -523,6 +524,7 @@ sim_printf ("\\%03o", linep->buffer [i]);
 sim_printf ("']\n");
 }
 }
+#endif
 #if 0
 { sim_printf ("IN:  ");
 for (int i = 0; i < linep->nPos; i ++)
