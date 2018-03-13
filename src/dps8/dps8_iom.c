@@ -2328,6 +2328,9 @@ sim_warn ("unhandled fetch_and_parse_DCW\n");
 static int send_general_interrupt (uint iom_unit_idx, uint chan, enum iomImwPics pic)
   {
 
+#ifdef IO_FENCE
+    fence ();
+#endif
 #ifdef THREADZ
     lock_mem_wr ();
 #endif
