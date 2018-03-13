@@ -788,7 +788,7 @@ static ptw_s * fetch_ptw_from_ptwam (word15 segno, word18 CA)
 
         if (p->FE && ((CA >> 6) & 07760) == p->PAGENO && p->POINTER == segno)
           {
-            DBGAPP ("5s: found match for segno=%o pageno=%o "
+            DBGAPP ("%s: found match for segno=%o pageno=%o "
                     "at _n=%d\n",
                     __func__, segno, p->PAGENO, toffset + setno);
             cpu.cu.PTWAMM = 1;
@@ -2031,14 +2031,16 @@ HI:
     else
       {
 #ifdef LOCKLESS
-	if (thisCycle == OPERAND_RMW || thisCycle == APU_DATA_RMW)
+	if ((thisCycle == OPERAND_RMW || thisCycle == APU_DATA_RMW) && nWords == 1)
 	  {
-	    if (operand_size() != 1)
-	      sim_warn("doAppend operand size !=1\n");
 	    core_read_lock (finalAddress, data, str_pct (thisCycle));
 	  }
 	else
-	  core_readN (finalAddress, data, nWords, str_pct (thisCycle));
+	  {
+	    if (thisCycle == OPERAND_RMW || thisCycle == APU_DATA_RMW)
+	      sim_warn("do_append_cycle: RMW nWords %d !=1\n", nWords);
+	    core_readN (finalAddress, data, nWords, str_pct (thisCycle));
+	  }
 #else
         core_readN (finalAddress, data, nWords, str_pct (thisCycle));
 #endif
