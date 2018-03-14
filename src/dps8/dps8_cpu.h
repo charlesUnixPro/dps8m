@@ -1512,6 +1512,10 @@ typedef struct
     unsigned long long instrCnt;
     unsigned long long instrCntT0;
     unsigned long long instrCntT1;
+    unsigned long long lockCnt;
+    unsigned long long lockImmediate;
+    unsigned long long lockWait;
+    unsigned long long lockWaitMax;
     unsigned long faultCnt [N_FAULTS];
 
     // The following are all from the control unit history register:
@@ -2180,6 +2184,11 @@ int core_unlock_all();
 	{								\
 	  sim_warn ("%s: locked %x addr %x deadlock\n", __FUNCTION__, cpu.locked_addr, addr); \
 	}								\
+      cpu.lockCnt++;							\
+      if (i == DEADLOCK_DETECT)						\
+	cpu.lockImmediate++;						\
+      cpu.lockWait += (DEADLOCK_DETECT-i);				\
+      cpu.lockWaitMax = ((DEADLOCK_DETECT-i) > cpu.lockWaitMax) ? (DEADLOCK_DETECT-i) : cpu.lockWaitMax; \
     }									\
   while (0)
 

@@ -2535,8 +2535,11 @@ leave:
     hdbgPrint ();
 #endif
     sim_msg ("\ncycles = %llu\n", cpu.cycleCnt);
-    sim_msg ("\ninstructions = %llu\n", cpu.instrCnt);
-
+    sim_msg ("instructions  %15llu\n", cpu.instrCnt);
+    sim_msg ("lockCnt       %15llu\n", cpu.lockCnt);
+    sim_msg ("lockImmediate %15llu\n", cpu.lockImmediate);
+    sim_msg ("lockWait      %15llu\n", cpu.lockWait);
+    sim_msg ("lockWaitMax   %15llu\n", cpu.lockWaitMax);
 #if 0
     for (int i = 0; i < N_FAULTS; i ++)
       {
