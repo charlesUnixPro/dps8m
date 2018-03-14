@@ -3156,6 +3156,9 @@ int send_special_interrupt (uint iom_unit_idx, uint chan, uint devCode,
 #ifdef THREADZ
     lock_mem_wr ();
 #endif
+#ifdef LOCKLESS
+    lock_iom();
+#endif
 
 // Multics uses an 12(8) word circular queue, managed by clever manipulation
 // of the LPW and DCW.
@@ -3187,6 +3190,9 @@ int send_special_interrupt (uint iom_unit_idx, uint chan, uint devCode,
 
 #ifdef THREADZ
     unlock_mem ();
+#endif
+#ifdef LOCKLESS
+    unlock_iom();
 #endif
 
     send_general_interrupt (iom_unit_idx, IOM_SPECIAL_STATUS_CHAN, imwSpecialPic);
