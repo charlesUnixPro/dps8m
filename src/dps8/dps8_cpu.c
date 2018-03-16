@@ -1406,9 +1406,15 @@ t_stat sim_instr (void)
 
 // Loop runs at 1000Hhz
 
+#ifdef LOCKLESS
+	lock_iom();
+#endif
         lock_libuv ();
         uv_run (ev_poll_loop, UV_RUN_NOWAIT);
         unlock_libuv ();
+#ifdef LOCKLESS
+	unlock_iom();
+#endif
         PNL (panel_process_event ());
 
         int con_unit_idx = check_attn_key ();
