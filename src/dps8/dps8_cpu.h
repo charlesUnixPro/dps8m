@@ -1788,6 +1788,7 @@ typedef struct
 #ifdef LOCKLESS
     word24 locked_addr;
     word24 rmw_address;
+    word24 char_word_address;
     word24 pad[16];
 #endif
 //#ifdef THREADZ

@@ -802,6 +802,10 @@ startCA:;
                 word36 indword;
                 word18 indaddr = cpu.TPR.CA;
                 Read (indaddr, & indword, APU_DATA_READ);
+#ifdef LOCKLESS
+		word24 phys_address = cpu.iefpFinalAddress;
+#endif
+
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD CI/SC/SCR indword=%012"PRIo64"\n", indword);
 
@@ -901,6 +905,9 @@ startCA:;
                 cpu.cu.pot = 1;
 
                 Read (cpu.TPR.CA, & cpu.ou.character_data, OPERAND_READ);
+#ifdef LOCKLESS
+		cpu.char_word_address = cpu.iefpFinalAddress;
+#endif
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD CI/SC/SCR data=%012"PRIo64"\n",
@@ -946,10 +953,20 @@ startCA:;
                     //                    cpu.ou.characterOperandSize |
                     //                    cpu.ou.characterOperandOffset);
                     //Write (cpu.TPR.CA,  new_indword, APU_DATA_STORE);
+#ifdef LOCKLESS
+		    word36 indword_new;
+		    core_read_lock(phys_address, &indword_new, __func__);
+		    if (indword_new != indword)
+		      sim_warn("indword changed from %llo to %llo\n", indword, indword_new);
+#endif
                     putbits36_18 (& indword, 0, Yi);
                     putbits36_12 (& indword, 18, tally);
                     putbits36_3  (& indword, 33, os);
+#ifdef LOCKLESS
+		    core_write_unlock(phys_address, indword, __func__);
+#else
                     Write (indaddr, indword, APU_DATA_STORE);
+#endif
 
                     SC_I_TALLY (tally == 0);
 
