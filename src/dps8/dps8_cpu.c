@@ -2546,6 +2546,7 @@ leave:
     sim_msg ("lockImmediate %15llu\n", cpu.lockImmediate);
     sim_msg ("lockWait      %15llu\n", cpu.lockWait);
     sim_msg ("lockWaitMax   %15llu\n", cpu.lockWaitMax);
+    sim_msg ("lockYield     %15llu\n", cpu.lockYield);
 #if 0
     for (int i = 0; i < N_FAULTS; i ++)
       {

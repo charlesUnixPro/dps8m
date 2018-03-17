@@ -258,6 +258,12 @@ struct mailbox
 #define MAILBOX_WORDS (sizeof (struct mailbox) / sizeof (word36))
 #define TERM_INPT_MPX_WD (offsetof (struct mailbox, term_inpt_mpx_wd) / sizeof (word36))
 
+extern void fnp_core_read_lock (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 *data, UNUSED const char * ctx);
+extern void fnp_core_write (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 data, UNUSED const char * ctx);
+#ifdef LOCKLESS
+extern void fnp_core_write_unlock (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 data, UNUSED const char * ctx);
+#endif
+
 #ifdef THREADZ
 static inline void l_putbits36_1 (volatile word36 * x, uint p, word1 val)
 {
