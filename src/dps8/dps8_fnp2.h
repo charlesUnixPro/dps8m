@@ -199,7 +199,7 @@ struct ibm3270ctlr_s
 // Indexed by sim unit number
 struct fnpUnitData
   {
-    uint mailboxAddress;
+    word24 mailboxAddress;
     bool fnpIsRunning;
     bool fnpMBXinUse [4];  // 4 FNP submailboxes
     bool lineWaiting [4]; // If set, fnpMBXlineno is waiting for the mailbox to be marked clear.
@@ -233,6 +233,28 @@ extern t_fnpData fnpData;
 //       { abs_addr:24, tally:12 } [24]
 //       command_data
 
+
+//
+// The FNP communicates with Multics with in-memory mailboxes
+//
+
+struct dn355_submailbox
+  {
+    word36 word1; // dn355_no; is_hsla; la_no; slot_no
+    word36 word2; // cmd_data_len; op_code; io_cmd
+    word36 command_data [3];
+    word36 word6; // data_addr, word_cnt;
+    word36 pad3 [2];
+  };
+
+struct fnp_submailbox // 28 words
+  {
+                                                                 // AN85
+    word36 word1; // dn355_no; is_hsla; la_no; slot_no    // 0      word0
+    word36 word2; // cmd_data_len; op_code; io_cmd        // 1      word1
+    word36 mystery [26];                                         // word2...
+  };
+
 struct input_sub_mbx
   {
     word36 word1; // dn355_no; is_hsla; la_no; slot_no    // 0      word0
@@ -242,6 +264,40 @@ struct input_sub_mbx
     word36 command_data;
   };
 
+struct mailbox
+  {
+    word36 dia_pcw;
+    word36 mailbox_requests;
+    word36 term_inpt_mpx_wd;
+    word36 last_mbx_req_count;
+    word36 num_in_use;
+    word36 mbx_used_flags;
+    word36 crash_data [2];
+    struct dn355_submailbox dn355_sub_mbxes [8];
+    struct fnp_submailbox fnp_sub_mbxes [4];
+  };
+
+#define MAILBOX_WORDS (sizeof (struct mailbox) / sizeof (word36))
+
+#define DIA_PCW			(offsetof (struct mailbox, dia_pcw) / sizeof (word36))
+#define TERM_INPT_MPX_WD	(offsetof (struct mailbox, term_inpt_mpx_wd) / sizeof (word36))
+#define CRASH_DATA		(offsetof (struct mailbox, crash_data) / sizeof (word36))
+#define DN355_SUB_MBXES		(offsetof (struct mailbox, dn355_sub_mbxes) / sizeof (word36))
+#define FNP_SUB_MBXES		(offsetof (struct mailbox, fnp_sub_mbxes) / sizeof (word36))
+
+
+#define FNP_SUB_MBX_SIZE	(sizeof (struct fnp_submailbox) / sizeof (word36))
+#define DN355_SUB_MBX_SIZE	(sizeof (struct dn355_submailbox) / sizeof (word36))
+
+#define WORD1			0
+#define WORD2			1
+#define COMMAND_DATA		2
+#define MYSTERY			2
+#define WORD6			5
+#define N_BUFFERS		2
+#define DCWS			3
+#define N_DCWS			24
+#define INP_COMMAND_DATA	27
 
 extern const unsigned char a2e [256];
 extern const unsigned char e2a [256];
@@ -268,56 +324,7 @@ void fnpRecvEOR (uv_tcp_t * client);
 void process3270Input (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
 void set_3270_write_complete (uv_tcp_t * client);
 void startFNPListener (void);
-void setTIMW (uint iom_unit_idx, uint mailboxAddress, int mbx);
+void setTIMW (uint iom_unit_idx, word24 mailboxAddress, int mbx);
 #ifdef SCUMEM
 uint get_scu_unit_idx_iom (uint fnp_unit_idx, word24 addr, word24 * offset);
-static inline void * fnp_M_addr (int fnp_unit_idx, uint addr)
-  {
-    word24 offset;
-    uint scuUnitIdx = get_scu_unit_idx_iom ((uint) fnp_unit_idx, addr, & offset);
-    return & scu[scuUnitIdx].M[offset];
-  }
-#else
-static inline vol word36 * fnp_M_addr (UNUSED int fnp_unit_idx, uint addr)
-  {
-    return & M[addr];
-  }
 #endif
-
-#ifdef LOCKLESS
-
-inline void fnp_core_read_lock (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 *data, UNUSED const char * ctx)
-  {
-    word24 addr = (word24)(M_addr - M);
-    LOCK_CORE_WORD(addr);
-    word36 v;
-    LOAD_ACQ_CORE_WORD(v, addr);
-    * data = v & DMASK;
-  }
-
-inline void fnp_core_write (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 data, UNUSED const char * ctx)
-  {
-    word24 addr = (word24)(M_addr - M);
-    LOCK_CORE_WORD(addr);
-    STORE_REL_CORE_WORD(addr, data);
-  }
-
-inline void fnp_core_write_unlock (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 data, UNUSED const char * ctx)
-  {
-    word24 addr = (word24)(M_addr - M);
-    STORE_REL_CORE_WORD(addr, data);
-  }
-#else // LOCKLESS
-inline void fnp_core_read_lock (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 *data, UNUSED const char * ctx)
-  {
-    *data = *M_addr & DMASK;
-  }
-
-inline void fnp_core_write (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 data, UNUSED const char * ctx)
-  {
-    *M_addr = data & DMASK;
-  }
-
-#define fnp_core_write_unlock fnp_core_write
-
-#endif // LOCKLESS
