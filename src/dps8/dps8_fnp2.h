@@ -286,7 +286,7 @@ static inline vol word36 * fnp_M_addr (UNUSED int fnp_unit_idx, uint addr)
 
 #ifdef LOCKLESS
 
-inline void fnp_core_read_lock (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 *data, UNUSED const char * ctx)
+static inline void fnp_core_read_lock (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 *data, UNUSED const char * ctx)
   {
     word24 addr = (word24)(M_addr - M);
     LOCK_CORE_WORD(addr);
@@ -295,25 +295,25 @@ inline void fnp_core_read_lock (UNUSED int fnp_unit_idx, vol word36 *M_addr, wor
     * data = v & DMASK;
   }
 
-inline void fnp_core_write (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 data, UNUSED const char * ctx)
+static inline void fnp_core_write (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 data, UNUSED const char * ctx)
   {
     word24 addr = (word24)(M_addr - M);
     LOCK_CORE_WORD(addr);
     STORE_REL_CORE_WORD(addr, data);
   }
 
-inline void fnp_core_write_unlock (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 data, UNUSED const char * ctx)
+static inline void fnp_core_write_unlock (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 data, UNUSED const char * ctx)
   {
     word24 addr = (word24)(M_addr - M);
     STORE_REL_CORE_WORD(addr, data);
   }
 #else // LOCKLESS
-inline void fnp_core_read_lock (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 *data, UNUSED const char * ctx)
+static inline void fnp_core_read_lock (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 *data, UNUSED const char * ctx)
   {
     *data = *M_addr & DMASK;
   }
 
-inline void fnp_core_write (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 data, UNUSED const char * ctx)
+static inline void fnp_core_write (UNUSED int fnp_unit_idx, vol word36 *M_addr, word36 data, UNUSED const char * ctx)
   {
     *M_addr = data & DMASK;
   }
