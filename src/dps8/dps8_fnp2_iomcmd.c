@@ -561,6 +561,16 @@ static int wcd (void)
 
         case 30: // input_fc_chars
           {
+
+// dcl 1 input_flow_control_info aligned based,
+//     2 suspend_seq unaligned,
+//       3 count fixed bin (9) unsigned,
+//       3 chars char (3),
+//     2 resume_seq unaligned,
+//       3 count fixed bin (9) unsigned,
+//       3 chars char (3),
+//     2 timeout bit (1);
+
             sim_debug (DBG_TRACE, & fnp_dev, "[%u]    input_fc_chars\n", decoded.slot_no);
             word36 suspendStr = decoded.smbxp -> command_data [0];
             linep->inputSuspendStr[0] = getbits36_8 (suspendStr, 10);
@@ -574,7 +584,7 @@ static int wcd (void)
               }
             linep->inputSuspendLen = suspendLen;
 
-            word36 resumeStr = decoded.smbxp -> command_data [0];
+            word36 resumeStr = decoded.smbxp -> command_data [1];
             linep->inputResumeStr[0] = getbits36_8 (resumeStr, 10);
             linep->inputResumeStr[1] = getbits36_8 (resumeStr, 19);
             linep->inputResumeStr[2] = getbits36_8 (resumeStr, 28);
@@ -585,6 +595,8 @@ static int wcd (void)
                 resumeLen = 3;
               }
             linep->inputResumeLen = resumeLen;
+
+            // XXX timeout ignored
           }
           break;
 
