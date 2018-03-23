@@ -1617,7 +1617,7 @@ static int status_service (uint iom_unit_idx, uint chan, bool marker)
     // use the SCW loaded from tape.
     
     uint chanloc = mbxLoc (iom_unit_idx, chan);
-    word24 scwAddr = chanloc + 2;
+    word24 scwAddr = chanloc + IOM_MBX_SCW;
     word36 scw;
     iom_core_read_lock (iom_unit_idx, scwAddr, & scw, __func__);
     sim_debug (DBG_DEBUG, & iom_dev,
@@ -2091,9 +2091,9 @@ static void write_LPW (uint iom_unit_idx, uint chan)
     iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
 
     uint chanLoc = mbxLoc (iom_unit_idx, chan);
-    iom_core_write (iom_unit_idx, chanLoc, p -> LPW, __func__);
+    iom_core_write (iom_unit_idx, chanLoc + IOM_MBX_LPW, p -> LPW, __func__);
     if (chan != IOM_CONNECT_CHAN)
-      iom_core_write (iom_unit_idx, chanLoc + 1, p -> LPWX, __func__);
+      iom_core_write (iom_unit_idx, chanLoc + IOM_MBX_LPWX, p -> LPWX, __func__);
 #ifdef THREADZ
     // Force mailbox and dma data to be up-to-date 
     fence ();
@@ -2112,7 +2112,7 @@ static void fetch_and_parse_LPW (uint iom_unit_idx, uint chan)
     fence ();
 #endif
 
-    iom_core_read (iom_unit_idx, chanLoc, & p -> LPW, __func__);
+    iom_core_read (iom_unit_idx, chanLoc + IOM_MBX_LPW, & p -> LPW, __func__);
     sim_debug (DBG_DEBUG, & iom_dev, "lpw %012"PRIo64"\n", p -> LPW);
 
     p -> LPW_DCW_PTR = getbits36_18 (p -> LPW,  0);
@@ -2133,7 +2133,7 @@ static void fetch_and_parse_LPW (uint iom_unit_idx, uint chan)
       }
     else
       {
-        iom_core_read (iom_unit_idx, chanLoc + 1, & p -> LPWX, __func__);
+        iom_core_read (iom_unit_idx, chanLoc + IOM_MBX_LPWX, & p -> LPWX, __func__);
         p -> LPWX_BOUND = getbits36_18 (p -> LPWX, 0);
         p -> LPWX_SIZE = getbits36_18 (p -> LPWX, 18);
       }   
@@ -2238,6 +2238,9 @@ static void fetch_and_parse_PCW (uint iom_unit_idx, uint chan)
     p -> PCW_65_AUX = getbits36_1 (p -> PCW1, 29);
     if (p -> PCW_65_AUX)
       sim_warn ("PCW_65_AUX\n");
+    sim_debug (DBG_DEBUG, & iom_dev,
+	       "%s: chan %d pcw0 %012"PRIo64"\n",
+	       __func__, p -> PCW_CHAN, (p -> PCW0) & 0777700037777);
     p -> DCW = p -> PCW0;
     unpack_DCW (iom_unit_idx, chan);
 
@@ -2315,6 +2318,9 @@ sim_warn ("unhandled fetch_and_parse_DCW\n");
           }
           break;
       }
+    sim_debug (DBG_DEBUG, & iom_dev,
+	       "%s: chan %d dcw %012"PRIo64"\n",
+	       __func__, chan, p -> DCW);
     unpack_DCW (iom_unit_idx, chan);
   }
 
@@ -2415,6 +2421,10 @@ static void iom_fault (uint iom_unit_idx, uint chan, UNUSED const char * who,
     // This code only handles system faults
     //
 
+    sim_debug (DBG_DEBUG, & iom_dev, 
+               "%s: chan %d %s req %#o signal %#o\n",
+               __func__, chan, who, req, signal);
+
     word36 faultWord = 0;
     putbits36_9 (& faultWord, 9, (word9) chan);
     putbits36_5 (& faultWord, 18, req);
@@ -2438,12 +2448,12 @@ static void iom_fault (uint iom_unit_idx, uint chan, UNUSED const char * who,
     send_general_interrupt (iom_unit_idx, 1, imwSystemFaultPic);
 
     word36 ddcw;
-    iom_core_read_lock (iom_unit_idx, mbx, & ddcw, __func__);
+    iom_core_read_lock (iom_unit_idx, mbx + IOM_MBX_LPW, & ddcw, __func__);
     // incr addr
     putbits36_18 (& ddcw, 0, (getbits36_18 (ddcw, 0) + 1u) & MASK18);
     // decr tally
     putbits36_12 (& ddcw, 24, (getbits36_12 (ddcw, 24) - 1u) & MASK12);
-    iom_core_write_unlock (iom_unit_idx, mbx, ddcw, __func__);
+    iom_core_write_unlock (iom_unit_idx, mbx + IOM_MBX_LPW, ddcw, __func__);
 
 #ifdef THREADZ
     unlock_mem ();
@@ -3162,11 +3172,18 @@ int send_special_interrupt (uint iom_unit_idx, uint chan, uint devCode,
 // Rather then goes through the mechanics of parsing the LPW and DCW,
 // we will just assume that everything is set up the way we expect,
 // and update the circular queue.
-    //word36 lpw;
-    //iom_core_read (iom_unit_idx, chanloc + 0, & lpw, __func__);
+    word36 lpw;
+    iom_core_read (iom_unit_idx, chanloc + IOM_MBX_LPW, & lpw, __func__);
 
     word36 dcw;
-    iom_core_read_lock (iom_unit_idx, chanloc + 3, & dcw, __func__);
+    iom_core_read_lock (iom_unit_idx, chanloc + IOM_MBX_DCW, & dcw, __func__);
+
+    sim_debug (DBG_DEBUG, & iom_dev,
+	       "%s: channel %d (%#o), devCode %#o, status0 %#o, status1 %#o\n",
+	       __func__, chan, chan, devCode, status0, status1);
+    sim_debug (DBG_DEBUG, & iom_dev,
+	       "%s: lpw %012"PRIo64", dcw %012"PRIo64"\n",
+	       __func__, lpw, dcw);
 
     word36 status = 0400000000000;   
     status |= (((word36) chan) & MASK6) << 27;
@@ -3183,7 +3200,7 @@ int send_special_interrupt (uint iom_unit_idx, uint chan, uint devCode,
       }
     else
       dcw = 001320010012llu; // reset to beginning of queue
-    iom_core_write_unlock (iom_unit_idx, chanloc + 3, dcw, __func__);
+    iom_core_write_unlock (iom_unit_idx, chanloc + IOM_MBX_DCW, dcw, __func__);
 
 #ifdef THREADZ
     unlock_mem ();

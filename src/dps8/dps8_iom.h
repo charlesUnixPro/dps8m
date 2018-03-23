@@ -237,6 +237,11 @@ typedef struct pcw_t
   } pcw_t;
 #endif
 
+#define IOM_MBX_LPW	0
+#define IOM_MBX_LPWX	1
+#define IOM_MBX_SCW	2
+#define IOM_MBX_DCW	3
+
 int send_special_interrupt (uint iom_unit_idx, uint chanNum, uint devCode, 
                             word8 status0, word8 status1);
 //
