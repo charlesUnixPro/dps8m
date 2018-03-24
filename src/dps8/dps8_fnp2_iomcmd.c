@@ -214,8 +214,8 @@ static void dmpmbx (uint mailboxAddress)
 
 static int wcd (void)
   {
-    uint ctlr_port_no = 0; // FNPs are single port
-    uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
+    uint ctlr_port_num = 0; // FNPs are single port
+    uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_num].iom_unit_idx;
 
     struct t_line * linep = & decoded.fudp->MState.line[decoded.slot_no];
     sim_debug (DBG_TRACE, & fnp_dev, "[%u] wcd op_code %u 0%o\n", decoded.slot_no, decoded.op_code, decoded.op_code);
@@ -1032,6 +1032,8 @@ word36 pad;
       } // switch decoded.op_code
 
     setTIMW (iomUnitIdx, decoded.fudp->mailboxAddress, (int) decoded.cell);
+    uint chan_num = cables->fnp_to_iom[decoded.devUnitIdx][ctlr_port_num].chan_num;
+    send_terminate_interrupt (iomUnitIdx, chan_num);
 
 #ifdef FNPDBG
 sim_printf ("wcd sets the TIMW??\n");
