@@ -1001,6 +1001,8 @@ word36 pad;
 
     setTIMW (decoded_p->iom_unit, decoded_p->fudp->mailboxAddress, (int) decoded_p->cell);
 
+    send_terminate_interrupt (decoded_p->iom_unit, decoded_p->chan_num);
+
 #ifdef FNPDBG
 sim_printf ("wcd sets the TIMW??\n");
 #endif
@@ -1166,6 +1168,8 @@ static int wtx (struct decoded_t *decoded_p)
       } // for each dcw
 
     setTIMW (decoded_p->iom_unit, decoded_p->fudp->mailboxAddress, (int) decoded_p->cell);
+
+    send_terminate_interrupt (decoded_p->iom_unit, decoded_p->chan_num);
 
 #if 0
     //decoded_p->fudp->MState.line[decoded_p->slot_no].send_output = true;
