@@ -1265,9 +1265,7 @@ static int wtx (void)
         // The dcw
         //word36 dcw = M [dcwAddrPhys + i];
         word36 dcw;
-        uint ctlr_port_no = 0; // FNPs are single port
-        uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
-        iom_core_read (iomUnitIdx, dcwAddrPhys, & dcw, __func__);
+        iom_core_read (iom_unit_idx, dcwAddrPhys, & dcw, __func__);
         //sim_printf ("  %012"PRIo64"\n", dcw);
 
         // Get the address and the tally from the dcw
@@ -1281,6 +1279,9 @@ static int wtx (void)
       } // for each dcw
 
     setTIMW (iom_unit_idx, decoded.fudp->mailboxAddress, (int) decoded.cell);
+    uint ctlr_port_num = 0; // FNPs are single ported
+    uint chan_num = cables->fnp_to_iom[decoded.devUnitIdx][ctlr_port_num].chan_num;
+    send_terminate_interrupt (iom_unit_idx, chan_num);
 
 #if 0
     //decoded.fudp->MState.line[decoded.slot_no].send_output = true;
