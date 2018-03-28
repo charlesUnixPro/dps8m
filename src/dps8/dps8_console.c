@@ -40,6 +40,9 @@
 #include "dps8_mt.h"  // attachTape
 #include "dps8_disk.h"  // attachDisk
 #include "dps8_utils.h"
+#if defined(THREADZ) || defined(LOCKLESS)
+#include "threadz.h"
+#endif
 
 #include "libtelnet.h"
 
@@ -572,8 +575,9 @@ static void sendConsole (int conUnitIdx, word12 stati)
     uint chan_num = cables->opc_to_iom[conUnitIdx][ctlr_port_num].chan_num;
     iom_chan_data_t * p = & iom_chan_data[iomUnitIdx][chan_num];
 
-// XXX this should be iom_indirect_data_service
-    p->charPos = tally % 4;
+    ASSURE (csp->io_mode == opc_read_mode);
+
+    // XXX this should be iom_indirect_data_service
 
 #ifdef OSCAR
     char text[257];
@@ -587,7 +591,6 @@ static void sendConsole (int conUnitIdx, word12 stati)
     text[ntext] = 0;
     oscar (text);
 #endif
-
     while (tally && csp->readp < csp->tailp)
       {
         uint charno;
@@ -612,11 +615,15 @@ static void sendConsole (int conUnitIdx, word12 stati)
                    "opc_iom_io: discarding %d characters from end of line\n",
                     (int) (csp->tailp - csp->readp));
       }
+    uint n_chars = (uint) (csp->readp - csp->buf);
+    p->charPos = n_chars % 4;
+    p->tallyResidue = (word12) (csp->tally - (n_chars + 3) / 4);
+    p->stati = (word12) stati;
+
     csp->readp = csp->buf;
     csp->tailp = csp->buf;
     csp->io_mode = opc_no_mode;
 
-    p->stati = (word12) stati;
     send_terminate_interrupt (iomUnitIdx, chan_num);
   }
 
@@ -631,10 +638,13 @@ static int opc_cmd (uint iomUnitIdx, uint chan)
     UNIT * unitp = & opc_unit[con_unit_idx];
     opc_state_t * csp = console_state + con_unit_idx;
 
+
+    ASSURE(p -> DCW_18_20_CP == 07); // IDCW
+
     if (p->PCW_63_PTP)
       {
         sim_warn ("PTP in console\n");
-        return -1;
+        return IOM_CMD_ERROR;
       }
 
     p->dev_code = p->IDCW_DEV_CODE;
@@ -679,7 +689,7 @@ static int opc_cmd (uint iomUnitIdx, uint chan)
                 sim_warn ("console read list service failed\n");
                 p->stati = 05001; // BUG: arbitrary error code; config switch
                 p->chanStatus = chanStatIncomplete;
-                return -1;
+                return IOM_CMD_ERROR;
               }
             if (uff)
               {
@@ -690,14 +700,14 @@ static int opc_cmd (uint iomUnitIdx, uint chan)
                 sim_warn ("console read nothing to send\n");
                 p->stati = 05001; // BUG: arbitrary error code; config switch
                 p->chanStatus = chanStatIncomplete;
-                return  -1;
+                return  IOM_CMD_ERROR;
               }
             if (p->DCW_18_20_CP == 07 || p->DDCW_22_23_TYPE == 2)
               {
                 sim_warn ("console read expected DDCW\n");
                 p->stati = 05001; // BUG: arbitrary error code; config switch
                 p->chanStatus = chanStatIncorrectDCW;
-                return -1;
+                return IOM_CMD_ERROR;
               }
 
             if (rc)
@@ -705,7 +715,7 @@ static int opc_cmd (uint iomUnitIdx, uint chan)
                 sim_warn ("list service failed\n");
                 p->stati = 05001; // BUG: arbitrary error code; config switch
                 p->chanStatus = chanStatIncomplete;
-                return -1;
+                return IOM_CMD_ERROR;
               }
 
             if (p->DDCW_22_23_TYPE != 0 &&
@@ -714,7 +724,7 @@ static int opc_cmd (uint iomUnitIdx, uint chan)
 sim_warn ("uncomfortable with this\n");
                 p->stati = 05001; // BUG: arbitrary error code; config switch
                 p->chanStatus = chanStatIncorrectDCW;
-                return -1;
+                return IOM_CMD_ERROR;
               }
 
             uint tally = p->DDCW_TALLY;
@@ -735,7 +745,7 @@ sim_warn ("uncomfortable with this\n");
 
           }
           //break;
-          return 3; // command in progress; do not send terminate interrupt
+          return IOM_CMD_PENDING; // command in progress; do not send terminate interrupt
 
 
         case 033:               // Write ASCII
@@ -767,7 +777,7 @@ sim_warn ("uncomfortable with this\n");
                     p->stati = 05001; // BUG: arbitrary error code; 
                                         //config switch
                     p->chanStatus = chanStatIncomplete;
-                    return -1;
+                    return IOM_CMD_ERROR;
                   }
                 if (uff)
                   {
@@ -779,7 +789,7 @@ sim_warn ("uncomfortable with this\n");
                     p->stati = 05001; // BUG: arbitrary error code; 
                                         //config switch
                     p->chanStatus = chanStatIncomplete;
-                    return  -1;
+                    return  IOM_CMD_ERROR;
                   }
                 if (p->DCW_18_20_CP == 07 || p->DDCW_22_23_TYPE == 2)
                   {
@@ -787,7 +797,7 @@ sim_warn ("uncomfortable with this\n");
                     p->stati = 05001; // BUG: arbitrary error code; 
                                         //config switch
                     p->chanStatus = chanStatIncorrectDCW;
-                    return -1;
+                    return IOM_CMD_ERROR;
                   }
 
                 if (rc)
@@ -796,7 +806,7 @@ sim_warn ("uncomfortable with this\n");
                     p->stati = 05001; // BUG: arbitrary error code;
                                         // config switch
                     p->chanStatus = chanStatIncomplete;
-                    return -1;
+                    return IOM_CMD_ERROR;
                   }
 
                 uint tally = p->DDCW_TALLY;
@@ -812,7 +822,7 @@ sim_warn ("uncomfortable with this\n");
                     // BUG: arbitrary error code; config switch
                     p->stati = 05001;
                     p->chanStatus = chanStatIncorrectDCW;
-                    return -1;
+                    return IOM_CMD_ERROR;
                   }
 
                 if (tally == 0)
@@ -874,8 +884,8 @@ sim_warn ("uncomfortable with this\n");
                 // Tally is in words, not chars.
     
                 char text[tally * 4 + 1];
-                * text = 0;
                 char * textp = text;
+                * textp = 0;
 #ifndef __MINGW64__
                 newlineOff ();
 #endif
@@ -961,8 +971,7 @@ sim_warn ("uncomfortable with this\n");
              }
             while (p->DDCW_22_23_TYPE != 0); // while not IOTD
           }
-    
-          break;
+	  break;
 
         case 040:               // Reset
           {
@@ -1002,11 +1011,10 @@ sim_warn ("uncomfortable with this\n");
             sim_debug (DBG_ERR, & opc_dev, "%s: Unknown command 0%o\n",
                        __func__, p->IDCW_DEV_CMD);
             p->chanStatus = chanStatIncorrectDCW;
-
-            break;
           }
+	  break;
       }
-    return 0;
+    return IOM_CMD_OK;
   }
 
 static void consoleProcessIdx (int conUnitIdx)
@@ -1328,11 +1336,17 @@ int opc_iom_cmd (uint iomUnitIdx, uint chan)
 
     // uint chanloc = mbx_loc (iomUnitIdx, pcwp->chan);
 
-    opc_cmd (iomUnitIdx, chan);
+#if defined(THREADZ) || defined(LOCKLESS)
+    lock_libuv ();
+#endif
 
-    //send_terminate_interrupt (iomUnitIdx, chan);
+    int rc = opc_cmd (iomUnitIdx, chan);
 
-    return 2;
+#if defined(THREADZ) || defined(LOCKLESS)
+    unlock_libuv ();
+#endif
+    // return rc;
+    return IOM_CMD_NO_DCW;
   }
 
 static t_stat opc_svc (UNIT * unitp)

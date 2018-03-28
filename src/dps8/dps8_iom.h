@@ -253,6 +253,12 @@ int send_special_interrupt (uint iom_unit_idx, uint chanNum, uint devCode,
 //  3; command pending, don't sent terminate interrupt
 // -1: error
 
+#define IOM_CMD_OK	0
+#define IOM_CMD_IGNORED 1
+#define IOM_CMD_NO_DCW	2
+#define IOM_CMD_PENDING 3
+#define IOM_CMD_ERROR	-1
+
 typedef int iom_cmd_t (uint iom_unit_idx, uint chan);
 int iom_list_service (uint iom_unit_idx, uint chan,
                            bool * ptro, bool * sendp, bool * uffp);

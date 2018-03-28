@@ -2948,28 +2948,29 @@ static int do_payload_chan (uint iom_unit_idx, uint chan)
 //  3; command pending, don't sent terminate interrupt
 // -1: error
 
-    if (rc == 1) // handler ignored command; used to be used for 051, now unused.
+    switch (rc)
       {
+      case IOM_CMD_IGNORED:
+	// handler ignored command; used to be used for 051, now unused.
         sim_debug (DBG_DEBUG, & iom_dev, "handler ignored cmd\n");
         return 0;
-      }
 
-    if (rc == 2) // handler doesn't want the dcw list
-      {
+      case IOM_CMD_NO_DCW:
+	// handler doesn't want the dcw list
         sim_debug (DBG_DEBUG, & iom_dev, "handler don't want no stinking dcws\n");
         goto done;
-      }
 
-    if (rc == 3) // handler still processing command, don't set
-                 // terminate intrrupt.
-      {
+      case IOM_CMD_PENDING:
+	// handler still processing command, don't set
+	// terminate interrupt.
         sim_debug (DBG_DEBUG, & iom_dev, "handler processing cmd\n");
         return 0;
-      }
 
-    if (rc)
-      {
-// 04501 : COMMAND REJECTED, invalid command
+      case IOM_CMD_OK:
+	break;
+
+      default:
+	// 04501 : COMMAND REJECTED, invalid command
         p -> stati = 04501;
         p -> dev_code = getbits36_6 (p -> DCW, 6);
         p -> chanStatus = chanStatInvalidInstrPCW;
@@ -3052,7 +3053,7 @@ static int do_payload_chan (uint iom_unit_idx, uint chan)
 
         rc2 = d->iom_cmd (iom_unit_idx, chan);
 
-        if (rc2 == 3) // handler still processing command, don't set
+        if (rc2 == IOM_CMD_PENDING) // handler still processing command, don't set
                      // terminate intrrupt.
           {
             sim_debug (DBG_DEBUG, & iom_dev, "handler processing cmd\n");
