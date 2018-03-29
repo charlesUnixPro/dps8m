@@ -1481,10 +1481,14 @@ static char * default_base_system_script [] =
 #endif // THREADZ
     // "set sys config=activate_time=8",
     // "set sys config=terminate_time=8",
+#ifdef QUEUE_IO
+    "set sys config=connect_time=400",
+#else
 #ifdef FNPDBG
     "set sys config=connect_time=4000",
 #else
     "set sys config=connect_time=-1",
+#endif
 #endif
 
 #if 0

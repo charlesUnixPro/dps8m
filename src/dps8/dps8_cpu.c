@@ -1694,8 +1694,13 @@ setCPU:;
             PNL (panel_process_event ());
           }
 #endif
+
         cpu.cycleCnt ++;
 #endif // ! THREADZ
+
+#ifdef QUEUE_IO
+        dequeue_interrupt ();
+#endif
 
 #ifdef TEST_OLIN
           cmpxchg ();

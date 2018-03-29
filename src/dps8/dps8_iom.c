@@ -340,6 +340,12 @@ typedef struct
     iom_status_t iomStatus;
 
     uint invokingScuUnitIdx; // the unit number of the SCU that did the connect.
+
+#ifdef QUEUE_IO
+    uint cioc_queued;
+    uint cioc_queued_scu;
+#endif
+
   } iom_unit_data_t;
 
 static iom_unit_data_t iom_unit_data[N_IOM_UNITS_MAX];
@@ -3321,3 +3327,26 @@ void do_boot (void)
   }
 #endif
 
+#ifdef QUEUE_IO
+void queue_interrupt (uint iom_unit_idx, uint scu_unit_idx)
+  {
+    iom_unit_data[iom_unit_idx].cioc_queued_scu = scu_unit_idx;
+    iom_unit_data[iom_unit_idx].cioc_queued = (uint) sys_opts.iom_times.connect;
+  };
+
+void dequeue_interrupt (void)
+  {
+    for (uint iom_unit_idx = 0; iom_unit_idx < N_IOM_UNITS_MAX; iom_unit_idx ++)
+      {
+        if (iom_unit_data[iom_unit_idx].cioc_queued)
+          {
+            if (-- iom_unit_data[iom_unit_idx].cioc_queued == 0)
+              {
+                lock_iom ();
+                iom_interrupt (iom_unit_data[iom_unit_idx].cioc_queued_scu, iom_unit_idx);
+                unlock_iom ();
+              }
+          }
+      }
+  }
+#endif
