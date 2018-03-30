@@ -276,7 +276,3 @@ void iom_core_write (uint iom_unit_idx, word24 addr, word36 data, UNUSED const c
 void iom_core_write2 (uint iom_unit_idx, word24 addr, word36 even, word36 odd, UNUSED const char * ctx);
 t_stat boot2 (UNUSED int32 arg, UNUSED const char * buf);
 t_stat iom_unit_reset_idx (uint iom_unit_idx);
-#ifdef QUEUE_IO
-void queue_interrupt (uint iom_unit_idx, uint scu_unit_idx);
-void dequeue_interrupt (void);
-#endif

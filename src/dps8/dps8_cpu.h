@@ -1788,6 +1788,12 @@ typedef struct
 //    bool havelock; // Vetinari 
 //bool have_tst_lock;
 //#endif
+
+#ifdef QUEUE_IO
+    uint cioc_queued;
+    uint cioc_queued_iom;
+    uint cioc_queued_scu;
+#endif
   } cpu_state_t;
 
 #ifdef M_SHARED

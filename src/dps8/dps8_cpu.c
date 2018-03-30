@@ -1699,7 +1699,15 @@ setCPU:;
 #endif // ! THREADZ
 
 #ifdef QUEUE_IO
-        dequeue_interrupt ();
+        if (cpu.cioc_queued)
+          {
+            if (-- cpu.cioc_queued == 0)
+              {
+                lock_iom ();
+                iom_interrupt (cpu.cioc_queued_scu, cpu.cioc_queued_iom);
+                unlock_iom ();
+              }
+          }
 #endif
 
 #ifdef TEST_OLIN

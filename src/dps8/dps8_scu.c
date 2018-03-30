@@ -2163,7 +2163,10 @@ int scu_cioc (uint cpu_unit_udx, uint scu_unit_idx, uint scu_port_num,
 #ifdef QUEUE_IO
         if (sys_opts.iom_times.connect > 0)
           {
-            queue_interrupt ((uint) iom_unit_idx, scu_unit_idx);
+sim_printf ("cioc %u\n", current_running_cpu_idx);
+            cpu.cioc_queued_iom = (uint) iom_unit_idx;
+            cpu.cioc_queued_scu = scu_unit_idx;
+            cpu.cioc_queued = (uint) sys_opts.iom_times.connect;
             return 0;
           }
 #endif

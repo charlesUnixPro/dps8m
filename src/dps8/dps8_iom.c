@@ -340,12 +340,6 @@ typedef struct
     iom_status_t iomStatus;
 
     uint invokingScuUnitIdx; // the unit number of the SCU that did the connect.
-
-#ifdef QUEUE_IO
-    uint cioc_queued;
-    uint cioc_queued_scu;
-#endif
-
   } iom_unit_data_t;
 
 static iom_unit_data_t iom_unit_data[N_IOM_UNITS_MAX];
@@ -2504,6 +2498,7 @@ int iom_list_service (uint iom_unit_idx, uint chan,
                 iom_fault (iom_unit_idx, IOM_CONNECT_CHAN, __func__,
                           p -> lsFirst ? iomFsrFirstList : iomFsrList, 
                           iomIllTalCChnFlt);
+sim_printf ("iom_list_service 1\n");
                 return -1;
               }
 
@@ -2517,6 +2512,8 @@ int iom_list_service (uint iom_unit_idx, uint chan,
                 iom_fault (iom_unit_idx, IOM_CONNECT_CHAN, __func__,
                           p -> lsFirst ? iomFsrFirstList : iomFsrList, 
                           iomIllTalCChnFlt);
+fetch_and_parse_PCW (iom_unit_idx, chan); // fills in DCW*
+sim_printf ("iom_list_service 2 chan %u pcw chan %u\n", chan, p->PCW_CHAN);
                 return -1;
               }
  
@@ -2531,6 +2528,7 @@ int iom_list_service (uint iom_unit_idx, uint chan,
                     iom_fault (iom_unit_idx, IOM_CONNECT_CHAN, __func__,
                               p -> lsFirst ? iomFsrFirstList : iomFsrList, 
                               iom256KFlt);
+sim_printf ("iom_list_service 3\n");
                     return -1;
                   }
               }
@@ -2552,6 +2550,7 @@ int iom_list_service (uint iom_unit_idx, uint chan,
             iom_fault (iom_unit_idx, IOM_CONNECT_CHAN, __func__,
                       p -> lsFirst ? iomFsrFirstList : iomFsrList, 
                       iomNotPCWFlt);
+sim_printf ("iom_list_service 4\n");
             return -1;
           }
 
@@ -2589,6 +2588,7 @@ int iom_list_service (uint iom_unit_idx, uint chan,
             iom_fault (iom_unit_idx, IOM_CONNECT_CHAN, __func__,
                       p -> lsFirst ? iomFsrFirstList : iomFsrList, 
                       iom256KFlt);
+sim_printf ("iom_list_service 5\n");
             return -1;
           }
        }
@@ -2613,6 +2613,7 @@ A:;
                 iom_fault (iom_unit_idx, IOM_CONNECT_CHAN, __func__,
                           p -> lsFirst ? iomFsrFirstList : iomFsrList, 
                           iom256KFlt);
+sim_printf ("iom_list_service 6\n");
                 return -1;
               }
           }
@@ -3081,6 +3082,7 @@ done:;
 
 static int do_connect_chan (uint iom_unit_idx)
   {
+sim_printf ("do_connect_chan %u\n", current_running_cpu_idx);
     // ... the connect channel obtains a list service from the IOM Central.
     // During this service the IOM Central will do a double precision read
     // from the core, under the control of the LPW for the connect channel.
@@ -3102,6 +3104,7 @@ int loops = 0;
         int rc = iom_list_service (iom_unit_idx, IOM_CONNECT_CHAN, & ptro, & send, & uff);
         if (rc < 0)
           {
+sim_printf ("%d loops\r\n", loops);
             sim_warn ("connect channel connect failed\n");
             return -1;
           }
@@ -3327,26 +3330,3 @@ void do_boot (void)
   }
 #endif
 
-#ifdef QUEUE_IO
-void queue_interrupt (uint iom_unit_idx, uint scu_unit_idx)
-  {
-    iom_unit_data[iom_unit_idx].cioc_queued_scu = scu_unit_idx;
-    iom_unit_data[iom_unit_idx].cioc_queued = (uint) sys_opts.iom_times.connect;
-  };
-
-void dequeue_interrupt (void)
-  {
-    for (uint iom_unit_idx = 0; iom_unit_idx < N_IOM_UNITS_MAX; iom_unit_idx ++)
-      {
-        if (iom_unit_data[iom_unit_idx].cioc_queued)
-          {
-            if (-- iom_unit_data[iom_unit_idx].cioc_queued == 0)
-              {
-                lock_iom ();
-                iom_interrupt (iom_unit_data[iom_unit_idx].cioc_queued_scu, iom_unit_idx);
-                unlock_iom ();
-              }
-          }
-      }
-  }
-#endif
