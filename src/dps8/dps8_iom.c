@@ -1621,7 +1621,7 @@ static int status_service (uint iom_unit_idx, uint chan, bool marker)
     word36 scw;
     iom_core_read_lock (iom_unit_idx, scwAddr, & scw, __func__);
     sim_debug (DBG_DEBUG, & iom_dev,
-               "SCW chan %02o %012"PRIo64"\n", chan, scw);
+               "SCW chan %d %012"PRIo64"\n", chan, scw);
     word18 addr = getbits36_18 (scw, 0);   // absolute
     uint lq = getbits36_2 (scw, 18);
     uint tally = getbits36_12 (scw, 24);
