@@ -2319,7 +2319,8 @@ uint scu_get_highest_intr (uint scu_unit_idx)
               continue;
             uint mask = scu [scu_unit_idx].exec_intr_mask [pima];
             uint port = scu [scu_unit_idx].mask_assignment [pima];
-            if (scu [scu_unit_idx].ports [port].type != ADEV_CPU)
+            if (scu [scu_unit_idx].ports [port].type != ADEV_CPU ||
+		scu [scu_unit_idx].ports [port].dev_idx != current_running_cpu_idx) 
               continue;
             if (scu [scu_unit_idx].cells [inum] &&
                 (mask & (1u << (31 - inum))) != 0)
