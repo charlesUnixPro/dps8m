@@ -1677,7 +1677,9 @@ static void processMBX (uint iomUnitIdx, uint chan)
     word36 dia_pcw;
     iom_core_read(iomUnitIdx, fudp->mailboxAddress+DIA_PCW, & dia_pcw, __func__);
 
-//sim_printf ("mbx %08o:%012"PRIo64"\n", fudp -> mailboxAddress, dia_pcw);
+    sim_debug (DBG_TRACE, & fnp_dev,
+	       "%s: dia_pcw %012"PRIo64"\n",
+	       __func__, dia_pcw);
 
 // Mailbox word 0:
 //

@@ -2092,8 +2092,16 @@ static void write_LPW (uint iom_unit_idx, uint chan)
 
     uint chanLoc = mbxLoc (iom_unit_idx, chan);
     iom_core_write (iom_unit_idx, chanLoc + IOM_MBX_LPW, p -> LPW, __func__);
+    sim_debug (DBG_DEBUG, & iom_dev,
+	       "%s: chan %d lpw %012"PRIo64"\n",
+	       __func__, chan, p -> LPW);
     if (chan != IOM_CONNECT_CHAN)
-      iom_core_write (iom_unit_idx, chanLoc + IOM_MBX_LPWX, p -> LPWX, __func__);
+      {
+	iom_core_write (iom_unit_idx, chanLoc + IOM_MBX_LPWX, p -> LPWX, __func__);
+	sim_debug (DBG_DEBUG, & iom_dev,
+		   "%s: chan %d lpwx %012"PRIo64"\n",
+		   __func__, chan, p -> LPWX);
+      }
 #ifdef THREADZ
     // Force mailbox and dma data to be up-to-date 
     fence ();
@@ -2124,6 +2132,10 @@ static void fetch_and_parse_LPW (uint iom_unit_idx, uint chan)
     p -> LPW_23_REL =  getbits36_1 (p -> LPW, 23);
     p -> LPW_TALLY =   getbits36_12 (p -> LPW, 24);
 
+    sim_debug (DBG_DEBUG, & iom_dev,
+	       "%s: chan %d res %d 18_rel %d ae %d nc %d tal %d 23rel %d dcw %#o tally %#o\n",
+	       __func__, chan, p -> LPW_18_RES, p -> LPW_19_REL, p -> LPW_20_AE,
+	       p -> LPW_21_NC, p -> LPW_22_TAL, p -> LPW_23_REL, p -> LPW_DCW_PTR, p -> LPW_TALLY);
 
     if (chan == IOM_CONNECT_CHAN)
       {
@@ -2136,6 +2148,9 @@ static void fetch_and_parse_LPW (uint iom_unit_idx, uint chan)
         iom_core_read (iom_unit_idx, chanLoc + IOM_MBX_LPWX, & p -> LPWX, __func__);
         p -> LPWX_BOUND = getbits36_18 (p -> LPWX, 0);
         p -> LPWX_SIZE = getbits36_18 (p -> LPWX, 18);
+	sim_debug (DBG_DEBUG, & iom_dev,
+		   "%s: chan %d bound %#o size %#o\n",
+		   __func__, chan, p -> LPWX_BOUND, p -> LPWX_SIZE);
       }   
     update_chan_mode (iom_unit_idx, chan, false);
 
@@ -2244,6 +2259,10 @@ static void fetch_and_parse_PCW (uint iom_unit_idx, uint chan)
     p -> DCW = p -> PCW0;
     unpack_DCW (iom_unit_idx, chan);
 
+    sim_debug (DBG_DEBUG, & iom_dev,
+	       "%s: chan %d pcw: dev_cmd %#o dev_code %#o control %#o chan_cmd %#o data %#o\n",
+	       __func__, p -> PCW_CHAN, p -> IDCW_DEV_CMD, p -> IDCW_DEV_CODE,
+	       p -> IDCW_CONTROL, p -> IDCW_CHAN_CMD, p -> IDCW_COUNT);
   }
  
 static void fetch_and_parse_DCW (uint iom_unit_idx, uint chan, UNUSED bool read_only)
@@ -2322,6 +2341,22 @@ sim_warn ("unhandled fetch_and_parse_DCW\n");
 	       "%s: chan %d dcw %012"PRIo64"\n",
 	       __func__, chan, p -> DCW);
     unpack_DCW (iom_unit_idx, chan);
+
+    if (p -> DCW_18_20_CP == 07)
+      sim_debug (DBG_DEBUG, & iom_dev,
+		 "%s: chan %d idcw: dev_cmd %#o dev_code %#o control %#o chan_cmd %#o data %#o\n",
+		 __func__, p -> PCW_CHAN, p -> IDCW_DEV_CMD, p -> IDCW_DEV_CODE,
+		 p -> IDCW_CONTROL, p -> IDCW_CHAN_CMD, p -> IDCW_COUNT);
+    else
+      if (p -> DDCW_22_23_TYPE == 02)
+	sim_debug (DBG_DEBUG, & iom_dev,
+		   "%s: chan %d tdcw: address %#o bits %#o\n",
+		   __func__, p -> PCW_CHAN, p -> TDCW_DATA_ADDRESS, p -> DDCW_TALLY);
+      else
+	sim_debug (DBG_DEBUG, & iom_dev,
+		   "%s: chan %d ddcw: address %#o char_pos %#o type %#o tally %#o\n",
+		   __func__, p -> PCW_CHAN, p -> DDCW_ADDR, p -> DCW_18_20_CP,
+		   p -> DDCW_22_23_TYPE, p -> DDCW_TALLY);
   }
 
 /*
@@ -2394,8 +2429,8 @@ static void iom_fault (uint iom_unit_idx, uint chan, UNUSED const char * who,
 #ifdef THREADZ
     lock_mem_wr ();
 #endif
+    sim_warn ("iom_fault %s\n", who);
 
-//sim_printf ("iom_fault %s\n", who);
     iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
     // TODO:
     // For a system fault:
