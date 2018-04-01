@@ -705,7 +705,7 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
             else if (linep->tabecho && kar == '\t')
               {
                 // since nPos starts at 0 this'll work well with % operator
-                int nCol = linep->nPos;
+                uint nCol = linep->nPos;
                 // for now we use tabstops of 1,11,21,31,41,51, etc...
                 nCol += 10;                  // 10 spaces/tab
                 int nSpaces = 10 - (nCol % 10);
@@ -853,10 +853,10 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
         (size_t) linep->nPos >= sizeof (linep->buffer) ||
 
         // block xfer buffer size met
-        (linep->block_xfer_out_frame_sz != 0 && linep->nPos >= (int) linep->block_xfer_out_frame_sz) ||
+        (linep->block_xfer_out_frame_sz != 0 && linep->nPos >= linep->block_xfer_out_frame_sz) ||
 
         // 'listen' command buffer size met
-        (linep->inputBufferSize != 0 && linep->nPos >= (int) linep->inputBufferSize))
+        (linep->inputBufferSize != 0 && linep->nPos >= linep->inputBufferSize))
       {
         linep->accept_input = 1;
         linep->input_break = false;
@@ -1015,7 +1015,7 @@ sim_printf ("\r\n");
     else
       {
         memcpy (linep->buffer + linep->nPos, msg, len);
-        linep->nPos += (int) len;
+        linep->nPos += len;
       }
 #if 0
 sim_printf ("send_3270_msg:");
@@ -1118,14 +1118,14 @@ sim_printf ("handling ETX\r\n");
         //unsigned char ETX = 0x3;
         //send_3270_msg (ASSUME0, & ETX, sizeof (ETX), true);
       }
-    long sz = bufp - linep->buffer;
+    uint sz = (uint) (bufp - linep->buffer);
     if (sz)
       {
 #ifdef FNP2_DEBUG
 sim_printf ("I think data starts %02hhx\r\n", linep->buffer[0]);
 #endif
         linep->accept_input = 1;
-        linep->nPos = (int) sz;
+        linep->nPos = sz;
       }
     else
       {
@@ -1259,14 +1259,14 @@ void fnpProcessEvent (void)
                 //linep -> send_output = false;
                 linep->send_output --;
                 if (linep->send_output == 0)
-                  fnp_rcd_send_output (mbx, (int) fnp_unit_idx, lineno);
+                  fnp_rcd_send_output ((uint)mbx, (int) fnp_unit_idx, lineno);
               }
 
             // Need to send a 'line_break' command to CS?
 
             else if (linep -> line_break)
               {
-                fnp_rcd_line_break (mbx, (int) fnp_unit_idx, lineno);
+                fnp_rcd_line_break ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep -> line_break = false;
               }
 
@@ -1274,7 +1274,7 @@ void fnpProcessEvent (void)
 
             else if (linep->acu_dial_failure)
               {
-                fnp_rcd_acu_dial_failure (mbx, (int) fnp_unit_idx, lineno);
+                fnp_rcd_acu_dial_failure ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep->acu_dial_failure = false;
               }
 
@@ -1288,7 +1288,7 @@ void fnpProcessEvent (void)
 
             else if (linep->listen && linep->accept_new_terminal)
               {
-                fnp_rcd_accept_new_terminal (mbx, (int) fnp_unit_idx, lineno);
+                fnp_rcd_accept_new_terminal ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep->accept_new_terminal = false;
               }
 
@@ -1296,7 +1296,7 @@ void fnpProcessEvent (void)
 
             else if (linep -> ack_echnego_init)
               {
-                fnp_rcd_ack_echnego_init (mbx, (int) fnp_unit_idx, lineno);
+                fnp_rcd_ack_echnego_init ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep -> ack_echnego_init = false;
                 //linep -> send_output = true;
                 linep -> send_output = SEND_OUTPUT_DELAY;
@@ -1307,14 +1307,14 @@ void fnpProcessEvent (void)
 #ifdef DISC_DELAY
             else if (linep -> line_disconnected == 1)
               {
-                fnp_rcd_line_disconnected (mbx, (int) fnp_unit_idx, lineno);
+                fnp_rcd_line_disconnected ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep -> line_disconnected = 0;
                 linep -> listen = false;
               }
 #else
             else if (linep -> line_disconnected)
               {
-                fnp_rcd_line_disconnected (mbx, (int) fnp_unit_idx, lineno);
+                fnp_rcd_line_disconnected ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep -> line_disconnected = false;
                 linep -> listen = false;
               }
@@ -1324,7 +1324,7 @@ void fnpProcessEvent (void)
 
             else if (linep -> wru_timeout)
               {
-                fnp_rcd_wru_timeout (mbx, (int) fnp_unit_idx, lineno);
+                fnp_rcd_wru_timeout ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep -> wru_timeout = false;
               }
 
@@ -1363,7 +1363,7 @@ void fnpProcessEvent (void)
 #else
                     if (linep->nPos > 100)
                       {
-                        fnp_rcd_accept_input (mbx, (int) fnp_unit_idx, lineno);
+                        fnp_rcd_accept_input ((uint)mbx, (int) fnp_unit_idx, lineno);
 #ifdef FNPDBG
 sim_printf ("accept_input\n");
 #endif
@@ -1373,7 +1373,7 @@ sim_printf ("accept_input\n");
                       }
                     else
                       {
-                        fnp_rcd_input_in_mailbox (mbx, (int) fnp_unit_idx, lineno);
+                        fnp_rcd_input_in_mailbox ((uint)mbx, (int) fnp_unit_idx, lineno);
 #ifdef FNPDBG
 sim_printf ("input_in_mailbox\n");
 #endif
@@ -1388,7 +1388,7 @@ sim_printf ("input_in_mailbox\n");
             else if (linep->sendLineStatus)
               {
                 linep->sendLineStatus = false;
-                fnp_rcd_line_status (mbx, (int) fnp_unit_idx, lineno);
+                fnp_rcd_line_status ((uint)mbx, (int) fnp_unit_idx, lineno);
               }
 
             else

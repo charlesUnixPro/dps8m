@@ -128,7 +128,7 @@ typedef struct t_MState
 
         // Buffer being assembled for sending to Multics
         unsigned char buffer[1024];   // line buffer for initial device selection and line discipline
-        int nPos;           // position where *next* user input is to be stored
+        uint nPos;           // position where *next* user input is to be stored
 
         // Incoming data from the connection
         unsigned char * inBuffer;

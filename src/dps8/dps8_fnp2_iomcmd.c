@@ -1210,7 +1210,7 @@ static void fnp_rtx_input_accepted (struct decoded_t *decoded_p)
 
     word36 word2;
     iom_core_read (decoded_p->iom_unit, decoded_p->fsmbx+WORD2, & word2, __func__);
-    int n_chars = (int)getbits36_18 (word2, 0);
+    uint n_chars = getbits36_18 (word2, 0);
 
     word36 n_buffers;
     iom_core_read (decoded_p->iom_unit, decoded_p->fsmbx+N_BUFFERS, & n_buffers, __func__);
@@ -1220,7 +1220,7 @@ static void fnp_rtx_input_accepted (struct decoded_t *decoded_p)
 
     n_chars = min(n_chars, linep -> nPos);
 
-    int off = 0;
+    uint off = 0;
     for (uint j = 0; j < n_buffers && off < n_chars; j++)
       {
 	word36 data;
@@ -1242,7 +1242,7 @@ sim_printf ("']\n");
 }
 #endif
 //sim_printf ("long  in; line %d tally %d\n", decoded_p->slot_no, linep->nPos);
-        int n_chars_in_buf = min(n_chars-off, tally);
+        uint n_chars_in_buf = min(n_chars-off, tally);
         for (int i = 0; i < n_chars_in_buf; i += 4)
 	  {
 	    word36 v = 0;
