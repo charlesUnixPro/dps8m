@@ -240,6 +240,7 @@
 
 #define IOM_UNIT_IDX(uptr) ((uptr) - iom_unit)
 
+#define IOM_SYSTEM_FAULT_CHAN 1U
 #define IOM_CONNECT_CHAN 2U
 #define IOM_SPECIAL_STATUS_CHAN 6U
 
@@ -2233,6 +2234,9 @@ static void pack_LPW (uint iom_unit_idx, uint chan)
     putbits36_1 (& p-> LPW, 22, p -> LPW_22_TAL);
     putbits36_1 (& p-> LPW, 23, p -> LPW_23_REL);
     putbits36_12 (& p-> LPW, 24, p -> LPW_TALLY);
+
+    putbits36_18 (& p-> LPWX, 0, p -> LPWX_BOUND);
+    putbits36_18 (& p-> LPWX, 18, p -> LPWX_SIZE);
   }
 
 static void fetch_and_parse_PCW (uint iom_unit_idx, uint chan)
@@ -2466,30 +2470,34 @@ static void iom_fault (uint iom_unit_idx, uint chan, UNUSED const char * who,
     // IAC, bits 26..29
     putbits36_6 (& faultWord, 30, signal);
 
-    uint mbx = mbxLoc (iom_unit_idx, chan);
+    uint chanloc = mbxLoc (iom_unit_idx, IOM_SYSTEM_FAULT_CHAN);
 
-    fetch_and_parse_DCW (iom_unit_idx, chan, false);
-    if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+    word36 lpw;
+    iom_core_read (iom_unit_idx, chanloc + IOM_MBX_LPW, & lpw, __func__);
+
+    word36 scw;
+    iom_core_read (iom_unit_idx, chanloc + IOM_MBX_SCW, & scw, __func__);
+
+    word36 dcw;
+    iom_core_read_lock (iom_unit_idx, chanloc + IOM_MBX_DCW, & dcw, __func__);
+
+    sim_debug (DBG_DEBUG, & iom_dev,
+	       "%s: lpw %012"PRIo64" scw %012"PRIo64" dcw %012"PRIo64"\n",
+	       __func__, lpw, scw, dcw);
+
+    iom_core_write (iom_unit_idx, (dcw >> 18) & MASK18, faultWord, __func__);
+
+    uint tally = dcw & MASK12;
+    if (tally > 1)
       {
-#ifdef TESTING
-        sim_warn ("%s: expected a DDCW; fail\n", __func__);
-#endif
-        return;
+        dcw -= 01llu;  // tally --
+        dcw += 01000000llu; // addr ++
       }
-    // No address extension or paging nonsense for channels 0-7. 
-    uint addr = p -> DDCW_ADDR;
-    iom_core_write (iom_unit_idx, addr, faultWord, __func__);
+    else
+      dcw = scw; // reset to beginning of queue
+    iom_core_write_unlock (iom_unit_idx, chanloc + IOM_MBX_DCW, dcw, __func__);
 
-    send_general_interrupt (iom_unit_idx, 1, imwSystemFaultPic);
-
-    word36 ddcw;
-    iom_core_read_lock (iom_unit_idx, mbx + IOM_MBX_LPW, & ddcw, __func__);
-    // incr addr
-    putbits36_18 (& ddcw, 0, (getbits36_18 (ddcw, 0) + 1u) & MASK18);
-    // decr tally
-    putbits36_12 (& ddcw, 24, (getbits36_12 (ddcw, 24) - 1u) & MASK12);
-    iom_core_write_unlock (iom_unit_idx, mbx + IOM_MBX_LPW, ddcw, __func__);
-
+    send_general_interrupt (iom_unit_idx, IOM_SYSTEM_FAULT_CHAN, imwSystemFaultPic);
 #ifdef THREADZ
     unlock_mem ();
 #endif
@@ -2680,10 +2688,14 @@ A:;
             // p -> DCW = p -> DCW;
             send = true;
           }
+	p -> LPWX_SIZE = p -> LPW_DCW_PTR;
         goto D;
       }
 
 // Not IDCW
+
+    if (p -> lsFirst)
+      p -> LPWX_SIZE = p -> LPW_DCW_PTR;
 
 // pg B16: "If the IOM is paged [yes] and PCW bit 64 is off, LPW bit 23
 //          is ignored by the hardware. If bit 64 is set, LPW bit 23 causes
@@ -2854,10 +2866,13 @@ D:;
 
     if (p -> LPW_21_NC == 0) // UPDATE
      {
-        // UPDATE LPW ADDRESS & TALLY
-        p -> LPW_DCW_PTR = (p -> LPW_DCW_PTR + 1u) & MASK18;       
-        p -> LPW_TALLY = (p -> LPW_TALLY - 1u) & MASK12;       
-        pack_LPW (iom_unit_idx, chan);
+       // UPDATE LPW ADDRESS & TALLY
+       if (isConnChan)
+	 p -> LPW_DCW_PTR = (p -> LPW_DCW_PTR + 2u) & MASK18;
+       else
+	 p -> LPW_DCW_PTR = (p -> LPW_DCW_PTR + 1u) & MASK18;
+       p -> LPW_TALLY = (p -> LPW_TALLY - 1u) & MASK12;
+       pack_LPW (iom_unit_idx, chan);
      }
 
     // IDCW OR FIRST LIST
@@ -3211,6 +3226,9 @@ int send_special_interrupt (uint iom_unit_idx, uint chan, uint devCode,
     word36 lpw;
     iom_core_read (iom_unit_idx, chanloc + IOM_MBX_LPW, & lpw, __func__);
 
+    word36 scw;
+    iom_core_read (iom_unit_idx, chanloc + IOM_MBX_SCW, & scw, __func__);
+
     word36 dcw;
     iom_core_read_lock (iom_unit_idx, chanloc + IOM_MBX_DCW, & dcw, __func__);
 
@@ -3218,8 +3236,8 @@ int send_special_interrupt (uint iom_unit_idx, uint chan, uint devCode,
 	       "%s: channel %d (%#o), devCode %#o, status0 %#o, status1 %#o\n",
 	       __func__, chan, chan, devCode, status0, status1);
     sim_debug (DBG_DEBUG, & iom_dev,
-	       "%s: lpw %012"PRIo64", dcw %012"PRIo64"\n",
-	       __func__, lpw, dcw);
+	       "%s: lpw %012"PRIo64" scw %012"PRIo64" dcw %012"PRIo64"\n",
+	       __func__, lpw, scw, dcw);
 
     word36 status = 0400000000000;   
     status |= (((word36) chan) & MASK6) << 27;
@@ -3235,7 +3253,7 @@ int send_special_interrupt (uint iom_unit_idx, uint chan, uint devCode,
         dcw += 01000000llu; // addr ++
       }
     else
-      dcw = 001320010012llu; // reset to beginning of queue
+      dcw = scw; // reset to beginning of queue
     iom_core_write_unlock (iom_unit_idx, chanloc + IOM_MBX_DCW, dcw, __func__);
 
 #ifdef THREADZ
