@@ -1247,9 +1247,12 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
 //sim_printf ("chan mode %d\n", p -> chanMode);
 //sim_printf ("ddcw %012"PRIo64"\n", p -> DCW);
             word36 control;
-            iom_direct_data_service (iomUnitIdx, chan, & control, false);
+	    uint count;
+            iom_indirect_data_service (iomUnitIdx, chan, & control, &count, false);
 //sim_printf ("control %012"PRIo64"\n", control);
 //sim_printf ("  addr %012"PRIo64" tally %012"PRIo64"\n", getbits36_16 (control, 0), getbits36_16 (control, 16));
+	    if (count != 1)
+	      sim_warn ("%s: count %d not 1\n", __func__, count);
             tape_statep -> cntlrAddress = getbits36_16 (control, 0);
             tape_statep -> cntlrTally = getbits36_16 (control, 16);
 
@@ -1492,9 +1495,12 @@ static int mt_cmd (uint iomUnitIdx, uint chan)
 //sim_printf ("chan mode %d\n", p -> chanMode);
 //sim_printf ("ddcw %012"PRIo64"\n", p -> DCW);
             word36 control;
-            iom_direct_data_service (iomUnitIdx, chan, & control, false);
+	    uint count;
+            iom_indirect_data_service (iomUnitIdx, chan, & control, &count, false);
 //sim_printf ("control %012"PRIo64"\n", control);
 //sim_printf ("  addr %012"PRIo64" tally %012"PRIo64"\n", getbits36_16 (control, 0), getbits36_16 (control, 16));
+            if (count != 1)
+              sim_warn ("%s: count %d not 1\n", __func__, count);
             tape_statep -> cntlrAddress = getbits36_16 (control, 0);
             tape_statep -> cntlrTally = getbits36_16 (control, 16);
             sim_debug (DBG_DEBUG, & tape_dev,

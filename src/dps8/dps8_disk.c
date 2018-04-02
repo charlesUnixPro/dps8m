@@ -642,7 +642,10 @@ static int diskSeek64 (uint devUnitIdx, uint iomUnitIdx, uint chan)
       }
 
     word36 seekData;
-    iom_direct_data_service (iomUnitIdx, chan, & seekData, false);
+    uint count;
+    iom_indirect_data_service (iomUnitIdx, chan, & seekData, &count, false);
+    if (count != 1)
+      sim_warn ("%s: count %d not 1\n", __func__, count);
 
 //sim_printf ("seekData %012"PRIo64"\n", seekData);
 // Observations about the seek/write stream
@@ -714,7 +717,10 @@ static int diskSeek512 (uint devUnitIdx, uint iomUnitIdx, uint chan)
       }
 
     word36 seekData;
-    iom_direct_data_service (iomUnitIdx, chan, & seekData, false);
+    uint count;
+    iom_indirect_data_service (iomUnitIdx, chan, & seekData, &count, false);
+    if (count != 1)
+      sim_warn ("%s: count %d not 1\n", __func__, count);
 
 //sim_printf ("seekData %012"PRIo64"\n", seekData);
 // Observations about the seek/write stream
