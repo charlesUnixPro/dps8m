@@ -1738,9 +1738,10 @@ static word24 build_DDSPTW_address (word18 PCW_PAGE_TABLE_PTR, word8 pageNumber)
 //                        -------------------------------------
 //                        |  Direct chan addr 6-13            |
 //                        -------------------------------------
-
+    if ((PCW_PAGE_TABLE_PTR & 3) || (pageNumber & ~MASK6))
+      sim_warn ("%s: pcw_ptp %#o page_no  %#o\n", __func__, PCW_PAGE_TABLE_PTR, pageNumber);
     word24 addr = (((word24) PCW_PAGE_TABLE_PTR) & MASK18) << 6;
-    addr += pageNumber;
+    addr |= pageNumber;
     return addr;
   }
 
@@ -1752,6 +1753,9 @@ static void fetch_DDSPTW (uint iom_unit_idx, int chan, word18 addr)
     word24 pgte = build_DDSPTW_address (p -> PCW_PAGE_TABLE_PTR, 
                                       (addr >> 10) & MASK8);
     iom_core_read (iom_unit_idx, pgte, & p -> PTW_DCW, __func__);
+    if ((p -> PTW_DCW & 074000777747) != 04llu)
+      sim_warn ("%s: chan %d addr %#o ptw %012"PRIo64"\n",
+		__func__, chan, addr, p -> PTW_DCW);
   }
 
 static word24 build_IDSPTW_address (word18 PCW_PAGE_TABLE_PTR, word1 seg, word8 pageNumber)
@@ -1786,6 +1790,9 @@ static void fetch_IDSPTW (uint iom_unit_idx, int chan, word18 addr)
                                       p -> SEG, 
                                       (addr >> 10) & MASK8);
     iom_core_read (iom_unit_idx, pgte, & p -> PTW_DCW, __func__);
+    if ((p -> PTW_DCW & 074000777747) != 04llu)
+      sim_warn ("%s: chan %d addr %#o ptw %012"PRIo64"\n",
+		__func__, chan, addr, p -> PTW_DCW);
   }
 
 
@@ -1818,8 +1825,11 @@ static void fetch_LPWPTW (uint iom_unit_idx, uint chan)
     iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
     word24 addr = build_LPWPTW_address (p -> PCW_PAGE_TABLE_PTR, 
                                       p -> SEG,
-                                      (p -> LPW_DCW_PTR >> 10) & MASK6);
+                                      (p -> LPW_DCW_PTR >> 10) & MASK8);
     iom_core_read (iom_unit_idx, addr, & p -> PTW_LPW, __func__);
+    if ((p -> PTW_LPW & 074000777747) != 04llu)
+      sim_warn ("%s: chan %d addr %#o ptw %012"PRIo64"\n",
+		__func__, chan, addr, p -> PTW_LPW);
   }
 
 // 'write' means periperal write; i.e. the peripheral is writing to core after
@@ -1856,7 +1866,7 @@ void iom_direct_data_service (uint iom_unit_idx, uint chan, word36 * data,
         case cm5:
           {
             fetch_DDSPTW (iom_unit_idx, (int) chan, daddr);
-            daddr = ((uint) getbits36_14 (p -> PTW_DCW, 4) << 10) | (daddr & MASK8);
+            daddr = ((uint) getbits36_14 (p -> PTW_DCW, 4) << 10) | (daddr & MASK10);
           }
           break;
       }
@@ -2190,6 +2200,7 @@ static void unpack_DCW (uint iom_unit_idx, uint chan)
       { 
         p -> IDCW_DEV_CMD =      getbits36_6 (p -> DCW,  0);
         p -> IDCW_DEV_CODE =     getbits36_6 (p -> DCW,  6);
+        p -> IDCW_AE =           getbits36_6 (p -> DCW,  12);
         if (p -> LPW_23_REL)
           p -> IDCW_EC = 0;
         else
@@ -2264,9 +2275,13 @@ static void fetch_and_parse_PCW (uint iom_unit_idx, uint chan)
     unpack_DCW (iom_unit_idx, chan);
 
     sim_debug (DBG_DEBUG, & iom_dev,
-	       "%s: chan %d pcw: dev_cmd %#o dev_code %#o control %#o chan_cmd %#o data %#o\n",
-	       __func__, p -> PCW_CHAN, p -> IDCW_DEV_CMD, p -> IDCW_DEV_CODE,
-	       p -> IDCW_CONTROL, p -> IDCW_CHAN_CMD, p -> IDCW_COUNT);
+	       "%s: chan %d pcw0: dev_cmd %#o dev_code %#o ae %#o ec %d control %#o chan_cmd %#o data %#o\n",
+	       __func__, p -> PCW_CHAN, p -> IDCW_DEV_CMD, p -> IDCW_DEV_CODE, p -> IDCW_AE,
+	       p -> IDCW_EC, p -> IDCW_CONTROL, p -> IDCW_CHAN_CMD, p -> IDCW_COUNT);
+    sim_debug (DBG_DEBUG, & iom_dev,
+	       "%s: chan %d pcw1: ae %d ptp %d pge %d ptp %#o\n",
+	       __func__, p -> PCW_CHAN, p -> PCW_AE, p -> PCW_63_PTP,
+	       p -> PCW_64_PGE, p -> PCW_PAGE_TABLE_PTR);
   }
  
 static void fetch_and_parse_DCW (uint iom_unit_idx, uint chan, UNUSED bool read_only)
@@ -2348,14 +2363,15 @@ sim_warn ("unhandled fetch_and_parse_DCW\n");
 
     if (p -> DCW_18_20_CP == 07)
       sim_debug (DBG_DEBUG, & iom_dev,
-		 "%s: chan %d idcw: dev_cmd %#o dev_code %#o control %#o chan_cmd %#o data %#o\n",
-		 __func__, p -> PCW_CHAN, p -> IDCW_DEV_CMD, p -> IDCW_DEV_CODE,
-		 p -> IDCW_CONTROL, p -> IDCW_CHAN_CMD, p -> IDCW_COUNT);
+		 "%s: chan %d idcw: dev_cmd %#o dev_code %#o ae %#o ec %d control %#o chan_cmd %#o data %#o\n",
+		 __func__, p -> PCW_CHAN, p -> IDCW_DEV_CMD, p -> IDCW_DEV_CODE, p -> IDCW_AE,
+		 p -> IDCW_EC, p -> IDCW_CONTROL, p -> IDCW_CHAN_CMD, p -> IDCW_COUNT);
     else
       if (p -> DDCW_22_23_TYPE == 02)
 	sim_debug (DBG_DEBUG, & iom_dev,
-		   "%s: chan %d tdcw: address %#o bits %#o\n",
-		   __func__, p -> PCW_CHAN, p -> TDCW_DATA_ADDRESS, p -> DDCW_TALLY);
+		   "%s: chan %d tdcw: address %#o seg %d pdta %d pdcw/ec %d res %d rel %d\n",
+		   __func__, p -> PCW_CHAN, p -> TDCW_DATA_ADDRESS, p -> TDCW_31_SEG,
+		   p -> TDCW_32_PDTA, p -> TDCW_33_PDCW, p -> TDCW_34_RES, p -> TDCW_35_REL);
       else
 	sim_debug (DBG_DEBUG, & iom_dev,
 		   "%s: chan %d ddcw: address %#o char_pos %#o type %#o tally %#o\n",

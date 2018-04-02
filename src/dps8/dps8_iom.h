@@ -96,6 +96,7 @@ typedef volatile struct
     // IDCW only
     word6  IDCW_DEV_CMD;
     word6  IDCW_DEV_CODE;
+    word6  IDCW_AE;
     word1  IDCW_EC;
     word2  IDCW_CONTROL; // 0 terminate, 2 process, 3 marker
     word6  IDCW_CHAN_CMD;
