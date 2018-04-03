@@ -1753,7 +1753,7 @@ static void fetch_DDSPTW (uint iom_unit_idx, int chan, word18 addr)
     word24 pgte = build_DDSPTW_address (p -> PCW_PAGE_TABLE_PTR, 
                                       (addr >> 10) & MASK8);
     iom_core_read (iom_unit_idx, pgte, & p -> PTW_DCW, __func__);
-    if ((p -> PTW_DCW & 074000777747) != 04llu)
+    if ((p -> PTW_DCW & 0740000777747) != 04llu)
       sim_warn ("%s: chan %d addr %#o ptw %012"PRIo64"\n",
 		__func__, chan, addr, p -> PTW_DCW);
   }
@@ -1790,7 +1790,7 @@ static void fetch_IDSPTW (uint iom_unit_idx, int chan, word18 addr)
                                       p -> SEG, 
                                       (addr >> 10) & MASK8);
     iom_core_read (iom_unit_idx, pgte, & p -> PTW_DCW, __func__);
-    if ((p -> PTW_DCW & 074000777747) != 04llu)
+    if ((p -> PTW_DCW & 0740000777747) != 04llu)
       sim_warn ("%s: chan %d addr %#o ptw %012"PRIo64"\n",
 		__func__, chan, addr, p -> PTW_DCW);
   }
@@ -1827,7 +1827,7 @@ static void fetch_LPWPTW (uint iom_unit_idx, uint chan)
                                       p -> SEG,
                                       (p -> LPW_DCW_PTR >> 10) & MASK8);
     iom_core_read (iom_unit_idx, addr, & p -> PTW_LPW, __func__);
-    if ((p -> PTW_LPW & 074000777747) != 04llu)
+    if ((p -> PTW_LPW & 0740000777747) != 04llu)
       sim_warn ("%s: chan %d addr %#o ptw %012"PRIo64"\n",
 		__func__, chan, addr, p -> PTW_LPW);
   }
