@@ -894,7 +894,6 @@ static int diskRead (uint devUnitIdx, uint iomUnitIdx, uint chan)
           }
         iom_indirect_data_service (iomUnitIdx, chan, buffer,
                                 & wordsProcessed, true);
-        p -> charPos = tally % 4;
       } while (p -> DDCW_22_23_TYPE != 0); // not IOTD
     p -> stati = 04000;
     p -> initiate = false;
