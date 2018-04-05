@@ -2959,6 +2959,13 @@ static int do_payload_chan (uint iom_unit_idx, uint chan)
       p -> PCW_21_MSK =         q -> PCW_21_MSK;
     }
 
+    p -> chanMode = cm1;
+    p -> LPW_18_RES = 0;
+    p -> LPW_20_AE = 0;
+    p -> LPW_23_REL = 0;
+
+    unpack_DCW (iom_unit_idx, chan);
+
     p->masked = !!p->PCW_21_MSK;
     struct iom_to_ctlr_s * d = & cables->iom_to_ctlr[iom_unit_idx][chan];
 
@@ -2966,7 +2973,11 @@ static int do_payload_chan (uint iom_unit_idx, uint chan)
 // all other channels should ignore it. We use (somewhat bogusly) a chanType of
 // chanTypeCPI to indicate the operator console.
     if (d->chan_type != chan_type_CPI && p -> IDCW_DEV_CMD == 051)
-      return 0;
+      {
+	p -> stati = 04501;
+	send_terminate_interrupt (iom_unit_idx, chan);
+	return 0;
+      }
 
     if (! d->iom_cmd)
       {
@@ -3187,7 +3198,6 @@ int loops = 0;
 loops ++;
             iom_chan_data_t * q = & iom_chan_data[iom_unit_idx][p -> PCW_CHAN];
             q -> DCW = p -> DCW;
-            unpack_DCW (iom_unit_idx, p -> PCW_CHAN);
 #ifdef IO_THREADZ
             setChnConnect (iom_unit_idx, p -> PCW_CHAN);
 #else
