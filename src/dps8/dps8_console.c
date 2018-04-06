@@ -569,7 +569,6 @@ static void sendConsole (int conUnitIdx, word12 stati)
   {
     opc_state_t * csp = console_state + conUnitIdx;
     uint tally = csp->tally;
-    uint daddr = csp->daddr;
     uint ctlr_port_num = 0; // Consoles are single ported
     uint iomUnitIdx = cables->opc_to_iom[conUnitIdx][ctlr_port_num].iom_unit_idx;
     uint chan_num = cables->opc_to_iom[conUnitIdx][ctlr_port_num].chan_num;
@@ -591,22 +590,25 @@ static void sendConsole (int conUnitIdx, word12 stati)
     text[ntext] = 0;
     oscar (text);
 #endif
+    uint n_chars = (uint) (csp->tailp - csp->readp);
+    uint n_words = (n_chars + 3) / 4;
+    word36 buf[n_words];
+    word36 * bufp = buf;
+
     while (tally && csp->readp < csp->tailp)
       {
         uint charno;
+
+	* bufp = 0ul;
         for (charno = 0; charno < 4; ++ charno)
           {
             if (csp->readp >= csp->tailp)
               break;
             unsigned char c = (unsigned char) (* csp->readp ++);
-            word36 w;
-            iom_core_read (iomUnitIdx, daddr, & w, __func__);
-            putbits36_9 (& w, charno * 9, c);
-            iom_core_write (iomUnitIdx, daddr, w, __func__);
+            putbits36_9 (bufp, charno * 9, c);
           }
-        // cp = charno % 4;
 
-        daddr ++;
+	bufp ++;
         tally --;
       }
     if (csp->readp < csp->tailp)
@@ -615,9 +617,10 @@ static void sendConsole (int conUnitIdx, word12 stati)
                    "opc_iom_io: discarding %d characters from end of line\n",
                     (int) (csp->tailp - csp->readp));
       }
-    uint n_chars = (uint) (csp->readp - csp->buf);
+
+    iom_indirect_data_service (iomUnitIdx, chan_num, buf, & n_words, true);
+
     p->charPos = n_chars % 4;
-    p->tallyResidue = (word12) (csp->tally - (n_chars + 3) / 4);
     p->stati = (word12) stati;
 
     csp->readp = csp->buf;
@@ -834,11 +837,12 @@ sim_warn ("uncomfortable with this\n");
                     tally = 4096;
                   }
 
+#ifdef ATTN_HACK
                 word36 w0, w1, w2;
                 iom_core_read (iomUnitIdx, daddr + 0, & w0, __func__);
                 iom_core_read (iomUnitIdx, daddr + 1, & w1, __func__);
                 iom_core_read (iomUnitIdx, daddr + 2, & w2, __func__);
-#ifdef ATTN_HACK
+
                 // When the console prints out "Command:", press the Attention
                 // key one second later
                 if (csp->attn_hack &&
@@ -881,22 +885,21 @@ sim_warn ("uncomfortable with this\n");
                   }
 #endif // ATTN_HACK
 
+		word36 buf[tally];
+		iom_indirect_data_service (iomUnitIdx, chan, buf, & tally, false);
+
                 // Tally is in words, not chars.
-    
                 char text[tally * 4 + 1];
                 char * textp = text;
+		word36 * bufp = buf;
                 * textp = 0;
 #ifndef __MINGW64__
                 newlineOff ();
 #endif
-// XXX this should be iom_indirect_data_service
                 sim_print (""); // force text color reset
                 while (tally)
                   {
-                    //word36 datum = M[daddr ++];
-                    word36 datum;
-                    iom_core_read (iomUnitIdx, daddr, & datum, __func__);
-                    daddr ++;
+                    word36 datum = * bufp ++;
                     tally --;
     
                     for (int i = 0; i < 4; i ++)
