@@ -100,22 +100,6 @@ struct decoded_t
   };
 
 //
-// Convert virtual address to physical
-//
-
-static uint virtToPhys (uint iomUnitIdx, uint ptPtr, uint l66Address)
-  {
-    uint pageTable = ptPtr * 64u;
-    uint l66AddressPage = l66Address / 1024u;
-
-    word36 ptw;
-    iom_core_read (iomUnitIdx, pageTable + l66AddressPage, & ptw, "fnp_iom_cmd get ptw");
-    uint page = getbits36_14 (ptw, 4);
-    uint addr = page * 1024u + l66Address % 1024u;
-    return addr;
-  }
-
-//
 // Debugging...
 //
 
@@ -476,15 +460,8 @@ static int wcd (struct decoded_t *decoded_p)
               }
             else
               {
-                // We are going to assume that the table doesn't cross a
-                // page boundary, and only lookup the table start address.
-                uint dataAddrPhys = virtToPhys (decoded_p->iom_unit, decoded_p->p -> PCW_PAGE_TABLE_PTR, data_addr);
-                //sim_printf ("dataAddrPhys %06o\n", dataAddrPhys);
                 for (uint i = 0; i < echoTableLen; i ++)
-                  {
-                    iom_core_read (decoded_p->iom_unit, dataAddrPhys + i, & echoTable [i], __func__);
-                    //sim_printf ("   %012"PRIo64"\n", echoTable [i]);
-                  }
+		    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, data_addr + i, & echoTable [i], false);
               }
             for (int i = 0; i < 256; i ++)
               {
@@ -1069,8 +1046,7 @@ static void fnp_wtx_output (struct decoded_t *decoded_p, uint tally, uint dataAd
     uint16_t data9 [tally];
 #endif
     unsigned char data [tally];
-    uint ptPtr = decoded_p->p -> PCW_PAGE_TABLE_PTR;
- 
+
     for (uint i = 0; i < tally; i ++)
        {
          uint byteOff = i % 4;
@@ -1081,9 +1057,7 @@ static void fnp_wtx_output (struct decoded_t *decoded_p, uint tally, uint dataAd
          if (wordOff != lastWordOff)
            {
              lastWordOff = wordOff;
-             uint wordAddr = virtToPhys (decoded_p->iom_unit, ptPtr, dataAddr + wordOff);
-             iom_core_read (decoded_p->iom_unit, wordAddr, & word, __func__);
-//sim_printf ("   %012"PRIo64"\n", M [wordAddr]);
+	     iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, dataAddr + wordOff, & word, false);
            }
          byte = getbits36_9 (word, byteOff * 9);
          data [i] = byte & 0377;
@@ -1149,13 +1123,9 @@ static int wtx (struct decoded_t *decoded_p)
     for (uint i = 0; i < dcwCnt; i ++)
       {
         // The address of the dcw in the dcw list
-        uint dcwAddrPhys = virtToPhys (decoded_p->iom_unit, decoded_p->p -> PCW_PAGE_TABLE_PTR, dcwAddr + i);
-
         // The dcw
-        //word36 dcw = M [dcwAddrPhys + i];
         word36 dcw;
-        iom_core_read (decoded_p->iom_unit, dcwAddrPhys, & dcw, __func__);
-        //sim_printf ("  %012"PRIo64"\n", dcw);
+	iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, dcwAddr + i, & dcw, false);
 
         // Get the address and the tally from the dcw
         uint dataAddr = getbits36_18 (dcw, 0);
@@ -1254,8 +1224,7 @@ sim_printf ("']\n");
 		putbits36_9 (& v, 18, data_p [off++]);
 	    if (i + 3 < n_chars_in_buf)
 		putbits36_9 (& v, 27, data_p [off++]);
-	    uint dcwAddrPhys = virtToPhys (decoded_p->iom_unit, decoded_p->p -> PCW_PAGE_TABLE_PTR, addr);
-	    iom_core_write (decoded_p->iom_unit, dcwAddrPhys, v, __func__);
+	    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, addr, & v, true);
 	    addr ++;
 	  }
       }

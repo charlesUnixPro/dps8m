@@ -1738,7 +1738,7 @@ static word24 build_DDSPTW_address (word18 PCW_PAGE_TABLE_PTR, word8 pageNumber)
 //                        -------------------------------------
 //                        |  Direct chan addr 6-13            |
 //                        -------------------------------------
-    if ((PCW_PAGE_TABLE_PTR & 3) || (pageNumber & ~MASK6))
+    if (PCW_PAGE_TABLE_PTR & 3)
       sim_warn ("%s: pcw_ptp %#o page_no  %#o\n", __func__, PCW_PAGE_TABLE_PTR, pageNumber);
     word24 addr = (((word24) PCW_PAGE_TABLE_PTR) & MASK18) << 6;
     addr |= pageNumber;
@@ -1835,40 +1835,31 @@ static void fetch_LPWPTW (uint iom_unit_idx, uint chan)
 // 'write' means periperal write; i.e. the peripheral is writing to core after
 // reading media.
 
-void iom_direct_data_service (uint iom_unit_idx, uint chan, word36 * data,
+void iom_direct_data_service (uint iom_unit_idx, uint chan, word24 daddr, word36 * data,
                            bool write)
   {
 #ifdef THREADZ
     // Force mailbox and dma data to be up-to-date 
     fence ();
 #endif
+    // The direct data service consists of one core storage cycle (Read Clear, Read
+    // Restore or Clear Write, Double or Single Precision) using an absolute
+    // 24-bit address supplied by the channel. This service is used by
+    // "peripherals" capable of providing addresses from an external source,
+    // such as the 355 Direct Interface Adapter.
+
+    // The PCW received for the channel contains a Page Table Pointer
+    // which is used as an absolute address pointing to the Page Table which
+    // has been set up by software for the Direct Channel. All addresses
+    // for the Direct Channel will be accessed using this Page Table if paging
+    // has been requested in the PCW.
 
     iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
-    uint daddr = p -> DDCW_ADDR;
-    switch (p -> chanMode)
+
+    if (p -> PCW_63_PTP && p -> PCW_64_PGE)
       {
-        // DCW EXT
-        case cm1e:
-        case cm2e:
-        case cm1:
-          daddr |= (uint) p -> ADDR_EXT << 18;
-          break;
-
-        case cm2:
-        case cm3b:
-          {
-            sim_warn ("%s DCW paged\n", __func__);
-          }
-          break;
-
-        case cm3a:
-        case cm4:
-        case cm5:
-          {
-            fetch_DDSPTW (iom_unit_idx, (int) chan, daddr);
-            daddr = ((uint) getbits36_14 (p -> PTW_DCW, 4) << 10) | (daddr & MASK10);
-          }
-          break;
+	fetch_DDSPTW (iom_unit_idx, (int) chan, daddr);
+	daddr = ((uint) getbits36_14 (p -> PTW_DCW, 4) << 10) | (daddr & MASK10);
       }
 
     if (write)

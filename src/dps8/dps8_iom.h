@@ -265,7 +265,7 @@ int iom_list_service (uint iom_unit_idx, uint chan,
                            bool * ptro, bool * sendp, bool * uffp);
 int send_terminate_interrupt (uint iom_unit_idx, uint chanNum);
 void iom_interrupt (uint scuUnitNum, uint iom_unit_idx);
-void iom_direct_data_service (uint iom_unit_idx, uint chan, word36 * data,
+void iom_direct_data_service (uint iom_unit_idx, uint chan, word24 daddr, word36 * data,
                            bool write);
 void iom_indirect_data_service (uint iom_unit_idx, uint chan, word36 * data,
                              uint * cnt, bool write);
