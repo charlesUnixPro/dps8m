@@ -156,6 +156,11 @@ static int wcd (struct decoded_t *decoded_p)
   {
     struct t_line * linep = & decoded_p->fudp->MState.line[decoded_p->slot_no];
     sim_debug (DBG_TRACE, & fnp_dev, "[%u] wcd op_code %u 0%o\n", decoded_p->slot_no, decoded_p->op_code, decoded_p->op_code);
+
+    word36 command_data[3];
+    for (uint i=0; i < 3; i++)
+      iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num,  decoded_p->smbx+COMMAND_DATA + i, & command_data [i], false);
+
     switch (decoded_p->op_code)
       {
         case  1: // disconnect_this_line
@@ -197,10 +202,8 @@ static int wcd (struct decoded_t *decoded_p)
           {
             sim_debug (DBG_TRACE, & fnp_dev, "[%u]    set_framing_chars\n", decoded_p->slot_no);
             //sim_printf ("fnp set framing characters\n");
-            word36 command_data0;
-	    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA, & command_data0, __func__);
-            uint d1 = getbits36_9 (command_data0, 0);
-            uint d2 = getbits36_9 (command_data0, 9);
+            uint d1 = getbits36_9 (command_data[0], 0);
+            uint d2 = getbits36_9 (command_data[0], 9);
             linep->frame_begin = d1;
             linep->frame_end = d2;
           }
@@ -209,32 +212,22 @@ static int wcd (struct decoded_t *decoded_p)
         case 12: // dial out
           {
             sim_debug (DBG_TRACE, & fnp_dev, "[%u]    dial out\n", decoded_p->slot_no);
-            word36 command_data0;
-	    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA+0, & command_data0, __func__);
-            word36 command_data1;
-	    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA+1, & command_data1, __func__);
-            word36 command_data2;
-	    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA+2, & command_data2, __func__);
             //sim_printf ("XXX dial_out %d %012"PRIo64" %012"PRIo64" %012"PRIo64"", decoded_p->slot_no, command_data0, command_data1, command_data2);
-            fnpuv_dial_out (decoded_p->devUnitIdx, decoded_p->slot_no, command_data0, command_data1, command_data2);
+            fnpuv_dial_out (decoded_p->devUnitIdx, decoded_p->slot_no, command_data[0], command_data[1], command_data[2]);
           }
           break;
 
         case 22: // line_control
           {
             sim_debug (DBG_TRACE, & fnp_dev, "[%u]    line_control\n", decoded_p->slot_no);
-            word36 command_data0;
-	    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA+0, & command_data0, __func__);
-            word36 command_data1;
-	    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA+1, & command_data1, __func__);
             //word36 command_data2 = decoded_p->smbxp -> command_data [2];
             //sim_printf ("XXX line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", decoded_p->slot_no, command_data0, command_data1, command_data2);
 
 // bisync_line_data.inc.pl1
-            word18 op = getbits36_18 (command_data0, 0);
+            word18 op = getbits36_18 (command_data[0], 0);
 #ifdef FNP2_DEBUG
-            word18 val1 = getbits36_18 (command_data0, 18);
-            word18 val2 = getbits36_18 (command_data1, 0);
+            word18 val1 = getbits36_18 (command_data[0], 18);
+            word18 val2 = getbits36_18 (command_data[1], 0);
 #endif
             //word18 val3 = getbits36_18 (command_data1, 18);
 //sim_printf ("line_control %d op %d. %o\r\n", decoded_p->slot_no, op, op);
@@ -291,9 +284,9 @@ static int wcd (struct decoded_t *decoded_p)
 //word36 command_data2 = decoded_p->smbxp -> command_data [2];
 //sim_printf ("XXX line_control %d %012"PRIo64" %012"PRIo64" %012"PRIo64"\n", decoded_p->slot_no, command_data0, command_data1, command_data2);
                     //word9 len = getbits36_9 (command_data0, 18);
-                    word9 c1 = getbits36_9 (command_data0, 27);
+                    word9 c1 = getbits36_9 (command_data[0], 27);
                     //word9 c2 = getbits36_9 (command_data1, 0);
-                    word9 c3 = getbits36_9 (command_data1, 9);
+                    word9 c3 = getbits36_9 (command_data[1], 9);
                     //word9 c4 = getbits36_9 (command_data1, 18);
 #ifdef FNP2_DEBUG
                     //sim_printf ("    data_len %u\n", len);
@@ -323,9 +316,9 @@ static int wcd (struct decoded_t *decoded_p)
                     sim_printf ("SET_SELECT_ADDR\n");
 #endif
                     //word9 len = getbits36_9 (command_data0, 18);
-                    word9 c1 = getbits36_9 (command_data0, 27);
+                    word9 c1 = getbits36_9 (command_data[0], 27);
                     //word9 c2 = getbits36_9 (command_data1, 0);
-                    word9 c3 = getbits36_9 (command_data1, 9);
+                    word9 c3 = getbits36_9 (command_data[1], 9);
                     //word9 c4 = getbits36_9 (command_data1, 18);
 #ifdef FNP2_DEBUG
                     //sim_printf ("    data_len %u\n", len);
@@ -427,9 +420,7 @@ static int wcd (struct decoded_t *decoded_p)
 
         case 23: // sync_msg_size
           {
-            word36 command_data0;
-	    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA+0, & command_data0, __func__);
-            linep->sync_msg_size = (uint) getbits36_18 (command_data0, 0);
+            linep->sync_msg_size = (uint) getbits36_18 (command_data[0], 0);
             //sim_printf ("sync_msg_size %u\n", sz);
           }
           break;
@@ -439,7 +430,7 @@ static int wcd (struct decoded_t *decoded_p)
             sim_debug (DBG_TRACE, & fnp_dev, "[%u]    set_echnego_break_table\n", decoded_p->slot_no);
             //sim_printf ("fnp set_echnego_break_table\n");
             word36 word6;
-	    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+WORD6, & word6, __func__);
+	    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num,  decoded_p->smbx+WORD6, & word6, false);
             uint data_addr = getbits36_18 (word6, 0);
             uint data_len = getbits36_18 (word6, 18);
 
@@ -500,8 +491,7 @@ static int wcd (struct decoded_t *decoded_p)
         case 30: // input_fc_chars
           {
             sim_debug (DBG_TRACE, & fnp_dev, "[%u]    input_fc_chars\n", decoded_p->slot_no);
-            word36 suspendStr;
-	    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA+0, & suspendStr, __func__);
+            word36 suspendStr = command_data[0];
             linep->inputSuspendStr[0] = getbits36_8 (suspendStr, 10);
             linep->inputSuspendStr[1] = getbits36_8 (suspendStr, 19);
             linep->inputSuspendStr[2] = getbits36_8 (suspendStr, 28);
@@ -513,8 +503,7 @@ static int wcd (struct decoded_t *decoded_p)
               }
             linep->inputSuspendLen = suspendLen;
 
-            word36 resumeStr;
-	    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA+1, & resumeStr, __func__);
+            word36 resumeStr = command_data[1];
             linep->inputResumeStr[0] = getbits36_8 (resumeStr, 10);
             linep->inputResumeStr[1] = getbits36_8 (resumeStr, 19);
             linep->inputResumeStr[2] = getbits36_8 (resumeStr, 28);
@@ -533,8 +522,7 @@ static int wcd (struct decoded_t *decoded_p)
             sim_debug (DBG_TRACE, & fnp_dev, "[%u]    output_fc_chars\n", decoded_p->slot_no);
             //sim_printf ("fnp output_fc_chars\n");
 
-            word36 suspendStr;
-	    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA+0, & suspendStr, __func__);
+            word36 suspendStr = command_data[0];
             linep->outputSuspendStr[0] = getbits36_8 (suspendStr, 10);
             linep->outputSuspendStr[1] = getbits36_8 (suspendStr, 19);
             linep->outputSuspendStr[2] = getbits36_8 (suspendStr, 28);
@@ -546,8 +534,7 @@ static int wcd (struct decoded_t *decoded_p)
               }
             linep->outputSuspendLen = suspendLen;
 
-            word36 resumeStr;
-	    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA+1, & resumeStr, __func__);
+            word36 resumeStr = command_data[1];
             linep->outputResumeStr[0] = getbits36_8 (resumeStr, 10);
             linep->outputResumeStr[1] = getbits36_8 (resumeStr, 19);
             linep->outputResumeStr[2] = getbits36_8 (resumeStr, 28);
@@ -567,10 +554,8 @@ static int wcd (struct decoded_t *decoded_p)
             //sim_printf ("fnp alter parameters\n");
             // The docs insist the subype is in word2, but I think
             // it is in command data...
-	    word36 command_data0;
-	    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA+0, & command_data0, __func__);
-            uint subtype = getbits36_9 (command_data0, 0);
-            uint flag = getbits36_1 (command_data0, 17);
+            uint subtype = getbits36_9 (command_data[0], 0);
+            uint flag = getbits36_1 (command_data[0], 17);
             //sim_printf ("  subtype %d\n", subtype);
             switch (subtype)
               {
@@ -620,9 +605,7 @@ static int wcd (struct decoded_t *decoded_p)
                   {
                     sim_debug (DBG_TRACE, & fnp_dev, "[%u]        alter_parameters listen %u\n", decoded_p->slot_no, flag);
                     //sim_printf ("fnp listen %p %d.%d %d\n", linep->line_client, decoded_p->devUnitIdx,decoded_p->slot_no, flag);
-		    word36 command_data0;
-		    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA+0, & command_data0, __func__);
-                    uint bufsz = getbits36_18 (command_data0, 18);
+                    uint bufsz = getbits36_18 (command_data[0], 18);
                     linep->listen = !! flag;
                     linep->inputBufferSize = bufsz;
 
@@ -652,9 +635,7 @@ static int wcd (struct decoded_t *decoded_p)
                 case 18: // Chngstring
                   {
                     //sim_printf ("fnp Change control string\n");
-		    word36 command_data0;
-                    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA+0, & command_data0, __func__);
-                    uint idx =  getbits36_9 (command_data0, 9);
+                    uint idx =  getbits36_9 (command_data[0], 9);
                     sim_debug (DBG_TRACE, & fnp_dev, "[%u]        alter_parameters chngstring %u\n", decoded_p->slot_no, flag);
                     linep->ctrlStrIdx = idx;
                   }
@@ -707,12 +688,8 @@ static int wcd (struct decoded_t *decoded_p)
 
                 case 25: // Block_xfer
                   {
-                    word36 command_data0;
-                    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA+0, & command_data0, __func__);
-                    uint bufsiz1 = getbits36_18 (command_data0, 18);
-                    word36 command_data1;
-                    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA+1, & command_data1, __func__);
-                    uint bufsiz2 = getbits36_18 (command_data1, 0);
+                    uint bufsiz1 = getbits36_18 (command_data[0], 18);
+                    uint bufsiz2 = getbits36_18 (command_data[1], 0);
                     sim_debug (DBG_TRACE, & fnp_dev, "[%u]        alter_parameters block_xfer %u %u\n", decoded_p->slot_no, bufsiz1, bufsiz2);
                     linep->block_xfer_out_frame_sz = bufsiz1;
                     linep->block_xfer_in_frame_sz = bufsiz2;
@@ -728,9 +705,7 @@ static int wcd (struct decoded_t *decoded_p)
                     // Bits 18...35 contain the size, in characters,
                     // of input buffers to be allocated for the 
                     // channel.
-                    word36 command_data0;
-                    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA+0, & command_data0, __func__);
-                    uint sz =  getbits36_18 (command_data0, 18);
+                    uint sz =  getbits36_18 (command_data[0], 18);
                     sim_debug (DBG_TRACE, & fnp_dev, "[%u]        alter_parameters set_buffer_size %u\n", decoded_p->slot_no, flag);
                     linep->inputBufferSize = sz;
 //sim_printf ("Set_buffer_size %u\n", sz);
@@ -825,20 +800,14 @@ static int wcd (struct decoded_t *decoded_p)
           {
             sim_debug (DBG_TRACE, & fnp_dev, "[%u]    set_delay_table\n", decoded_p->slot_no);
             //sim_printf ("fnp set delay table\n");
-            word36 command_data0;
-	    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA+0, & command_data0, __func__);
-            uint d1 = getbits36_18 (command_data0, 0);
-            uint d2 = getbits36_18 (command_data0, 18);
+            uint d1 = getbits36_18 (command_data[0], 0);
+            uint d2 = getbits36_18 (command_data[0], 18);
 
-            word36 command_data1;
-	    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA+1, & command_data1, __func__);
-            uint d3 = getbits36_18 (command_data1, 0);
-            uint d4 = getbits36_18 (command_data1, 18);
+            uint d3 = getbits36_18 (command_data[1], 0);
+            uint d4 = getbits36_18 (command_data[1], 18);
 
-            word36 command_data2;
-	    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+COMMAND_DATA+2, & command_data2, __func__);
-            uint d5 = getbits36_18 (command_data2, 0);
-            uint d6 = getbits36_18 (command_data2, 18);
+            uint d5 = getbits36_18 (command_data[2], 0);
+            uint d6 = getbits36_18 (command_data[2], 18);
 
             linep->delay_table[0] = d1;
             linep->delay_table[1] = d2;
@@ -1114,7 +1083,7 @@ static int wtx (struct decoded_t *decoded_p)
       }
 // op_code is 012
     word36 data;
-    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+WORD6, &data, __func__);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->smbx+WORD6, & data, false);
     uint dcwAddr = getbits36_18 (data, 0);
     uint dcwCnt = getbits36_9 (data, 27);
     //uint sent = 0;
@@ -1179,11 +1148,11 @@ static void fnp_rtx_input_accepted (struct decoded_t *decoded_p)
 //
 
     word36 word2;
-    iom_core_read (decoded_p->iom_unit, decoded_p->fsmbx+WORD2, & word2, __func__);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fsmbx+WORD2, & word2, false);
     uint n_chars = getbits36_18 (word2, 0);
 
     word36 n_buffers;
-    iom_core_read (decoded_p->iom_unit, decoded_p->fsmbx+N_BUFFERS, & n_buffers, __func__);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fsmbx+N_BUFFERS, & n_buffers, false);
 
     struct t_line * linep = & decoded_p->fudp->MState.line[decoded_p->slot_no];
     unsigned char * data_p = linep -> buffer;
@@ -1194,7 +1163,7 @@ static void fnp_rtx_input_accepted (struct decoded_t *decoded_p)
     for (uint j = 0; j < n_buffers && off < n_chars; j++)
       {
 	word36 data;
-	iom_core_read (decoded_p->iom_unit, decoded_p->fsmbx+DCWS+j, & data, __func__);
+	iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fsmbx+DCWS+j, & data, false);
 	word24 addr = getbits36_24 (data, 0);
 	word12 tally = getbits36_12 (data, 24);
 #if 0
@@ -1236,10 +1205,10 @@ sim_printf ("']\n");
     word1 output_chain_present = 1;
 
     word36 v;
-    iom_core_read_lock (decoded_p->iom_unit, decoded_p->fsmbx+INP_COMMAND_DATA, &v, __func__);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num,  decoded_p->fsmbx+INP_COMMAND_DATA, &v, false);
     l_putbits36_1 (& v, 16, output_chain_present);
     l_putbits36_1 (& v, 17, linep->input_break ? 1 : 0);
-    iom_core_write_unlock (decoded_p->iom_unit, decoded_p->fsmbx+INP_COMMAND_DATA, v, __func__);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num,  decoded_p->fsmbx+INP_COMMAND_DATA, &v, true);
 
     // Mark the line as ready to receive more data
     linep->input_reply_pending = false;
@@ -1258,13 +1227,13 @@ static int interruptL66_CS_to_FNP (struct decoded_t *decoded_p)
     decoded_p->smbx = decoded_p->fudp->mailboxAddress + DN355_SUB_MBXES + mbx*DN355_SUB_MBX_SIZE;
 
     word36 word2;
-    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+WORD2, & word2, __func__);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->smbx+WORD2, & word2, false);
     //uint cmd_data_len = getbits36_9 (word2, 9);
     decoded_p->op_code = getbits36_9 (word2, 18);
     uint io_cmd = getbits36_9 (word2, 27);
 
     word36 word1;
-    iom_core_read (decoded_p->iom_unit, decoded_p->smbx+WORD1, & word1, __func__);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->smbx+WORD1, & word1, false);
     decoded_p->slot_no = getbits36_6 (word1, 12);
 
 #ifdef FNPDBG
@@ -1334,13 +1303,13 @@ static int interruptL66_FNP_to_CS (struct decoded_t *decoded_p)
     sim_printf ("    word5 %012"PRIo64"\n", decoded_p->fsmbxp -> mystery[2]);
 #endif
     word36 word2;
-    iom_core_read (decoded_p->iom_unit, decoded_p->fsmbx+WORD2, & word2, __func__);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fsmbx+WORD2, & word2, false);
     //uint cmd_data_len = getbits36_9 (word2, 9);
     uint op_code = getbits36_9 (word2, 18);
     uint io_cmd = getbits36_9 (word2, 27);
 
     word36 word1;
-    iom_core_read (decoded_p->iom_unit, decoded_p->fsmbx+WORD1, & word1, __func__);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fsmbx+WORD1, & word1, false);
     //uint dn355_no = getbits36_3 (word1, 0);
     //uint is_hsla = getbits36_1 (word1, 8);
     //uint la_no = getbits36_3 (word1, 9);
@@ -1528,7 +1497,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
     //decoded_p->mbxp = (vol struct mailbox *) & M [decoded_p->fudp -> mailboxAddress];
 #endif
     word36 dia_pcw;
-    iom_core_read(iomUnitIdx, decoded_p->fudp->mailboxAddress+DIA_PCW, & dia_pcw, __func__);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fudp->mailboxAddress+DIA_PCW, & dia_pcw, false);
 
 // AN85, pg 13-5
 // When the CS has control information or output data to send
@@ -1644,12 +1613,10 @@ static void processMBX (uint iomUnitIdx, uint chan)
     bool ok = true;
 
     word36 dia_pcw;
-    iom_core_read(iomUnitIdx, fudp->mailboxAddress+DIA_PCW, & dia_pcw, __func__);
-
+    iom_direct_data_service (iomUnitIdx, chan, fudp->mailboxAddress+DIA_PCW, & dia_pcw, false);
     sim_debug (DBG_TRACE, & fnp_dev,
-	       "%s: dia_pcw %012"PRIo64"\n",
-	       __func__, dia_pcw);
-
+	       "%s: mailboxAddress %#o\n",
+	       __func__, fudp->mailboxAddress);
 // Mailbox word 0:
 //
 //   0-17 A
@@ -1870,12 +1837,13 @@ sim_printf ("data xfer??\n");
 #ifdef FNPDBG
 dmpmbx (fudp->mailboxAddress);
 #endif
-        iom_core_write (iomUnitIdx, fudp -> mailboxAddress+DIA_PCW, 0, "fnp_iom_cmd clear dia_pcw");
+        dia_pcw = 0;
+        iom_direct_data_service (iomUnitIdx, chan, fudp -> mailboxAddress+DIA_PCW, & dia_pcw, true);
         putbits36_1 (& bootloadStatus, 0, 1); // real_status = 1
         putbits36_3 (& bootloadStatus, 3, 0); // major_status = BOOTLOAD_OK;
         putbits36_8 (& bootloadStatus, 9, 0); // substatus = BOOTLOAD_OK;
         putbits36_17 (& bootloadStatus, 17, 0); // channel_no = 0;
-        iom_core_write (iomUnitIdx, fudp -> mailboxAddress+CRASH_DATA, bootloadStatus, "fnp_iom_cmd set bootload status");
+	iom_direct_data_service (iomUnitIdx, chan, fudp -> mailboxAddress+CRASH_DATA, & bootloadStatus, true);
       }
     else
       {
@@ -1884,7 +1852,7 @@ dmpmbx (fudp->mailboxAddress);
 #endif
 // 3 error bit (1) unaligned, /* set to "1"b if error on connect */
         putbits36_1 (& dia_pcw, 18, 1); // set bit 18
-        iom_core_write (iomUnitIdx, fudp -> mailboxAddress+DIA_PCW, dia_pcw, "fnp_iom_cmd set error bit");
+        iom_direct_data_service (iomUnitIdx, chan, fudp -> mailboxAddress+DIA_PCW, & dia_pcw, true);
       }
   }
 
