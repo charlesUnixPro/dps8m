@@ -1906,7 +1906,7 @@ void iom_indirect_data_service (uint iom_unit_idx, uint chan, word36 * data,
             if (c == 0)
               break; // read buffer exhausted; returns w/tallyResidue != 0
    
-            if (p -> PCW_63_PTP)
+            if (p -> PCW_63_PTP && p -> PCW_64_PGE)
               {
                 fetch_IDSPTW (iom_unit_idx, (int) chan, daddr);
                 word24 addr = ((word24) (getbits36_14 (p -> PTW_DCW, 4) << 10)) | (daddr & MASK10);
@@ -1936,13 +1936,7 @@ void iom_indirect_data_service (uint iom_unit_idx, uint chan, word36 * data,
         uint c = 0;
         while (p -> tallyResidue)
           {
-// XXX assuming DCW_ABS
-            if (daddr > MASK18) // 256K overflow
-              {
-                sim_warn ("%s 256K ovf\n", __func__); // XXX
-                daddr &= MASK18;
-              }
-            if (p -> PCW_63_PTP)
+            if (p -> PCW_63_PTP  && p -> PCW_64_PGE)
               {
                 fetch_IDSPTW (iom_unit_idx, (int) chan, daddr);
                 word24 addr = ((word24) (getbits36_14 (p -> PTW_DCW, 4) << 10)) | (daddr & MASK10);
@@ -1950,6 +1944,12 @@ void iom_indirect_data_service (uint iom_unit_idx, uint chan, word36 * data,
               }
             else
               {
+// XXX assuming DCW_ABS
+		if (daddr > MASK18) // 256K overflow
+		  {
+		    sim_warn ("%s 256K ovf\n", __func__); // XXX
+		    daddr &= MASK18;
+		  }
 // If PTP is not set, we are in cm1e or cm2e. Both are 'EXT DCW', so
 // we can elide the mode check here.
                 uint daddr2 = daddr | (uint) p -> ADDR_EXT << 18;
