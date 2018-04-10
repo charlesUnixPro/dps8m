@@ -496,7 +496,7 @@ else if (faultNumber == FAULT_ACV)
     cpu . cu . ONC2 = 0;
     cpu . cu . IA = 0;
     cpu . cu . IACHN = 0;
-    cpu . cu . CNCHN = 0;
+    cpu . cu . CNCHN = (faultNumber == FAULT_CON) ? subFault.fault_con_subtype & MASK3 : 0;
 
     // Set control unit 'fault occured during instruction fetch' flag
     cpu . cu . FIF = cpu . cycle == FETCH_cycle ? 1 : 0;
@@ -899,20 +899,21 @@ void doG7Fault (bool allowTR)
       // {
         // sim_debug (DBG_FAULT, & cpu_dev, "doG7Fault %08o\n", cpu . g7Faults);
       // }
+    // According AL39,  Table 7-1. List of Faults, priority of connect is 25
+    // and priority of Timer runout is 26, lower number means higher priority
+     if (cpu.g7Faults & (1u << FAULT_CON))
+       {
+         cpu.g7Faults &= ~(1u << FAULT_CON);
+
+         doFault (FAULT_CON, cpu.g7SubFaults [FAULT_CON], "Connect"); 
+       }
+
      if (allowTR && cpu . g7Faults & (1u << FAULT_TRO))
        {
          cpu . g7Faults &= ~(1u << FAULT_TRO);
 
          //sim_printf("timer runout %12o\n",cpu.PPR.IC);
          doFault (FAULT_TRO, fst_zero, "Timer runout"); 
-       }
-
-     if (cpu.g7Faults & (1u << FAULT_CON))
-       {
-         cpu.g7Faults &= ~(1u << FAULT_CON);
-
-         cpu.cu.CNCHN = cpu.g7SubFaults[FAULT_CON].fault_con_subtype & MASK3;
-         doFault (FAULT_CON, cpu.g7SubFaults [FAULT_CON], "Connect"); 
        }
 
      // Strictly speaking EXF isn't a G7 fault, put if we treat is as one,
