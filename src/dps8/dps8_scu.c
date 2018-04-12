@@ -2311,7 +2311,8 @@ uint scu_get_highest_intr (uint scu_unit_idx)
 #if defined(THREADZ) || defined(LOCKLESS)
     lock_scu ();
 #endif
-    for (int inum = N_CELL_INTERRUPTS - 1; inum >= 0; inum --)
+    // lower numbered cells have higher priority
+    for (int inum = 0; inum < N_CELL_INTERRUPTS; inum ++)
       {
         for (uint pima = 0; pima < N_ASSIGNMENTS; pima ++) // A, B
           {
