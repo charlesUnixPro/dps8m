@@ -202,6 +202,13 @@ typedef enum
     idsTypeW36  // Incoming data is array of word36 
   } idsType;
 
+typedef enum
+  {
+    direct_load,
+    direct_store,
+    direct_read_clear,
+  } iom_direct_data_service_op;
+
 #if 0
 typedef struct pcw_t
   {
@@ -243,6 +250,46 @@ typedef struct pcw_t
 #define IOM_MBX_SCW	2
 #define IOM_MBX_DCW	3
 
+/* From AN70-1 May84
+ *  ... The IOM determines an interrupt
+ * number. (The interrupt number is a five bit value, from 0 to 31.
+ * The high order bits are the interrupt level.
+ *
+ * 0 - system fault
+ * 1 - terminate
+ * 2 - marker
+ * 3 - special
+ *
+ * The low order three bits determines the IOM and IOM channel 
+ * group.
+ *
+ * 0 - IOM 0 channels 32-63
+ * 1 - IOM 1 channels 32-63
+ * 2 - IOM 2 channels 32-63
+ * 3 - IOM 3 channels 32-63
+ * 4 - IOM 0 channels 0-31
+ * 5 - IOM 1 channels 0-31
+ * 6 - IOM 2 channels 0-31
+ * 7 - IOM 3 channels 0-31
+ *
+ *   3  3     3   3   3
+ *   1  2     3   4   5
+ *  ---------------------
+ *  | pic | group | iom |
+ *  -----------------------------
+ *       2       1     2
+ */
+
+enum iomImwPics
+  {
+    imwSystemFaultPic = 0,
+    imwTerminatePic = 1,
+    imwMarkerPic = 2,
+    imwSpecialPic = 3
+  };
+
+int send_general_interrupt (uint iom_unit_idx, uint chan, enum iomImwPics pic);
+
 int send_special_interrupt (uint iom_unit_idx, uint chanNum, uint devCode, 
                             word8 status0, word8 status1);
 //
@@ -266,7 +313,7 @@ int iom_list_service (uint iom_unit_idx, uint chan,
 int send_terminate_interrupt (uint iom_unit_idx, uint chanNum);
 void iom_interrupt (uint scuUnitNum, uint iom_unit_idx);
 void iom_direct_data_service (uint iom_unit_idx, uint chan, word24 daddr, word36 * data,
-                           bool write);
+                           iom_direct_data_service_op op);
 void iom_indirect_data_service (uint iom_unit_idx, uint chan, word36 * data,
                              uint * cnt, bool write);
 void iom_init (void);

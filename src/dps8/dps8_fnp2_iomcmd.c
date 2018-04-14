@@ -95,7 +95,6 @@ struct decoded_t
     word24 smbx;
     word24 fsmbx;
     struct fnpUnitData * fudp;
-    iom_chan_data_t * p;
     uint cell;
   };
 
@@ -159,7 +158,7 @@ static int wcd (struct decoded_t *decoded_p)
 
     word36 command_data[3];
     for (uint i=0; i < 3; i++)
-      iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num,  decoded_p->smbx+COMMAND_DATA + i, & command_data [i], false);
+      iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num,  decoded_p->smbx+COMMAND_DATA + i, & command_data [i], direct_load);
 
     switch (decoded_p->op_code)
       {
@@ -430,7 +429,7 @@ static int wcd (struct decoded_t *decoded_p)
             sim_debug (DBG_TRACE, & fnp_dev, "[%u]    set_echnego_break_table\n", decoded_p->slot_no);
             //sim_printf ("fnp set_echnego_break_table\n");
             word36 word6;
-	    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num,  decoded_p->smbx+WORD6, & word6, false);
+	    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num,  decoded_p->smbx+WORD6, & word6, direct_load);
             uint data_addr = getbits36_18 (word6, 0);
             uint data_len = getbits36_18 (word6, 18);
 
@@ -452,7 +451,7 @@ static int wcd (struct decoded_t *decoded_p)
             else
               {
                 for (uint i = 0; i < echoTableLen; i ++)
-		    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, data_addr + i, & echoTable [i], false);
+		    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, data_addr + i, & echoTable [i], direct_load);
               }
             for (int i = 0; i < 256; i ++)
               {
@@ -945,9 +944,9 @@ word36 pad;
           }
       } // switch decoded_p->op_code
 
-    setTIMW (decoded_p->iom_unit, decoded_p->fudp->mailboxAddress, (int) decoded_p->cell);
+    setTIMW (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fudp->mailboxAddress, (int) decoded_p->cell);
 
-    send_terminate_interrupt (decoded_p->iom_unit, decoded_p->chan_num);
+    send_general_interrupt (decoded_p->iom_unit, decoded_p->chan_num, imwTerminatePic);
 
 #ifdef FNPDBG
 sim_printf ("wcd sets the TIMW??\n");
@@ -1026,7 +1025,7 @@ static void fnp_wtx_output (struct decoded_t *decoded_p, uint tally, uint dataAd
          if (wordOff != lastWordOff)
            {
              lastWordOff = wordOff;
-	     iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, dataAddr + wordOff, & word, false);
+	     iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, dataAddr + wordOff, & word, direct_load);
            }
          byte = getbits36_9 (word, byteOff * 9);
          data [i] = byte & 0377;
@@ -1083,7 +1082,7 @@ static int wtx (struct decoded_t *decoded_p)
       }
 // op_code is 012
     word36 data;
-    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->smbx+WORD6, & data, false);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->smbx+WORD6, & data, direct_load);
     uint dcwAddr = getbits36_18 (data, 0);
     uint dcwCnt = getbits36_9 (data, 27);
     //uint sent = 0;
@@ -1094,7 +1093,7 @@ static int wtx (struct decoded_t *decoded_p)
         // The address of the dcw in the dcw list
         // The dcw
         word36 dcw;
-	iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, dcwAddr + i, & dcw, false);
+	iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, dcwAddr + i, & dcw, direct_load);
 
         // Get the address and the tally from the dcw
         uint dataAddr = getbits36_18 (dcw, 0);
@@ -1106,9 +1105,9 @@ static int wtx (struct decoded_t *decoded_p)
         //sent += tally;
       } // for each dcw
 
-    setTIMW (decoded_p->iom_unit, decoded_p->fudp->mailboxAddress, (int) decoded_p->cell);
+    setTIMW (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fudp->mailboxAddress, (int) decoded_p->cell);
 
-    send_terminate_interrupt (decoded_p->iom_unit, decoded_p->chan_num);
+    send_general_interrupt (decoded_p->iom_unit, decoded_p->chan_num, imwTerminatePic);
 
 #if 0
     //decoded_p->fudp->MState.line[decoded_p->slot_no].send_output = true;
@@ -1148,11 +1147,11 @@ static void fnp_rtx_input_accepted (struct decoded_t *decoded_p)
 //
 
     word36 word2;
-    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fsmbx+WORD2, & word2, false);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fsmbx+WORD2, & word2, direct_load);
     uint n_chars = getbits36_18 (word2, 0);
 
     word36 n_buffers;
-    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fsmbx+N_BUFFERS, & n_buffers, false);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fsmbx+N_BUFFERS, & n_buffers, direct_load);
 
     struct t_line * linep = & decoded_p->fudp->MState.line[decoded_p->slot_no];
     unsigned char * data_p = linep -> buffer;
@@ -1163,7 +1162,7 @@ static void fnp_rtx_input_accepted (struct decoded_t *decoded_p)
     for (uint j = 0; j < n_buffers && off < n_chars; j++)
       {
 	word36 data;
-	iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fsmbx+DCWS+j, & data, false);
+	iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fsmbx+DCWS+j, & data, direct_load);
 	word24 addr = getbits36_24 (data, 0);
 	word12 tally = getbits36_12 (data, 24);
 #if 0
@@ -1193,7 +1192,7 @@ sim_printf ("']\n");
 		putbits36_9 (& v, 18, data_p [off++]);
 	    if (i + 3 < n_chars_in_buf)
 		putbits36_9 (& v, 27, data_p [off++]);
-	    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, addr, & v, true);
+	    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, addr, & v, direct_store);
 	    addr ++;
 	  }
       }
@@ -1205,19 +1204,19 @@ sim_printf ("']\n");
     word1 output_chain_present = 1;
 
     word36 v;
-    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num,  decoded_p->fsmbx+INP_COMMAND_DATA, &v, false);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num,  decoded_p->fsmbx+INP_COMMAND_DATA, &v, direct_load);
     l_putbits36_1 (& v, 16, output_chain_present);
     l_putbits36_1 (& v, 17, linep->input_break ? 1 : 0);
-    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num,  decoded_p->fsmbx+INP_COMMAND_DATA, &v, true);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num,  decoded_p->fsmbx+INP_COMMAND_DATA, &v, direct_store);
 
     // Mark the line as ready to receive more data
     linep->input_reply_pending = false;
     linep->input_break = false;
     linep->nPos = 0;
 
-    setTIMW (decoded_p->iom_unit, decoded_p->fudp->mailboxAddress, (int) decoded_p->cell);
+    setTIMW (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fudp->mailboxAddress, (int) decoded_p->cell);
 
-    send_terminate_interrupt (decoded_p->iom_unit, decoded_p->chan_num);
+    send_general_interrupt (decoded_p->iom_unit, decoded_p->chan_num, imwTerminatePic);
   }
 
 static int interruptL66_CS_to_FNP (struct decoded_t *decoded_p)
@@ -1227,13 +1226,13 @@ static int interruptL66_CS_to_FNP (struct decoded_t *decoded_p)
     decoded_p->smbx = decoded_p->fudp->mailboxAddress + DN355_SUB_MBXES + mbx*DN355_SUB_MBX_SIZE;
 
     word36 word2;
-    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->smbx+WORD2, & word2, false);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->smbx+WORD2, & word2, direct_load);
     //uint cmd_data_len = getbits36_9 (word2, 9);
     decoded_p->op_code = getbits36_9 (word2, 18);
     uint io_cmd = getbits36_9 (word2, 27);
 
     word36 word1;
-    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->smbx+WORD1, & word1, false);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->smbx+WORD1, & word1, direct_load);
     decoded_p->slot_no = getbits36_6 (word1, 12);
 
 #ifdef FNPDBG
@@ -1303,13 +1302,13 @@ static int interruptL66_FNP_to_CS (struct decoded_t *decoded_p)
     sim_printf ("    word5 %012"PRIo64"\n", decoded_p->fsmbxp -> mystery[2]);
 #endif
     word36 word2;
-    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fsmbx+WORD2, & word2, false);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fsmbx+WORD2, & word2, direct_load);
     //uint cmd_data_len = getbits36_9 (word2, 9);
     uint op_code = getbits36_9 (word2, 18);
     uint io_cmd = getbits36_9 (word2, 27);
 
     word36 word1;
-    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fsmbx+WORD1, & word1, false);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fsmbx+WORD1, & word1, direct_load);
     //uint dn355_no = getbits36_3 (word1, 0);
     //uint is_hsla = getbits36_1 (word1, 8);
     //uint la_no = getbits36_3 (word1, 9);
@@ -1483,7 +1482,6 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
   {
     struct decoded_t decoded;
     struct decoded_t *decoded_p = &decoded;
-    decoded_p->p = & iom_chan_data [iomUnitIdx] [chan];
     decoded_p->iom_unit = iomUnitIdx;
     decoded_p->chan_num = chan;
     decoded_p->devUnitIdx = get_ctlr_idx (iomUnitIdx, chan);
@@ -1497,7 +1495,7 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
     //decoded_p->mbxp = (vol struct mailbox *) & M [decoded_p->fudp -> mailboxAddress];
 #endif
     word36 dia_pcw;
-    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fudp->mailboxAddress+DIA_PCW, & dia_pcw, false);
+    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fudp->mailboxAddress+DIA_PCW, & dia_pcw, direct_load);
 
 // AN85, pg 13-5
 // When the CS has control information or output data to send
@@ -1613,10 +1611,10 @@ static void processMBX (uint iomUnitIdx, uint chan)
     bool ok = true;
 
     word36 dia_pcw;
-    iom_direct_data_service (iomUnitIdx, chan, fudp->mailboxAddress+DIA_PCW, & dia_pcw, false);
+    iom_direct_data_service (iomUnitIdx, chan, fudp->mailboxAddress+DIA_PCW, & dia_pcw, direct_load);
     sim_debug (DBG_TRACE, & fnp_dev,
-	       "%s: mailboxAddress %#o\n",
-	       __func__, fudp->mailboxAddress);
+	       "%s: chan %d dia_pcw %012"PRIo64"\n", __func__, chan, dia_pcw);
+
 // Mailbox word 0:
 //
 //   0-17 A
@@ -1719,15 +1717,14 @@ static void processMBX (uint iomUnitIdx, uint chan)
 //        15-23 0
 //
 
-    //uint chanNum = getbits36_6 (dia_pcw, 24);
     uint command = getbits36_6 (dia_pcw, 30);
     word36 bootloadStatus = 0;
 
     if (command == 000) // reset
       {
-#ifdef FNPDBG
-sim_printf ("reset??\n");
-#endif
+	sim_debug (DBG_TRACE, & fnp_dev,
+		   "%s: chan %d reset command\n", __func__, chan);
+	send_general_interrupt (iomUnitIdx, chan, imwTerminatePic);
       }
     else if (command == 072) // bootload
       {
@@ -1838,12 +1835,12 @@ sim_printf ("data xfer??\n");
 dmpmbx (fudp->mailboxAddress);
 #endif
         dia_pcw = 0;
-        iom_direct_data_service (iomUnitIdx, chan, fudp -> mailboxAddress+DIA_PCW, & dia_pcw, true);
+        iom_direct_data_service (iomUnitIdx, chan, fudp -> mailboxAddress+DIA_PCW, & dia_pcw, direct_store);
         putbits36_1 (& bootloadStatus, 0, 1); // real_status = 1
         putbits36_3 (& bootloadStatus, 3, 0); // major_status = BOOTLOAD_OK;
         putbits36_8 (& bootloadStatus, 9, 0); // substatus = BOOTLOAD_OK;
         putbits36_17 (& bootloadStatus, 17, 0); // channel_no = 0;
-	iom_direct_data_service (iomUnitIdx, chan, fudp -> mailboxAddress+CRASH_DATA, & bootloadStatus, true);
+	iom_direct_data_service (iomUnitIdx, chan, fudp -> mailboxAddress+CRASH_DATA, & bootloadStatus, direct_store);
       }
     else
       {
@@ -1852,50 +1849,32 @@ dmpmbx (fudp->mailboxAddress);
 #endif
 // 3 error bit (1) unaligned, /* set to "1"b if error on connect */
         putbits36_1 (& dia_pcw, 18, 1); // set bit 18
-        iom_direct_data_service (iomUnitIdx, chan, fudp -> mailboxAddress+DIA_PCW, & dia_pcw, true);
+        iom_direct_data_service (iomUnitIdx, chan, fudp -> mailboxAddress+DIA_PCW, & dia_pcw, direct_store);
       }
   }
 
 static int fnpCmd (uint iomUnitIdx, uint chan)
   {
     iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
-    p -> stati = 0;
-//sim_printf ("fnp cmd %d\n", p -> IDCW_DEV_CMD);
+
     switch (p -> IDCW_DEV_CMD)
       {
-        case 000: // CMD 00 Request status
-          {
-//sim_printf ("fnp cmd request status\n");
-#if 0
-            if (findPeer ("fnp-d"))
-              p -> stati = 04000;
-            else
-              p -> stati = 06000; // Have status; power off?
-#else
-              p -> stati = 04000;
-#endif
-            sim_debug (DBG_NOTIFY, & fnp_dev, "Request status\n");
-          }
-          break;
-
-        default:
-          {
-            p -> stati = 04501;
-            sim_debug (DBG_ERR, & fnp_dev,
-                       "%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
-#ifdef FNPDBG
-sim_printf ("%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
-#endif
-            break;
-          }
+      case 000: // CMD 00 Request status
+	{
+	  p -> stati = 04000;
+	  processMBX (iomUnitIdx, chan);
+	  // no status_service and no additional terminate interrupt
+	  // ???
+	  return IOM_CMD_PENDING;
+	}
+      default:
+	{
+	  p -> stati = 04501;
+	  sim_debug (DBG_ERR, & fnp_dev,
+		     "%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
+	  return IOM_CMD_NO_DCW;
+	}
       }
-
-    //status_service (iomUnitIdx, chan, false);
-    processMBX (iomUnitIdx, chan);
-
-//sim_printf ("end of list service; sending terminate interrupt\n");
-    //send_terminate_interrupt (iomUnitIdx, chan);
-    return 2; // did command, don't want more
   }
 
 /*

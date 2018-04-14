@@ -228,13 +228,13 @@ t_fnpData fnpData;
 #define l_putbits36_12 putbits36_12
 #define l_putbits36_18 putbits36_18
 
-void setTIMW (uint iom_unit_idx, word24 mailboxAddress, int mbx)
+void setTIMW (uint iom_unit_idx, uint chan, word24 mailboxAddress, int mbx)
   {
     word24 timwAddress = mailboxAddress + TERM_INPT_MPX_WD;
     word36 data;
-    iom_core_read_lock (iom_unit_idx, timwAddress, &data, __func__);
+    iom_direct_data_service (iom_unit_idx, chan, timwAddress, & data, direct_read_clear);
     l_putbits36_1 (& data, (uint) mbx, 1);
-    iom_core_write_unlock (iom_unit_idx, timwAddress, data, __func__);
+    iom_direct_data_service (iom_unit_idx, chan, timwAddress, & data, direct_store);
   }
 
 #ifdef SCUMEM
@@ -298,23 +298,22 @@ sim_printf ("notifyCS mbx %d\n", mbx);
 
     uint ctlr_port_num = 0; // FNPs are single ported
     uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].chan_num;
 
-    word36 data;
-    iom_core_read_lock (iom_unit_idx, fsmbx+WORD1, & data, __func__);
+    word36 data = 0;
     l_putbits36_3 (& data, 0, (word3) fnp_unit_idx); // dn355_no XXX
     l_putbits36_1 (& data, 8, 1); // is_hsla XXX
     l_putbits36_3 (& data, 9, 0); // la_no XXX
     l_putbits36_6 (& data, 12, (word6) lineno); // slot_no XXX
     l_putbits36_18 (& data, 18, 256); // blocks available XXX
-    iom_core_write_unlock(iom_unit_idx, fsmbx+WORD1, data, __func__);
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+WORD1, & data, direct_store);
 
     fudp->fnpMBXinUse [mbx] = true;
 
-    setTIMW (iom_unit_idx, fudp->mailboxAddress, (int)(mbx + 8));
+    setTIMW (iom_unit_idx, chan_num, fudp->mailboxAddress, (int)(mbx + 8));
 
-    uint chan_num = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].chan_num;
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]notifyCS %d %d\n", lineno, mbx, chan_num);
-    send_terminate_interrupt (iom_unit_idx, chan_num);
+    send_general_interrupt (iom_unit_idx, chan_num, imwTerminatePic);
   }
 
 static void fnp_rcd_ack_echnego_init (uint mbx, int fnp_unit_idx, int lineno)
@@ -325,13 +324,13 @@ static void fnp_rcd_ack_echnego_init (uint mbx, int fnp_unit_idx, int lineno)
 
     uint ctlr_port_num = 0; // FNPs are single ported
     uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].chan_num;
 
-    word36 data;
-    iom_core_read_lock (iom_unit_idx, fsmbx+WORD2, & data, __func__);
+    word36 data = 0;
     l_putbits36_9 (& data, 9, 2); // cmd_data_len
     l_putbits36_9 (& data, 18, 70); // op_code ack_echnego_init
     l_putbits36_9 (& data, 27, 1); // io_cmd rcd
-    iom_core_write_unlock (iom_unit_idx, fsmbx+WORD2, data, __func__);
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+WORD2, & data, direct_store);
 
     notifyCS (mbx, fnp_unit_idx, lineno);
   }
@@ -344,13 +343,13 @@ static void fnp_rcd_line_disconnected (uint mbx, int fnp_unit_idx, int lineno)
 
     uint ctlr_port_num = 0; // FNPs are single ported
     uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].chan_num;
 
-    word36 data;
-    iom_core_read_lock (iom_unit_idx, fsmbx+WORD2, & data, __func__);
+    word36 data = 0;
     l_putbits36_9 (& data, 9, 2); // cmd_data_len
     l_putbits36_9 (& data, 18, 0101); // op_code cmd_data_len
     l_putbits36_9 (& data, 27, 1); // io_cmd rcd
-    iom_core_write_unlock (iom_unit_idx, fsmbx+WORD2, data, __func__);
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+WORD2, & data, direct_store);
 
     notifyCS (mbx, fnp_unit_idx, lineno);
   }
@@ -364,16 +363,16 @@ static void fnp_rcd_input_in_mailbox (uint mbx, int fnp_unit_idx, int lineno)
 
     uint ctlr_port_num = 0; // FNPs are single ported
     uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].chan_num;
 
     uint n_chars = max(linep->nPos, 100);
     
-    word36 data;
-//sim_printf ("fnp_rcd_input_in_mailbox nPos %d\n", linep->nPos);
-    iom_core_read_lock (iom_unit_idx, fsmbx+WORD2, & data, __func__);
+//Sim_printf ("fnp_rcd_input_in_mailbox nPos %d\n", linep->nPos);
+    word36 data = 0;
     l_putbits36_9 (& data, 9, (word9) n_chars); // n_chars
     l_putbits36_9 (& data, 18, 0102); // op_code input_in_mailbox
     l_putbits36_9 (& data, 27, 1); // io_cmd rcd
-    iom_core_write_unlock (iom_unit_idx, fsmbx+WORD2, data, __func__);
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+WORD2, & data, direct_store);
 
 // data goes in mystery [0..24]
 
@@ -417,7 +416,7 @@ sim_printf ("\n");
         if (i + 3 < linep->nPos)
           l_putbits36_9 (& v, 27, linep->buffer [i + 3]);
 //sim_printf ("%012"PRIo64"\n", v);
-        iom_core_write(iom_unit_idx, fsmbx+MYSTERY+j, v, __func__);
+	iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+MYSTERY+j, & v, direct_store);
       }
 
 // command_data is at mystery[25]?
@@ -425,10 +424,10 @@ sim_printf ("\n");
     // temporary until the logic is in place XXX
     int outputChainPresent = 0;
 
-    iom_core_read_lock (iom_unit_idx, fsmbx+INP_COMMAND_DATA, & data, __func__);
+    data = 0;
     l_putbits36_1 (& data, 16, (word1) outputChainPresent);
     l_putbits36_1 (& data, 17, linep->input_break ? 1 : 0);
-    iom_core_write_unlock (iom_unit_idx, fsmbx+INP_COMMAND_DATA, data, __func__);
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+INP_COMMAND_DATA, & data, direct_store);
 
 #if 0
     sim_printf ("    %012"PRIo64"\n", smbxp -> word1);
@@ -452,16 +451,16 @@ static void fnp_rcd_line_status  (uint mbx, int fnp_unit_idx, int lineno)
 
     uint ctlr_port_num = 0; // FNPs are single ported
     uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].chan_num;
 
-    word36 data;
-    iom_core_read_lock (iom_unit_idx, fsmbx+WORD2, & data, __func__);
-    l_putbits36_18 (& data, 0, 2); // cmd_data_len
+    word36 data = 0;
+    l_putbits36_9 (& data, 9, 2); // cmd_data_len
     l_putbits36_9 (& data, 18, 0124); // op_code accept_input
     l_putbits36_9 (& data, 27, 1); // io_cmd rcd
-    iom_core_write_unlock (iom_unit_idx, fsmbx+WORD2, data, __func__);
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+WORD2, & data, direct_store);
 
-    iom_core_write (iom_unit_idx, fsmbx+MYSTERY+0, linep->lineStatus0, __func__);
-    iom_core_write (iom_unit_idx, fsmbx+MYSTERY+1, linep->lineStatus1, __func__);
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+MYSTERY+0, & linep->lineStatus0, direct_store);
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+MYSTERY+1, & linep->lineStatus1, direct_store);
 
     notifyCS (mbx, fnp_unit_idx, lineno);
   }
@@ -475,32 +474,32 @@ static void fnp_rcd_accept_input (uint mbx, int fnp_unit_idx, int lineno)
 
     uint ctlr_port_num = 0; // FNPs are single ported
     uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].chan_num;
 
-    word36 data;
     //sim_printf ("accept_input mbx %d fnp_unit_idx %d lineno %d nPos %d\n", mbx, fnp_unit_idx, lineno, linep->nPos);
-    iom_core_read_lock (iom_unit_idx, fsmbx+WORD2, & data, __func__);
+    word36 data = 0;
     l_putbits36_18 (& data, 0, (word18) linep->nPos); // cmd_data_len XXX
     l_putbits36_9 (& data, 18, 0112); // op_code accept_input
     l_putbits36_9 (& data, 27, 1); // io_cmd rcd
-    iom_core_write_unlock (iom_unit_idx, fsmbx+WORD2, data, __func__);
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+WORD2, & data, direct_store);
 
     // AN85 is just wrong. CS expects us to specify the number of buffers
     // and sizes.
 
     data = 1;
-    iom_core_write (iom_unit_idx, fsmbx+N_BUFFERS, data, __func__);
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+N_BUFFERS, & data, direct_store);
     // DCW for buffer (1)
     data = 0;
     l_putbits36_12 (& data, 24, (word12) linep->nPos);
-    iom_core_write (iom_unit_idx, fsmbx+DCWS+0, data, __func__);
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+DCWS+0, & data, direct_store);
 
     // temporary until the logic is in place XXX
     word1 output_chain_present = 1;
 
-    iom_core_read_lock (iom_unit_idx, fsmbx+INP_COMMAND_DATA, & data, __func__);
+    data = 0;
     l_putbits36_1 (& data, 16, (word1) output_chain_present);
     l_putbits36_1 (& data, 17, linep->input_break ? 1 : 0);
-    iom_core_write_unlock (iom_unit_idx, fsmbx+INP_COMMAND_DATA, data, __func__);
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+INP_COMMAND_DATA, & data, direct_store);
 
     fudp -> fnpMBXlineno [mbx] = lineno;
     notifyCS (mbx, fnp_unit_idx, lineno);
@@ -514,13 +513,13 @@ static void fnp_rcd_line_break (uint mbx, int fnp_unit_idx, int lineno)
 
     uint ctlr_port_num = 0; // FNPs are single ported
     uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].chan_num;
 
-    word36 data;
-    iom_core_read_lock (iom_unit_idx, fsmbx+WORD2, & data, __func__);
+    word36 data = 0;
     l_putbits36_9 (& data, 9, 0); // cmd_data_len XXX
     l_putbits36_9 (& data, 18, 0113); // op_code line_break
     l_putbits36_9 (& data, 27, 1); // io_cmd rcd
-    iom_core_write_unlock (iom_unit_idx, fsmbx+WORD2, data, __func__);
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+WORD2, & data, direct_store);
 
     notifyCS (mbx, fnp_unit_idx, lineno);
   }
@@ -536,13 +535,13 @@ sim_printf ("send_output\n");
 
     uint ctlr_port_num = 0; // FNPs are single ported
     uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].chan_num;
 
-    word36 data;
-    iom_core_read_lock (iom_unit_idx, fsmbx+WORD2, & data, __func__);
+    word36 data = 0;
     l_putbits36_9 (& data, 9, 0); // cmd_data_len XXX
     l_putbits36_9 (& data, 18, 0105); // op_code send_output
     l_putbits36_9 (& data, 27, 1); // io_cmd rcd
-    iom_core_write_unlock(iom_unit_idx, fsmbx+WORD2, data, __func__);
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+WORD2, & data, direct_store);
 
     notifyCS (mbx, fnp_unit_idx, lineno);
   }
@@ -556,13 +555,13 @@ static void fnp_rcd_acu_dial_failure (uint mbx, int fnp_unit_idx, int lineno)
 
     uint ctlr_port_num = 0; // FNPs are single ported
     uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].chan_num;
 
-    word36 data;
-    iom_core_read_lock (iom_unit_idx, fsmbx+WORD2, & data, __func__);
+    word36 data = 0;
     l_putbits36_9 (& data, 9, 2); // cmd_data_len XXX
     l_putbits36_9 (& data, 18, 82); // op_code acu_dial_failure
     l_putbits36_9 (& data, 27, 1); // io_cmd rcd
-    iom_core_write_unlock (iom_unit_idx, fsmbx+WORD2, data, __func__);
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+WORD2, & data, direct_store);
 
     notifyCS (mbx, fnp_unit_idx, lineno);
   }
@@ -577,13 +576,13 @@ static void fnp_rcd_accept_new_terminal (uint mbx, int fnp_unit_idx, int lineno)
 
     uint ctlr_port_num = 0; // FNPs are single ported
     uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].chan_num;
 
-    word36 data;
-    iom_core_read_lock (iom_unit_idx, fsmbx+WORD2, & data, __func__);
+    word36 data = 0;
     l_putbits36_9 (& data, 9, 2); // cmd_data_len XXX
     l_putbits36_9 (& data, 18, 64); // op_code accept_new_terminal
     l_putbits36_9 (& data, 27, 1); // io_cmd rcd
-    iom_core_write_unlock (iom_unit_idx, fsmbx+WORD2, data, __func__);
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+WORD2, & data, direct_store);
 
 //  pcb.line_type, dialup_info.line_type = bin (sub_mbx.command_data (1), 17);
 //  if sub_mbx.command_data (2)
@@ -624,11 +623,10 @@ static void fnp_rcd_accept_new_terminal (uint mbx, int fnp_unit_idx, int lineno)
 //     2 pad bit (26) unal;
 
     data = 0;
-    iom_core_write (iom_unit_idx, fsmbx+MYSTERY+0, data, __func__);
-    iom_core_write (iom_unit_idx, fsmbx+MYSTERY+1, data, __func__);
+    l_putbits36_9 (& data, 27, linep->lineType); // ??? 0 instead of 27 ?
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+MYSTERY+0, & data, direct_store);
     data = 0;
-    l_putbits36_9 (& data, 27, linep->lineType);
-    iom_core_write (iom_unit_idx, fsmbx+MYSTERY+0, data, __func__);
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+MYSTERY+1, & data, direct_store);
 
     notifyCS (mbx, fnp_unit_idx, lineno);
   }
@@ -642,13 +640,13 @@ static void fnp_rcd_wru_timeout (uint mbx, int fnp_unit_idx, int lineno)
 
     uint ctlr_port_num = 0; // FNPs are single ported
     uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].chan_num;
 
-    word36 data;
-    iom_core_read_lock (iom_unit_idx, fsmbx+WORD2, & data, __func__);
+    word36 data = 0;
     l_putbits36_9 (& data, 9, 2); // cmd_data_len XXX
     l_putbits36_9 (& data, 18, 0114); // op_code wru_timeout
     l_putbits36_9 (& data, 27, 1); // io_cmd rcd
-    iom_core_write_unlock (iom_unit_idx, fsmbx+WORD2, data, __func__);
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+WORD2, & data, direct_store);
 
     notifyCS (mbx, fnp_unit_idx, lineno);
   }

@@ -397,44 +397,6 @@ typedef enum iomFaultServiceRequest
     iomFsrDPDirStore = (7 << 2) | 1
   } iomFaultServiceRequest;
 
-/* From AN70-1 May84
- *  ... The IOM determines an interrupt
- * number. (The interrupt number is a five bit value, from 0 to 31.
- * The high order bits are the interrupt level.
- *
- * 0 - system fault
- * 1 - terminate
- * 2 - marker
- * 3 - special
- *
- * The low order three bits determines the IOM and IOM channel 
- * group.
- *
- * 0 - IOM 0 channels 32-63
- * 1 - IOM 1 channels 32-63
- * 2 - IOM 2 channels 32-63
- * 3 - IOM 3 channels 32-63
- * 4 - IOM 0 channels 0-31
- * 5 - IOM 1 channels 0-31
- * 6 - IOM 2 channels 0-31
- * 7 - IOM 3 channels 0-31
- *
- *   3  3     3   3   3
- *   1  2     3   4   5
- *  ---------------------
- *  | pic | group | iom |
- *  -----------------------------
- *       2       1     2
- */
-
-enum iomImwPics
-  {
-    imwSystemFaultPic = 0,
-    imwTerminatePic = 1,
-    imwMarkerPic = 2,
-    imwSpecialPic = 3
-  };
-
 #ifdef IO_THREADZ
 __thread uint this_iom_idx;
 __thread uint this_chan_num;
@@ -1836,7 +1798,7 @@ static void fetch_LPWPTW (uint iom_unit_idx, uint chan)
 // reading media.
 
 void iom_direct_data_service (uint iom_unit_idx, uint chan, word24 daddr, word36 * data,
-                           bool write)
+                           iom_direct_data_service_op op)
   {
 #ifdef THREADZ
     // Force mailbox and dma data to be up-to-date 
@@ -1862,10 +1824,15 @@ void iom_direct_data_service (uint iom_unit_idx, uint chan, word24 daddr, word36
 	daddr = ((uint) getbits36_14 (p -> PTW_DCW, 4) << 10) | (daddr & MASK10);
       }
 
-    if (write)
+    if (op == direct_store)
       iom_core_write (iom_unit_idx, daddr, * data, __func__);
-    else
+    else if (op == direct_load)
       iom_core_read (iom_unit_idx, daddr, data, __func__);
+    else if (op == direct_read_clear)
+      {
+	iom_core_read_lock (iom_unit_idx, daddr, data, __func__);
+	iom_core_write_unlock (iom_unit_idx, daddr, 0, __func__);
+      }
 #ifdef THREADZ
     // Force mailbox and dma data to be up-to-date 
     fence ();
@@ -2377,7 +2344,7 @@ sim_warn ("unhandled fetch_and_parse_DCW\n");
  *
  */
 
-static int send_general_interrupt (uint iom_unit_idx, uint chan, enum iomImwPics pic)
+int send_general_interrupt (uint iom_unit_idx, uint chan, enum iomImwPics pic)
   {
 
 #ifdef THREADZ
