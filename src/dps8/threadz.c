@@ -37,7 +37,7 @@ void unlock_simh (void)
 
 // libuv library serializer
 
-static pthread_mutex_t libuv_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t libuv_lock;
 
 void lock_libuv (void)
   {
@@ -752,7 +752,13 @@ void initThreadz (void)
     pthread_mutexattr_settype(& iom_attr, PTHREAD_MUTEX_RECURSIVE);
 
     pthread_mutex_init (& iom_lock, & iom_attr);
-  }
+
+    pthread_mutexattr_t libuv_attr;
+    pthread_mutexattr_init(& libuv_attr);
+    pthread_mutexattr_settype(& libuv_attr, PTHREAD_MUTEX_RECURSIVE);
+
+    pthread_mutex_init (& libuv_lock, & libuv_attr);
+}
 
 // Set up per-thread signal handlers
 

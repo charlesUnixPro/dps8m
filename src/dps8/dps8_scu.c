@@ -2160,9 +2160,11 @@ int scu_cioc (uint cpu_unit_udx, uint scu_unit_idx, uint scu_port_num,
         int iom_unit_idx = portp->dev_idx;
 #if defined(THREADZ) || defined(LOCKLESS)
         unlock_scu ();
-        lock_iom ();
+        //lock_iom ();
+	//lock_libuv ();
         iom_interrupt (scu_unit_idx, (uint) iom_unit_idx);
-        unlock_iom ();
+	//unlock_libuv ();
+        //unlock_iom ();
         return 0;
 #else // ! THREADZ
         if (sys_opts.iom_times.connect <= 0)

@@ -1349,6 +1349,8 @@ int opc_iom_cmd (uint iomUnitIdx, uint chan)
     unlock_libuv ();
 #endif
     // return rc;
+    if (rc == IOM_CMD_PENDING)
+      return rc;
     return IOM_CMD_NO_DCW;
   }
 

@@ -2901,22 +2901,6 @@ static int do_payload_chan (uint iom_unit_idx, uint chan)
 
     iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
 
-
-// Copy the PCW from the connect channel
-
-    {
-      iom_chan_data_t * q = & iom_chan_data[iom_unit_idx][IOM_CONNECT_CHAN];
-      p -> PCW0 =               q -> PCW0;
-      p -> PCW1 =               q -> PCW1;
-      p -> PCW_CHAN =           q -> PCW_CHAN;
-      p -> PCW_AE =             q -> PCW_AE;
-      p -> PCW_PAGE_TABLE_PTR = q -> PCW_PAGE_TABLE_PTR;
-      p -> PCW_63_PTP =         q -> PCW_63_PTP;
-      p -> PCW_64_PGE =         q -> PCW_64_PGE;
-      p -> PCW_65_AUX =         q -> PCW_65_AUX;
-      p -> PCW_21_MSK =         q -> PCW_21_MSK;
-    }
-
     p -> chanMode = cm1;
     p -> LPW_18_RES = 0;
     p -> LPW_20_AE = 0;
@@ -3155,11 +3139,27 @@ int loops = 0;
             // Copy the PCW's DCW to the payload channel
 loops ++;
             iom_chan_data_t * q = & iom_chan_data[iom_unit_idx][p -> PCW_CHAN];
-            q -> DCW = p -> DCW;
+	    if (q -> in_use)
+	      sim_warn ("%s: chan %d in use\n", __func__, p -> PCW_CHAN);
+
+	    q -> PCW0 =               q -> PCW0;
+	    q -> PCW1 =               p -> PCW1;
+	    q -> PCW_CHAN =           p -> PCW_CHAN;
+	    q -> PCW_AE =             p -> PCW_AE;
+	    q -> PCW_PAGE_TABLE_PTR = p -> PCW_PAGE_TABLE_PTR;
+	    q -> PCW_63_PTP =         p -> PCW_63_PTP;
+	    q -> PCW_64_PGE =         p -> PCW_64_PGE;
+	    q -> PCW_65_AUX =         p -> PCW_65_AUX;
+	    q -> PCW_21_MSK =         p -> PCW_21_MSK;
+
+            q -> DCW =                p -> DCW;
+
+	    q -> in_use = true;
+	    q -> start  = true;
 #ifdef IO_THREADZ
             setChnConnect (iom_unit_idx, p -> PCW_CHAN);
 #else
-            do_payload_chan (iom_unit_idx, p -> PCW_CHAN);
+	    //            do_payload_chan (iom_unit_idx, p -> PCW_CHAN);
 #endif
           }
       } while (! ptro);
@@ -3263,6 +3263,9 @@ int send_special_interrupt (uint iom_unit_idx, uint chan, uint devCode,
 int send_terminate_interrupt (uint iom_unit_idx, uint chan)
   {
     status_service (iom_unit_idx, chan, false);
+    if (iom_chan_data [iom_unit_idx] [chan] . in_use == false)
+      sim_warn ("%s: chan %d not in use\n", __func__, chan);
+    iom_chan_data [iom_unit_idx] [chan] . in_use = false;
     send_general_interrupt (iom_unit_idx, chan, imwTerminatePic);
     return 0;
   }
@@ -3373,3 +3376,16 @@ void do_boot (void)
   }
 #endif
 
+void iomProcess()
+  {
+    for (uint i = 0; i < N_IOM_UNITS_MAX; i++)
+      for (uint j = 0; j < MAX_CHANNELS; j++)
+	{
+	  iom_chan_data_t * p = &iom_chan_data [i] [j];
+	  if (p -> start)
+	    {
+	      p -> start = false;
+	      do_payload_chan (i, j);
+	    }
+	}
+  }

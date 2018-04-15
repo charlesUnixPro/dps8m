@@ -190,6 +190,10 @@ typedef volatile struct
 
     bool masked;
 
+    bool in_use;
+
+    bool start;
+
   } iom_chan_data_t;
 
 extern iom_chan_data_t iom_chan_data [N_IOM_UNITS_MAX] [MAX_CHANNELS];
@@ -340,3 +344,4 @@ void iom_core_write_unlock (uint iom_unit_idx, word24 addr, word36 data, UNUSED 
 t_stat boot2 (UNUSED int32 arg, UNUSED const char * buf);
 t_stat iom_unit_reset_idx (uint iom_unit_idx);
 
+void iomProcess(void);
