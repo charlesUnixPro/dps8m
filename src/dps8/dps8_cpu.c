@@ -1801,6 +1801,12 @@ setCPU:;
                 cpu.PPR.PRR = 0;
                 cpu.TPR.TRR = 0;
 
+		sim_debug (DBG_INTR, & cpu_dev, "intr_pair_addr %u flag %d\n", 
+			   intr_pair_addr, cpu.interrupt_flag);
+#ifndef SPEED
+		if_sim_debug (DBG_INTR, & cpu_dev) 
+		    traceInstruction (DBG_INTR);
+#endif
                 // Check that an interrupt is actually pending
                 if (cpu.interrupt_flag)
                   {
@@ -1815,13 +1821,6 @@ setCPU:;
                       {
 
                         CPT (cpt1U, 3); // interrupt identified
-                        sim_debug (DBG_INTR, & cpu_dev, "intr_pair_addr %u\n", 
-                                   intr_pair_addr);
-
-#ifndef SPEED
-                        if_sim_debug (DBG_INTR, & cpu_dev) 
-                          traceInstruction (DBG_INTR);
-#endif
 
                         // get interrupt pair
                         core_read2 (intr_pair_addr,

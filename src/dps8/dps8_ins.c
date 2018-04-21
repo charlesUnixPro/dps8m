@@ -9542,11 +9542,11 @@ elapsedtime ();
  sim_printf (" rcu to %05o:%06o  PSR:IC %05o:%06o\r\n",  (cpu.Yblock8[0]>>18)&MASK15, (cpu.Yblock8[4]>>18)&MASK18, cpu.PPR.PSR, cpu.PPR.IC);
 #endif
 
-    if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+    if_sim_debug (DBG_FAULT, & cpu_dev)
       {
         for (int i = 0; i < 8; i ++)
           {
-            sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU %d %012"PRIo64"\n", i,
+            sim_debug (DBG_FAULT, & cpu_dev, "RCU %d %012"PRIo64"\n", i,
                        cpu.Yblock8[i]);
           }
       }
@@ -9564,7 +9564,7 @@ elapsedtime ();
 
     if (cpu.cu.FLT_INT == 0) // is interrupt, not fault
       {
-        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU interrupt return\n");
+        sim_debug (DBG_FAULT, & cpu_dev, "RCU interrupt return\n");
         longjmp (cpu.jmpMain, JMP_REFETCH);
       }
 
@@ -9643,7 +9643,7 @@ elapsedtime ();
         // communicate; for now, turn it off on refetch so the state
         // machine doesn't become confused.
         cpu.cu.rfi = 0;
-        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU FIF REFETCH return\n");
+        sim_debug (DBG_FAULT, & cpu_dev, "RCU FIF REFETCH return\n");
         longjmp (cpu.jmpMain, JMP_REFETCH);
       }
 
@@ -9651,7 +9651,7 @@ elapsedtime ();
     if (cpu.cu.rfi)
       {
 //sim_printf ( "RCU rfi refetch return\n");
-        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU rfi refetch return\n");
+        sim_debug (DBG_FAULT, & cpu_dev, "RCU rfi refetch return\n");
 // Setting the to RESTART causes ISOLTS 776 to report unexpected
 // trouble faults.
 // Without clearing rfi, ISOLTS pm776-08i LUFs.
@@ -9670,7 +9670,7 @@ elapsedtime ();
     //if (cpu.cu.FI_ADDR == FAULT_MME2)
       {
 //sim_printf ("MME2 restart\n");
-        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU MME2 restart return\n");
+        sim_debug (DBG_FAULT, & cpu_dev, "RCU MME2 restart return\n");
         cpu.cu.rfi = 0;
         longjmp (cpu.jmpMain, JMP_RESTART);
       }
@@ -9686,7 +9686,7 @@ elapsedtime ();
         // machine doesn't become confused.
 
         cpu.cu.rfi = 0;
-        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU rfi/FIF REFETCH return\n");
+        sim_debug (DBG_FAULT, & cpu_dev, "RCU rfi/FIF REFETCH return\n");
         longjmp (cpu.jmpMain, JMP_REFETCH);
       }
 
@@ -9697,7 +9697,7 @@ elapsedtime ();
     if (cpu.cu.FI_ADDR == FAULT_MME2)
       {
 //sim_printf ("MME2 restart\n");
-        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU MME2 restart return\n");
+        sim_debug (DBG_FAULT, & cpu_dev, "RCU MME2 restart return\n");
         cpu.cu.rfi = 1;
         longjmp (cpu.jmpMain, JMP_RESTART);
       }
@@ -9730,7 +9730,7 @@ elapsedtime ();
         cpu.cu.FI_ADDR == FAULT_OFL ||
         cpu.cu.FI_ADDR == FAULT_IPR)
       {
-        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU sync fault return\n");
+        sim_debug (DBG_FAULT, & cpu_dev, "RCU sync fault return\n");
         cpu.cu.rfi = 0;
         longjmp (cpu.jmpMain, JMP_SYNC_FAULT_RETURN);
       }
@@ -9744,7 +9744,7 @@ elapsedtime ();
         cpu.cu.FI_ADDR == FAULT_OFL ||
         cpu.cu.FI_ADDR == FAULT_IPR)
       {
-        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU MMEx sync fault return\n");
+        sim_debug (DBG_FAULT, & cpu_dev, "RCU MMEx sync fault return\n");
         cpu.cu.rfi = 0;
         longjmp (cpu.jmpMain, JMP_SYNC_FAULT_RETURN);
       }
@@ -9759,7 +9759,7 @@ elapsedtime ();
     if (cpu.cu.FI_ADDR == FAULT_LUF)
       {
         cpu.cu.rfi = 1;
-        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU LUF RESTART return\n");
+        sim_debug (DBG_FAULT, & cpu_dev, "RCU LUF RESTART return\n");
         longjmp (cpu.jmpMain, JMP_RESTART);
       }
 
@@ -9776,7 +9776,7 @@ elapsedtime ();
       {
         // If the fault occurred during fetch, handled above.
         cpu.cu.rfi = 1;
-        sim_debug (DBG_TRACEEXT, & cpu_dev, "RCU ACV RESTART return\n");
+        sim_debug (DBG_FAULT, & cpu_dev, "RCU ACV RESTART return\n");
         longjmp (cpu.jmpMain, JMP_RESTART);
       }
     sim_printf ("doRCU dies with unhandled fault number %d\n", cpu.cu.FI_ADDR);
