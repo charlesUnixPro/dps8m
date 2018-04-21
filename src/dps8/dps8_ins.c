@@ -496,6 +496,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "%s sets XSF to %o\n", __func__, cpu.cu.XSF)
 
     // words[1]
 
+#if 0
     cpu.cu.IRO_ISN      = getbits36_1  (words[1],  0);
     cpu.cu.OEB_IOC      = getbits36_1  (words[1],  1);
     cpu.cu.EOFF_IAIM    = getbits36_1  (words[1],  2);
@@ -521,6 +522,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "%s sets XSF to %o\n", __func__, cpu.cu.XSF)
     cpu.cu.CNCHN        = getbits36_3  (words[1], 27);
     cpu.cu.FI_ADDR      = getbits36_5  (words[1], 30);
     cpu.cu.FLT_INT      = getbits36_1  (words[1], 35);
+#endif
 
     // words[2]
 
@@ -579,6 +581,18 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "%s sets XSF to %o\n", __func__, cpu.cu.XSF)
 void cu_safe_restore (void)
   {
     words2scu (cpu.scu_data);
+  }
+
+static void dump_words (word36 * words)
+  {
+    sim_debug (DBG_FAULT, & cpu_dev, "CU: P %d PSR %0#o IC %0#o TSR %0#o\n",
+	       getbits36_1  (words[0], 18), getbits36_15 (words[0], 3), getbits36_18 (words[4], 0),  getbits36_15 (words[2], 3));
+    sim_debug (DBG_FAULT, & cpu_dev, "CU: rf %d rpt %d rd %d rl %d pot %d xde %d xdo %d rfi %d fif %d hold %0#o\n",
+	       getbits36_1  (words[5], 18), getbits36_1  (words[5], 19), getbits36_1  (words[5], 20), getbits36_1  (words[5], 21),
+	       getbits36_1  (words[5], 22), getbits36_1  (words[5], 24), getbits36_1  (words[5], 25), getbits36_1  (words[5], 27),
+	       getbits36_1  (words[5], 29), getbits36_6  (words[5], 30));
+    sim_debug (DBG_FAULT, & cpu_dev, "CU: iwb %012"PRIo64" irodd %012"PRIo64"\n",
+	       words[6], words[7]);
   }
 
 static void du2words (word36 * words)
@@ -9544,11 +9558,12 @@ elapsedtime ();
 
     if_sim_debug (DBG_FAULT, & cpu_dev)
       {
-        for (int i = 0; i < 8; i ++)
-          {
-            sim_debug (DBG_FAULT, & cpu_dev, "RCU %d %012"PRIo64"\n", i,
-                       cpu.Yblock8[i]);
-          }
+	dump_words(cpu.Yblock8);
+        //for (int i = 0; i < 8; i ++)
+        //  {
+        //    sim_debug (DBG_FAULT, & cpu_dev, "RCU %d %012"PRIo64"\n", i,
+        //               cpu.Yblock8[i]);
+        //  }
       }
 
     words2scu (cpu.Yblock8);
@@ -9562,7 +9577,7 @@ elapsedtime ();
       set_addr_mode (ABSOLUTE_mode);
     cpu.PPR.P = saveP;
 
-    if (cpu.cu.FLT_INT == 0) // is interrupt, not fault
+    if (getbits36_1  (cpu.Yblock8[1], 35) == 0) // cpu.cu.FLT_INT is interrupt, not fault
       {
         sim_debug (DBG_FAULT, & cpu_dev, "RCU interrupt return\n");
         longjmp (cpu.jmpMain, JMP_REFETCH);
@@ -9662,12 +9677,13 @@ elapsedtime ();
 // The debug command uses MME2 to implement breakpoints, but it is not
 // clear what it does to the MC data to signal RFI behavior.
 
-    if (cpu.cu.FI_ADDR == FAULT_MME ||
-        cpu.cu.FI_ADDR == FAULT_MME2 ||
-        cpu.cu.FI_ADDR == FAULT_MME3 ||
-        cpu.cu.FI_ADDR == FAULT_MME4 ||
-        cpu.cu.FI_ADDR == FAULT_DRL)
-    //if (cpu.cu.FI_ADDR == FAULT_MME2)
+    word5 fi_addr = getbits36_5  (cpu.Yblock8[1], 30);
+    if (fi_addr == FAULT_MME ||
+        fi_addr == FAULT_MME2 ||
+        fi_addr == FAULT_MME3 ||
+        fi_addr == FAULT_MME4 ||
+        fi_addr == FAULT_DRL)
+    //if (fi_addr == FAULT_MME2)
       {
 //sim_printf ("MME2 restart\n");
         sim_debug (DBG_FAULT, & cpu_dev, "RCU MME2 restart return\n");
@@ -9694,7 +9710,7 @@ elapsedtime ();
 // a JMP_RESTART makes 'debug' work. (The same change to DRL does not make
 // 'gtss' work, tho.
 
-    if (cpu.cu.FI_ADDR == FAULT_MME2)
+    if (fi_addr == FAULT_MME2)
       {
 //sim_printf ("MME2 restart\n");
         sim_debug (DBG_FAULT, & cpu_dev, "RCU MME2 restart return\n");
@@ -9709,14 +9725,14 @@ elapsedtime ();
 // emulator's refetching of operand descriptors after page fault of EIS
 // instruction in absolute mode is breaking the logic.
     // If restarting after a page fault, set went_appending...
-    if (cpu.cu.FI_ADDR == FAULT_DF0 ||
-        cpu.cu.FI_ADDR == FAULT_DF1 ||
-        cpu.cu.FI_ADDR == FAULT_DF2 ||
-        cpu.cu.FI_ADDR == FAULT_DF3 ||
-        cpu.cu.FI_ADDR == FAULT_ACV ||
-        cpu.cu.FI_ADDR == FAULT_F1 ||
-        cpu.cu.FI_ADDR == FAULT_F2 ||
-        cpu.cu.FI_ADDR == FAULT_F3)
+    if (fi_addr == FAULT_DF0 ||
+        fi_addr == FAULT_DF1 ||
+        fi_addr == FAULT_DF2 ||
+        fi_addr == FAULT_DF3 ||
+        fi_addr == FAULT_ACV ||
+        fi_addr == FAULT_F1 ||
+        fi_addr == FAULT_F2 ||
+        fi_addr == FAULT_F3)
       {
         set_went_appending ();
       }
@@ -9726,23 +9742,23 @@ elapsedtime ();
 
 
 #ifdef rework
-    if (cpu.cu.FI_ADDR == FAULT_DIV ||
-        cpu.cu.FI_ADDR == FAULT_OFL ||
-        cpu.cu.FI_ADDR == FAULT_IPR)
+    if (fi_addr == FAULT_DIV ||
+        fi_addr == FAULT_OFL ||
+        fi_addr == FAULT_IPR)
       {
         sim_debug (DBG_FAULT, & cpu_dev, "RCU sync fault return\n");
         cpu.cu.rfi = 0;
         longjmp (cpu.jmpMain, JMP_SYNC_FAULT_RETURN);
       }
 #else
-    if (cpu.cu.FI_ADDR == FAULT_MME ||
-        /* cpu.cu.FI_ADDR == FAULT_MME2 || */
-        cpu.cu.FI_ADDR == FAULT_MME3 ||
-        cpu.cu.FI_ADDR == FAULT_MME4 ||
-        cpu.cu.FI_ADDR == FAULT_DRL ||
-        cpu.cu.FI_ADDR == FAULT_DIV ||
-        cpu.cu.FI_ADDR == FAULT_OFL ||
-        cpu.cu.FI_ADDR == FAULT_IPR)
+    if (fi_addr == FAULT_MME ||
+        /* fi_addr == FAULT_MME2 || */
+        fi_addr == FAULT_MME3 ||
+        fi_addr == FAULT_MME4 ||
+        fi_addr == FAULT_DRL ||
+        fi_addr == FAULT_DIV ||
+        fi_addr == FAULT_OFL ||
+        fi_addr == FAULT_IPR)
       {
         sim_debug (DBG_FAULT, & cpu_dev, "RCU MMEx sync fault return\n");
         cpu.cu.rfi = 0;
@@ -9756,32 +9772,32 @@ elapsedtime ();
 
 
     // LUF can happen during fetch or CAF. If fetch, handled above
-    if (cpu.cu.FI_ADDR == FAULT_LUF)
+    if (fi_addr == FAULT_LUF)
       {
         cpu.cu.rfi = 1;
         sim_debug (DBG_FAULT, & cpu_dev, "RCU LUF RESTART return\n");
         longjmp (cpu.jmpMain, JMP_RESTART);
       }
 
-    if (cpu.cu.FI_ADDR == FAULT_DF0 ||
-        cpu.cu.FI_ADDR == FAULT_DF1 ||
-        cpu.cu.FI_ADDR == FAULT_DF2 ||
-        cpu.cu.FI_ADDR == FAULT_DF3 ||
-        cpu.cu.FI_ADDR == FAULT_ACV ||
-        cpu.cu.FI_ADDR == FAULT_F1 ||
-        cpu.cu.FI_ADDR == FAULT_F2 ||
-        cpu.cu.FI_ADDR == FAULT_F3 ||
-        cpu.cu.FI_ADDR == FAULT_CMD ||
-        cpu.cu.FI_ADDR == FAULT_EXF)
+    if (fi_addr == FAULT_DF0 ||
+        fi_addr == FAULT_DF1 ||
+        fi_addr == FAULT_DF2 ||
+        fi_addr == FAULT_DF3 ||
+        fi_addr == FAULT_ACV ||
+        fi_addr == FAULT_F1 ||
+        fi_addr == FAULT_F2 ||
+        fi_addr == FAULT_F3 ||
+        fi_addr == FAULT_CMD ||
+        fi_addr == FAULT_EXF)
       {
         // If the fault occurred during fetch, handled above.
         cpu.cu.rfi = 1;
         sim_debug (DBG_FAULT, & cpu_dev, "RCU ACV RESTART return\n");
         longjmp (cpu.jmpMain, JMP_RESTART);
       }
-    sim_printf ("doRCU dies with unhandled fault number %d\n", cpu.cu.FI_ADDR);
+    sim_printf ("doRCU dies with unhandled fault number %d\n", fi_addr);
     doFault (FAULT_TRB,
-             (_fault_subtype) {.bits=cpu.cu.FI_ADDR},
+             (_fault_subtype) {.bits=fi_addr},
              "doRCU dies with unhandled fault number");
   }
 

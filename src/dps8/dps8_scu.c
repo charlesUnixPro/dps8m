@@ -1035,7 +1035,7 @@ static void dump_intr_regs (char * ctx, uint scu_unit_idx)
                "%s B: mask %011o enable %o assignment %o\n", 
                ctx, up -> exec_intr_mask [1], up -> mask_enable [1], 
                up -> mask_assignment [1]);
-
+#if 0
     sim_debug (DBG_DEBUG, & scu_dev, "%s enabled ports:", ctx);
     for (uint p = 0; p < N_SCU_PORTS; p ++)
       if (up -> port_enable [p])
@@ -1051,6 +1051,7 @@ static void dump_intr_regs (char * ctx, uint scu_unit_idx)
           sim_debug (DBG_DEBUG, & scu_dev, " %d", i);
         }
     sim_debug (DBG_DEBUG, & scu_dev, "\n");
+#endif
 #if 0
  {
     scu_t * up = scu + scu_unit_idx;
