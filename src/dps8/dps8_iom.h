@@ -344,7 +344,7 @@ void iom_core_write_unlock (uint iom_unit_idx, word24 addr, word36 data, UNUSED 
 t_stat boot2 (UNUSED int32 arg, UNUSED const char * buf);
 t_stat iom_unit_reset_idx (uint iom_unit_idx);
 
-#ifdef IO_ASYNC_PAYLOAD_CHAN
+#if defined(IO_ASYNC_PAYLOAD_CHAN) || defined(IO_ASYNC_PAYLOAD_CHAN_THREAD)
 void iomProcess (void);
 #endif
 

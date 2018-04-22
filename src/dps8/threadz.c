@@ -23,6 +23,12 @@
 
 // simh library serializer
 
+#ifdef IO_ASYNC_PAYLOAD_CHAN_THREAD
+pthread_cond_t iomCond;
+
+pthread_mutex_t iom_start_lock;
+#endif
+
 static pthread_mutex_t simh_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void lock_simh (void)
@@ -758,6 +764,11 @@ void initThreadz (void)
     pthread_mutexattr_settype(& libuv_attr, PTHREAD_MUTEX_RECURSIVE);
 
     pthread_mutex_init (& libuv_lock, & libuv_attr);
+
+#ifdef IO_ASYNC_PAYLOAD_CHAN_THREAD
+    pthread_cond_init (& iomCond, NULL);
+    pthread_mutex_init (& iom_start_lock, NULL);
+#endif
 }
 
 // Set up per-thread signal handlers

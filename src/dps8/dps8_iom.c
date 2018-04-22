@@ -3176,8 +3176,11 @@ loops ++;
 #ifdef IO_THREADZ
 		setChnConnect (iom_unit_idx, p -> PCW_CHAN);
 #else
-#ifndef IO_ASYNC_PAYLOAD_CHAN
+#if !defined(IO_ASYNC_PAYLOAD_CHAN) && !defined(IO_ASYNC_PAYLOAD_CHAN_THREAD)
 		do_payload_chan (iom_unit_idx, p -> PCW_CHAN);
+#endif
+#ifdef IO_ASYNC_PAYLOAD_CHAN_THREAD
+		pthread_cond_signal (& iomCond);
 #endif
 #endif
 	      }
@@ -3403,7 +3406,7 @@ void do_boot (void)
   }
 #endif
 
-#ifdef IO_ASYNC_PAYLOAD_CHAN
+#if defined(IO_ASYNC_PAYLOAD_CHAN) || defined(IO_ASYNC_PAYLOAD_CHAN_THREAD)
 void iomProcess (void)
   {
     for (uint i = 0; i < N_IOM_UNITS_MAX; i++)

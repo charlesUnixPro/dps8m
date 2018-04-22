@@ -2160,12 +2160,12 @@ int scu_cioc (uint cpu_unit_udx, uint scu_unit_idx, uint scu_port_num,
         int iom_unit_idx = portp->dev_idx;
 #if defined(THREADZ) || defined(LOCKLESS)
         unlock_scu ();
-#ifndef	IO_ASYNC_PAYLOAD_CHAN
+#if !defined(IO_ASYNC_PAYLOAD_CHAN) && !defined(IO_ASYNC_PAYLOAD_CHAN_THREAD)
         lock_iom ();
 	lock_libuv ();
 #endif
         iom_interrupt (scu_unit_idx, (uint) iom_unit_idx);
-#ifndef IO_ASYNC_PAYLOAD_CHAN
+#if !defined(IO_ASYNC_PAYLOAD_CHAN) && !defined(IO_ASYNC_PAYLOAD_CHAN_THREAD)
 	unlock_libuv ();
         unlock_iom ();
 #endif

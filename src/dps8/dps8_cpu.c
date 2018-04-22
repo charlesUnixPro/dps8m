@@ -1424,7 +1424,37 @@ t_stat sim_instr (void)
         if (con_unit_idx != -1)
           console_attn_idx (con_unit_idx);
 
+#ifdef IO_ASYNC_PAYLOAD_CHAN_THREAD
+	struct timespec next_time;
+	clock_gettime (CLOCK_REALTIME, & next_time);
+	next_time.tv_nsec += 1000ul * 1000ul;
+	if (next_time.tv_nsec >= 1000ul * 1000ul *1000ul)
+	  {
+	    next_time.tv_nsec -= 1000ul * 1000ul *1000ul;
+	    next_time.tv_sec += 1ul;
+	  }
+	struct timespec new_time;
+	do
+	  {
+	    pthread_mutex_lock (& iom_start_lock);
+	    pthread_cond_timedwait (& iomCond,
+				    & iom_start_lock,
+				    & next_time);
+	    pthread_mutex_unlock (& iom_start_lock);
+	    lock_iom();
+	    lock_libuv ();
+
+	    iomProcess ();
+
+	    unlock_libuv ();
+	    unlock_iom ();
+
+	    clock_gettime (CLOCK_REALTIME, & new_time);
+	  }
+	while ((next_time.tv_sec == new_time.tv_sec) ? (next_time.tv_nsec > new_time.tv_nsec) : (next_time.tv_sec > new_time.tv_sec));
+#else
         usleep (1000); // 1000 us == 1 ms == 1/1000 sec.
+#endif
       }
     while (reason == 0);
 #ifdef HDBG
