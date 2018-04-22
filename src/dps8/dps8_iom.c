@@ -1818,6 +1818,9 @@ void iom_direct_data_service (uint iom_unit_idx, uint chan, word24 daddr, word36
 
     iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
 
+    if (p -> masked)
+      return;
+
     if (p -> PCW_63_PTP && p -> PCW_64_PGE)
       {
 	fetch_DDSPTW (iom_unit_idx, (int) chan, daddr);
@@ -1854,6 +1857,10 @@ void iom_indirect_data_service (uint iom_unit_idx, uint chan, word36 * data,
 #endif
 
     iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
+
+    if (p -> masked)
+      return;
+
     uint tally = p -> DDCW_TALLY;
     uint daddr = p -> DDCW_ADDR;
     if (tally == 0)
@@ -3139,8 +3146,6 @@ int loops = 0;
             // Copy the PCW's DCW to the payload channel
 loops ++;
             iom_chan_data_t * q = & iom_chan_data[iom_unit_idx][p -> PCW_CHAN];
-	    if (q -> in_use)
-	      sim_warn ("%s: chan %d in use\n", __func__, p -> PCW_CHAN);
 
 	    q -> PCW0 =               q -> PCW0;
 	    q -> PCW1 =               p -> PCW1;
@@ -3154,13 +3159,28 @@ loops ++;
 
             q -> DCW =                p -> DCW;
 
-	    q -> in_use = true;
-	    q -> start  = true;
+	    q -> masked = p -> PCW_21_MSK;
+	    if (q -> masked)
+	      {
+		if (q -> in_use)
+		  sim_warn ("%s: chan %d masked while in use\n", __func__, p -> PCW_CHAN);
+		q -> in_use = false;
+		q -> start  = false;
+	      }
+	    else
+	      {
+		if (q -> in_use)
+		  sim_warn ("%s: chan %d connect while in use\n", __func__, p -> PCW_CHAN);
+		q -> in_use = true;
+		q -> start  = true;
 #ifdef IO_THREADZ
-            setChnConnect (iom_unit_idx, p -> PCW_CHAN);
+		setChnConnect (iom_unit_idx, p -> PCW_CHAN);
 #else
-	    //            do_payload_chan (iom_unit_idx, p -> PCW_CHAN);
+#ifndef IO_ASYNC_PAYLOAD_CHAN
+		do_payload_chan (iom_unit_idx, p -> PCW_CHAN);
 #endif
+#endif
+	      }
           }
       } while (! ptro);
 if (loops > 1) sim_printf ("%d loops\r\n", loops);
@@ -3179,6 +3199,8 @@ if (loops > 1) sim_printf ("%d loops\r\n", loops);
 
 int send_marker_interrupt (uint iom_unit_idx, int chan)
   {
+    if (iom_chan_data [iom_unit_idx] [chan] . masked)
+      return(0);
     status_service (iom_unit_idx, (uint) chan, true);
     return send_general_interrupt (iom_unit_idx, (uint) chan, imwMarkerPic);
   }
@@ -3195,6 +3217,9 @@ int send_special_interrupt (uint iom_unit_idx, uint chan, uint devCode,
   {
     uint chanloc = mbxLoc (iom_unit_idx, IOM_SPECIAL_STATUS_CHAN);
 
+    if (iom_chan_data [iom_unit_idx] [chan] . masked)
+      return(0);
+    
 #ifdef THREADZ
     lock_mem_wr ();
 #endif
@@ -3262,6 +3287,8 @@ int send_special_interrupt (uint iom_unit_idx, uint chan, uint devCode,
 
 int send_terminate_interrupt (uint iom_unit_idx, uint chan)
   {
+    if (iom_chan_data [iom_unit_idx] [chan] . masked)
+      return 0;
     status_service (iom_unit_idx, chan, false);
     if (iom_chan_data [iom_unit_idx] [chan] . in_use == false)
       sim_warn ("%s: chan %d not in use\n", __func__, chan);
@@ -3376,7 +3403,8 @@ void do_boot (void)
   }
 #endif
 
-void iomProcess()
+#ifdef IO_ASYNC_PAYLOAD_CHAN
+void iomProcess (void)
   {
     for (uint i = 0; i < N_IOM_UNITS_MAX; i++)
       for (uint j = 0; j < MAX_CHANNELS; j++)
@@ -3389,3 +3417,4 @@ void iomProcess()
 	    }
 	}
   }
+#endif

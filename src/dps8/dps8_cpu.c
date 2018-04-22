@@ -983,7 +983,9 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
     fnpProcessEvent (); 
     consoleProcess ();
     machine_room_process ();
+#ifdef IO_ASYNC_PAYLOAD_CHAN
     iomProcess ();
+#endif
 #ifndef __MINGW64__
     absi_process_event ();
 #endif
