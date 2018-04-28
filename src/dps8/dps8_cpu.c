@@ -2097,6 +2097,7 @@ setCPU:;
                     cpu.cu.xde = cpu.cu.xdo = 0;
                     cpu.isExec = true;
                     cpu.isXED = true;
+		    cpu.apu.lastCycle = INSTRUCTION_FETCH;
                   }
                 // If we have done neither of the XED
                 else if (cpu.cu.xde == 1 && cpu.cu.xdo == 1)
@@ -2107,6 +2108,7 @@ setCPU:;
                     cpu.cu.xdo = 1;
                     cpu.isExec = true;
                     cpu.isXED = true;
+		    cpu.apu.lastCycle = INSTRUCTION_FETCH;
                   }
                 // If we have not yet done the XEC
                 else if (cpu.cu.xde == 1)
@@ -2116,6 +2118,7 @@ setCPU:;
                     cpu.cu.xde = cpu.cu.xdo = 0;
                     cpu.isExec = true;
                     cpu.isXED = false;
+		    cpu.apu.lastCycle = INSTRUCTION_FETCH;
                   }
                 else
                   {
