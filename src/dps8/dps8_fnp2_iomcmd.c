@@ -1752,7 +1752,7 @@ sim_printf ("3270 controller found at unit %u line %u\r\n", devUnitIdx, lineno);
               }
           }
       }
-    fnpuvInit (fnpData.telnet_port);
+    fnpuvInit (fnpData.telnet_port, fnpData.telnet_address);
     fnpuv3270Init (fnpData.telnet3270_port);
   }
 

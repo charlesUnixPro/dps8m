@@ -1449,6 +1449,17 @@ t_stat set_console_port (int32 arg, const char * buf)
     return SCPE_OK;
   }
 
+t_stat set_console_address (int32 arg, const char * buf)
+  {
+    if (arg < 0 || arg >= N_OPC_UNITS_MAX)
+      return SCPE_ARG;
+    if (console_state[arg].console_access.address)
+      free (console_state[arg].console_access.address);
+    console_state[arg].console_access.address = strdup (buf);
+    sim_msg ("Console %d address set to %s\n", arg, console_state[arg].console_access.address);
+    return SCPE_OK;
+  }
+
 t_stat set_console_pw (int32 arg, UNUSED const char * buf)
   {
     if (arg < 0 || arg >= N_OPC_UNITS_MAX)

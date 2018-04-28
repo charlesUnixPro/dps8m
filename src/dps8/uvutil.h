@@ -19,6 +19,7 @@ struct uv_access_s
   {
     uv_loop_t * loop;
     int port;
+    char * address;
 #define PW_SIZE 128
     char pw[PW_SIZE + 1];
     char pwBuffer[PW_SIZE + 1];

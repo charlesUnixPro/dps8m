@@ -399,6 +399,7 @@ void fnpInit(void)
   {
     // 0 sets set service to service_undefined
     memset(& fnpData, 0, sizeof(fnpData));
+    fnpData.telnet_address = strdup ("0.0.0.0");
     fnpData.telnet_port = 6180;
     fnpData.telnet3270_port = 3270;
     fnpTelnetInit ();
@@ -1838,7 +1839,15 @@ t_stat set_fnp_server_port (UNUSED int32 arg, const char * buf)
       return SCPE_ARG;
     fnpData.telnet_port = n;
     sim_printf ("FNP telnet server port set to %d\n", n);
-    //fnpuvInit (telnet_port);
+    return SCPE_OK;
+  }
+
+t_stat set_fnp_server_address (UNUSED int32 arg, const char * buf)
+  {
+    if (fnpData.telnet_address)
+      free (fnpData.telnet_address);
+    fnpData.telnet_address = strdup (buf);
+    sim_printf ("FNP telnet server address set to %s\n", fnpData.telnet_address);
     return SCPE_OK;
   }
 
@@ -1855,7 +1864,7 @@ t_stat set_fnp_3270_server_port (UNUSED int32 arg, const char * buf)
 t_stat fnp_start (UNUSED int32 arg, UNUSED const char * buf)
   {
     sim_printf ("FNP force start\n");
-    fnpuvInit (fnpData.telnet_port);
+    fnpuvInit (fnpData.telnet_port, fnpData.telnet_address);
     fnpuv3270Init (fnpData.telnet3270_port);
     return SCPE_OK;
   }
@@ -2349,6 +2358,6 @@ associate:;
 
 void startFNPListener (void)
   {
-    fnpuvInit (fnpData.telnet_port);
+    fnpuvInit (fnpData.telnet_port, fnpData.telnet_address);
   }
 

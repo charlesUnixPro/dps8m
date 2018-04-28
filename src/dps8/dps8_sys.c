@@ -1534,6 +1534,15 @@ static t_stat set_machine_room_port (UNUSED int32 arg, const char * buf)
     return SCPE_OK;
   }
 
+static t_stat set_machine_room_address (UNUSED int32 arg, const char * buf)
+  {
+    if (sys_opts.machine_room_access.address)
+      free (sys_opts.machine_room_access.address);
+    sys_opts.machine_room_access.address = strdup (buf);
+    sim_msg ("Machine room address set to %s\n", sys_opts.machine_room_access.address);
+    return SCPE_OK;
+  }
+
 static t_stat set_machine_room_pw (UNUSED int32 arg, UNUSED const char * buf)
   {
     if (strlen (buf) == 0)
@@ -3371,14 +3380,18 @@ static CTAB dps8_cmds[] =
     {"CABLE_SHOW",          sys_cable_show,           0, "cable: Show cables\n" , NULL, NULL},
 
     {"FNPSERVERPORT",       set_fnp_server_port,      0, "fnpserverport: Set the FNP dialin telnet port number\n", NULL, NULL},
+    {"FNPSERVERADDRESS",    set_fnp_server_address,   0, "fnpserveraddress: Set the FNP dialin telnet address\n", NULL, NULL},
     {"FNPSERVER3270PORT",   set_fnp_3270_server_port, 0, "fnpserver3270port: Set the FNP 3270 port number\n", NULL, NULL},
 
     {"CONSOLEPORT",         set_console_port,         0, "consoleport: Set the Operator Console port number\n", NULL, NULL},
+    {"CONSOLEADDRESS",      set_console_address,      0, "consoleport: Set the Operator Console address\n", NULL, NULL},
     {"CONSOLEPW",           set_console_pw,           0, "consolepw: Set the Operator Console port password\n", NULL, NULL},
     {"CONSOLEPORT1",        set_console_port,         1, "consoleport1: Set the CPU-B Operator Console port number\n", NULL, NULL},
+    {"CONSOLEADDRESS1",     set_console_address,      1, "consoleport: Set the Operator Console address\n", NULL, NULL},
     {"CONSOLEPW1",          set_console_pw,           1, "consolepw1: Set the CPU-B Operator Console port password\n", NULL, NULL},
 
     {"MACHINEROOMPORT",     set_machine_room_port,    0, "machineroomport: set the machine room port number\n", NULL, NULL},
+    {"MACHINEROOMADDRESS",   set_machine_room_address, 0, "machineroomaddress: set the machine room address\n", NULL, NULL},
     {"MACHINEROOMPW",       set_machine_room_pw,      0, "machineroompW: set the machine room port password\n", NULL, NULL},
 
 //

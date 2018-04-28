@@ -30,7 +30,7 @@ struct uvClientData_s
 
 typedef struct uvClientData_s uvClientData;
 
-void fnpuvInit (int telnet_port);
+void fnpuvInit (int telnet_port, char * telnet_address);
 void fnpuv3270Init (int telnet3270_port);
 void fnpuv3270Poll (bool start);
 void fnpuvProcessEvent (void);

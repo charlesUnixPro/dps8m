@@ -878,7 +878,7 @@ sim_printf ("[FNP emulation: dropping 2nd slave]\n");
 // Setup the dialup listener
 //
 
-void fnpuvInit (int telnet_port)
+void fnpuvInit (int telnet_port, char * telnet_address)
   {
     // Ignore multiple calls; this means that once the listen port is
     // opened, it can't be changed. Fixing this requires non-trivial
@@ -902,8 +902,8 @@ void fnpuvInit (int telnet_port)
 
     // Bind and listen
     struct sockaddr_in addr;
-    sim_printf ("[FNP emulation: listening to %d]\n", telnet_port);
-    uv_ip4_addr ("0.0.0.0", telnet_port, & addr);
+    sim_printf ("[FNP emulation: listening to %s %d]\n", telnet_address, telnet_port);
+    uv_ip4_addr (telnet_address, telnet_port, & addr);
     uv_tcp_bind (& fnpData.du_server, (const struct sockaddr *) & addr, 0);
     int r = uv_listen ((uv_stream_t *) & fnpData.du_server, DEFAULT_BACKLOG, 
                        on_new_connection);
