@@ -983,6 +983,9 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
     fnpProcessEvent (); 
     consoleProcess ();
     machine_room_process ();
+#ifdef IO_ASYNC_PAYLOAD_CHAN
+    iomProcess ();
+#endif
 #ifndef __MINGW64__
     absi_process_event ();
 #endif
@@ -1421,7 +1424,37 @@ t_stat sim_instr (void)
         if (con_unit_idx != -1)
           console_attn_idx (con_unit_idx);
 
+#ifdef IO_ASYNC_PAYLOAD_CHAN_THREAD
+	struct timespec next_time;
+	clock_gettime (CLOCK_REALTIME, & next_time);
+	next_time.tv_nsec += 1000ul * 1000ul;
+	if (next_time.tv_nsec >= 1000ul * 1000ul *1000ul)
+	  {
+	    next_time.tv_nsec -= 1000ul * 1000ul *1000ul;
+	    next_time.tv_sec += 1ul;
+	  }
+	struct timespec new_time;
+	do
+	  {
+	    pthread_mutex_lock (& iom_start_lock);
+	    pthread_cond_timedwait (& iomCond,
+				    & iom_start_lock,
+				    & next_time);
+	    pthread_mutex_unlock (& iom_start_lock);
+	    lock_iom();
+	    lock_libuv ();
+
+	    iomProcess ();
+
+	    unlock_libuv ();
+	    unlock_iom ();
+
+	    clock_gettime (CLOCK_REALTIME, & new_time);
+	  }
+	while ((next_time.tv_sec == new_time.tv_sec) ? (next_time.tv_nsec > new_time.tv_nsec) : (next_time.tv_sec > new_time.tv_sec));
+#else
         usleep (1000); // 1000 us == 1 ms == 1/1000 sec.
+#endif
       }
     while (reason == 0);
 #ifdef HDBG
@@ -2063,6 +2096,7 @@ setCPU:;
                     cpu.cu.xde = cpu.cu.xdo = 0;
                     cpu.isExec = true;
                     cpu.isXED = true;
+		    cpu.apu.lastCycle = INSTRUCTION_FETCH;
                   }
                 // If we have done neither of the XED
                 else if (cpu.cu.xde == 1 && cpu.cu.xdo == 1)
@@ -2073,6 +2107,7 @@ setCPU:;
                     cpu.cu.xdo = 1;
                     cpu.isExec = true;
                     cpu.isXED = true;
+		    cpu.apu.lastCycle = INSTRUCTION_FETCH;
                   }
                 // If we have not yet done the XEC
                 else if (cpu.cu.xde == 1)
@@ -2082,6 +2117,7 @@ setCPU:;
                     cpu.cu.xde = cpu.cu.xdo = 0;
                     cpu.isExec = true;
                     cpu.isXED = false;
+		    cpu.apu.lastCycle = INSTRUCTION_FETCH;
                   }
                 else
                   {

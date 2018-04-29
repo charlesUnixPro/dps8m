@@ -1735,6 +1735,7 @@ static void processMBX (uint iomUnitIdx, uint chan)
 #if defined(THREADZ) || defined(LOCKLESS)
         unlock_libuv ();
 #endif
+	send_general_interrupt (iomUnitIdx, chan, imwTerminatePic);
         fudp -> fnpIsRunning = true;
       }
     else if (command == 071) // interrupt L6
@@ -1834,6 +1835,7 @@ sim_printf ("data xfer??\n");
 #ifdef FNPDBG
 dmpmbx (fudp->mailboxAddress);
 #endif
+	iom_chan_data [iomUnitIdx] [chan] . in_use = false;
         dia_pcw = 0;
         iom_direct_data_service (iomUnitIdx, chan, fudp -> mailboxAddress+DIA_PCW, & dia_pcw, direct_store);
         putbits36_1 (& bootloadStatus, 0, 1); // real_status = 1
@@ -1848,6 +1850,7 @@ dmpmbx (fudp->mailboxAddress);
         dmpmbx (fudp->mailboxAddress);
 #endif
 // 3 error bit (1) unaligned, /* set to "1"b if error on connect */
+	iom_chan_data [iomUnitIdx] [chan] . in_use = false;
         putbits36_1 (& dia_pcw, 18, 1); // set bit 18
         iom_direct_data_service (iomUnitIdx, chan, fudp -> mailboxAddress+DIA_PCW, & dia_pcw, direct_store);
       }

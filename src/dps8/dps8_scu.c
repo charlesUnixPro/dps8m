@@ -1578,7 +1578,7 @@ t_stat scu_sscr (uint scu_unit_idx, UNUSED uint cpu_unit_udx,
             scu_t * up = scu + scu_unit_idx;
             for (int maskab = 0; maskab < 2; maskab ++)
               {
-                word9 mask = ((maskab ? regq : rega) >> 27) & 0377;
+                word9 mask = ((maskab ? regq : rega) >> 27) & 0777;
                 if (mask & 01)
                   {
                     up -> mask_enable [maskab] = 0;
@@ -1883,7 +1883,7 @@ t_stat scu_rscr (uint scu_unit_idx, uint cpu_unit_udx, word18 addr,
                 if (up -> mask_enable [i])
                   {
                     maskab [i] = (2 << (N_SCU_PORTS - 1 - 
-                                        up -> mask_assignment [i])) & 0377;
+                                        up -> mask_assignment [i])) & 0777;
                   }
                 else
                   maskab [i] = 0001;
@@ -2161,9 +2161,15 @@ int scu_cioc (uint cpu_unit_udx, uint scu_unit_idx, uint scu_port_num,
         int iom_unit_idx = portp->dev_idx;
 #if defined(THREADZ) || defined(LOCKLESS)
         unlock_scu ();
+#if !defined(IO_ASYNC_PAYLOAD_CHAN) && !defined(IO_ASYNC_PAYLOAD_CHAN_THREAD)
         lock_iom ();
+	lock_libuv ();
+#endif
         iom_interrupt (scu_unit_idx, (uint) iom_unit_idx);
+#if !defined(IO_ASYNC_PAYLOAD_CHAN) && !defined(IO_ASYNC_PAYLOAD_CHAN_THREAD)
+	unlock_libuv ();
         unlock_iom ();
+#endif
         return 0;
 #else // ! THREADZ
         if (sys_opts.iom_times.connect <= 0)

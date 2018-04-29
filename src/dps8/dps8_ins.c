@@ -138,7 +138,12 @@ static void writeOperands (void)
 
         PNL (cpu.prepare_state |= ps_SAW);
 
+#ifdef LOCKLESSXXX
+	// gives warnings as another lock is aquired in between
+	core_write_unlock (cpu.char_word_address, cpu.ou.character_data, __func__);
+#else
         Write (cpu.ou.character_address, cpu.ou.character_data, OPERAND_STORE);
+#endif
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "%s IT wrote char/byte %012"PRIo64" to %06o "
