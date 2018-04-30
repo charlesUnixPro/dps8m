@@ -901,10 +901,12 @@ void doG7Fault (bool allowTR)
       // }
     // According AL39,  Table 7-1. List of Faults, priority of connect is 25
     // and priority of Timer runout is 26, lower number means higher priority
+    lock_scu ();
      if (cpu.g7Faults & (1u << FAULT_CON))
        {
          cpu.g7Faults &= ~(1u << FAULT_CON);
 
+	 unlock_scu ();
          doFault (FAULT_CON, cpu.g7SubFaults [FAULT_CON], "Connect"); 
        }
 
@@ -913,7 +915,8 @@ void doG7Fault (bool allowTR)
          cpu . g7Faults &= ~(1u << FAULT_TRO);
 
          //sim_printf("timer runout %12o\n",cpu.PPR.IC);
-         doFault (FAULT_TRO, fst_zero, "Timer runout"); 
+         unlock_scu ();
+	 doFault (FAULT_TRO, fst_zero, "Timer runout"); 
        }
 
      // Strictly speaking EXF isn't a G7 fault, put if we treat is as one,
@@ -923,31 +926,37 @@ void doG7Fault (bool allowTR)
        {
          cpu . g7Faults &= ~(1u << FAULT_EXF);
 
-         doFault (FAULT_EXF, fst_zero, "Execute fault");
+	 unlock_scu ();
+	 doFault (FAULT_EXF, fst_zero, "Execute fault");
        }
 
 #ifdef L68
      if (cpu.FFV_faults & 1u)  // FFV + 2 OC TRAP
        {
          cpu.FFV_faults &= ~1u;
+	 unlock_scu ();
          do_FFV_fault (1, "OC TRAP");
        }
      if (cpu.FFV_faults & 2u)  // FFV + 4 CU HISTORY OVERFLOW TRAP
        {
          cpu.FFV_faults &= ~2u;
+	 unlock_scu ();
          do_FFV_fault (2, "CU HIST OVF TRAP");
        }
      if (cpu.FFV_faults & 4u)  // FFV + 6 ADR TRAP
        {
          cpu.FFV_faults &= ~4u;
+	 unlock_scu ();
          do_FFV_fault (3, "ADR TRAP");
        }
 #endif
+     unlock_scu ();
      doFault (FAULT_TRB, (_fault_subtype) {.bits=cpu.g7Faults}, "Dazed and confused in doG7Fault");
   }
 
 void advanceG7Faults (void)
   {
+    lock_scu ();
     cpu.g7Faults |= cpu.g7FaultsPreset;
     cpu.g7FaultsPreset = 0;
     //memcpy (cpu.g7SubFaults, cpu.g7SubFaultsPreset, sizeof (cpu.g7SubFaults));
@@ -955,5 +964,6 @@ void advanceG7Faults (void)
     cpu.FFV_faults |= cpu.FFV_faults_preset;
     cpu.FFV_faults_preset = 0;
 #endif
+    unlock_scu ();
   }
 

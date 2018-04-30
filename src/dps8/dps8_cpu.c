@@ -2317,8 +2317,12 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                     else
                       {
                         if (cpu.switches.tro_enable)
-                          setG7fault (current_running_cpu_idx, FAULT_TRO,
-                                      fst_zero);
+			  {
+			    lock_scu ();
+			    setG7fault (current_running_cpu_idx, FAULT_TRO,
+					fst_zero);
+			    unlock_scu ();
+			  }
                         cpu.rTR = 0;
                       }
 #endif // !NO_TIMEWAIT
@@ -2399,10 +2403,9 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                     CPT (cpt1U, 12); // cu restored
                     set_cpu_cycle (FETCH_cycle);
                     clearFaultCycle ();
-                    // cu_safe_restore should have restored CU.IWB, so
+                    // cu_safe_restore calls decode_instruction ()
                     // we can determine the instruction length.
                     // decode_instruction() restores ci->info->ndes
-                    decode_instruction (IWB_IRODD, & cpu.currentInstruction);
 
                     cpu.PPR.IC += ci->info->ndes;
                     cpu.PPR.IC ++;
@@ -2465,7 +2468,6 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                 // cu_safe_restore should have restored CU.IWB, so
                 // we can determine the instruction length.
                 // decode_instruction() restores ci->info->ndes
-                decode_instruction (IWB_IRODD, & cpu.currentInstruction);
 
                 cpu.PPR.IC += ci->info->ndes;
                 cpu.PPR.IC ++;
@@ -3430,14 +3432,6 @@ void decode_instruction (word36 inst, DCDstruct * p)
             memset (& cpu.currentEISinstruction, 0,
                     sizeof (cpu.currentEISinstruction)); 
           }
-      }
-
-    // Save the RFI
-    p->restart = cpu.cu.rfi != 0;
-    cpu.cu.rfi = 0;
-    if (p->restart)
-      {
-        sim_debug (DBG_TRACE, & cpu_dev, "restart\n");
       }
   }
 

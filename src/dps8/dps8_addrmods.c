@@ -349,7 +349,7 @@ void updateIWB (word18 addr, word6 tag)
 void do_caf (void)
   {
 //#ifdef CA_REWORK
-    if (getbits36_1 (cpu.cu.IWB, 29) == 0)
+    if (cpu.currentInstruction.b29 == 0)
       {
         cpu.TPR.CA = GET_ADDR (IWB_IRODD);
       }
