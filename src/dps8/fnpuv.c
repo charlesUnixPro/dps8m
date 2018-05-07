@@ -301,8 +301,14 @@ void close_connection (uv_stream_t* stream)
             struct t_line * linep = & fnpUnitData[p->fnpno].MState.line[p->lineno];
             linep -> line_disconnected = true;
             linep -> listen = false;
+            if (linep->inBuffer)
+              free (linep->inBuffer);
+            linep->inBuffer = NULL;
+            linep->inSize = 0;
+            linep->inUsed = 0;
+            linep->nPos = 0;
           }
-        else
+        else // ! p-assoc
           {
             sim_printf ("[FNP emulation: DISCONNECT]\n");
           }
@@ -325,10 +331,10 @@ void close_connection (uv_stream_t* stream)
                 //free (linep->client);
                 linep->client = NULL;
               }
-          }
+          } // if (p->assoc)
         free (stream->data);
         stream->data = NULL;
-      }
+      } // if (p)
     if (! uv_is_closing ((uv_handle_t *) stream))
       uv_close ((uv_handle_t *) stream, fuv_close_cb);
   }
