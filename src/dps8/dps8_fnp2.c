@@ -338,7 +338,8 @@ static int wcd (void)
           {
             if (linep->client && linep->service == service_login)
               fnpuv_start_writestr (linep->client, "Multics has disconnected you\r\n");
-            linep -> line_disconnected = true;
+            //linep -> line_disconnected = true;
+            linep -> line_disconnected = SEND_DISC_DELAY;
             linep -> listen = false;
             if (linep->client)
               {
@@ -2069,9 +2070,13 @@ void fnpProcessEvent (void)
 
             else if (linep -> line_disconnected)
               {
-                fnp_rcd_line_disconnected (mbx, fnpno, lineno);
-                linep -> line_disconnected = false;
-                linep -> listen = false;
+                linep -> line_disconnected --;
+                if (linep -> line_disconnected == 0)
+                  {
+                    fnp_rcd_line_disconnected (mbx, fnpno, lineno);
+                    //linep -> line_disconnected = false;
+                    linep -> listen = false;
+                  }
               }
 
             // Need to send an 'wru_timeout' command to CS?

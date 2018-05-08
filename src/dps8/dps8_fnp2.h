@@ -103,7 +103,9 @@ typedef struct
 #endif
         uint send_output;
         bool accept_new_terminal;
-        bool line_disconnected;
+        //bool line_disconnected;
+#define SEND_DISC_DELAY 200
+        uint line_disconnected;
         bool ack_echnego_init;
         bool acu_dial_failure;
         bool wru_timeout;
