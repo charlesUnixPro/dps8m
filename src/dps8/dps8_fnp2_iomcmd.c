@@ -130,7 +130,7 @@ struct decoded_t
     struct dn355_submailbox vol * smbxp;
     struct fnp_submailbox vol * fsmbxp;
     struct mailbox vol * mbxp;
-    struct fnpUnitData * fudp;
+    struct fnpUnitData_s * fudp;
     iom_chan_data_t * p;
     uint cell;
   };
@@ -227,8 +227,7 @@ static int wcd (void)
             if (linep->line_client && linep->service == service_login)
               fnpuv_start_writestr (linep->line_client, (unsigned char *) "Multics has disconnected you\r\n");
 #ifdef DISC_DELAY
-            // '1' --> disconnect on next poll
-            linep -> line_disconnected = 1;
+            linep -> line_disconnected = DISC_DELAY;
 #else
             linep -> line_disconnected = true;
 #endif
@@ -1759,7 +1758,7 @@ sim_printf ("3270 controller found at unit %u line %u\r\n", devUnitIdx, lineno);
 static void processMBX (uint iomUnitIdx, uint chan)
   {
     uint fnp_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
-    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
+    struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
 
 // 60132445 FEP Coupler EPS
 // 2.2.1 Control Intercommunication

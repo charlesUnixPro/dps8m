@@ -197,7 +197,7 @@ struct ibm3270ctlr_s
 #define MAX_DEV_NAME_LEN 64
 
 // Indexed by sim unit number
-struct fnpUnitData
+struct fnpUnitData_s
   {
     uint mailboxAddress;
     bool fnpIsRunning;
@@ -211,7 +211,7 @@ struct fnpUnitData
 
 typedef struct s_fnpData
   {
-    struct fnpUnitData fnpUnitData [N_FNP_UNITS_MAX];
+    struct fnpUnitData_s fnpUnitData [N_FNP_UNITS_MAX];
     struct ibm3270ctlr_s ibm3270ctlr [IBM3270_CONTROLLERS_MAX];
     char * telnet_address;
     int telnet_port;
@@ -271,6 +271,7 @@ void process3270Input (uv_tcp_t * client, unsigned char * buf, ssize_t nread);
 void set_3270_write_complete (uv_tcp_t * client);
 void startFNPListener (void);
 void setTIMW (uint iom_unit_idx, uint mailboxAddress, int mbx);
+void reset_line (struct t_line * linep);
 #ifdef SCUMEM
 uint get_scu_unit_idx_iom (uint fnp_unit_idx, word24 addr, word24 * offset);
 static inline void * fnp_M_addr (int fnp_unit_idx, uint addr)

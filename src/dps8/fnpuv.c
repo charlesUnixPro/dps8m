@@ -331,8 +331,18 @@ void close_connection (uv_stream_t* stream)
             else
               {
                 sim_printf ("[FNP emulation: DISCONNECT %c.d%03d]\n", p->fnpno+'a', p->lineno);
+#ifdef DISC_DELAY
+                linep -> line_disconnected = DISC_DELAY;
+#else
                 linep -> line_disconnected = true;
+#endif
                 linep -> listen = false;
+                if (linep->inBuffer)
+                  free (linep->inBuffer);
+                linep->inBuffer = NULL;
+                linep->inSize = 0;
+                linep->inUsed = 0;
+                linep->nPos = 0;
               }
             if (linep->line_client)
               {
@@ -837,40 +847,7 @@ sim_printf ("[FNP emulation: dropping 2nd slave]\n");
         uvClientData * p = (uvClientData *) server->data;
         struct t_line * linep = & fnpData.fnpUnitData[p->fnpno].MState.line[p->lineno];
         linep->accept_new_terminal = true;
-        linep->was_CR = false;
-        //linep->listen = false;
-        linep->inputBufferSize = 0;
-        linep->ctrlStrIdx = 0;
-        linep->breakAll = false;
-        linep->handleQuit = false;
-        linep->echoPlex = false;
-        linep->crecho = false;
-        linep->lfecho = false;
-        linep->tabecho = false;
-        linep->replay = false;
-        linep->polite = false;
-        linep->prefixnl = false;
-        linep->eight_bit_out = false;
-        linep->eight_bit_in = false;
-        linep->odd_parity = false;
-        linep->output_flow_control = false;
-        linep->input_flow_control = false;
-        linep->block_xfer_in_frame_sz = 0;
-        linep->block_xfer_out_frame_sz = 0;
-        memset (linep->delay_table, 0, sizeof (linep->delay_table));
-        linep->inputSuspendLen = 0;
-        memset (linep->inputSuspendStr, 0, sizeof (linep->inputSuspendStr));
-        linep->inputResumeLen = 0;
-        memset (linep->inputResumeStr, 0, sizeof (linep->inputResumeStr));
-        linep->outputSuspendLen = 0;
-        memset (linep->outputSuspendStr, 0, sizeof (linep->outputSuspendStr));
-        linep->outputResumeLen = 0;
-        memset (linep->outputResumeStr, 0, sizeof (linep->outputResumeStr));
-        linep->frame_begin = 0;
-        linep->frame_end = 0;
-        memset (linep->echnego, 0, sizeof (linep->echnego));
-        linep->echnego_len = 0;
-        linep->line_break = false;
+        reset_line (linep);
       }
   }
 
