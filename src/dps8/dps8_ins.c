@@ -461,8 +461,8 @@ static void scu2words (word36 *words)
 	}
 	rewrite_table[] =
 	  {
-	    { { 0000001401001, 0000000000041, 0000001000100, 0000000000000, 0101175000220, 0000006000000, 0100006235100, 0100006235100 },
-	      { 0000001601001, 0000000000041, 0000001000100, 0000000000000, 0101175000220, 0000006000000, 0100006235100, 0100006235100 },
+	    { { 0000000401001, 0000000000041, 0000001000100, 0000000000000, 0101175000220, 0000006000000, 0100006235100, 0100006235100 },
+	      { 0000000601001, 0000000000041, 0000001000100, 0000000000000, 0101175000220, 0000006000000, 0100006235100, 0100006235100 },
 	      "pa870 test-01a dir. fault",
 	    },
 	    { { 0000000451001, 0000000000041, 0000001000100, 0000000000000, 0000000200200, 0000003000000, 0200003716100, 0000005755000 },
@@ -2007,7 +2007,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction !restart !EIS sets XSF t
                     cpu.TPR.TRR = 0;
                     cpu.RSDWH_R1 = 0;
                   }
-                cpu.cu.XSF = 0;
+                //cpu.cu.XSF = 0;
 sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n", cpu.cu.XSF);
                 //clr_went_appending ();
               }
@@ -6743,6 +6743,9 @@ static t_stat doInstruction (void)
           if (sim_deb_mme_cntdwn > 0)
             sim_deb_mme_cntdwn --;
 #endif
+#ifdef ISOLTS
+	  cpu.TPR.CA = GET_ADDR (IWB_IRODD);
+#endif
           // Causes a fault that fetches and executes, in absolute mode, the
           // instruction pair at main memory location C+4. The value of C is
           // obtained from the FAULT VECTOR switches on the processor
@@ -9875,6 +9878,20 @@ elapsedtime ();
         fi_addr == FAULT_CMD ||
         fi_addr == FAULT_EXF)
       {
+	if (fi_addr == FAULT_DF0 ||
+	    fi_addr == FAULT_DF1 ||
+	    fi_addr == FAULT_DF2 ||
+	    fi_addr == FAULT_DF3 ||
+	    fi_addr == FAULT_ACV ||
+	    fi_addr == FAULT_F1 ||
+	    fi_addr == FAULT_F2 ||
+	    fi_addr == FAULT_F3)
+	  {
+	    if (TST_I_ABS == 0)
+	      {
+		cpu.cu.XSF = 1;
+	      }
+	  }
         // If the fault occurred during fetch, handled above.
         cpu.cu.rfi = 1;
         sim_debug (DBG_FAULT, & cpu_dev, "RCU ACV RESTART return\n");

@@ -2097,6 +2097,9 @@ setCPU:;
                     cpu.isExec = true;
                     cpu.isXED = true;
 		    cpu.apu.lastCycle = INSTRUCTION_FETCH;
+		    cpu.cu.XSF = 0;
+		    cpu.TPR.TSR = cpu.PPR.PSR;
+		    cpu.TPR.TRR = cpu.PPR.PRR;
                   }
                 // If we have done neither of the XED
                 else if (cpu.cu.xde == 1 && cpu.cu.xdo == 1)
@@ -2108,6 +2111,9 @@ setCPU:;
                     cpu.isExec = true;
                     cpu.isXED = true;
 		    cpu.apu.lastCycle = INSTRUCTION_FETCH;
+		    cpu.cu.XSF = 0;
+		    cpu.TPR.TSR = cpu.PPR.PSR;
+		    cpu.TPR.TRR = cpu.PPR.PRR;
                   }
                 // If we have not yet done the XEC
                 else if (cpu.cu.xde == 1)
@@ -2118,6 +2124,9 @@ setCPU:;
                     cpu.isExec = true;
                     cpu.isXED = false;
 		    cpu.apu.lastCycle = INSTRUCTION_FETCH;
+		    cpu.cu.XSF = 0;
+		    cpu.TPR.TSR = cpu.PPR.PSR;
+		    cpu.TPR.TRR = cpu.PPR.PRR;
                   }
                 else
                   {
@@ -2130,6 +2139,8 @@ setCPU:;
                     cpu.cu.XSF = 0;
 sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                     cpu.cu.TSN_VALID [0] = 0;
+		    cpu.TPR.TSR = cpu.PPR.PSR;
+		    cpu.TPR.TRR = cpu.PPR.PRR;
                     PNL (cpu.prepare_state = ps_PIA);
                     PNL (L68_ (cpu.INS_FETCH = true;))
                     fetchInstruction (cpu.PPR.IC);
