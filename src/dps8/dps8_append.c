@@ -1276,6 +1276,8 @@ word24 do_append_cycle (processor_cycle_type thisCycle, word36 * data,
                      i->opcodeX ) ||
                     ((i->opcode == 0557 || i->opcode == 0257) &&
                      ! i->opcodeX);
+#else
+    const bool nomatch = true;
 #endif
 
     processor_cycle_type lastCycle = cpu.apu.lastCycle;
@@ -1305,82 +1307,11 @@ word24 do_append_cycle (processor_cycle_type thisCycle, word36 * data,
 // START APPEND
     word3 n = 0; // PRn to be saved to TSN_PRNO
 
-    if (thisCycle == APU_DATA_READ ||
-#ifdef LOCKLESS
-	thisCycle == APU_DATA_RMW ||
-#endif
-        thisCycle == APU_DATA_STORE)
-      goto A;
-
-#ifdef LOCKLESS
-    //    // locked RMW
-    //if (thisCycle == OPERAND_RMW)
-    //  goto A;
-#endif
-
-    // R/M/W?
-    if (thisCycle == OPERAND_STORE &&
-        lastCycle == OPERAND_READ)
-      goto A;
-
-    if (lastCycle == INDIRECT_WORD_FETCH || cpu.cu.XSF)
-      goto A;
-
-    if (lastCycle == RTCD_OPERAND_FETCH)
-      goto A;
-
-    //if (lastCycle != INSTRUCTION_FETCH && i->a)
-    //if (lastCycle != INSTRUCTION_FETCH && cpu.cu.TSN_VALID[0])
-    //if (lastCycle != INSTRUCTION_FETCH)
-    if (thisCycle != INSTRUCTION_FETCH)
+    if (thisCycle == INSTRUCTION_FETCH)
       {
-#if 0
-        for (uint tsn = 0; tsn < 3; tsn ++)
-          {
-            if (cpu.cu.TSN_VALID[tsn])
-              {
-                PNL (L68_ (cpu.apu.state |= apu_ESN_SNR;))
-                word3 n = cpu.cu.TSN_PRNO[tsn];
-                CPTUR (cptUsePRn + n);
-                if (cpu.PAR[n].RNR > cpu.PPR.PRR)
-                  {
-                    cpu.TPR.TRR = cpu.PAR[n].RNR;
-                  }
-                else
-                 {
-                    cpu.TPR.TRR = cpu.PPR.PRR;
-                 }
-                cpu.TPR.TSR = cpu.PAR[n].SNR;
-                DBGAPP ("TSN TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
-                goto A;
-              }
-          }
-#else
-        //if (cpu.isb29)
-        if (i->b29)
-          {
-            PNL (L68_ (cpu.apu.state |= apu_ESN_SNR;))
-            n = GET_PRN(IWB_IRODD);
-            CPTUR (cptUsePRn + n);
-            if (cpu.PAR[n].RNR > cpu.PPR.PRR)
-              {
-                cpu.TPR.TRR = cpu.PAR[n].RNR;
-              }
-            else
-             {
-                cpu.TPR.TRR = cpu.PPR.PRR;
-             }
-            cpu.TPR.TSR = cpu.PAR[n].SNR;
-            cpu.cu.XSF = 1;
-sim_debug (DBG_TRACEEXT, & cpu_dev, "do_append_cycle bit 29 sets XSF to 1\n");
-            DBGAPP ("TSN TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
-            goto A;
-          }
-#endif
+	cpu.TPR.TRR = cpu.PPR.PRR;
+	cpu.TPR.TSR = cpu.PPR.PSR;
       }
-
-    cpu.TPR.TRR = cpu.PPR.PRR;
-    cpu.TPR.TSR = cpu.PPR.PSR;
 
     // If the rtcd instruction is executed with the processor in absolute
     // mode with bit 29 of the instruction word set OFF and without
@@ -1422,45 +1353,10 @@ A:;
 
     DBGAPP ("do_append_cycle(A)\n");
     
-#ifndef WAM
-    if (cpu.DSBR.U == 0)
-      {
-        fetch_dsptw (cpu.TPR.TSR);
-        
-        if (! cpu.PTW0.DF)
-         {
-          doFault (FAULT_DF0 + cpu.PTW0.FC, fst_zero, 
-                   "do_append_cycle(A): PTW0.F == 0");
-         }
-        
-        if (! cpu.PTW0.U)
-         {
-          modify_dsptw (cpu.TPR.TSR);
-          }
-        
-        fetch_psdw (cpu.TPR.TSR);
-      }
-    else
-      {
-        fetch_nsdw (cpu.TPR.TSR); // load SDW0 from descriptor segment table.
-      }
-
-    if (cpu.SDW0.DF == 0)
-      {
-        if (thisCycle != ABSA_CYCLE)
-          {
-            DBGAPP ("do_append_cycle(A): SDW0.F == 0! "
-                    "Initiating directed fault\n");
-            // initiate a directed fault ...
-            doFault (FAULT_DF0 + cpu.SDW0.FC, fst_zero, "SDW0.F == 0");
-          }
-      }
-
-    load_sdwam (cpu.TPR.TSR, true); // load SDW0 POINTER, always bypass SDWAM
-#else
-
+#ifdef WAM
     // is SDW for C(TPR.TSR) in SDWAM?
     if (nomatch || ! fetch_sdw_from_sdwam (cpu.TPR.TSR))
+#endif
       {
         // No
         DBGAPP ("do_append_cycle(A):SDW for segment %05o not in SDWAM\n",
@@ -1498,7 +1394,6 @@ A:;
         // load SDWAM .....
         load_sdwam (cpu.TPR.TSR, nomatch);
       }
-#endif
     DBGAPP ("do_append_cycle(A) R1 %o R2 %o R3 %o E %o\n",
             cpu.SDW->R1, cpu.SDW->R2, cpu.SDW->R3, cpu.SDW->E);
 
@@ -1530,26 +1425,21 @@ A:;
       }
 
     // lastCycle == RTCD_OPERAND_FETCH
-    // if a fault happens between the RTCD_OPERAND_FETCH and the
-    // INSTRUCTION_FETCH of the next instruction - the chance
-    // is quite high (about 35 time for just booting  and
-    // shutting down multics) -- a stored lastCycle is useless.
-    // the opcode is preserved accross faults and only replaced
-    // as the INSTRUCTION_FETCH succeeds.
+    // if a fault happens between the RTCD_OPERAND_FETCH and the INSTRUCTION_FETCH
+    // of the next instruction - this happens about 35 time for just booting  and
+    // shutting down multics -- a stored lastCycle is useless.
+    // the opcode is preserved accross faults and only replaced as the
+    // INSTRUCTION_FETCH succeeds.
     if (thisCycle == INSTRUCTION_FETCH &&
 	i->opcode == 0610  && ! i->opcodeX)
-	{
-	  if (lastCycle != RTCD_OPERAND_FETCH)
-	    sim_warn ("%s: lastCycle %s != RTCD_OPERAND_FETCH \n", __func__, str_pct (lastCycle));
-	  goto C;
-	}
-      else if (lastCycle == RTCD_OPERAND_FETCH)
-	sim_warn ("%s: lastCycle == RTCD_OPERAND_FETCH opcode %0#o\n", __func__, i->opcode);
+      goto C;
+    else if (lastCycle == RTCD_OPERAND_FETCH)
+      sim_warn ("%s: lastCycle == RTCD_OPERAND_FETCH opcode %0#o\n", __func__, i->opcode);
 
-//
-// B1: The operand is one of: an instruction, data to be read or data to be
-//     written
-//
+    //
+    // B1: The operand is one of: an instruction, data to be read or data to be
+    //     written
+    //
 
     // Is OPCODE call6?
     if (thisCycle == OPERAND_READ && (i->info->flags & CALL6_INS))
@@ -1576,9 +1466,7 @@ A:;
 
     // Transfer or instruction fetch?
     if (thisCycle == INSTRUCTION_FETCH ||
-        ((i->info->flags & TRANSFER_INS) &&
-         thisCycle != INDIRECT_WORD_FETCH &&
-         thisCycle != RTCD_OPERAND_FETCH))
+	(thisCycle == OPERAND_READ && (i->info->flags & TRANSFER_INS)))
       goto F;
 
     //
@@ -1666,11 +1554,12 @@ A:;
 C:;
     DBGAPP ("do_append_cycle(C)\n");
 
-    // last Cycle was RTCD operand fetch
-    // check ring bracket for instruction fetch
-    //   after rtcd instruction
     //
-    // (rtcd operand)
+    // check ring bracket for instruction fetch after rtcd instruction
+    //
+    //   allow outbound transfers (cpu.TPR.TRR >= cpu.PPR.PRR)
+    //
+
     // C(TPR.TRR) < C(SDW.R1)?
     // C(TPR.TRR) > C(SDW.R2)?
     if (cpu.TPR.TRR < cpu.SDW->R1 ||
@@ -1694,6 +1583,9 @@ C:;
         PNL (L68_ (cpu.apu.state |= apu_FLT;))
         FMSG (acvFaultsMsg = "acvFaults(C) SDW.E";)
       }
+    if (cpu.TPR.TRR > cpu.PPR.PRR)
+      sim_warn ("rtcd: outbound call cpu.TPR.TRR %d cpu.PPR.PRR %d\n",
+		cpu.TPR.TRR, cpu.PPR.PRR);
     // C(TPR.TRR) >= C(PPR.PRR)
     if (cpu.TPR.TRR < cpu.PPR.PRR)
       {
@@ -1736,9 +1628,10 @@ D:;
 
 E:;
 
-//
-// E: CALL6
-//
+    //
+    // check ring bracket for instruction fetch after call6 instruction
+    //   (this is the call6 read operand)
+    //
 
     DBGAPP ("do_append_cycle(E): CALL6\n");
     DBGAPP ("do_append_cycle(E): E %o G %o PSR %05o TSR %05o CA %06o "
@@ -1767,8 +1660,8 @@ E:;
       goto E1;
     
     // XXX This doesn't seem right
-// EB is word 15; masking address makes no sense; rather 0-extend EB
-// Fixes ISOLTS 880-01
+    // EB is word 15; masking address makes no sense; rather 0-extend EB
+    // Fixes ISOLTS 880-01
     if (cpu.TPR.CA >= (word18) cpu.SDW->EB)
       {
         DBGAPP ("ACV7\n");
@@ -1846,7 +1739,9 @@ F:;
     PNL (L68_ (cpu.apu.state |= apu_PIAU;))
     DBGAPP ("do_append_cycle(F): transfer or instruction fetch\n");
 
+    //
     // check ring bracket for instruction fetch
+    //
 
     // C(TPR.TRR) < C(SDW .R1)?
     // C(TPR.TRR) > C(SDW .R2)?
@@ -1923,28 +1818,14 @@ G:;
     // is PTW for C(TPR.CA) in PTWAM?
     
     DBGAPP ("do_append_cycle(G) CA %06o\n", cpu.TPR.CA);
-#ifndef WAM
-    fetch_ptw (cpu.SDW, cpu.TPR.CA);
-    if (! cpu.PTW0.DF)
-      {
-        // cpu.TPR.CA = address;
-        if (thisCycle != ABSA_CYCLE)
-          {
-            // initiate a directed fault
-            doFault (FAULT_DF0 + cpu.PTW0.FC, fst_zero, "PTW0.F == 0");
-          }
-      } 
-    // load PTW0 POINTER, always bypass PTWAM
-    loadPTWAM (cpu.SDW->POINTER, cpu.TPR.CA, true);
-
-#else
+#ifdef WAM
     if (nomatch ||
         ! fetch_ptw_from_ptwam (cpu.SDW->POINTER, cpu.TPR.CA))  //TPR.CA))
+#endif
       {
         fetch_ptw (cpu.SDW, cpu.TPR.CA);
         if (! cpu.PTW0.DF)
           {
-            // cpu.TPR.CA = address;
             if (thisCycle != ABSA_CYCLE)
               {
                 // initiate a directed fault
@@ -1954,7 +1835,6 @@ G:;
           }
         loadPTWAM (cpu.SDW->POINTER, cpu.TPR.CA, nomatch); // load PTW0 to PTWAM
       }
-#endif
     
     // Prepage mode?
     // check for "uninterruptible" EIS instruction
@@ -2089,11 +1969,12 @@ HI:
       goto K;
 
     // is OPCODE call6?
-    if ((! (thisCycle == INSTRUCTION_FETCH)) && i->info->flags & CALL6_INS)
+    if (thisCycle == OPERAND_READ && (i->info->flags & CALL6_INS))
       goto N;
 
     // Transfer or instruction fetch?
-    if (thisCycle == INSTRUCTION_FETCH || (i->info->flags & TRANSFER_INS))
+    if (thisCycle == INSTRUCTION_FETCH ||
+	(thisCycle == OPERAND_READ && (i->info->flags & TRANSFER_INS)))
       goto L;
 
     // APU data movement?
@@ -2206,7 +2087,7 @@ L:; // Transfer or instruction fetch
     DBGAPP ("do_append_cycle(L)\n");
 
     // Is OPCODE tspn?
-    if ((! (thisCycle == INSTRUCTION_FETCH)) && i->info->flags & TSPN_INS)
+    if (thisCycle == OPERAND_READ && (i->info->flags & TSPN_INS))
       {
         //word3 n;
         if (i->opcode <= 0273)
@@ -2228,6 +2109,8 @@ L:; // Transfer or instruction fetch
         HDBGRegPR (n);
       }
 
+    // lastCycle == RTCD_OPERAND_FETCH
+    
     if (thisCycle == INSTRUCTION_FETCH &&
         i->opcode == 0610  && ! i->opcodeX)
       {
@@ -2369,7 +2252,6 @@ Exit:;
     DBGAPP ("do_append_cycle (Exit) TRR %o TSR %05o TBR %02o CA %06o\n",
             cpu.TPR.TRR, cpu.TPR.TSR, cpu.TPR.TBR, cpu.TPR.CA);
 
-    //cpu.TPR.CA = address;
     return finalAddress;    // or 0 or -1???
   }
 
