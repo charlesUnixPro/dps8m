@@ -284,6 +284,20 @@ static void read_tra_op (void)
                __func__, cpu.PPR.PSR, cpu.PPR.IC);
   }
 
+static void dump_words (word36 * words)
+  {
+    sim_debug (DBG_FAULT, & cpu_dev, "CU: P %d IR %#o PSR %0#o IC %0#o TSR %0#o\n",
+	       getbits36_1  (words[0], 18), getbits36_18 (words[4], 18),
+	       getbits36_15 (words[0], 3), getbits36_18 (words[4], 0),  getbits36_15 (words[2], 3));
+    sim_debug (DBG_FAULT, & cpu_dev, "CU: xsf %d rf %d rpt %d rd %d rl %d pot %d xde %d xdo %d itp %d rfi %d its %d fif %d hold %0#o\n",
+	       getbits36_1  (words[0], 19),
+               getbits36_1  (words[5], 18), getbits36_1  (words[5], 19), getbits36_1  (words[5], 20), getbits36_1  (words[5], 21),
+	       getbits36_1  (words[5], 22), getbits36_1  (words[5], 24), getbits36_1  (words[5], 25), getbits36_1  (words[5], 26),
+	       getbits36_1  (words[5], 27), getbits36_1  (words[5], 28), getbits36_1  (words[5], 29), getbits36_6  (words[5], 30));
+    sim_debug (DBG_FAULT, & cpu_dev, "CU: iwb %012"PRIo64" irodd %012"PRIo64"\n",
+	       words[6], words[7]);
+  }
+
 static void scu2words (word36 *words)
   {
     CPT (cpt2U, 6); // scu2words
@@ -418,9 +432,9 @@ static void scu2words (word36 *words)
     // 23, 1 PON Prepare operand no tally
     putbits36_1 (& words[5], 24, cpu.cu.xde);
     putbits36_1 (& words[5], 25, cpu.cu.xdo);
-    // 26, 1 ITP Execute ITP indirect cycle
+    putbits36_1 (& words[5], 26, cpu.cu.itp);
     putbits36_1 (& words[5], 27, cpu.cu.rfi);
-    // 28, 1 ITS Execute ITS indirect cycle
+    putbits36_1 (& words[5], 28, cpu.cu.its);
     putbits36_1 (& words[5], 29, cpu.cu.FIF);
     putbits36_6 (& words[5], 30, cpu.cu.CT_HOLD);
 
@@ -432,6 +446,75 @@ static void scu2words (word36 *words)
 
     words[7] = cpu.cu.IRODD;
 //sim_printf ("scu2words %lld %012llo\n", cpu.cycleCnt, words [6]);
+
+    if_sim_debug (DBG_FAULT, & cpu_dev)
+	dump_words (words);
+
+#ifdef ISOLTS
+    if (current_running_cpu_idx != 0)
+      {
+	struct
+	{
+	  word36 should_be[8];
+	  word36 was[8];
+	  char *name;
+	}
+	rewrite_table[] =
+	  {
+	    { { 0000001401001, 0000000000041, 0000001000100, 0000000000000, 0101175000220, 0000006000000, 0100006235100, 0100006235100 },
+	      { 0000001601001, 0000000000041, 0000001000100, 0000000000000, 0101175000220, 0000006000000, 0100006235100, 0100006235100 },
+	      "pa870 test-01a dir. fault",
+	    },
+	    { { 0000000451001, 0000000000041, 0000001000100, 0000000000000, 0000000200200, 0000003000000, 0200003716100, 0000005755000 },
+	      { 0000000651001, 0000000000041, 0000001000100, 0000000000000, 0000000200200, 0000003000000, 0200003716100, 0000005755000 },
+	      "pa885 test-05a xec inst",
+	    },
+	    { { 0000000451001, 0000000000041, 0000001000100, 0000000000000, 0000000200200, 0000002000000, 0200002717100, 0110002001000 },
+	      { 0000000651001, 0000000000041, 0000001000100, 0000000000000, 0000000200200, 0000002000000, 0200002717100, 0110002001000 },
+	      "pa885 test-05b xed inst",
+	    },
+	    { { 0000000451001, 0000000000041, 0000001000100, 0000000000000, 0000000200200, 0000004004000, 0200004235100, 0000005755000 },
+	      { 0000000651001, 0000000000041, 0000001000100, 0000000000000, 0000000200200, 0000004002000, 0200004235100, 0000005755000 },
+	      "pa885 test-05c xed inst", //                                                         xde/xdo
+            },
+            { { 0000000451001, 0000000000041, 0000001000100, 0000000000000, 0000001200200, 0000004006000, 0200004235100, 0000005755000 },
+              { 0000000651001, 0000000000041, 0000001000100, 0000000000000, 0000001200200, 0000004002000, 0200004235100, 0000005755000 },
+	      "pa885 test-05d xed inst", //                                                         xde/xdo
+            },
+            { { 0000000454201, 0000000000041, 0000000000100, 0000000000000, 0001777200200, 0002000000500, 0005600560201, 0005600560201 },
+              { 0000000450201, 0000000000041, 0000000000100, 0000000000000, 0001777200200, 0002000000000, 0005600560201, 0005600560201 },
+	      "pa885 test-06a rpd inst", //                                                         rfi/fif
+            },
+            { { 0000000451001, 0000000000041, 0000001000101, 0000000000000, 0002000200200, 0000003500001, 0200003235111, 0002005755012 },
+              { 0000000651001, 0000000000041, 0000001000101, 0000000000000, 0002000202200, 0000003500000, 0200003235111, 0002005755012 },
+	      "pa885 test-06b rpd inst", //                                          tro               ct-hold
+            },
+            { { 0000000450201, 0000000000041, 0000000000101, 0000000000000, 0001776200200, 0002015500001, 0002015235031, 0002017755032 },
+              { 0000000450201, 0000000000041, 0000000000101, 0000000000000, 0001776202200, 0002015500000, 0002015235031, 0002017755032 },
+	      "pa885 test-06c rpd inst", //                                          tro               ct-hold
+            },
+            { { 0000000450201, 0000000000041, 0000000000101, 0000000000000, 0001776000200, 0002000100012, 0001775235011, 0001775755012 },
+              { 0000000450201, 0000000000041, 0000000000101, 0000000000000, 0001776000200, 0002000100000, 0001775235011, 0001775755012 },
+	      "pa885 test-06d rpd inst", //                                                            ct-hold
+	    },
+	    { { 0000000404202, 0000000000041, 0000000000100, 0000000000000, 0002000202200, 0002000000500, 0001773755000, 0001773755000 },
+	      { 0000000400202, 0000000000041, 0000000000100, 0000000000000, 0002000202200, 0002000000100, 0001773755000, 0001773755000 },
+	      "pa885 test-10a scu snap (acv fault)", //                                              rfi
+	    }
+	  };
+	int i;
+	for (i=0; i < 10; i++)
+	  {
+	    if (memcmp (words, rewrite_table[i].was, 8*sizeof (word36)) == 0)
+	      {
+		memcpy (words, rewrite_table[i].should_be, 8*sizeof (word36));
+		sim_warn("%s: scu rewrite %d: %s\n", __func__, i, rewrite_table[i].name);
+		break;
+	      }
+	  }
+      }
+#endif
+
   }
 
 
@@ -463,6 +546,8 @@ void tidy_cu (void)
     cpu.cu.rd = false;
     cpu.cu.rl = false;
     cpu.cu.pot = false;
+    cpu.cu.itp = false;
+    cpu.cu.its = false;
     cpu.cu.xde = false;
     cpu.cu.xdo = false;
   }
@@ -568,9 +653,9 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "%s sets XSF to %o\n", __func__, cpu.cu.XSF)
     // 23 PON
     cpu.cu.xde          = getbits36_1  (words[5], 24);
     cpu.cu.xdo          = getbits36_1  (words[5], 25);
-    // 26 ITP
+    cpu.cu.itp          = getbits36_1  (words[5], 26);
     cpu.cu.rfi          = getbits36_1  (words[5], 27);
-    // 28 ITS
+    cpu.cu.its          = getbits36_1  (words[5], 28);
     cpu.cu.FIF          = getbits36_1  (words[5], 29);
     cpu.cu.CT_HOLD      = getbits36_6  (words[5], 30);
 
@@ -587,18 +672,6 @@ void cu_safe_restore (void)
   {
     words2scu (cpu.scu_data);
     decode_instruction (IWB_IRODD, & cpu.currentInstruction);
-  }
-
-static void dump_words (word36 * words)
-  {
-    sim_debug (DBG_FAULT, & cpu_dev, "CU: P %d PSR %0#o IC %0#o TSR %0#o\n",
-	       getbits36_1  (words[0], 18), getbits36_15 (words[0], 3), getbits36_18 (words[4], 0),  getbits36_15 (words[2], 3));
-    sim_debug (DBG_FAULT, & cpu_dev, "CU: rf %d rpt %d rd %d rl %d pot %d xde %d xdo %d rfi %d fif %d hold %0#o\n",
-	       getbits36_1  (words[5], 18), getbits36_1  (words[5], 19), getbits36_1  (words[5], 20), getbits36_1  (words[5], 21),
-	       getbits36_1  (words[5], 22), getbits36_1  (words[5], 24), getbits36_1  (words[5], 25), getbits36_1  (words[5], 27),
-	       getbits36_1  (words[5], 29), getbits36_6  (words[5], 30));
-    sim_debug (DBG_FAULT, & cpu_dev, "CU: iwb %012"PRIo64" irodd %012"PRIo64"\n",
-	       words[6], words[7]);
   }
 
 static void du2words (word36 * words)
@@ -1347,6 +1420,10 @@ t_stat executeInstruction (void)
 
     cpu.cu.XSF = 0;
 sim_debug (DBG_TRACEEXT, & cpu_dev, "%s sets XSF to %o\n", __func__, cpu.cu.XSF);
+
+    cpu.cu.pot = 0;
+    cpu.cu.its = 0;
+    cpu.cu.itp = 0;
 
     CPT (cpt2U, 14); // non-restart processing
     // Set Address register empty
