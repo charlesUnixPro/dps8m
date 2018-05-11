@@ -1322,12 +1322,12 @@ word24 do_append_cycle (processor_cycle_type thisCycle, word36 * data,
     //
     if (thisCycle == RTCD_OPERAND_FETCH &&
         get_addr_mode() == ABSOLUTE_mode &&
-        ! cpu.cu.XSF /*get_went_appending()*/)
+        ! (cpu.cu.XSF || cpu.currentInstruction.b29) /*get_went_appending()*/)
       { 
         cpu.TPR.TSR = 0;
+	DBGAPP ("RTCD_OPERAND_FETCH ABSOLUTE mode set TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
       }
 
-    DBGAPP ("set TSR %05o TRR %o\n", cpu.TPR.TSR, cpu.TPR.TRR);
     goto A;
 
 ////////////////////////////////////////
@@ -1488,6 +1488,9 @@ A:;
         
         if (cpu.SDW->R == 0)
           {
+	    // isolts 870
+	    cpu.TPR.TRR = cpu.PPR.PRR;
+
             //C(PPR.PSR) = C(TPR.TSR)?
             if (cpu.PPR.PSR != cpu.TPR.TSR)
               {
@@ -1500,7 +1503,7 @@ A:;
               }
 	    else
 	      {
-		sim_warn ("do_append_cycle(B) SDW->R == 0 && cpu.PPR.PSR == cpu.TPR.TSR: %0#o\n", cpu.PPR.PSR);
+		// sim_warn ("do_append_cycle(B) SDW->R == 0 && cpu.PPR.PSR == cpu.TPR.TSR: %0#o\n", cpu.PPR.PSR);
 	      }
           }
       }
@@ -1515,7 +1518,11 @@ A:;
 #endif
       {
         DBGAPP ("do_append_cycle(B):STR-OP\n");
-        
+
+	// isolts 870
+	if (cpu.TPR.TSR == cpu.PPR.PSR)
+	    cpu.TPR.TRR = cpu.PPR.PRR;
+
         // C(TPR.TRR) > C(SDW .R1)? Note typo in AL39, R2 should be R1
         if (cpu.TPR.TRR > cpu.SDW->R1)
           {
@@ -1529,6 +1536,9 @@ A:;
         
         if (! cpu.SDW->W)
           {
+	    // isolts 870
+	    cpu.TPR.TRR = cpu.PPR.PRR;
+
             DBGAPP ("ACV6\n");
             // Set fault ACV6 = W-OFF
             cpu.acvFaults |= ACV6;
@@ -1868,7 +1878,7 @@ H:;
 
     if (thisCycle == RTCD_OPERAND_FETCH &&
         get_addr_mode () == ABSOLUTE_mode &&
-        ! cpu.cu.XSF /*get_went_appending ()*/)
+        ! (cpu.cu.XSF || cpu.currentInstruction.b29) /*get_went_appending ()*/)
       { 
         finalAddress = cpu.TPR.CA;
       }
@@ -1927,6 +1937,13 @@ I:;
 
 HI:
     DBGAPP ("do_append_cycle(HI)\n");
+
+    // isolts 870
+    if (thisCycle != ABSA_CYCLE)
+      {
+	cpu.cu.XSF = 1;
+	sim_debug (DBG_TRACEEXT, & cpu_dev, "loading of cpu.TPR.TSR sets XSF to 1\n");
+      }
 
     if (thisCycle == OPERAND_STORE && cpu.useZone)
       {

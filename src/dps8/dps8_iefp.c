@@ -42,7 +42,7 @@ void Read (word18 address, word36 * result, processor_cycle_type cyctyp)
     bool isBAR = get_bar_mode ();
 
     //if (get_went_appending () ||
-    if (cpu.cu.XSF ||
+    if (cpu.cu.XSF || (cyctyp != INSTRUCTION_FETCH && cpu.currentInstruction.b29) ||
         ((cyctyp == APU_DATA_READ || cyctyp == APU_DATA_RMW) && cpu.cu.TSN_VALID [0]))
       {
         goto B29;
@@ -132,7 +132,7 @@ void Read2 (word18 address, word36 * result, processor_cycle_type cyctyp)
     bool isBAR = get_bar_mode ();
 
     //if (get_went_appending () ||
-    if (cpu.cu.XSF ||
+    if (cpu.cu.XSF || (cyctyp != INSTRUCTION_FETCH && cpu.currentInstruction.b29) ||
         ((cyctyp == APU_DATA_READ || cyctyp == APU_DATA_RMW) && cpu.cu.TSN_VALID [0]) ||
         cyctyp == RTCD_OPERAND_FETCH) // ISOLTS-886 
            // Another option would be to set_went_appending in ReadRTCDOp
@@ -228,7 +228,7 @@ void Read8 (word18 address, word36 * result, bool isAR)
 
     bool isBAR = get_bar_mode ();
 
-    if (isAR || cpu.cu.TSN_VALID [0] || cpu.cu.XSF /*get_went_appending ()*/)
+    if (isAR || cpu.cu.TSN_VALID [0] || cpu.currentInstruction.b29 || cpu.cu.XSF /*get_went_appending ()*/)
       {
         goto B29;
       }
@@ -347,7 +347,7 @@ void ReadPage (word18 address, word36 * result, bool isAR)
 
     bool isBAR = get_bar_mode ();
 
-    if (isAR || cpu.cu.TSN_VALID [0] || cpu.cu.XSF /*get_went_appending ()*/)
+    if (isAR || cpu.cu.TSN_VALID [0] || cpu.currentInstruction.b29 || cpu.cu.XSF /*get_went_appending ()*/)
       {
         goto B29;
       }
@@ -454,7 +454,7 @@ void Write (word18 address, word36 data, processor_cycle_type cyctyp)
 
     bool isBAR = get_bar_mode ();
 
-    if (cpu.cu.XSF /*get_went_appending ()*/ || 
+    if (cpu.cu.XSF /*get_went_appending ()*/ || (cyctyp != INSTRUCTION_FETCH && cpu.currentInstruction.b29) ||
         (cyctyp == APU_DATA_STORE && cpu.cu.TSN_VALID [0]))
         goto B29;
     
@@ -539,7 +539,7 @@ void Write2 (word18 address, word36 * data, processor_cycle_type cyctyp)
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
     bool isBAR = get_bar_mode ();
 
-    if (cpu.cu.XSF /*get_went_appending ()*/ ||
+    if (cpu.cu.XSF /*get_went_appending ()*/ || (cyctyp != INSTRUCTION_FETCH && cpu.currentInstruction.b29) ||
         (cyctyp == APU_DATA_STORE && cpu.cu.TSN_VALID [0]))
       goto B29;
     
@@ -611,7 +611,7 @@ void Write1 (word18 address, word36 data, bool isAR)
   {
     cpu.TPR.CA = cpu.iefpFinalAddress = address;
     bool isBAR = get_bar_mode ();
-    if (isAR || cpu.cu.TSN_VALID [0] || cpu.cu.XSF /*get_went_appending ()*/)
+    if (isAR || cpu.cu.TSN_VALID [0] || cpu.currentInstruction.b29 || cpu.cu.XSF /*get_went_appending ()*/)
       goto B29;
     switch (get_addr_mode ())
       {
@@ -683,7 +683,7 @@ void Write8 (word18 address, word36 * data, bool isAR)
 
     bool isBAR = get_bar_mode ();
 
-    if (isAR || cpu.cu.TSN_VALID [0] || cpu.cu.XSF /*get_went_appending ()*/)
+    if (isAR || cpu.cu.TSN_VALID [0] || cpu.currentInstruction.b29 || cpu.cu.XSF /*get_went_appending ()*/)
       goto B29;
     
     
@@ -810,7 +810,7 @@ void WritePage (word18 address, word36 * data, bool isAR)
 
     bool isBAR = get_bar_mode ();
 
-    if (isAR || cpu.cu.TSN_VALID [0] || cpu.cu.XSF /*get_went_appending ()*/)
+    if (isAR || cpu.cu.TSN_VALID [0] || cpu.currentInstruction.b29 || cpu.cu.XSF /*get_went_appending ()*/)
       goto B29;
     
     

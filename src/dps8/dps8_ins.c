@@ -253,7 +253,7 @@ static void read_tra_op (void)
   {
     Read (cpu.TPR.CA, &cpu.CY, OPERAND_READ);
     if (! (get_addr_mode () == APPEND_mode || cpu.cu.TSN_VALID [0] ||
-           cpu.cu.XSF /*get_went_appending ()*/))
+           cpu.cu.XSF || cpu.currentInstruction.b29 /*get_went_appending ()*/))
       {
         if (cpu.currentInstruction.info->flags & TSPN_INS)
           {
@@ -474,11 +474,11 @@ static void scu2words (word36 *words)
 	      "pa885 test-05b xed inst",
 	    },
 	    { { 0000000451001, 0000000000041, 0000001000100, 0000000000000, 0000000200200, 0000004004000, 0200004235100, 0000005755000 },
-	      { 0000000651001, 0000000000041, 0000001000100, 0000000000000, 0000000200200, 0000004002000, 0200004235100, 0000005755000 },
+	      { 0000000451001, 0000000000041, 0000001000100, 0000000000000, 0000000200200, 0000004002000, 0200004235100, 0000005755000 },
 	      "pa885 test-05c xed inst", //                                                         xde/xdo
             },
             { { 0000000451001, 0000000000041, 0000001000100, 0000000000000, 0000001200200, 0000004006000, 0200004235100, 0000005755000 },
-              { 0000000651001, 0000000000041, 0000001000100, 0000000000000, 0000001200200, 0000004002000, 0200004235100, 0000005755000 },
+              { 0000000451001, 0000000000041, 0000001000100, 0000000000000, 0000001200200, 0000004002000, 0200004235100, 0000005755000 },
 	      "pa885 test-05d xed inst", //                                                         xde/xdo
             },
             { { 0000000454201, 0000000000041, 0000000000100, 0000000000000, 0001777200200, 0002000000500, 0005600560201, 0005600560201 },
@@ -1973,15 +1973,18 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 cpu.TPR.TBR = GET_PR_BITNO (n);
 
                 cpu.TPR.TSR = cpu.PAR[n].SNR;
-                cpu.TPR.TRR = max3 (cpu.PAR[n].RNR, cpu.TPR.TRR, cpu.PPR.PRR);
+		if (ci->info->flags & TRANSFER_INS)
+		  cpu.TPR.TRR = max (cpu.PAR[n].RNR, cpu.PPR.PRR);
+		else
+		  cpu.TPR.TRR = max3 (cpu.PAR[n].RNR, cpu.TPR.TRR, cpu.PPR.PRR);
 
                 sim_debug (DBG_APPENDING, &cpu_dev,
                            "doPtrReg: n=%o offset=%05o TPR.CA=%06o "
                            "TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n",
                            n, offset, cpu.TPR.CA, cpu.TPR.TBR, 
                            cpu.TPR.TSR, cpu.TPR.TRR);
-                cpu.cu.XSF = 1;
-sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction !restart !EIS sets XSF to %o\n", cpu.cu.XSF);
+		//                cpu.cu.XSF = 1;
+		//sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction !restart !EIS sets XSF to %o\n", cpu.cu.XSF);
                 //set_went_appending ();
             }
 
@@ -9617,7 +9620,7 @@ static int doABSA (word36 * result)
 
     //if (get_addr_mode () == ABSOLUTE_mode && ! cpu.isb29)
     //if (get_addr_mode () == ABSOLUTE_mode && ! cpu.went_appending) // ISOLTS-860
-    if (get_addr_mode () == ABSOLUTE_mode && ! cpu.cu.XSF) // ISOLTS-860
+    if (get_addr_mode () == ABSOLUTE_mode && ! (cpu.cu.XSF || cpu.currentInstruction.b29)) // ISOLTS-860
       {
         * result = ((word36) (cpu.TPR.CA & MASK18)) << 12; // 24:12 format
         return SCPE_OK;
