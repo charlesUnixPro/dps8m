@@ -1714,7 +1714,7 @@ static void fetch_DDSPTW (uint iom_unit_idx, int chan, word18 addr)
     iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
     word24 pgte = build_DDSPTW_address (p -> PCW_PAGE_TABLE_PTR, 
                                       (addr >> 10) & MASK8);
-    iom_core_read (iom_unit_idx, pgte, & p -> PTW_DCW, __func__);
+    iom_core_read (iom_unit_idx, pgte, (word36 *) & p -> PTW_DCW, __func__);
     if ((p -> PTW_DCW & 0740000777747) != 04llu)
       sim_warn ("%s: chan %d addr %#o ptw %012"PRIo64"\n",
 		__func__, chan, addr, p -> PTW_DCW);
@@ -1751,7 +1751,7 @@ static void fetch_IDSPTW (uint iom_unit_idx, int chan, word18 addr)
     word24 pgte = build_IDSPTW_address (p -> PCW_PAGE_TABLE_PTR, 
                                       p -> SEG, 
                                       (addr >> 10) & MASK8);
-    iom_core_read (iom_unit_idx, pgte, & p -> PTW_DCW, __func__);
+    iom_core_read (iom_unit_idx, pgte, (word36 *) & p -> PTW_DCW, __func__);
     if ((p -> PTW_DCW & 0740000777747) != 04llu)
       sim_warn ("%s: chan %d addr %#o ptw %012"PRIo64"\n",
 		__func__, chan, addr, p -> PTW_DCW);
@@ -1788,7 +1788,7 @@ static void fetch_LPWPTW (uint iom_unit_idx, uint chan)
     word24 addr = build_LPWPTW_address (p -> PCW_PAGE_TABLE_PTR, 
                                       p -> SEG,
                                       (p -> LPW_DCW_PTR >> 10) & MASK8);
-    iom_core_read (iom_unit_idx, addr, & p -> PTW_LPW, __func__);
+    iom_core_read (iom_unit_idx, addr, (word36 *) & p -> PTW_LPW, __func__);
     if ((p -> PTW_LPW & 0740000777747) != 04llu)
       sim_warn ("%s: chan %d addr %#o ptw %012"PRIo64"\n",
 		__func__, chan, addr, p -> PTW_LPW);
@@ -2096,7 +2096,7 @@ static void fetch_and_parse_LPW (uint iom_unit_idx, uint chan)
     fence ();
 #endif
 
-    iom_core_read (iom_unit_idx, chanLoc + IOM_MBX_LPW, & p -> LPW, __func__);
+    iom_core_read (iom_unit_idx, chanLoc + IOM_MBX_LPW, (word36 *) & p -> LPW, __func__);
     sim_debug (DBG_DEBUG, & iom_dev, "lpw %012"PRIo64"\n", p -> LPW);
 
     p -> LPW_DCW_PTR = getbits36_18 (p -> LPW,  0);
@@ -2121,7 +2121,7 @@ static void fetch_and_parse_LPW (uint iom_unit_idx, uint chan)
       }
     else
       {
-        iom_core_read (iom_unit_idx, chanLoc + IOM_MBX_LPWX, & p -> LPWX, __func__);
+        iom_core_read (iom_unit_idx, chanLoc + IOM_MBX_LPWX, (word36 *) & p -> LPWX, __func__);
         p -> LPWX_BOUND = getbits36_18 (p -> LPWX, 0);
         p -> LPWX_SIZE = getbits36_18 (p -> LPWX, 18);
 	sim_debug (DBG_DEBUG, & iom_dev,
@@ -2196,23 +2196,23 @@ static void pack_DCW (uint iom_unit_idx, uint chan)
   {
     // DCW_18_20_CP is the only field ever changed.
     iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
-    putbits36_3 (& p -> DCW, 18, p -> DCW_18_20_CP);
+    putbits36_3 ((word36 *) & p -> DCW, 18, p -> DCW_18_20_CP);
   }
 
 static void pack_LPW (uint iom_unit_idx, uint chan)
   {
     iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
-    putbits36_18 (& p-> LPW,  0, p -> LPW_DCW_PTR);
-    putbits36_1 (& p-> LPW, 18, p -> LPW_18_RES);
-    putbits36_1 (& p-> LPW, 19, p -> LPW_19_REL);
-    putbits36_1 (& p-> LPW, 20, p -> LPW_20_AE);
-    putbits36_1 (& p-> LPW, 21, p -> LPW_21_NC);
-    putbits36_1 (& p-> LPW, 22, p -> LPW_22_TAL);
-    putbits36_1 (& p-> LPW, 23, p -> LPW_23_REL);
-    putbits36_12 (& p-> LPW, 24, p -> LPW_TALLY);
+    putbits36_18 ((word36 *) & p-> LPW,  0, p -> LPW_DCW_PTR);
+    putbits36_1 ((word36 *) & p-> LPW, 18, p -> LPW_18_RES);
+    putbits36_1 ((word36 *) & p-> LPW, 19, p -> LPW_19_REL);
+    putbits36_1 ((word36 *) & p-> LPW, 20, p -> LPW_20_AE);
+    putbits36_1 ((word36 *) & p-> LPW, 21, p -> LPW_21_NC);
+    putbits36_1 ((word36 *) & p-> LPW, 22, p -> LPW_22_TAL);
+    putbits36_1 ((word36 *) & p-> LPW, 23, p -> LPW_23_REL);
+    putbits36_12 ((word36 *) & p-> LPW, 24, p -> LPW_TALLY);
 
-    putbits36_18 (& p-> LPWX, 0, p -> LPWX_BOUND);
-    putbits36_18 (& p-> LPWX, 18, p -> LPWX_SIZE);
+    putbits36_18 ((word36 *) & p-> LPWX, 0, p -> LPWX_BOUND);
+    putbits36_18 ((word36 *) & p-> LPWX, 18, p -> LPWX_SIZE);
   }
 
 static void fetch_and_parse_PCW (uint iom_unit_idx, uint chan)
@@ -2223,7 +2223,7 @@ static void fetch_and_parse_PCW (uint iom_unit_idx, uint chan)
     fence ();
 #endif
 
-    iom_core_read2 (iom_unit_idx, p -> LPW_DCW_PTR, & p -> PCW0, & p -> PCW1, __func__);
+    iom_core_read2 (iom_unit_idx, p -> LPW_DCW_PTR, (word36 *) & p -> PCW0, (word36 *) & p -> PCW1, __func__);
     p -> PCW_CHAN = getbits36_6 (p -> PCW1, 3);
     p -> PCW_AE = getbits36_6 (p -> PCW0, 12);
     p -> PCW_21_MSK = getbits36_1 (p -> PCW0, 21);
@@ -2275,7 +2275,7 @@ sim_warn ("unhandled fetch_and_parse_DCW\n");
           //break;
       }
 
-    iom_core_read (iom_unit_idx, addr, & p -> DCW, __func__);
+    iom_core_read (iom_unit_idx, addr, (word36 *) & p -> DCW, __func__);
 #endif
 #ifdef THREADZ
     // Force mailbox and dma data to be up-to-date 
@@ -2288,7 +2288,7 @@ sim_warn ("unhandled fetch_and_parse_DCW\n");
         case cm1:
         case cm1e:
           {
-            iom_core_read (iom_unit_idx, addr, & p -> DCW, __func__);
+            iom_core_read (iom_unit_idx, addr, (word36 *) & p -> DCW, __func__);
           }
           break;
 
@@ -2298,7 +2298,7 @@ sim_warn ("unhandled fetch_and_parse_DCW\n");
 // LPXW_BOUND is mod 2; ie. val is * 2
             //addr |= ((word24) p -> LPWX_BOUND << 18);
             addr += ((word24) p -> LPWX_BOUND << 1);
-            iom_core_read (iom_unit_idx, addr, & p -> DCW, __func__);
+            iom_core_read (iom_unit_idx, addr, (word36 *) & p -> DCW, __func__);
           }
           break;
 
@@ -2317,7 +2317,7 @@ sim_warn ("unhandled fetch_and_parse_DCW\n");
             // Calculate effective address
             // PTW 4-17 || LPW 8-17
             word24 addr_ = ((word24) (getbits36_14 (p -> PTW_LPW, 4) << 10)) | ((p -> LPW_DCW_PTR) & MASK10);
-            iom_core_read (iom_unit_idx, addr_, & p -> DCW, __func__);
+            iom_core_read (iom_unit_idx, addr_, (word36 *) & p -> DCW, __func__);
           }
           break;
       }
