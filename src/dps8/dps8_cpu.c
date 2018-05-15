@@ -1937,11 +1937,20 @@ setCPU:;
                 // ISOLTS-776 04bcf, 785 02c
                 // (but do if in a DIS instruction with bit28 clear)
                 bool tmp_priv_mode = is_priv_mode ();
+		bool is_dis = cpu.currentInstruction.opcode == 0616 &&
+                              cpu.currentInstruction.opcodeX == 0;
                 bool noCheckTR = tmp_priv_mode && 
-                                 ! (cpu.currentInstruction.opcode == 0616 &&
-                                 ! cpu.currentInstruction.opcodeX &&
-                                 ! GET_I (cpu.cu.IWB));
-                if (! (cpu.cu.xde | cpu.cu.xdo |
+                                 ! (is_dis && GET_I (cpu.cu.IWB) == 0);
+
+		if (is_dis)
+		  {
+		    // take interrupts and g7 faults as long as
+		    // last instruction is DIS (??)
+		    cpu.interrupt_flag = sample_interrupts ();
+		    cpu.g7_flag =
+		              noCheckTR ? bG7PendingNoTRO () : bG7Pending ();
+		  }
+                else if (! (cpu.cu.xde | cpu.cu.xdo |
                        cpu.cu.rpt | cpu.cu.rd | cpu.cu.rl))
                   {
                     if ((!cpu.wasInhibited) &&
@@ -1999,9 +2008,11 @@ setCPU:;
 // case it is being rechecked here. It is [locally] idempotent and light
 // weight, so this should be okay.
 
+// not necessary any more because of is_dis logic
+#if 0
                 if (cpu.interrupt_flag)
                   cpu.g7_flag = noCheckTR ? bG7PendingNoTRO () : bG7Pending ();
-
+#endif
                 if (cpu.g7_flag)
                   {
                       cpu.g7_flag = false;
