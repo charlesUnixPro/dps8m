@@ -1921,10 +1921,13 @@ first = false;
 sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n");
 }}
 #else
-            //Read (cpu.PPR.IC + 1 + n, & cpu.currentEISinstruction.op[n],
-                  //INSTRUCTION_FETCH);
+	    // append cycles updates cpu.PPR.IC to TPR.CA
+	    word18 saveIC = cpu.PPR.IC;
             Read (cpu.PPR.IC + 1 + n, & cpu.currentEISinstruction.op[n],
-                  APU_DATA_READ);
+                  INSTRUCTION_FETCH);
+	    cpu.PPR.IC = saveIC;
+            //Read (cpu.PPR.IC + 1 + n, & cpu.currentEISinstruction.op[n],
+            //      APU_DATA_READ);
 #endif
           }
         PNL (cpu.IWRAddr = cpu.currentEISinstruction.op[0]);
@@ -9881,20 +9884,6 @@ elapsedtime ();
         fi_addr == FAULT_CMD ||
         fi_addr == FAULT_EXF)
       {
-	if (fi_addr == FAULT_DF0 ||
-	    fi_addr == FAULT_DF1 ||
-	    fi_addr == FAULT_DF2 ||
-	    fi_addr == FAULT_DF3 ||
-	    fi_addr == FAULT_ACV ||
-	    fi_addr == FAULT_F1 ||
-	    fi_addr == FAULT_F2 ||
-	    fi_addr == FAULT_F3)
-	  {
-	    if (TST_I_ABS == 0)
-	      {
-		cpu.cu.XSF = 1;
-	      }
-	  }
         // If the fault occurred during fetch, handled above.
         cpu.cu.rfi = 1;
         sim_debug (DBG_FAULT, & cpu_dev, "RCU ACV RESTART return\n");
