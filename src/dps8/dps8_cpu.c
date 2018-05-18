@@ -422,6 +422,8 @@ static char * cycle_str (cycles_e cycle)
           return "INTERRUPT_EXEC_cycle";
         case FETCH_cycle:
           return "FETCH_cycle";
+        case PSEUDO_FETCH_cycle:
+	  return "PSEUDO_FETCH_cycle";
         case SYNC_FAULT_RTN_cycle:
           return "SYNC_FAULT_RTN_cycle";
         default:
@@ -1886,7 +1888,7 @@ setCPU:;
               break;
 
             case FETCH_cycle:
-              {
+              //{
 #ifdef PANEL
                 memset (cpu.cpt, 0, sizeof (cpu.cpt));
 #endif
@@ -2038,7 +2040,11 @@ setCPU:;
 // limit, the fault is recognized before any instruction in the new mode is
 // executed."
 
-                cpu.lufCounter ++;
+                // fall through
+	  case PSEUDO_FETCH_cycle:
+
+	    cpu.lufCounter ++;
+	    tmp_priv_mode = is_priv_mode ();
 #if 1
                 if (cpu.lufCounter > luf_limits[cpu.CMR.luf])
                   {
@@ -2139,7 +2145,14 @@ setCPU:;
 		    cpu.TPR.TSR = cpu.PPR.PSR;
 		    cpu.TPR.TRR = cpu.PPR.PRR;
                   }
-                else
+		else if (cpu.cycle == PSEUDO_FETCH_cycle)
+		  {
+		    cpu.apu.lastCycle = INSTRUCTION_FETCH;
+		    cpu.cu.XSF = 0;
+		    cpu.TPR.TSR = cpu.PPR.PSR;
+		    cpu.TPR.TRR = cpu.PPR.PRR;
+		  }
+		else
                   {
                     CPT (cpt1U, 20); // not XEC or RPx
                     cpu.isExec = false;
@@ -2160,7 +2173,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                 CPT (cpt1U, 21); // go to exec cycle
                 advanceG7Faults ();
                 set_cpu_cycle (EXEC_cycle);
-              }
+		//}
               break;
 
             case EXEC_cycle:
@@ -2247,7 +2260,14 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                         set_addr_mode (APPEND_mode);
                       }
 
-                    set_cpu_cycle (FETCH_cycle);
+		    if (ret == CONT_TRA)
+		      {
+			// PSEUDO_FETCH_cycle does not check interrupts/g7faults
+			cpu.wasXfer = false;
+			set_cpu_cycle (PSEUDO_FETCH_cycle);
+		      }
+		    else
+		      set_cpu_cycle (FETCH_cycle);
                     break;   // don't bump PPR.IC, instruction already did it
                   }
 

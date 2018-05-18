@@ -51,6 +51,7 @@ typedef enum
     INTERRUPT_cycle,
     INTERRUPT_EXEC_cycle,
     FETCH_cycle,
+    PSEUDO_FETCH_cycle,
     SYNC_FAULT_RTN_cycle,
   } cycles_e;
 
