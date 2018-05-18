@@ -118,6 +118,8 @@ extern DEVICE scu_dev;
 #define CONT_TRA    -1  // encountered a transfer instruction; don't bump PPR.IC
 #define CONT_DIS    -2  // instruction was a DIS 
 #define CONT_XEC    -3  // instruction was a XEC or XED 
+#define CONT_RET    -5  // encountered a return instruction; don't bump PPR.IC,
+			// do instruction fetch
 
 //
 // mask entry flags

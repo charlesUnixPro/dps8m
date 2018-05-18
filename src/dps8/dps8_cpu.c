@@ -2198,13 +2198,14 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                     break;
                   }
 
-                if (ret == CONT_TRA)
+                if (ret == CONT_TRA || ret == CONT_RET)
                   {
                     CPT (cpt1U, 24); // transfer instruction
                     cpu.cu.xde = cpu.cu.xdo = 0;
                     cpu.isExec = false;
                     cpu.isXED = false;
-                    cpu.wasXfer = true;
+		    // even for CONT_RET else isolts 886 fails
+		    cpu.wasXfer = true;
 
                     if (cpu.cycle != EXEC_cycle) // fault or interrupt
                       {
