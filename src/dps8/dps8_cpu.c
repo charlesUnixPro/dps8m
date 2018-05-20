@@ -2170,6 +2170,7 @@ setCPU:;
                     cpu.cu.TSN_VALID [0] = 0;
 		    cpu.TPR.TSR = cpu.PPR.PSR;
 		    cpu.TPR.TRR = cpu.PPR.PRR;
+		    cpu.wasInhibited = false;
 		  }
 		else
                   {
@@ -2531,6 +2532,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                     cpu.PPR.IC ++;
                     if (ci->info->ndes > 0)
                       cpu.PPR.IC += ci->info->ndes;
+		    cpu.wasInhibited = true;
                     set_cpu_cycle (FETCH_cycle);
                     break;
                   }
