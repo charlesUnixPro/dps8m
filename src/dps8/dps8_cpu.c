@@ -1862,7 +1862,8 @@ setCPU:;
                                     & cpu.cu.IWB, & cpu.cu.IRODD, __func__);
                         cpu.cu.xde = 1;
                         cpu.cu.xdo = 1;
-
+			cpu.isExec = true;
+			cpu.isXED = true;
 
                         CPT (cpt1U, 4); // interrupt pair fetched
                         cpu.interrupt_flag = false;
@@ -2103,52 +2104,11 @@ setCPU:;
                     doFault (FAULT_LUF, fst_zero, "instruction cycle lockup");
                   }
 #endif
-                // If we have done the even of an XED, do the odd
-                if (cpu.cu.xde == 0 && cpu.cu.xdo == 1)
-                  {
-                    CPT (cpt1U, 17); // do XED odd
-                    // Get the odd
-                    cpu.cu.IWB = cpu.cu.IRODD;
-                    // Do nothing next time
-                    cpu.cu.xde = cpu.cu.xdo = 0;
-                    cpu.isExec = true;
-                    cpu.isXED = true;
-		    cpu.apu.lastCycle = INSTRUCTION_FETCH;
-		    cpu.cu.XSF = 0;
-		    cpu.TPR.TSR = cpu.PPR.PSR;
-		    cpu.TPR.TRR = cpu.PPR.PRR;
-                  }
-                // If we have done neither of the XED
-                else if (cpu.cu.xde == 1 && cpu.cu.xdo == 1)
-                  {
-                    CPT (cpt1U, 18); // do XED even
-                    // Do the even this time and the odd the next time
-                    cpu.cu.xde = 0;
-                    cpu.cu.xdo = 1;
-                    cpu.isExec = true;
-                    cpu.isXED = true;
-		    cpu.apu.lastCycle = INSTRUCTION_FETCH;
-		    cpu.cu.XSF = 0;
-		    cpu.TPR.TSR = cpu.PPR.PSR;
-		    cpu.TPR.TRR = cpu.PPR.PRR;
-                  }
-                // If we have not yet done the XEC
-                else if (cpu.cu.xde == 1)
-                  {
-                    CPT (cpt1U, 19); // do XEC
-                    // do it this time, and nothing next time
-                    cpu.cu.xde = cpu.cu.xdo = 0;
-                    cpu.isExec = true;
-                    cpu.isXED = false;
-		    cpu.apu.lastCycle = INSTRUCTION_FETCH;
-		    cpu.cu.XSF = 0;
-		    cpu.TPR.TSR = cpu.PPR.PSR;
-		    cpu.TPR.TRR = cpu.PPR.PRR;
-                  }
-		else if (cpu.cycle == PSEUDO_FETCH_cycle)
+		if (cpu.cycle == PSEUDO_FETCH_cycle)
 		  {
 		    cpu.apu.lastCycle = INSTRUCTION_FETCH;
 		    cpu.cu.XSF = 0;
+                    cpu.cu.TSN_VALID [0] = 0;
 		    cpu.TPR.TSR = cpu.PPR.PSR;
 		    cpu.TPR.TRR = cpu.PPR.PRR;
 		  }
@@ -2205,10 +2165,16 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                 if (ret == CONT_XEC)
                   {
                     CPT (cpt1U, 27); // XEx instruction
-                    cpu.wasXfer = false; 
-                    if (cpu.cycle == EXEC_cycle)
-                      set_cpu_cycle (FETCH_cycle);
-                    break;
+                    cpu.wasXfer = false;
+		    cpu.isExec = true;
+		    if (cpu.cu.xdo)
+		      cpu.isXED = true;
+
+		    cpu.cu.XSF = 0;
+		    cpu.cu.TSN_VALID [0] = 0;
+		    cpu.TPR.TSR = cpu.PPR.PSR;
+                    cpu.TPR.TRR = cpu.PPR.PRR;
+		    break;
                   }
 
                 if (ret == CONT_TRA || ret == CONT_RET)
@@ -2431,72 +2397,106 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                     break;
                   }
 
-                if (cpu.cycle == FAULT_EXEC_cycle)
-                  {
-                  }
-// If we just did the odd word of a fault pair
-
+		// If we just did the odd word of a fault pair
                 if (cpu.cycle == FAULT_EXEC_cycle &&
-                    (! cpu.cu.xde) &&
-                    cpu.cu.xdo)
+                    !cpu.cu.xde && cpu.cu.xdo)
                   {
                     clear_temporary_absolute_mode ();
                     cu_safe_restore ();
-                    cpu.wasXfer = false;
                     CPT (cpt1U, 12); // cu restored
-                    set_cpu_cycle (FETCH_cycle);
                     clearFaultCycle ();
                     // cu_safe_restore calls decode_instruction ()
                     // we can determine the instruction length.
                     // decode_instruction() restores ci->info->ndes
+                    cpu.wasXfer = false;
+		    cpu.isExec = false;
+		    cpu.isXED = false;
 
                     cpu.PPR.IC += ci->info->ndes;
                     cpu.PPR.IC ++;
+
+                    set_cpu_cycle (FETCH_cycle);
                     break;
                   }
 
-// If we just did the odd word of a interrupt pair
-
+		// If we just did the odd word of a interrupt pair
                 if (cpu.cycle == INTERRUPT_EXEC_cycle &&
-                    (! cpu.cu.xde) &&
-                    cpu.cu.xdo)
+                    !cpu.cu.xde && cpu.cu.xdo)
                   {
                     clear_temporary_absolute_mode ();
                     cu_safe_restore ();
+		    // cpu.cu.xdo = 0;
 // The only place cycle is set to INTERRUPT_cycle in FETCH_cycle; therefore
 // we can safely assume that is the state that should be restored.
                     CPT (cpt1U, 12); // cu restored
+                    cpu.wasXfer = false;
+		    cpu.isExec = false;
+		    cpu.isXED = false;
+
+		    set_cpu_cycle (FETCH_cycle);
+		    break;
                   }
 
-// Even word of fault or interrupt pair
-
-                if (cpu.cycle != EXEC_cycle && cpu.cu.xde)
+		// Even word of fault or interrupt pair or xed
+                if (cpu.cu.xde && cpu.cu.xdo)
                   {
                     // Get the odd
                     cpu.cu.IWB = cpu.cu.IRODD;
                     cpu.cu.xde = 0;
                     cpu.isExec = true;
+		    cpu.isXED = true;
+                    cpu.cu.XSF = 0;
+		    cpu.cu.TSN_VALID [0] = 0;
+                    cpu.TPR.TSR = cpu.PPR.PSR;
+                    cpu.TPR.TRR = cpu.PPR.PRR;
                     break; // go do the odd word
                   }
 
                 if (cpu.cu.xde || cpu.cu.xdo) // we are in an XEC/XED
                   {
+		    cpu.cu.xde = cpu.cu.xdo = 0;
+		    cpu.isExec = false;
+		    cpu.isXED = false;
                     CPT (cpt1U, 27); // XEx instruction
                     cpu.wasXfer = false; 
+                    cpu.PPR.IC ++;
+                    if (ci->info->ndes > 0)
+                      cpu.PPR.IC += ci->info->ndes;
                     set_cpu_cycle (FETCH_cycle);
                     break;
                   }
+
+		ASSURE (cpu.cycle == EXEC_cycle);
 
                 cpu.cu.xde = cpu.cu.xdo = 0;
                 cpu.isExec = false;
                 cpu.isXED = false;
 
-                if (cpu.cycle != INTERRUPT_EXEC_cycle)
-                  {
-                    cpu.PPR.IC ++;
-                    if (ci->info->ndes > 0)
-                      cpu.PPR.IC += ci->info->ndes;
-                  }
+		// use prefetched instruction from cpu.cu.IRODD
+		// we must have finished an instruction at an even location
+		// skip multiword EIS instructions
+		// skip repeat instructions for now
+		// skip dis - we may need to take interrupts/g7faults
+		// skip if (last instruction) wrote to current instruction range
+		//  the hardware really does this and isolts tests it
+		//  multics differences manual DPS8 70/M
+		//  should take segment number into account?
+		if ((cpu.PPR.IC & 1) == 0 &&
+		    ci->info->ndes == 0 &&
+		    !cpu.cu.repeat_first && !cpu.cu.rpt && !cpu.cu.rd && !cpu.cu.rl &&
+		    !(cpu.currentInstruction.opcode == 0616 && cpu.currentInstruction.opcodeX == 0) &&
+		    (cpu.PPR.IC & ~3u) != (cpu.last_write  & ~3u))
+		  {
+		    cpu.PPR.IC ++;
+		    cpu.wasXfer = false;
+		    cpu.cu.IWB = cpu.cu.IRODD;
+		    set_cpu_cycle (PSEUDO_FETCH_cycle);
+		    break;
+		  }
+
+		cpu.PPR.IC ++;
+		if (ci->info->ndes > 0)
+		  cpu.PPR.IC += ci->info->ndes;
 
                 CPT (cpt1U, 28); // enter fetch cycle
                 cpu.wasXfer = false; 
@@ -2593,6 +2593,8 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                 core_read2 (addr, & cpu.cu.IWB, & cpu.cu.IRODD, __func__);
                 cpu.cu.xde = 1;
                 cpu.cu.xdo = 1;
+		cpu.isExec = true;
+		cpu.isXED = true;
 
                 CPT (cpt1U, 33); // set fault exec cycle
                 set_cpu_cycle (FAULT_EXEC_cycle);

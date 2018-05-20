@@ -1786,6 +1786,7 @@ typedef struct
     uint shadowTR;
     uint TR0; // The value that the TR was set to.
 #endif
+    word18 last_write;
 #ifdef LOCKLESS
     word24 locked_addr;
     word24 rmw_address;

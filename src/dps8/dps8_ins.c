@@ -1103,7 +1103,7 @@ void fetchInstruction (word18 addr)
         if (cpu.cu.repeat_first)
           {
             CPT (cpt2U, 10); // fetch rpt odd
-            Read (addr, & cpu.cu.IRODD, INSTRUCTION_FETCH);
+            //Read (addr, & cpu.cu.IRODD, INSTRUCTION_FETCH);
           }
       }
     else if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
@@ -1111,13 +1111,15 @@ void fetchInstruction (word18 addr)
         if (cpu.cu.repeat_first)
           {
             CPT (cpt2U, 11); // fetch rpt even
-            Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH);
-#if 0
-            word36 tmp[2];
-            Read2 (addr, tmp, INSTRUCTION_FETCH);
-            cpu.cu.IWB = tmp[0];
-            cpu.cu.IRODD = tmp[1];
-#endif
+	    if (addr & 1)
+	      Read (addr, & cpu.cu.IWB, INSTRUCTION_FETCH);
+	    else
+	      {
+		word36 tmp[2];
+		Read2 (addr, tmp, INSTRUCTION_FETCH);
+		cpu.cu.IWB = tmp[0];
+		cpu.cu.IRODD = tmp[1];
+	      }
           }
       }
     else
@@ -1462,7 +1464,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "%s sets XSF to %o\n", __func__, cpu.cu.XSF)
                      "Instruction not allowed in XEC/XED");
         // The even instruction from C(Y-pair) must not alter
         // C(Y-pair)36,71, and must not be another xed instruction.
-        if (opcode == 0717 && !opcodeX && cpu.cu.xdo /* even instruction being executed */)
+        if (opcode == 0717 && !opcodeX && cpu.cu.xde && cpu.cu.xdo /* even instruction being executed */)
             doFault (FAULT_IPR,
                      fst_ill_proc,
                      "XED of XED on even word");
@@ -1470,13 +1472,13 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "%s sets XSF to %o\n", __func__, cpu.cu.XSF)
         if (opcode == 0560 && !opcodeX) {
             // To Execute Double (XED) the RPD instruction, the RPD must be the second
             // instruction at an odd-numbered address.
-            if (cpu.cu.xdo /* even instr being executed */)
+            if (cpu.cu.xde && cpu.cu.xdo /* even instr being executed */)
                 doFault (FAULT_IPR,
                      (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
                      "XED of RPD on even word");
             // To execute an instruction pair having an rpd instruction as the odd
             // instruction, the xed instruction must be located at an odd address.
-            if (!cpu.cu.xdo /* odd instr being executed */ && !(cpu.PPR.IC & 1))
+            if (!cpu.cu.xde && cpu.cu.xdo /* odd instr being executed */ && !(cpu.PPR.IC & 1))
                 doFault (FAULT_IPR,
                      (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
                      "XED of RPD on odd word, even IC");
@@ -1484,7 +1486,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "%s sets XSF to %o\n", __func__, cpu.cu.XSF)
     } else if (unlikely (cpu.isExec)) {
         // To execute a rpd instruction, the xec instruction must be in an odd location.
         // ISOLTS 768 01w
-        if (opcode == 0560 && !opcodeX && !cpu.cu.xde && !(cpu.PPR.IC & 1)) 
+        if (opcode == 0560 && !opcodeX && cpu.cu.xde && !(cpu.PPR.IC & 1))
             doFault (FAULT_IPR,
                  (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC},
                  "XEC of RPx on even word");
@@ -2137,9 +2139,11 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
 /// executeInstruction: Write operand
 ///
 
+    cpu.last_write = 0;
     if (WRITEOP (ci))
       {
         CPT (cpt2L, 3); // Write operands
+	cpu.last_write = cpu.TPR.CA;
 #ifndef REORDER
         if (! READOP (ci))
           {
