@@ -2778,7 +2778,8 @@ void fnpConnectPrompt (uv_tcp_t * client)
         for (int lineno = 0; lineno < MAX_LINES; lineno ++)
           {
             struct t_line * linep = & fnpUnitData[fnpno].MState.line[lineno];
-            if (linep->service == service_login && ! linep->client)
+            if (linep->service == service_login && ! linep->line_disconnected &&
+                linep-> listen && ! linep->client)
               {
                 if (! first)
                   fnpuv_start_writestr (client, ",");
@@ -2990,6 +2991,8 @@ check:;
             for (lineno = 0; lineno < MAX_LINES; lineno ++)
               {
                 if (fnpUnitData[fnpno].MState.line[lineno].service == service_login &&
+                    fnpUnitData[fnpno].MState.line[lineno].listen &&
+                    ! fnpUnitData[fnpno].MState.line[lineno].line_disconnected &&
                     ! fnpUnitData[fnpno].MState.line[lineno].client)
                   {
                     goto associate;
