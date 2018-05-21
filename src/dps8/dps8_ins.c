@@ -2085,7 +2085,9 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction not EIS sets XSF to %o\n
           {
             CPT (cpt2L, 2); // Read operands
             readOperands ();
+#ifdef LOCKLESS
 	    cpu.rmw_address = cpu.iefpFinalAddress;
+#endif
             if (cpu.cu.rl)
               {
                 switch (operand_size ())
