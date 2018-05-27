@@ -1732,39 +1732,56 @@ sim_printf ("CS interrupt %u\n", decoded.cell);
 
 static inline bool processInputCharacter (struct t_line * linep, unsigned char kar)
   {
-
-// telnet sends keyboard returns as CR/NUL. Drop the null when we see it;
     uvClientData * p = linep->client->data;
-    //sim_printf ("kar %03o isTelnet %d was CR %d is Null %d\n", kar, !!p->telnetp, linep->was_CR, kar == 0);
-//sim_printf ("%03o %c\n", kar, isprint(kar)? kar : '#');
-    if (p && p->telnetp && linep->was_CR && kar == 0)
+
+    // telnet sends keyboard returns as CR/NUL or CR/LF Drop the NUL or LF when
+    // we see it;
+    if (p && p->telnetp && linep->was_CR && (kar == 0 || kar == 012))
       {
         //sim_printf ("dropping nul\n");
         linep->was_CR = false;
         return false;
       }
     linep->was_CR = kar == 015;
-    //sim_printf ("was CR %d\n", linep->was_CR);
 
-//sim_printf ("%03o %c\n", kar, isgraph (kar) ? kar : '.');
     if (linep->service == service_login)
       {
         if (linep->echoPlex)
           {
             // echo \r, \n & \t
     
-            // echo a CR when a LF is typed
-            if (linep->crecho && kar == '\n')
+            // newline (LF)
+            if (kar == '\n')
               {
-                fnpuv_start_writestr (linep->client, "\r\n");
+                // if crecho, echo CR
+                if (linep->crecho)
+                  {
+                    fnpuv_start_writestr (linep->client, "\r");
+                  }
+                // else echo the newline
+                else
+                  {
+                    fnpuv_start_writestr (linep->client, "\n");
+                  }
               }
-    
-            // echo and inserts a LF in the users input stream when a CR is typed
-            else if (linep->lfecho && kar == '\r')
+
+
+            // CR
+            if (kar == '\r')
               {
-                fnpuv_start_writestr (linep->client, "\r\n");
+                // if crecho, echo CR/LF
+                if (linep->crecho)
+                  {
+                    fnpuv_start_writestr (linep->client, "\r\n");
+                  }
+                // else echo the CR
+                else
+                  {
+                    fnpuv_start_writestr (linep->client, "\r");
+                  }
               }
-    
+
+
             // echo the appropriate number of spaces when a TAB is typed
             else if (linep->tabecho && kar == '\t')
               {
@@ -1778,10 +1795,9 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
               }
     
             // XXX slightly bogus logic here..
-            // ^R ^U ^H DEL LF CR FF ETX 
+            // ^R ^U ^H DEL FF ETX  (LF, CF, TAB handled above(
             else if (kar == '\022'  || kar == '\025' || kar == '\b' ||
-                     kar == 127     || kar == '\n'   || kar == '\r' ||
-                     kar == '\f'    || kar == '\003')
+                     kar == 127     || kar == '\f'    || kar == '\003')
             {
               // handled below
             }
