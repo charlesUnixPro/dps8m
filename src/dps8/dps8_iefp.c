@@ -96,6 +96,8 @@ B29:;
             if (isBAR)
               {
                 cpu.TPR.CA = get_BAR_address (address);
+		cpu.TPR.TSR = cpu.PPR.PSR;
+		cpu.TPR.TRR = cpu.PPR.PRR;
                 cpu.iefpFinalAddress = do_append_cycle (cyctyp, result, 1);
                 sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev, 
                            "Read (Actual) Read:  bar iefpFinalAddress=%08o  "
@@ -187,6 +189,8 @@ B29:;
             if (isBAR)
               {
                 cpu.TPR.CA = get_BAR_address (address);
+		cpu.TPR.TSR = cpu.PPR.PSR;
+		cpu.TPR.TRR = cpu.PPR.PRR;
                 cpu.iefpFinalAddress = do_append_cycle (cyctyp, result, 2);
                 if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
                   {
@@ -283,6 +287,8 @@ B29:;
             if (isBAR)
               {
                 cpu.TPR.CA = get_BAR_address (address);
+		cpu.TPR.TSR = cpu.PPR.PSR;
+		cpu.TPR.TRR = cpu.PPR.PRR;
                 cpu.iefpFinalAddress = do_append_cycle (APU_DATA_READ, result, 
                                                         8);
                 if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
@@ -402,6 +408,8 @@ B29:;
             if (isBAR)
               {
                 cpu.TPR.CA = get_BAR_address (address);
+		cpu.TPR.TSR = cpu.PPR.PSR;
+		cpu.TPR.TRR = cpu.PPR.PRR;
                 cpu.iefpFinalAddress = do_append_cycle (APU_DATA_READ, result,
                                                         PGSZ);
                 if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
@@ -506,6 +514,8 @@ B29:
             if (isBAR)
               {
                 cpu.TPR.CA = get_BAR_address (address);
+		cpu.TPR.TSR = cpu.PPR.PSR;
+		cpu.TPR.TRR = cpu.PPR.PRR;
                 cpu.iefpFinalAddress = do_append_cycle (cyctyp, & data, 1);
                 sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev,
                            "Write(Actual) Write: bar iefpFinalAddress=%08o "
@@ -578,6 +588,8 @@ B29:
             if (isBAR)
               {
                 cpu.TPR.CA = get_BAR_address (address);
+		cpu.TPR.TSR = cpu.PPR.PSR;
+		cpu.TPR.TRR = cpu.PPR.PRR;
                 cpu.iefpFinalAddress = do_append_cycle (cyctyp, data, 2);
                 sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev,
                            "Write2 (Actual) Write: bar iefpFinalAddress=%08o "
@@ -646,6 +658,8 @@ B29:
             if (isBAR)
               {
                 cpu.TPR.CA = get_BAR_address (address);
+		cpu.TPR.TSR = cpu.PPR.PSR;
+		cpu.TPR.TRR = cpu.PPR.PRR;
                 cpu.iefpFinalAddress = do_append_cycle (APU_DATA_STORE, & data,
                                                         1);
                 sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev,
@@ -734,6 +748,8 @@ B29:
             if (isBAR)
               {
                 cpu.TPR.CA = get_BAR_address (address);
+		cpu.TPR.TSR = cpu.PPR.PSR;
+		cpu.TPR.TRR = cpu.PPR.PRR;
                 cpu.iefpFinalAddress = do_append_cycle (APU_DATA_STORE, data, 
                                                         8);
                 if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
@@ -861,6 +877,8 @@ B29:
             if (isBAR)
               {
                 cpu.TPR.CA = get_BAR_address (address);
+		cpu.TPR.TSR = cpu.PPR.PSR;
+		cpu.TPR.TRR = cpu.PPR.PRR;
                 cpu.iefpFinalAddress = do_append_cycle (APU_DATA_STORE, data,
                                                         PGSZ);
                 if_sim_debug (DBG_APPENDING | DBG_FINAL, & cpu_dev)
