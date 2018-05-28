@@ -1527,7 +1527,6 @@ t_stat sim_disk_detach (UNIT *uptr)
 struct disk_context *ctx;
 int (*close_function)(FILE *f);
 FILE *fileref;
-t_bool auto_format;
 
 if ((uptr == NULL) || !(uptr->flags & UNIT_ATT))
     return SCPE_NOTATT;
@@ -1535,7 +1534,7 @@ if ((uptr == NULL) || !(uptr->flags & UNIT_ATT))
 ctx = (struct disk_context *)uptr->disk_ctx;
 fileref = uptr->fileref;
 
-sim_debug (ctx->dbit, ctx->dptr, "sim_disk_detach(unit=%d,filename='%s')\n", (int)(uptr-ctx->dptr->units), uptr->filename);
+//sim_debug (ctx->dbit, ctx->dptr, "sim_disk_detach(unit=%d,filename='%s')\n", (int)(uptr-ctx->dptr->units), uptr->filename);
 
 switch (DK_GET_FMT (uptr)) {                            /* case on format */
     case DKUF_F_STD:                                    /* Simh */
@@ -1556,7 +1555,6 @@ if (!(uptr->flags & UNIT_ATT))                          /* attached? */
     return SCPE_OK;
 if (NULL == find_dev_from_unit (uptr))
     return SCPE_OK;
-auto_format = ctx->auto_format;
 
 if (uptr->io_flush)
     uptr->io_flush (uptr);                              /* flush buffered data */
@@ -1568,10 +1566,12 @@ uptr->dynflags &= ~(UNIT_NO_FIO | UNIT_DISK_CHK);
 free (uptr->filename);
 uptr->filename = NULL;
 uptr->fileref = NULL;
-free (uptr->disk_ctx);
-uptr->disk_ctx = NULL;
+if (uptr->disk_ctx) {
+  free (uptr->disk_ctx);
+  uptr->disk_ctx = NULL;
+}
 uptr->io_flush = NULL;
-if (auto_format)
+if (ctx && ctx -> auto_format)
     sim_disk_set_fmt (uptr, 0, "SIMH", NULL);           /* restore file format */
 if (close_function (fileref) == EOF)
     return SCPE_IOERR;
