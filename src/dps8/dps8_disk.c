@@ -179,12 +179,20 @@ static struct diskType_t diskTypes [] =
 
 #define N_DISK_UNITS 2 // default
 
+// inits to IMG_FAILT in disk_init memset(0)
+
+enum image_t { IMG_FILE = 0, IMG_NET = 1 };
+
 static struct dsk_state
   {
     uint typeIdx;
     enum { disk_no_mode, disk_seek512_mode, disk_seek64_mode, disk_seek_mode, disk_read_mode, disk_write_mode, disk_request_status_mode } io_mode;
     uint seekPosition;
     char device_name [MAX_DEV_NAME_LEN];
+    enum image_t image_type;
+    uv_tcp_t tcp_client;
+    uv_connect_t tcp_connect;
+    bool connected;
   } dsk_states [N_DSK_UNITS_MAX];
 
 
@@ -535,16 +543,205 @@ static t_stat disk_reset (UNUSED DEVICE * dptr)
     return SCPE_OK;
   }
 
+static int netdisk_read (uint ddev_unit_idx, uint iom_unit_idx, uint chan)
+  {
+    iom_chan_data_t * p = & iom_chan_data [iom_unit_idx] [chan];
+    UNIT * unitp = & dsk_unit [ddev_unit_idx];
+    struct dsk_state * disk_statep = & dsk_states [ddev_unit_idx];
+    uint type_idx = disk_statep->typeIdx;
+    uint sector_size_words = diskTypes[type_idx].sectorSizeWords;
+    uint sectorSizeBytes = ((36 * sector_size_words) / 8);
+    sim_debug (DBG_NOTIFY, & dsk_dev, "Read %d\n", ddev_unit_idx);
+    disk_statep -> io_mode = disk_read_mode;
+
+// Process DDCWs
+
+    bool ptro, send, uff;
+    do
+      {
+        int rc = iom_list_service (iom_unit_idx, chan, & ptro, & send, & uff);
+        if (rc < 0)
+          {
+            sim_printf ("diskRead list service failed\n");
+            return -1;
+          }
+        if (uff)
+          {
+            sim_printf ("diskRead ignoring uff\n"); // XXX
+          }
+        if (! send)
+          {
+            sim_printf ("diskRead nothing to send\n");
+            return 1;
+          }
+        if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+          {
+            sim_printf ("diskRead expected DDCW\n");
+            return -1;
+          }
+
+        uint tally = p -> DDCW_TALLY;
+        if (tally == 0)
+          {
+            sim_debug (DBG_DEBUG, & dsk_dev,
+                       "%s: Tally of zero interpreted as 010000(4096)\n",
+                       __func__);
+            tally = 4096;
+          }
+
+sim_printf ("netdisk read tally %u seek %u %u\n", tally, disk_statep->seekPosition, disk_statep -> seekPosition * sectorSizeBytes);
+#if 0
+
+        if (rc)
+          {
+            sim_printf ("fseek (read) returned %d, errno %d\n", rc, errno);
+            p -> stati = 04202; // attn, seek incomplete
+            return -1;
+          }
+
+        // Convert from word36 format to packed72 format
+
+        // round tally up to sector boundary
+    
+        // this math assumes tally is even.
+   
+        uint tallySectors = (tally + sector_size_words - 1) / 
+                             sector_size_words;
+        uint tallyWords = tallySectors * sector_size_words;
+        uint p72ByteCnt = (tallyWords * 36) / 8;
+        uint8 diskBuffer [p72ByteCnt];
+        memset (diskBuffer, 0, sizeof (diskBuffer));
+        fflush (unitp->fileref);
+        rc = (int) fread (diskBuffer, sectorSizeBytes,
+                    tallySectors,
+                    unitp -> fileref);
+ 
+        if (rc == 0) // EOF or error
+          {
+            if (ferror (unitp->fileref))
+              {
+                p -> stati = 04202; // attn, seek incomplete
+                p -> chanStatus = chanStatIncorrectDCW;
+                return -1;
+              }
+            // We ignore short reads-- we assume that they are reads
+            // past the write highwater mark, and return zero data,
+            // just as if the disk had been formatted with zeros.
+          }
+        disk_statep -> seekPosition += tallySectors;
+
+        uint wordsProcessed = 0;
+        word36 buffer [tally];
+        for (uint i = 0; i < tally; i ++)
+          {
+            word36 w;
+            extractWord36FromBuffer (diskBuffer, p72ByteCnt, & wordsProcessed,
+                                     & w);
+            buffer [i] = w;
+          }
+        iom_indirect_data_service (iom_unit_idx, chan, buffer,
+                                & wordsProcessed, true);
+        p -> charPos = tally % 4;
+#endif
+      } while (p -> DDCW_22_23_TYPE != 0); // not IOTD
+    p -> stati = 04000;
+    p -> initiate = false;
+    return 0;
+  }
+
+static void netdisk_on_connect (uv_connect_t * server, int status)
+  {
+    UNIT * uptr = (UNIT *) server->handle->data;
+    int disk_unit_idx = (int) DSK_UNIT_IDX (uptr);
+    sim_printf ("netdisk %d connected\n", disk_unit_idx);
+
+    dsk_states[disk_unit_idx].connected = true;
+  }
+
+// attach disk0 /tmp/root.dsk
+// attach disk4 netdisk: foo.com 1234
+// attach disk4 netdisk: 1.2.3.5 1234
+
 static t_stat disk_attach (UNIT *uptr, CONST char *cptr)
   {
-    int diskUnitIdx = (int) DSK_UNIT_IDX (uptr);
-    if (diskUnitIdx < 0 || diskUnitIdx >= N_DSK_UNITS_MAX)
+    int disk_unit_idx = (int) DSK_UNIT_IDX (uptr);
+    if (disk_unit_idx < 0 || disk_unit_idx >= N_DSK_UNITS_MAX)
       {
-        sim_printf ("error: invalid unit number %d\n", diskUnitIdx);
+        sim_printf ("error: invalid unit number %d\n", disk_unit_idx);
         return SCPE_ARG;
       }
 
-    return loadDisk ((uint) diskUnitIdx, cptr, false);
+    char copy [strlen (cptr) + 1];
+    strcpy (copy, cptr);
+    char * tok_save;
+    char * delim = ", \t";
+    char * tok = strtok_r (copy, delim, & tok_save);
+    if (! tok)
+      {
+        sim_printf ("error: can't parse %s\n", cptr);
+        return SCPE_ARG;
+      }
+    if (strcmp (tok, "netdisk:") == 0)
+      {
+         char * host = strtok_r (NULL, delim, & tok_save);
+         if (! host)
+           {
+             sim_printf ("error: can't parse host %s\n", cptr);
+             return SCPE_ARG;
+           }
+         char * port = strtok_r (NULL, delim, & tok_save);
+         if (! port)
+           {
+             sim_printf ("error: can't parse port %s\n", cptr);
+             return SCPE_ARG;
+           }
+         char * endptr;
+         errno = 0;
+         long portno = strtol (port, & endptr, 0);
+         if (errno || * endptr || portno < 0 || portno > 65535)
+           {
+             sim_printf ("error: can't parse port number %s\n", cptr);
+             return SCPE_ARG;
+           }
+
+         sim_printf ("netdisk %d host %s port %ld\n", disk_unit_idx, host, portno);
+         dsk_states[disk_unit_idx].image_type = IMG_NET;
+         dsk_states[disk_unit_idx].connected = false;
+
+         struct sockaddr_in dest;
+         uv_ip4_addr (host, (int) portno, & dest);
+         uv_tcp_init (uv_default_loop (), 
+                      & dsk_states[disk_unit_idx].tcp_client);
+         dsk_states[disk_unit_idx].tcp_client.data = uptr;
+         uv_tcp_connect (& dsk_states[disk_unit_idx].tcp_connect,
+                         & dsk_states[disk_unit_idx].tcp_client,
+                         (const struct sockaddr *) & dest, netdisk_on_connect);
+         return SCPE_OK;
+      }
+    dsk_states[disk_unit_idx].image_type = IMG_FILE;
+    return loadDisk ((uint) disk_unit_idx, cptr, false);
+  }
+
+static t_stat disk_detach (UNIT *uptr)
+  {
+    int disk_unit_idx = (int) DSK_UNIT_IDX (uptr);
+    if (disk_unit_idx < 0 || disk_unit_idx >= N_DSK_UNITS_MAX)
+      {
+        sim_printf ("error: invalid unit number %d\n", disk_unit_idx);
+        return SCPE_ARG;
+      }
+    struct dsk_state * ds = & dsk_states[disk_unit_idx];
+    if (ds->image_type == IMG_NET)
+      {
+        if (ds->connected)
+          {
+            if (! uv_is_closing ((uv_handle_t *) & (ds->tcp_client)))
+              uv_close ((uv_handle_t *) & (ds->tcp_client), NULL);
+            ds->connected = false;
+          }
+        return SCPE_OK;
+      }
+    return sim_disk_detach (uptr);
   }
 
 // No disks known to multics had more than 2^24 sectors...
@@ -564,7 +761,7 @@ DEVICE dsk_dev = {
     disk_reset,   /* reset */
     NULL,         /* boot */
     disk_attach,  /* attach */
-    NULL /*disk_detach*/,  /* detach */
+    disk_detach,  /* detach */
     NULL,         /* context */
     DEV_DEBUG,    /* flags */
     0,            /* debug control flags */
@@ -1421,6 +1618,11 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
           }
         case 025: // CMD 25 READ
           {
+            if (disk_statep->image_type == IMG_NET)
+              {
+                netdisk_read (devUnitIdx, iomUnitIdx, chan);
+                break;
+              }
             // XXX is it correct to not process the DDCWs?
             if (! unitp -> fileref)
               {
