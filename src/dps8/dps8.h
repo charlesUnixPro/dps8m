@@ -175,6 +175,7 @@ typedef struct { int64_t h; uint64_t l; } __int128_t;
 // to support both configurations
 
 #if defined(THREADZ) || defined(LOCKLESS)
+#define CWO
 #define vol volatile
 #else
 #define vol
