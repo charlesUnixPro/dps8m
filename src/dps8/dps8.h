@@ -174,7 +174,7 @@ typedef struct { int64_t h; uint64_t l; } __int128_t;
 // Multi-threading may require 'volatile' in some place; make it easy
 // to support both configurations
 
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 #define vol volatile
 #else
 #define vol
@@ -277,8 +277,17 @@ typedef enum
     INSTRUCTION_FETCH,
     APU_DATA_READ,
     APU_DATA_STORE,
-    ABSA_CYCLE
+    ABSA_CYCLE,
+#ifdef LOCKLESS
+    OPERAND_RMW,
+    APU_DATA_RMW,
+#endif
   } processor_cycle_type;
+
+#ifndef LOCKLESS
+#define OPERAND_RMW   OPERAND_READ
+#define APU_DATA_RMW  APU_DATA_READ
+#endif
 
 #ifndef EIS_PTR4
 // some breakpoint stuff ...

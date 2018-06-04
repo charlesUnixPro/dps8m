@@ -104,7 +104,7 @@ static t_stat absi_reset (UNUSED DEVICE * dptr)
     return SCPE_OK;
   }
 
-t_stat absiAttach (UNIT * uptr, const char * cptr)
+static t_stat absiAttach (UNIT * uptr, const char * cptr)
   {
     int unitno = (int) (uptr - absi_unit);
 
@@ -140,7 +140,7 @@ t_stat absiAttach (UNIT * uptr, const char * cptr)
   }
 
 // Detach (connect) ...
-t_stat absiDetach (UNIT * uptr)
+static t_stat absiDetach (UNIT * uptr)
   {
     int unitno = (int) (uptr - absi_unit);
     t_stat ret;

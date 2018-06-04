@@ -89,7 +89,7 @@
 
 #define DBG_CTR 1
 
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 #include "threadz.h"
 #endif
 
@@ -259,7 +259,7 @@ struct mailbox
 #define TERM_INPT_MPX_WD (offsetof (struct mailbox, term_inpt_mpx_wd) / sizeof (word36))
 
 #ifdef THREADZ
-static inline void l_putbits36_1 (word36 volatile * x, uint p, word1 val)
+static inline void l_putbits36_1 (volatile word36 * x, uint p, word1 val)
 {
     const int n = 1;
     int shift = 36 - (int) p - (int) n;
@@ -276,7 +276,7 @@ static inline void l_putbits36_1 (word36 volatile * x, uint p, word1 val)
     unlock_mem ();
 }
 
-static inline void l_putbits36_3 (word36 volatile * x, uint p, word3 val)
+static inline void l_putbits36_3 (volatile word36 * x, uint p, word3 val)
 {
     const int n = 3;
     int shift = 36 - (int) p - (int) n;
@@ -293,7 +293,7 @@ static inline void l_putbits36_3 (word36 volatile * x, uint p, word3 val)
     unlock_mem ();
 }
 
-static inline void l_putbits36_6 (word36 volatile * x, uint p, word6 val)
+static inline void l_putbits36_6 (volatile word36 * x, uint p, word6 val)
 {
     const int n = 6;
     int shift = 36 - (int) p - (int) n;
@@ -310,7 +310,7 @@ static inline void l_putbits36_6 (word36 volatile * x, uint p, word6 val)
     unlock_mem ();
 }
 
-static inline void l_putbits36_9 (word36 volatile * x, uint p, word9 val)
+static inline void l_putbits36_9 (volatile word36 * x, uint p, word9 val)
 {
     const int n = 9;
     int shift = 36 - (int) p - (int) n;
@@ -327,7 +327,7 @@ static inline void l_putbits36_9 (word36 volatile * x, uint p, word9 val)
     unlock_mem ();
 }
 
-static inline void l_putbits36_12 (word36 volatile * x, uint p, word12 val)
+static inline void l_putbits36_12 (volatile word36 * x, uint p, word12 val)
 {
     const int n = 12;
     int shift = 36 - (int) p - (int) n;
@@ -344,7 +344,7 @@ static inline void l_putbits36_12 (word36 volatile * x, uint p, word12 val)
     unlock_mem ();
 }
 
-static inline void l_putbits36_18 (word36 volatile * x, uint p, word18 val)
+static inline void l_putbits36_18 (volatile word36 * x, uint p, word18 val)
 {
     const int n = 18;
     int shift = 36 - (int) p - (int) n;
@@ -370,12 +370,14 @@ static inline void l_putbits36_18 (word36 volatile * x, uint p, word18 val)
 #define l_putbits36_18 putbits36_18
 #endif
 
-
 void setTIMW (uint iom_unit_idx, uint mailboxAddress, int mbx)
   {
     uint timwAddress = mailboxAddress + TERM_INPT_MPX_WD;
-    l_putbits36_1 (fnp_M_addr ((int) iom_unit_idx, timwAddress), (uint) mbx, 1);
-
+    vol word36 * addr = fnp_M_addr ((int) iom_unit_idx, timwAddress);
+    word36 data;
+    fnp_core_read_lock ((int)iom_unit_idx, addr, &data, __func__);
+    l_putbits36_1 (& data, (uint) mbx, 1);
+    fnp_core_write_unlock((int)iom_unit_idx, addr, data, __func__);
   }
 
 #ifdef SCUMEM
@@ -436,14 +438,17 @@ static void notifyCS (int mbx, int fnp_unit_idx, int lineno)
 sim_printf ("notifyCS mbx %d\n", mbx);
 #endif
     struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
-    struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
-    struct fnp_submailbox vol * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+    vol struct mailbox * mbxp = (vol struct mailbox *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
+    vol struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+    word36 data;
 
-    l_putbits36_3 (& smbxp -> word1, 0, (word3) fnp_unit_idx); // dn355_no XXX
-    l_putbits36_1 (& smbxp -> word1, 8, 1); // is_hsla XXX
-    l_putbits36_3 (& smbxp -> word1, 9, 0); // la_no XXX
-    l_putbits36_6 (& smbxp -> word1, 12, (word6) lineno); // slot_no XXX
-    l_putbits36_18 (& smbxp -> word1, 18, 256); // blocks available XXX
+    fnp_core_read_lock (fnp_unit_idx, &smbxp -> word1, &data, __func__);
+    l_putbits36_3 (& data, 0, (word3) fnp_unit_idx); // dn355_no XXX
+    l_putbits36_1 (& data, 8, 1); // is_hsla XXX
+    l_putbits36_3 (& data, 9, 0); // la_no XXX
+    l_putbits36_6 (& data, 12, (word6) lineno); // slot_no XXX
+    l_putbits36_18 (& data, 18, 256); // blocks available XXX
+    fnp_core_write_unlock(fnp_unit_idx, &smbxp -> word1, data, __func__);
 
     fudp->fnpMBXinUse [mbx] = true;
 
@@ -459,13 +464,15 @@ static void fnp_rcd_ack_echnego_init (int mbx, int fnp_unit_idx, int lineno)
   {
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd ack_echnego_init\n", lineno);
     struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
-    struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
-    struct fnp_submailbox vol * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+    vol struct mailbox * mbxp = (vol struct mailbox *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
+    vol struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+    word36 data;
 
-    l_putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len
-    l_putbits36_9 (& smbxp -> word2, 18, 70); // op_code ack_echnego_init
-    l_putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
-
+    fnp_core_read_lock (fnp_unit_idx, &smbxp -> word2, &data, __func__);
+    l_putbits36_9 (& data, 9, 2); // cmd_data_len
+    l_putbits36_9 (& data, 18, 70); // op_code ack_echnego_init
+    l_putbits36_9 (& data, 27, 1); // io_cmd rcd
+    fnp_core_write_unlock(fnp_unit_idx, &smbxp -> word2, data, __func__);
 
     notifyCS (mbx, fnp_unit_idx, lineno);
   }
@@ -474,13 +481,15 @@ static void fnp_rcd_line_disconnected (int mbx, int fnp_unit_idx, int lineno)
   {
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd line_disconnected\n", lineno);
     struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
-    struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
-    struct fnp_submailbox vol * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+    vol struct mailbox * mbxp = (vol struct mailbox *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
+    vol struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+    word36 data;
 
-    l_putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len
-    l_putbits36_9 (& smbxp -> word2, 18, 0101); // op_code cmd_data_len
-    l_putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
-
+    fnp_core_read_lock (fnp_unit_idx, &smbxp -> word2, &data, __func__);
+    l_putbits36_9 (& data, 9, 2); // cmd_data_len
+    l_putbits36_9 (& data, 18, 0101); // op_code cmd_data_len
+    l_putbits36_9 (& data, 27, 1); // io_cmd rcd
+    fnp_core_write_unlock(fnp_unit_idx, &smbxp -> word2, data, __func__);
 
     notifyCS (mbx, fnp_unit_idx, lineno);
   }
@@ -489,14 +498,16 @@ static void fnp_rcd_input_in_mailbox (int mbx, int fnp_unit_idx, int lineno)
   {
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd input_in_mailbox\n", lineno);
     struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
-    struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
-    struct fnp_submailbox vol * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+    vol struct mailbox * mbxp = (vol struct mailbox *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
+    vol struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
     struct t_line * linep = & fudp->MState.line[lineno];
+    word36 data;
 //sim_printf ("fnp_rcd_input_in_mailbox nPos %d\n", linep->nPos);
-    l_putbits36_9 (& smbxp -> word2, 9, (word9) linep->nPos); // n_chars
-    l_putbits36_9 (& smbxp -> word2, 18, 0102); // op_code input_in_mailbox
-    l_putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
-
+    fnp_core_read_lock (fnp_unit_idx, &smbxp -> word2, &data, __func__);
+    l_putbits36_9 (& data, 9, (word9) linep->nPos); // n_chars
+    l_putbits36_9 (& data, 18, 0102); // op_code input_in_mailbox
+    l_putbits36_9 (& data, 27, 1); // io_cmd rcd
+    fnp_core_write_unlock(fnp_unit_idx, &smbxp -> word2, data, __func__);
 
 // data goes in mystery [0..24]
 
@@ -538,7 +549,7 @@ sim_printf ("\n");
         if (i + 3 < linep->nPos)
           l_putbits36_9 (& v, 27, linep->buffer [i + 3]);
 //sim_printf ("%012"PRIo64"\n", v);
-        smbxp -> mystery [j ++] = v;
+        fnp_core_write(fnp_unit_idx, & smbxp -> mystery [j ++], v, __func__);
       }
 
 // command_data is at mystery[25]?
@@ -546,9 +557,10 @@ sim_printf ("\n");
     // temporary until the logic is in place XXX
     int outputChainPresent = 0;
 
-    l_putbits36_1 (& smbxp -> mystery [25], 16, (word1) outputChainPresent);
-    l_putbits36_1 (& smbxp -> mystery [25], 17, linep->input_break ? 1 : 0);
-
+    fnp_core_read_lock (fnp_unit_idx, &smbxp -> mystery [25], &data, __func__);
+    l_putbits36_1 (& data, 16, (word1) outputChainPresent);
+    l_putbits36_1 (& data, 17, linep->input_break ? 1 : 0);
+    fnp_core_write_unlock (fnp_unit_idx, &smbxp -> mystery [25], data, __func__);
 
 #if 0
     sim_printf ("    %012"PRIo64"\n", smbxp -> word1);
@@ -567,16 +579,19 @@ sim_printf ("\n");
 static void fnp_rcd_line_status  (int mbx, int fnp_unit_idx, int lineno)
   {
     struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
-    struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
-    struct fnp_submailbox vol * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+    vol struct mailbox * mbxp = (vol struct mailbox *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
+    vol struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
     struct t_line * linep = & fudp->MState.line[lineno];
+    word36 data;
 
-    l_putbits36_18 (& smbxp -> word2, 0, 2); // cmd_data_len
-    l_putbits36_9 (& smbxp -> word2, 18, 0124); // op_code accept_input
-    l_putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
+    fnp_core_read_lock (fnp_unit_idx, &smbxp -> word2, &data, __func__);
+    l_putbits36_18 (& data, 0, 2); // cmd_data_len
+    l_putbits36_9 (& data, 18, 0124); // op_code accept_input
+    l_putbits36_9 (& data, 27, 1); // io_cmd rcd
+    fnp_core_write_unlock(fnp_unit_idx, &smbxp -> word2, data, __func__);
 
-    smbxp -> mystery [0] = linep->lineStatus0;
-    smbxp -> mystery [1] = linep->lineStatus1;
+    fnp_core_write(fnp_unit_idx, &smbxp -> mystery [0], linep->lineStatus0, __func__);
+    fnp_core_write(fnp_unit_idx, &smbxp -> mystery [1], linep->lineStatus1, __func__);
 
     notifyCS (mbx, fnp_unit_idx, lineno);
   }
@@ -585,28 +600,36 @@ static void fnp_rcd_accept_input (int mbx, int fnp_unit_idx, int lineno)
   {
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd accept_input\n", lineno);
     struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
-    struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
+    vol struct mailbox * mbxp = (vol struct mailbox *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
     struct t_line * linep = & fudp->MState.line[lineno];
-    struct input_sub_mbx vol * smbxp = (struct input_sub_mbx *) & (mbxp -> fnp_sub_mbxes [mbx]);
+    vol struct input_sub_mbx * smbxp = (vol struct input_sub_mbx *) & (mbxp -> fnp_sub_mbxes [mbx]);
+    word36 data;
+
     //sim_printf ("accept_input mbx %d fnp_unit_idx %d lineno %d nPos %d\n", mbx, fnp_unit_idx, lineno, linep->nPos);
 
-    l_putbits36_18 (& smbxp -> word2, 0, (word18) linep->nPos); // cmd_data_len XXX
-    l_putbits36_9 (& smbxp -> word2, 18, 0112); // op_code accept_input
-    l_putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
+    fnp_core_read_lock (fnp_unit_idx, &smbxp -> word2, &data, __func__);
+    l_putbits36_18 (& data, 0, (word18) linep->nPos); // cmd_data_len XXX
+    l_putbits36_9 (& data, 18, 0112); // op_code accept_input
+    l_putbits36_9 (& data, 27, 1); // io_cmd rcd
+    fnp_core_write_unlock(fnp_unit_idx, &smbxp -> word2, data, __func__);
 
     // AN85 is just wrong. CS expects us to specify the number of buffers
     // and sizes.
 
-    smbxp -> n_buffers = 1; 
+    data = 1;
+    fnp_core_write(fnp_unit_idx, &smbxp -> n_buffers, data, __func__);
     // DCW for buffer (1)
-    smbxp -> dcws [0] = 0;
-    l_putbits36_12 (& smbxp -> dcws [0], 24, (word12) linep->nPos);
+    data = 0;
+    l_putbits36_12 (& data, 24, (word12) linep->nPos);
+    fnp_core_write(fnp_unit_idx, &smbxp -> dcws [0], data, __func__);
 
     // temporary until the logic is in place XXX
     word1 output_chain_present = 1;
 
-    l_putbits36_1 (& smbxp -> command_data, 16, (word1) output_chain_present);
-    l_putbits36_1 (& smbxp -> command_data, 17, linep->input_break ? 1 : 0);
+    fnp_core_read_lock (fnp_unit_idx, &smbxp -> command_data, &data, __func__);
+    l_putbits36_1 (& data, 16, (word1) output_chain_present);
+    l_putbits36_1 (& data, 17, linep->input_break ? 1 : 0);
+    fnp_core_write_unlock(fnp_unit_idx, &smbxp -> command_data, data, __func__);
 
     fudp -> fnpMBXlineno [mbx] = lineno;
     notifyCS (mbx, fnp_unit_idx, lineno);
@@ -616,12 +639,15 @@ static void fnp_rcd_line_break (int mbx, int fnp_unit_idx, int lineno)
   {
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd line_break\n", lineno);
     struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
-    struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
-    struct fnp_submailbox vol * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+    vol struct mailbox * mbxp = (vol struct mailbox *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
+    vol struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+    word36 data;
 
-    l_putbits36_9 (& smbxp -> word2, 9, 0); // cmd_data_len XXX
-    l_putbits36_9 (& smbxp -> word2, 18, 0113); // op_code line_break
-    l_putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
+    fnp_core_read_lock (fnp_unit_idx, &smbxp -> word2, &data, __func__);
+    l_putbits36_9 (& data, 9, 0); // cmd_data_len XXX
+    l_putbits36_9 (& data, 18, 0113); // op_code line_break
+    l_putbits36_9 (& data, 27, 1); // io_cmd rcd
+    fnp_core_write_unlock(fnp_unit_idx, &smbxp -> word2, data, __func__);
 
     notifyCS (mbx, fnp_unit_idx, lineno);
   }
@@ -633,12 +659,15 @@ static void fnp_rcd_send_output (int mbx, int fnp_unit_idx, int lineno)
 sim_printf ("send_output\n");
 #endif
     struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
-    struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
-    struct fnp_submailbox vol * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+    vol struct mailbox * mbxp = (vol struct mailbox *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
+    vol struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+    word36 data;
 
-    l_putbits36_9 (& smbxp -> word2, 9, 0); // cmd_data_len XXX
-    l_putbits36_9 (& smbxp -> word2, 18, 0105); // op_code send_output
-    l_putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
+    fnp_core_read_lock (fnp_unit_idx, &smbxp -> word2, &data, __func__);
+    l_putbits36_9 (& data, 9, 0); // cmd_data_len XXX
+    l_putbits36_9 (& data, 18, 0105); // op_code send_output
+    l_putbits36_9 (& data, 27, 1); // io_cmd rcd
+    fnp_core_write_unlock(fnp_unit_idx, &smbxp -> word2, data, __func__);
 
     notifyCS (mbx, fnp_unit_idx, lineno);
   }
@@ -648,12 +677,15 @@ static void fnp_rcd_acu_dial_failure (int mbx, int fnp_unit_idx, int lineno)
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd acu_dial_failure\n", lineno);
     //sim_printf ("acu_dial_failure %d %d %d\n", mbx, fnp_unit_idx, lineno);
     struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
-    struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
-    struct fnp_submailbox vol * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+    vol struct mailbox * mbxp = (vol struct mailbox *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
+    vol struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+    word36 data;
 
-    l_putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len XXX
-    l_putbits36_9 (& smbxp -> word2, 18, 82); // op_code acu_dial_failure
-    l_putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
+    fnp_core_read_lock (fnp_unit_idx, &smbxp -> word2, &data, __func__);
+    l_putbits36_9 (& data, 9, 2); // cmd_data_len XXX
+    l_putbits36_9 (& data, 18, 82); // op_code acu_dial_failure
+    l_putbits36_9 (& data, 27, 1); // io_cmd rcd
+    fnp_core_write_unlock(fnp_unit_idx, &smbxp -> word2, data, __func__);
 
     notifyCS (mbx, fnp_unit_idx, lineno);
   }
@@ -663,14 +695,16 @@ static void fnp_rcd_accept_new_terminal (int mbx, int fnp_unit_idx, int lineno)
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd accept_new_terminal\n", lineno);
     //sim_printf ("accept_new_terminal %d %d %d\n", mbx, fnp_unit_idx, lineno);
     struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
-    struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
-    struct fnp_submailbox vol * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+    vol struct mailbox * mbxp = (vol struct mailbox *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
+    vol struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
     struct t_line * linep = & fudp->MState.line[lineno];
+    word36 data;
 
-    l_putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len XXX
-    l_putbits36_9 (& smbxp -> word2, 18, 64); // op_code accept_new_terminal
-    l_putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
-
+    fnp_core_read_lock (fnp_unit_idx, &smbxp -> word2, &data, __func__);
+    l_putbits36_9 (& data, 9, 2); // cmd_data_len XXX
+    l_putbits36_9 (& data, 18, 64); // op_code accept_new_terminal
+    l_putbits36_9 (& data, 27, 1); // io_cmd rcd
+    fnp_core_write_unlock(fnp_unit_idx, &smbxp -> word2, data, __func__);
 
 //  pcb.line_type, dialup_info.line_type = bin (sub_mbx.command_data (1), 17);
 //  if sub_mbx.command_data (2)
@@ -710,9 +744,12 @@ static void fnp_rcd_accept_new_terminal (int mbx, int fnp_unit_idx, int lineno)
 //     2 receive_mode_device bit (1) unal, /* device must be told to enter receive mode */
 //     2 pad bit (26) unal;
 
-    smbxp->mystery [0] = 0; 
-    smbxp->mystery [1] = 0;
-    l_putbits36_9 (smbxp->mystery + 0, 27, linep->lineType);
+    data = 0;
+    fnp_core_write(fnp_unit_idx, &smbxp -> mystery [0], data, __func__);
+    fnp_core_write(fnp_unit_idx, &smbxp -> mystery [1], data, __func__);
+    data = 0;
+    l_putbits36_9 (& data, 27, linep->lineType);
+    fnp_core_write(fnp_unit_idx, &smbxp -> mystery [0], data, __func__);
 
     notifyCS (mbx, fnp_unit_idx, lineno);
   }
@@ -722,12 +759,15 @@ static void fnp_rcd_wru_timeout (int mbx, int fnp_unit_idx, int lineno)
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd wru_timeout\n", lineno);
     //sim_printf ("wru_timeout %d %d %d\n", mbx, fnp_unit_idx, lineno);
     struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
-    struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
-    struct fnp_submailbox vol * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+    vol struct mailbox * mbxp = (vol struct mailbox *) fnp_M_addr (fnp_unit_idx, fudp->mailboxAddress);
+    vol struct fnp_submailbox * smbxp = & (mbxp -> fnp_sub_mbxes [mbx]);
+    word36 data;
 
-    l_putbits36_9 (& smbxp -> word2, 9, 2); // cmd_data_len XXX
-    l_putbits36_9 (& smbxp -> word2, 18, 0114); // op_code wru_timeout
-    l_putbits36_9 (& smbxp -> word2, 27, 1); // io_cmd rcd
+    fnp_core_read_lock (fnp_unit_idx, &smbxp -> word2, &data, __func__);
+    l_putbits36_9 (& data, 9, 2); // cmd_data_len XXX
+    l_putbits36_9 (& data, 18, 0114); // op_code wru_timeout
+    l_putbits36_9 (& data, 27, 1); // io_cmd rcd
+    fnp_core_write_unlock(fnp_unit_idx, &smbxp -> word2, data, __func__);
 
     notifyCS (mbx, fnp_unit_idx, lineno);
   }

@@ -70,7 +70,9 @@ static inline int cthread_cond_timedwait (pthread_cond_t * restrict cond,
 
 
 
+#ifndef LOCKLESS
 extern pthread_rwlock_t mem_lock;
+#endif
 
 
 // libuv resource lock
@@ -83,6 +85,7 @@ void unlock_libuv (void);
 void lock_simh (void);
 void unlock_simh (void);
 
+#ifndef LOCKLESS
 // atomic memory lock
 bool get_rmw_lock (void);
 void lock_rmw (void);
@@ -91,6 +94,7 @@ void lock_mem_wr (void);
 void unlock_rmw (void);
 void unlock_mem (void);
 void unlock_mem_force (void);
+#endif
 
 // scu lock
 void lock_scu (void);
@@ -121,21 +125,20 @@ struct cpuThreadz_t
     pthread_mutex_t runLock;
 
     // DIS sleep
-    bool sleep;
     pthread_cond_t sleepCond;
-    pthread_mutex_t sleepLock;
 
   };
 extern struct cpuThreadz_t cpuThreadz [N_CPU_UNITS_MAX];
 
 void createCPUThread (uint cpuNum);
+void stopCPUThread(void);
 void cpuRdyWait (uint cpuNum);
 void setCPURun (uint cpuNum, bool run);
 void cpuRunningWait (void);
-unsigned long sleepCPU (unsigned long nsec);
+unsigned long sleepCPU (unsigned long usec);
 void wakeCPU (uint cpuNum);
 
-#ifdef IO_TRHEADZ
+#ifdef IO_THREADZ
 // IOM threads
 
 struct iomThreadz_t

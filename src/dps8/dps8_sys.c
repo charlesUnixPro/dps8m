@@ -53,7 +53,7 @@
 #include "dps8_absi.h"
 #include "dps8_utils.h"
 #include "utlist.h"
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 #include "threadz.h"
 #endif
 
@@ -74,7 +74,7 @@
 // Building with SCUMEM defined puts the memory in the SCUs.
 
 #ifndef SCUMEM
-word36 vol * M = NULL;                                          // memory
+vol word36 * M = NULL;                                          // memory
 #endif
 
 #ifdef TEST_OLIN
@@ -1470,7 +1470,7 @@ static char * default_base_system_script [] =
     "set scu3 reset",
     "set iom0 reset",
 
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
     "set cpu nunits=6",
 #else
 #ifdef ISOTLTS
@@ -3537,6 +3537,9 @@ static void dps8_init (void)
 #ifdef ROUND_ROBIN
     sim_msg ("#### ROUND_ROBIN BUILD ####\n");
 #endif
+#ifdef LOCKLESS
+    sim_msg ("#### LOCKLESS BUILD ####\n");
+#endif
 
     // special dps8 initialization stuff that cant be done in reset, etc .....
 
@@ -3598,7 +3601,7 @@ static void dps8_init (void)
 #ifdef PANEL
     panelScraperInit ();
 #endif
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
     initThreadz ();
 #endif
   }

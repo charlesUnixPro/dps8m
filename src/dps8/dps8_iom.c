@@ -223,7 +223,7 @@
 #include "dps8_console.h"
 #include "dps8_fnp2.h"
 #include "dps8_utils.h"
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 #include "threadz.h"
 #endif
 
@@ -440,7 +440,7 @@ __thread uint this_chan_num;
 #endif
 
 #ifdef SCUMEM
-void iom_core_read (uint iom_unit_idx, word24 addr, word36 *data, UNUSED const char * ctx)
+void iom_core_read (uint iom_unit_idx, word24 addr, vol word36 *data, UNUSED const char * ctx)
   {
     word24 offset;
     int scuUnitNum = query_IOM_SCU_bank_map (iom_unit_idx, addr, & offset);
@@ -458,7 +458,7 @@ void iom_core_read (uint iom_unit_idx, word24 addr, word36 *data, UNUSED const c
 #endif
   }
 
-void iom_core_read2 (uint iom_unit_idx, word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
+void iom_core_read2 (uint iom_unit_idx, word24 addr, vol word36 *even, vol word36 *odd, UNUSED const char * ctx)
   {
     word24 offset;
     int scuUnitNum = query_IOM_SCU_bank_map (iom_unit_idx, addr & PAEVEN, & offset);
@@ -513,15 +513,23 @@ void iom_core_write2 (uint iom_unit_idx, word24 addr, word36 even, word36 odd, U
 #endif
 #endif
   }
-#else
-void iom_core_read (UNUSED uint iom_unit_idx, word24 addr, word36 *data, UNUSED const char * ctx)
+
+#else // SCUMEM
+
+void iom_core_read (UNUSED uint iom_unit_idx, word24 addr, vol word36 *data, UNUSED const char * ctx)
   {
 #ifdef THREADZ
 #ifdef lockread
     lock_mem_rd ();
 #endif
 #endif
+#ifdef LOCKLESS
+    word36 v;
+    LOAD_ACQ_CORE_WORD(v, addr);
+    * data = v & DMASK;
+#else
     * data = M[addr] & DMASK;
+#endif
 #ifdef THREADZ
 #ifdef lockread
     unlock_mem ();
@@ -529,15 +537,24 @@ void iom_core_read (UNUSED uint iom_unit_idx, word24 addr, word36 *data, UNUSED 
 #endif
   }
 
-void iom_core_read2 (UNUSED uint iom_unit_idx, word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
+void iom_core_read2 (UNUSED uint iom_unit_idx, word24 addr, vol word36 *even, vol word36 *odd, UNUSED const char * ctx)
   {
 #ifdef THREADZ
 #ifdef lockread
     lock_mem_rd ();
 #endif
 #endif
+#ifdef LOCKLESS
+    word36 v;
+    LOAD_ACQ_CORE_WORD(v, addr);
+    * even = v & DMASK;
+    addr++;
+    LOAD_ACQ_CORE_WORD(v, addr);
+    * odd = v & DMASK;
+#else
     * even = M[addr ++] & DMASK;
     * odd =  M[addr]    & DMASK;
+#endif
 #ifdef THREADZ
 #ifdef lockread
     unlock_mem ();
@@ -552,7 +569,12 @@ void iom_core_write (UNUSED uint iom_unit_idx, word24 addr, word36 data, UNUSED 
     lock_mem_wr ();
 #endif
 #endif
+#ifdef LOCKLESS
+    LOCK_CORE_WORD(addr);
+    STORE_REL_CORE_WORD(addr, data);
+#else
     M[addr] = data & DMASK;
+#endif
 #ifdef THREADZ
 #ifdef lockread
     unlock_mem ();
@@ -567,8 +589,16 @@ void iom_core_write2 (UNUSED uint iom_unit_idx, word24 addr, word36 even, word36
     lock_mem_wr ();
 #endif
 #endif
+#ifdef LOCKLESS
+    LOCK_CORE_WORD(addr);
+    STORE_REL_CORE_WORD(addr, even);
+    addr++;
+    LOCK_CORE_WORD(addr);
+    STORE_REL_CORE_WORD(addr, odd);
+#else
     M[addr ++] = even;
     M[addr] =    odd;
+#endif
 #ifdef THREADZ
 #ifdef lockread
     unlock_mem ();
@@ -576,6 +606,28 @@ void iom_core_write2 (UNUSED uint iom_unit_idx, word24 addr, word36 even, word36
 #endif
   }
 #endif
+
+
+static void iom_core_read_lock (UNUSED uint iom_unit_idx, word24 addr, word36 *data, UNUSED const char * ctx)
+  {
+#ifdef LOCKLESS
+    LOCK_CORE_WORD(addr);
+    word36 v;
+    LOAD_ACQ_CORE_WORD(v, addr);
+    * data = v & DMASK;
+#else
+    * data = M[addr] & DMASK;
+#endif
+  }
+
+static void iom_core_write_unlock (UNUSED uint iom_unit_idx, word24 addr, word36 data, UNUSED const char * ctx)
+  {
+#ifdef LOCKLESS
+    STORE_REL_CORE_WORD(addr, data);
+#else
+    M[addr] = data & DMASK;
+#endif
+  }
 
 static t_stat iom_action (UNIT *up)
   {
@@ -1287,7 +1339,7 @@ static t_stat iom_boot (int unitNum, UNUSED DEVICE * dptr)
     
 #else
     //sim_activate (& boot_channel_unit[iom_unit_idx], sys_opts.iom_times.boot_time );
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
     sim_activate (& boot_channel_unit[iom_unit_idx], 1);
 #else
     sim_activate (& boot_channel_unit[iom_unit_idx], 1000);
@@ -2276,6 +2328,9 @@ sim_warn ("unhandled fetch_and_parse_DCW\n");
 static int send_general_interrupt (uint iom_unit_idx, uint chan, enum iomImwPics pic)
   {
 
+#ifdef IO_FENCE
+    fence ();
+#endif
 #ifdef THREADZ
     lock_mem_wr ();
 #endif
@@ -2306,7 +2361,7 @@ static int send_general_interrupt (uint iom_unit_idx, uint chan, enum iomImwPics
                __func__, 'A' + iom_unit_idx, chan, chan, pic, interrupt_num, 
                interrupt_num);
     word36 imw;
-    iom_core_read (iom_unit_idx, imw_addr, &imw, __func__);
+    iom_core_read_lock (iom_unit_idx, imw_addr, &imw, __func__);
     // The 5 least significant bits of the channel determine a bit to be
     // turned on.
     sim_debug (DBG_DEBUG, & iom_dev, 
@@ -2315,7 +2370,7 @@ static int send_general_interrupt (uint iom_unit_idx, uint chan, enum iomImwPics
     putbits36_1 (& imw, chan_in_group, 1);
     sim_debug (DBG_INFO, & iom_dev, 
                "%s: IMW at %#o now %012"PRIo64"\n", __func__, imw_addr, imw);
-    iom_core_write (iom_unit_idx, imw_addr, imw, __func__);
+    iom_core_write_unlock (iom_unit_idx, imw_addr, imw, __func__);
     
 #ifdef THREADZ
     unlock_mem ();
@@ -2386,12 +2441,12 @@ static void iom_fault (uint iom_unit_idx, uint chan, UNUSED const char * who,
     send_general_interrupt (iom_unit_idx, 1, imwSystemFaultPic);
 
     word36 ddcw;
-    iom_core_read (iom_unit_idx, mbx, & ddcw, __func__);
+    iom_core_read_lock (iom_unit_idx, mbx, & ddcw, __func__);
     // incr addr
     putbits36_18 (& ddcw, 0, (getbits36_18 (ddcw, 0) + 1u) & MASK18);
     // decr tally
     putbits36_12 (& ddcw, 24, (getbits36_12 (ddcw, 24) - 1u) & MASK12);
-    iom_core_write (iom_unit_idx, mbx, ddcw, __func__);
+    iom_core_write_unlock (iom_unit_idx, mbx, ddcw, __func__);
 
 #ifdef THREADZ
     unlock_mem ();
@@ -3101,6 +3156,9 @@ int send_special_interrupt (uint iom_unit_idx, uint chan, uint devCode,
 #ifdef THREADZ
     lock_mem_wr ();
 #endif
+#ifdef LOCKLESS
+    lock_iom();
+#endif
 
 // Multics uses an 12(8) word circular queue, managed by clever manipulation
 // of the LPW and DCW.
@@ -3132,6 +3190,9 @@ int send_special_interrupt (uint iom_unit_idx, uint chan, uint devCode,
 
 #ifdef THREADZ
     unlock_mem ();
+#endif
+#ifdef LOCKLESS
+    unlock_iom();
 #endif
 
     send_general_interrupt (iom_unit_idx, IOM_SPECIAL_STATUS_CHAN, imwSpecialPic);

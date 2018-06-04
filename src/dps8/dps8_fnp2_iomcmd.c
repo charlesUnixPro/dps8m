@@ -33,7 +33,7 @@
 
 #define DBG_CTR 1
 
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 #include "threadz.h"
 #endif
 
@@ -57,7 +57,7 @@ static inline void fnp_core_read_n (word24 addr, word36 *data, uint n, UNUSED co
 #endif
 
 #ifdef THREADZ
-static inline void l_putbits36_1 (word36 vol * x, uint p, word1 val)
+static inline void l_putbits36_1 (vol word36 * x, uint p, word1 val)
 {
     const int n = 1;
     int shift = 36 - (int) p - (int) n;
@@ -127,15 +127,15 @@ struct decoded_t
     uint devUnitIdx;
     uint op_code;
     uint slot_no;
-    struct dn355_submailbox vol * smbxp;
-    struct fnp_submailbox vol * fsmbxp;
-    struct mailbox vol * mbxp;
+    vol struct dn355_submailbox * smbxp;
+    vol struct fnp_submailbox * fsmbxp;
+    vol struct mailbox * mbxp;
     struct fnpUnitData_s * fudp;
     iom_chan_data_t * p;
     uint cell;
   };
 
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 static __thread struct decoded_t decoded;
 #else
 static struct decoded_t decoded;
@@ -214,8 +214,8 @@ static void dmpmbx (uint mailboxAddress)
 
 static int wcd (void)
   {
-    uint ctlr_port_no = 0; // FNPs are single port
-    uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
+    uint ctlr_port_num = 0; // FNPs are single port
+    uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_num].iom_unit_idx;
 
     struct t_line * linep = & decoded.fudp->MState.line[decoded.slot_no];
     sim_debug (DBG_TRACE, & fnp_dev, "[%u] wcd op_code %u 0%o\n", decoded.slot_no, decoded.op_code, decoded.op_code);
@@ -560,6 +560,16 @@ static int wcd (void)
 
         case 30: // input_fc_chars
           {
+
+// dcl 1 input_flow_control_info aligned based,
+//     2 suspend_seq unaligned,
+//       3 count fixed bin (9) unsigned,
+//       3 chars char (3),
+//     2 resume_seq unaligned,
+//       3 count fixed bin (9) unsigned,
+//       3 chars char (3),
+//     2 timeout bit (1);
+
             sim_debug (DBG_TRACE, & fnp_dev, "[%u]    input_fc_chars\n", decoded.slot_no);
             word36 suspendStr = decoded.smbxp -> command_data [0];
             linep->inputSuspendStr[0] = getbits36_8 (suspendStr, 10);
@@ -573,7 +583,7 @@ static int wcd (void)
               }
             linep->inputSuspendLen = suspendLen;
 
-            word36 resumeStr = decoded.smbxp -> command_data [0];
+            word36 resumeStr = decoded.smbxp -> command_data [1];
             linep->inputResumeStr[0] = getbits36_8 (resumeStr, 10);
             linep->inputResumeStr[1] = getbits36_8 (resumeStr, 19);
             linep->inputResumeStr[2] = getbits36_8 (resumeStr, 28);
@@ -584,6 +594,8 @@ static int wcd (void)
                 resumeLen = 3;
               }
             linep->inputResumeLen = resumeLen;
+
+            // XXX timeout ignored
           }
           break;
 
@@ -1019,6 +1031,8 @@ word36 pad;
       } // switch decoded.op_code
 
     setTIMW (iomUnitIdx, decoded.fudp->mailboxAddress, (int) decoded.cell);
+    uint chan_num = cables->fnp_to_iom[decoded.devUnitIdx][ctlr_port_num].chan_num;
+    send_terminate_interrupt (iomUnitIdx, chan_num);
 
 #ifdef FNPDBG
 sim_printf ("wcd sets the TIMW??\n");
@@ -1250,9 +1264,7 @@ static int wtx (void)
         // The dcw
         //word36 dcw = M [dcwAddrPhys + i];
         word36 dcw;
-        uint ctlr_port_no = 0; // FNPs are single port
-        uint iomUnitIdx = cables->fnp_to_iom [decoded.devUnitIdx][ctlr_port_no].iom_unit_idx;
-        iom_core_read (iomUnitIdx, dcwAddrPhys, & dcw, __func__);
+        iom_core_read (iom_unit_idx, dcwAddrPhys, & dcw, __func__);
         //sim_printf ("  %012"PRIo64"\n", dcw);
 
         // Get the address and the tally from the dcw
@@ -1266,6 +1278,9 @@ static int wtx (void)
       } // for each dcw
 
     setTIMW (iom_unit_idx, decoded.fudp->mailboxAddress, (int) decoded.cell);
+    uint ctlr_port_num = 0; // FNPs are single ported
+    uint chan_num = cables->fnp_to_iom[decoded.devUnitIdx][ctlr_port_num].chan_num;
+    send_terminate_interrupt (iom_unit_idx, chan_num);
 
 #if 0
     //decoded.fudp->MState.line[decoded.slot_no].send_output = true;
@@ -1375,8 +1390,11 @@ sim_printf ("']\n");
     // So apparently a flag indicating that there is output queued.
     word1 output_chain_present = 1;
 
-    l_putbits36_1 (& p->command_data, 16, output_chain_present);
-    l_putbits36_1 (& p->command_data, 17, linep->input_break ? 1 : 0);
+    word36 v;
+    fnp_core_read_lock ((int)iomUnitIdx, &p->command_data, &v, __func__);
+    l_putbits36_1 (& v, 16, output_chain_present);
+    l_putbits36_1 (& v, 17, linep->input_break ? 1 : 0);
+    fnp_core_write_unlock((int)iomUnitIdx, &p->command_data, v, __func__);
 
     // Mark the line as ready to receive more data
     linep->input_reply_pending = false;
@@ -1650,9 +1668,9 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
     word24 offset;
     int scuUnitNum =  query_IOM_SCU_bank_map (iomUnitIdx, decoded.fudp->mailboxAddress, & offset);
     uint scuUnitIdx = cables->iom_to_scu[iomUnitIdx][scuUnitNum].scu_unit_idx;
-    decoded.mbxp = (struct mailbox vol *) & scu [scuUnitIdx].M [decoded.fudp->mailboxAddress];
+    decoded.mbxp = (vol struct mailbox *) & scu [scuUnitIdx].M [decoded.fudp->mailboxAddress];
 #else
-    decoded.mbxp = (struct mailbox vol *) & M [decoded.fudp -> mailboxAddress];
+    decoded.mbxp = (vol struct mailbox *) & M [decoded.fudp -> mailboxAddress];
 #endif
     word36 dia_pcw = decoded.mbxp -> dia_pcw;
 
@@ -1768,7 +1786,7 @@ static void processMBX (uint iomUnitIdx, uint chan)
 // mailbox and 7 Channel mailboxes."
 
     bool ok = true;
-    struct mailbox vol * mbxp = (struct mailbox vol *) fnp_M_addr ((int) fnp_unit_idx, fudp->mailboxAddress);
+    vol struct mailbox * mbxp = (vol struct mailbox *) fnp_M_addr ((int) fnp_unit_idx, fudp->mailboxAddress);
 
     word36 dia_pcw;
     dia_pcw = mbxp -> dia_pcw;
@@ -1888,22 +1906,22 @@ sim_printf ("reset??\n");
       }
     else if (command == 072) // bootload
       {
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
         lock_libuv ();
 #endif
         fnpcmdBootload (fnp_unit_idx);
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
         unlock_libuv ();
 #endif
         fudp -> fnpIsRunning = true;
       }
     else if (command == 071) // interrupt L6
       {
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
         lock_libuv ();
 #endif
         ok = interruptL66 (iomUnitIdx, chan) == 0;
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
         unlock_libuv ();
 #endif
       }

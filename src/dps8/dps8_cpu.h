@@ -1550,7 +1550,7 @@ typedef struct
 
     word18   rX [8]; // index
     word27   rTR;    // timer [map: TR, 9 0's]
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
     struct timespec rTRTime; // time when rTR was set
     uint     rTRsample;
 #endif
@@ -1780,6 +1780,9 @@ typedef struct
     uint shadowTR;
     uint TR0; // The value that the TR was set to.
 #endif
+#ifdef LOCKLESS
+    word24 locked_addr;
+#endif
 //#ifdef THREADZ
 //    // Set if this thread has set memlock
 //    bool havelock; // Vetinari 
@@ -1793,7 +1796,7 @@ extern cpu_state_t * cpus;
 extern cpu_state_t cpus [N_CPU_UNITS_MAX];
 #endif
 
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 extern __thread cpu_state_t * restrict cpup;
 #else
 extern cpu_state_t * restrict cpup;
@@ -1801,7 +1804,7 @@ extern cpu_state_t * restrict cpup;
 #define cpu (* cpup)
 
 uint set_cpu_idx (uint cpuNum);
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 extern __thread uint current_running_cpu_idx;
 #else
 #ifdef ROUND_ROBIN
@@ -1868,7 +1871,7 @@ void unlock_mem (void);
 #endif
 #endif // ! THREADZ
 
-#ifdef SPEED
+#if defined(SPEED) && defined(INLINE_CORE)
 // Ugh. Circular dependencies XXX
 void doFault (_fault faultNumber, _fault_subtype faultSubtype, 
               const char * faultMsg) NO_RETURN;
@@ -2145,13 +2148,98 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd,
 #endif
     return 0;
   }
-#else
+#else  // defined(SPEED) && defined(INLINE_CORE)
 int core_read (word24 addr, word36 *data, const char * ctx);
 int core_write (word24 addr, word36 data, const char * ctx);
 int core_write_zone (word24 addr, word36 data, const char * ctx);
 int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx);
 int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx);
+#endif // defined(SPEED) && defined(INLINE_CORE)
+
+#ifdef LOCKLESS
+int core_read_lock (word24 addr, word36 *data, const char * ctx);
+int core_write_unlock (word24 addr, word36 data, const char * ctx);
+int core_unlock_all (void);
+
+#define DEADLOCK_DETECT	1000000000
+#define MEM_LOCKED_BIT    61
+#define MEM_LOCKED        (1LLU<<MEM_LOCKED_BIT)
+
+#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
+#include <machine/atomic.h>
+
+#define LOCK_CORE_WORD(addr)			\
+  do									\
+    {									\
+      int i = DEADLOCK_DETECT;						\
+      while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) \
+	{								\
+	  i--;								\
+	}								\
+      if (i == 0)							\
+	{								\
+	  sim_warn ("%s: locked %x addr %x deadlock\n", __FUNCTION__, cpu.locked_addr, addr); \
+	}								\
+    }									\
+  while (0)
+
+#define LOAD_ACQ_CORE_WORD(res, addr)			\
+  do							\
+    {							\
+      res = atomic_load_acq_64((volatile u_long *)&M[addr]);	\
+    }								\
+  while (0)
+
+#define STORE_REL_CORE_WORD(addr, data)					\
+  do									\
+    {									\
+      atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);	\
+    }									\
+  while (0)
+
+#else  // defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
+
+#ifdef MEMORY_ACCESS_NOT_STRONGLY_ORDERED
+#define MEM_BARRIER()   do { __sync_synchronize(); } while (0)
+#else
+#define MEM_BARRIER()   do {} while (0)
 #endif
+
+#define LOCK_CORE_WORD(addr)						\
+     do									\
+       {								\
+	 int i = DEADLOCK_DETECT;					\
+	 while ((__sync_fetch_and_or((volatile u_long *)&M[addr], MEM_LOCKED) & MEM_LOCKED) \
+		&&  i > 0)						\
+	   {								\
+	    i--;							\
+	    }								\
+	 if (i == 0)							\
+	   {								\
+	    sim_warn ("%s: locked %x addr %x deadlock\n", __FUNCTION__, cpu.locked_addr, addr); \
+	    }								\
+	 }								\
+     while (0)
+
+#define LOAD_ACQ_CORE_WORD(res, addr)			\
+     do							\
+       {						\
+	 res = M[addr];					\
+	 MEM_BARRIER();					\
+       }						\
+     while (0)
+
+#define STORE_REL_CORE_WORD(addr, data)					\
+  do									\
+    {									\
+      MEM_BARRIER();							\
+      M[addr] = data & DMASK;						\
+    }									\
+  while (0)
+
+#endif  // defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
+#endif  // LOCKLESS
+
 static inline void core_readN (word24 addr, word36 * data, uint n,
                                UNUSED const char * ctx)
   {
@@ -2205,7 +2293,7 @@ void add_APU_history (enum APUH_e op);
 #endif
 void add_history_force (uint hset, word36 w0, word36 w1);
 word18 get_BAR_address(word18 addr);
-#ifdef THREADZ
+#if defined(THREADZ) || defined(LOCKLESS)
 t_stat threadz_sim_instr (void);
 void * cpu_thread_main (void * arg);
 #endif
