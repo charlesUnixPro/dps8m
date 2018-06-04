@@ -68,6 +68,10 @@ static UNIT cpu_unit [N_CPU_UNITS_MAX] =
 
 #define UNIT_IDX(uptr) ((uptr) - cpu_unit)
 
+#ifdef PANEL
+static void panel_process_event (void);
+#endif
+
 static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr, 
                                UNUSED int val, UNUSED const void * desc)
   {

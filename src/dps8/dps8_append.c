@@ -269,7 +269,7 @@ static void fetch_dsptw (word15 segno)
     
 #ifdef L68
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
-      addAPUhist (APUH_FDSPTW);
+      add_APU_history (APUH_FDSPTW);
 #endif
 
     DBGAPP ("%s x1 0%o y1 0%o DSBR.ADDR 0%o PTWx1 0%012"PRIo64" "
@@ -328,7 +328,7 @@ static void modify_dsptw (word15 segno)
     cpu.PTW0.U = 1;
 #ifdef L68
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
-      addAPUhist (APUH_MDSPTW);
+      add_APU_history (APUH_MDSPTW);
 #endif
   }
 
@@ -480,7 +480,7 @@ static void fetch_psdw (word15 segno)
     
 #ifdef L68
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
-      addAPUhist (APUH_FSDWP);
+      add_APU_history (APUH_FSDWP);
 #endif
     DBGAPP ("%s y1 0%o p->ADDR 0%o SDW 0%012"PRIo64" 0%012"PRIo64" "
             "ADDR %o R %o%o%o BOUND 0%o REWPUGC %o%o%o%o%o%o%o "
@@ -543,7 +543,7 @@ static void fetch_nsdw (word15 segno)
     
 #ifdef L68
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
-      addAPUhist (0 /* No fetch no paged bit */);
+      add_APU_history (0 /* No fetch no paged bit */);
 #endif
 #ifndef SPEED
     char buf[256];
@@ -882,7 +882,7 @@ static void fetch_ptw (sdw_s *sdw, word18 offset)
 
 #ifdef L68
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
-      addAPUhist (APUH_FPTW);
+      add_APU_history (APUH_FPTW);
 #endif
 
     DBGAPP ("%s x2 0%o y2 0%o sdw->ADDR 0%o PTWx2 0%012"PRIo64" "
@@ -1042,7 +1042,7 @@ static void modify_ptw (sdw_s *sdw, word18 offset)
     cpu.PTW->M = 1;
 #ifdef L68
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
-      addAPUhist (APUH_MPTW);
+      add_APU_history (APUH_MPTW);
 #endif
   }
 
@@ -1071,7 +1071,7 @@ static void do_ptw2 (sdw_s *sdw, word18 offset)
     
 #ifdef L68
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
-      addAPUhist (APUH_FPTW2);
+      add_APU_history (APUH_FPTW2);
 #endif
 
     DBGAPP ("%s x2 0%o y2 0%o sdw->ADDR 0%o PTW2 0%012"PRIo64" "
@@ -2008,7 +2008,7 @@ I:;
     
 #ifdef L68
     if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
-      addAPUhist (APUH_FAP);
+      add_APU_history (APUH_FAP);
 #endif
     DBGAPP ("do_append_cycle(H:FAP): (%05o:%06o) finalAddress=%08o\n",
             cpu.TPR.TSR, cpu.TPR.CA, finalAddress);

@@ -1592,7 +1592,7 @@ static int status_service (uint iom_unit_idx, uint chan, bool marker)
     putbits36_2 (& word1, 14, 0); // software status
     putbits36_1 (& word1, 16, p -> initiate ? 1 : 0);
     putbits36_1 (& word1, 17, 0); // software abort bit
-    putbits36_3 (& word1, 18, p -> chanStatus);
+    putbits36_3 (& word1, 18, (word3) p -> chanStatus);
     //putbits36_3 (& word1, 21, iom_unit_data[iom_unit_idx].iomStatus);
     putbits36_3 (& word1, 21, 0);
 #if 0
@@ -2420,9 +2420,9 @@ static void iom_fault (uint iom_unit_idx, uint chan, UNUSED const char * who,
 
     word36 faultWord = 0;
     putbits36_9 (& faultWord, 9, (word9) chan);
-    putbits36_5 (& faultWord, 18, req);
+    putbits36_5 (& faultWord, 18, (word5) req);
     // IAC, bits 26..29
-    putbits36_6 (& faultWord, 30, signal);
+    putbits36_6 (& faultWord, 30, (word6) signal);
 
     uint mbx = mbxLoc (iom_unit_idx, chan);
 

@@ -500,7 +500,7 @@ else if (faultNumber == FAULT_ACV)
 
     // Set control unit 'fault occured during instruction fetch' flag
     cpu . cu . FIF = cpu . cycle == FETCH_cycle ? 1 : 0;
-    cpu . cu . FI_ADDR = faultNumber;
+    cpu . cu . FI_ADDR = (word5) faultNumber;
 
     // XXX Under what conditions should this be set?
     // Assume no
