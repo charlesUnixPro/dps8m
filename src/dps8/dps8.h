@@ -105,7 +105,7 @@ typedef struct { int64_t h; uint64_t l; } __int128_t;
 #define DISC_DELAY 200
 
 // Enable simh 'launch' command
-#define LAUNCH
+// #define LAUNCH
 
 
 //
