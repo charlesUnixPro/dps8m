@@ -336,6 +336,7 @@ void createCPUThread (uint cpuNum)
 #else
     pthread_set_name_np (p->cpuThread, nm);
 #endif
+    cpu_reset_unit_idx (cpuNum, false);
   }
 
 void stopCPUThread()

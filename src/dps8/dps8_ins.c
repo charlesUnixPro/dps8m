@@ -8578,11 +8578,19 @@ elapsedtime ();
                 longjmp (cpu.jmpMain, JMP_STOP);
               }
 
+#ifdef LOCKLESS
+          if (cpu.PPR.PSR == 044 && cpu.PPR.IC == 0005217)
+              {
+                sim_printf ("[%lld] pxss:delete_me DIS causes CPU halt\n", cpu.cycleCnt);
+                sim_debug (DBG_MSG, & cpu_dev, "pxss:delete_me DIS causes CPU halt\n");
+                stopCPUThread ();
+              }
+#endif
 #ifdef ROUND_ROBIN
           if (cpu.PPR.PSR == 034 && cpu.PPR.IC == 03535)
               {
-                sim_printf ("[%lld] sys_trouble$die  DIS causes CPU halt\n", cpu.cycleCnt);
-                sim_debug (DBG_MSG, & cpu_dev, "BCE DIS causes CPU halt\n");
+                sim_printf ("[%lld] sys_trouble$die DIS causes CPU halt\n", cpu.cycleCnt);
+                sim_debug (DBG_MSG, & cpu_dev, "sys_trouble$die DIS causes CPU halt\n");
                 //longjmp (cpu.jmpMain, JMP_STOP);
                 cpu.isRunning = false;
               }

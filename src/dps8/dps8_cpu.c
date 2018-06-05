@@ -457,7 +457,7 @@ uint set_cpu_idx (UNUSED uint cpu_idx)
     return prev;
   }
 
-static void cpu_reset_unit_idx (UNUSED uint cpun, bool clear_mem)
+void cpu_reset_unit_idx (UNUSED uint cpun, bool clear_mem)
   {
     uint save = set_cpu_idx (cpun);
     if (clear_mem)
