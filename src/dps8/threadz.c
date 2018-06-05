@@ -304,6 +304,7 @@ void createCPUThread (uint cpuNum)
     struct cpuThreadz_t * p = & cpuThreadz[cpuNum];
     if (p->run)
       return;
+    cpu_reset_unit_idx (cpuNum, false);
     p->cpuThreadArg = (int) cpuNum;
     // initialize run/stop switch
     rc = pthread_mutex_init (& p->runLock, NULL);
@@ -336,7 +337,6 @@ void createCPUThread (uint cpuNum)
 #else
     pthread_set_name_np (p->cpuThread, nm);
 #endif
-    cpu_reset_unit_idx (cpuNum, false);
   }
 
 void stopCPUThread()
