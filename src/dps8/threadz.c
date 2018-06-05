@@ -328,13 +328,13 @@ void createCPUThread (uint cpuNum)
     char nm [17];
     sprintf (nm, "CPU %c", 'a' + cpuNum);
 #ifndef __FreeBSD__
-    pthread_setname_np (p->cpuThread, nm);
-#else
 #ifdef __APPLE__
-    pthread_set_name_np (nm);
+    pthread_setname_np (nm);
+#else
+    pthread_setname_np (p->cpuThread, nm);
+#endif
 #else
     pthread_set_name_np (p->cpuThread, nm);
-#endif
 #endif
   }
 
