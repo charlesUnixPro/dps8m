@@ -330,7 +330,11 @@ void createCPUThread (uint cpuNum)
 #ifndef __FreeBSD__
     pthread_setname_np (p->cpuThread, nm);
 #else
+#ifdef __APPLE__
+    pthread_set_name_np (nm);
+#else
     pthread_set_name_np (p->cpuThread, nm);
+#endif
 #endif
   }
 
