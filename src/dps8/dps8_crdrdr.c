@@ -632,7 +632,7 @@ sim_printf ("\n");
           {
             if (l > 80)
               {
-                sim_warn ("Whups. rdr l %lu > 80; truncating.\n", l);
+                sim_warn ("Whups. rdr l %lu > 80; truncating.\n", (unsigned long)l);
                 l = 80;
                 //cardImage [l] = 0;
               }

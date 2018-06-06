@@ -337,6 +337,7 @@ bit-28 tp inhibit interrupts
 void elapsedtime (void);
 #endif
 
+#ifndef NEED_128
 const _fault_subtype fst_zero = (_fault_subtype) {.bits=0};
 const _fault_subtype fst_acv9 = (_fault_subtype) {.fault_acv_subtype=ACV9};
 const _fault_subtype fst_acv15 = (_fault_subtype) {.fault_acv_subtype=ACV15};
@@ -350,7 +351,7 @@ const _fault_subtype fst_str_ptr = (_fault_subtype) {.fault_str_subtype=flt_str_
 const _fault_subtype fst_cmd_lprpn = (_fault_subtype) {.fault_cmd_subtype=flt_cmd_lprpn_bits};
 const _fault_subtype fst_cmd_ctl = (_fault_subtype) {.fault_cmd_subtype=flt_cmd_not_control};
 const _fault_subtype fst_onc_nem = (_fault_subtype) {.fault_onc_subtype=flt_onc_nem};
- 
+#endif 
 // CANFAULT 
 void doFault (_fault faultNumber, _fault_subtype subFault, 
               const char * faultMsg)
@@ -465,7 +466,7 @@ else if (faultNumber == FAULT_ACV)
               cpu . faultRegister [0] |= FR_CON_D;
               break;
             default:
-              sim_warn ("FAULT_CON can't map port %lo\n", subFault.fault_con_subtype);
+              sim_warn ("FAULT_CON can't map port %lo\n", (long unsigned) subFault.fault_con_subtype);
               break;
           }
       }

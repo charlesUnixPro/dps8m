@@ -85,7 +85,7 @@ CFLAGS += -Wall -Wno-conversion -Wsign-conversion
 endif
 
 ifneq ($(M32),)
-CFLAGS += -DNEED_128
+CFLAGS += -DNEED_128 -Wno-format-zero-length -Wno-sign-conversion
 endif
 
 # Configuration switches

@@ -84,6 +84,21 @@ void cu_safe_restore (void);
 
 void doG7Fault(bool allowTR) NO_RETURN;
 
+#ifdef NEED_128
+#define fst_zero (_fault_subtype) {.bits=0}
+#define fst_acv9 (_fault_subtype) {.fault_acv_subtype=ACV9}
+#define fst_acv15 (_fault_subtype) {.fault_acv_subtype=ACV15}
+#define fst_ill_mod (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}
+#define fst_ill_proc (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}
+#define fst_ill_dig (_fault_subtype) {.fault_ipr_subtype=FR_ILL_DIG}
+#define fst_ill_op (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}
+#define fst_str_oob (_fault_subtype) {.fault_str_subtype=flt_str_oob}
+#define fst_str_nea (_fault_subtype) {.fault_str_subtype=flt_str_nea}
+#define fst_str_ptr (_fault_subtype) {.fault_str_subtype=flt_str_ill_ptr}
+#define fst_cmd_lprpn (_fault_subtype) {.fault_cmd_subtype=flt_cmd_lprpn_bits}
+#define fst_cmd_ctl (_fault_subtype) {.fault_cmd_subtype=flt_cmd_not_control}
+#define fst_onc_nem (_fault_subtype) {.fault_onc_subtype=flt_onc_nem}
+#else
 extern const _fault_subtype fst_zero;
 extern const _fault_subtype fst_acv9;
 extern const _fault_subtype fst_acv15;
@@ -97,6 +112,7 @@ extern const _fault_subtype fst_str_ptr;
 extern const _fault_subtype fst_cmd_lprpn;
 extern const _fault_subtype fst_cmd_ctl;
 extern const _fault_subtype fst_onc_nem;
+#endif
  
 void doFault (_fault faultNumber, _fault_subtype faultSubtype, 
               const char * faultMsg) NO_RETURN;
