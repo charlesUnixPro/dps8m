@@ -41,9 +41,12 @@ CC = clang
 LD = clang
 endif
 
+CFLAGS = $(X_FLAGS)
+LDFLAGS = $(X_FLAGS)
+
 # for Linux (Ubuntu 12.10 64-bit) or Apple OS/X 10.8
-#CFLAGS  = -g -O0
-CFLAGS  = -g -O3
+#CFLAGS  += -g -O0
+CFLAGS  += -g -O3
 
 # Our Cygwin users are using gcc.
 ifeq ($(OS),Windows_NT)
@@ -93,7 +96,7 @@ MAKEFLAGS += --no-print-directory
 
 %.o : %.c
 	@echo CC $<
-	@$(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
+	@$(CC) -c $(CFLAGS) $(CPPFLAGS) $(X_FLAGS) $< -o $@
 
 # This file is included as '../Makefile.mk', so it's local include needs the ../
 ifneq (,$(wildcard ../Makefile.local))
