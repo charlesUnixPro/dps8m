@@ -2182,7 +2182,6 @@ void print_int128 (int128 n, char * p)
   }
 #endif
 
-#if defined(THREADZ) || defined(LOCKLESS)
 // https://gist.github.com/diabloneo/9619917
 
 void timespec_diff(struct timespec * start, struct timespec * stop,
@@ -2198,7 +2197,6 @@ void timespec_diff(struct timespec * start, struct timespec * stop,
 
     return;
 }
-#endif // THREADZ
 
 #if 0
 // Calculate current TR value

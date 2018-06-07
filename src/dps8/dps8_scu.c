@@ -2098,9 +2098,16 @@ gotit:;
     return SCPE_OK;
   }
 
+#if 0
+struct timespec cioc_t0;
+#endif
+
 int scu_cioc (uint cpu_unit_udx, uint scu_unit_idx, uint scu_port_num, 
               uint expander_command, uint sub_mask)
   {
+#if 0
+clock_gettime (CLOCK_REALTIME, & cioc_t0);
+#endif
     sim_debug (DBG_DEBUG, & scu_dev, 
                "scu_cioc: Connect from %o sent to "
                "unit %o port %o exp %o mask %03o\n", 

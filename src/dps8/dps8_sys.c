@@ -3351,6 +3351,127 @@ static t_stat scraper (UNUSED int32 arg, const char * buf)
   }
 #endif
 
+#ifdef YIELD
+static t_stat clear_yield (int32 flag, UNUSED const char * cptr)
+  {
+    return SCPE_OK;
+  }
+
+static t_stat yield (int32 flag, UNUSED const char * cptr)
+  {
+    return SCPE_OK;
+  }
+#endif
+
+#ifdef DBGEVENT
+uint n_dbgevents;
+struct dbgevent_t dbgevents[max_dbgevents];
+struct timespec dbgevent_t0;
+
+static int dbgevent_compar (const void * a, const void * b)
+  {
+    struct dbgevent_t * ea = (struct dbgevent_t *) a;
+    struct dbgevent_t * eb = (struct dbgevent_t *) b;
+    if (ea->segno < eb->segno)
+      return -1;
+    if (ea->segno > eb->segno)
+      return 1;
+    if (ea->offset < eb->offset)
+      return -1;
+    if (ea->offset > eb->offset)
+      return 1;
+    return 0;
+  }
+
+int dbgevent_lookup (word15 segno, word18 offset)
+  {
+    struct dbgevent_t key = {segno, offset, false};
+    struct dbgevent_t * p = (struct dbgevent_t *) bsearch (& key, dbgevents, (size_t) n_dbgevents, sizeof (struct dbgevent_t), dbgevent_compar); 
+    if (! p)
+      return -1;
+    return (int) (p - dbgevents);
+  }
+
+// "dbbevent segno:offset"
+// 
+// arg: 0 set t0 event
+//      1 set event
+//      2 clear event
+//      3 list events
+//      4 clear all events
+
+// XXX think about per-thread timing?
+
+static t_stat set_dbgevent (int32 arg, const char * buf)
+  {
+    if (arg == 0 || arg == 1)
+      {
+        if (n_dbgevents >= max_dbgevents)
+          {
+            sim_printf ("too many dbgevents %u/%u\r\n", n_dbgevents, max_dbgevents);
+            return SCPE_ARG;
+          }
+        if (strlen (buf) > dbgevent_tagsize - 1)
+          {
+            sim_printf ("command too long %lu/%u\r\n", strlen (buf), dbgevent_tagsize -1);
+            return SCPE_ARG;
+          }
+
+        uint segno;
+        uint offset;
+        if (sscanf (buf, "%o:%o", & segno, & offset) != 2)
+          return SCPE_ARG;
+        if (segno > MASK15 || offset > MASK18)
+          return SCPE_ARG;
+        if (dbgevent_lookup ((word15) segno, (word18) offset) != -1)
+          {
+            sim_printf ("not adding duplicate 0%o:0%o\r\n", segno, offset);
+            return SCPE_ARG;
+          }
+        dbgevents[n_dbgevents].segno = (word15) segno;
+        dbgevents[n_dbgevents].offset = (word18) offset;
+        dbgevents[n_dbgevents].t0 = arg == 0;
+        strncpy (dbgevents[n_dbgevents].tag, buf, dbgevent_tagsize - 1);
+        dbgevents[n_dbgevents].tag[dbgevent_tagsize - 1] = 0;
+sim_printf ("%o:%o %u(%d) %s\r\n", dbgevents[n_dbgevents].segno, dbgevents[n_dbgevents].offset, dbgevents[n_dbgevents].t0, arg, dbgevents[n_dbgevents].tag);
+        n_dbgevents ++;
+        qsort (dbgevents, n_dbgevents, sizeof (struct dbgevent_t), dbgevent_compar);
+      }
+    else if (arg == 2)
+      {
+        uint segno;
+        uint offset;
+        if (sscanf (buf, "%o:%o", & segno, & offset) != 2)
+          return SCPE_ARG;
+        int n = dbgevent_lookup ((word15) segno, (word18) offset);
+        if (n < 0)
+          {
+            sim_printf ("0%o:0%o not found\r\n", segno, offset);
+            return SCPE_ARG;
+          }
+        for (int i = n; i < n_dbgevents - 1; i ++)
+          dbgevents[i] = dbgevents[i + 1];
+        n_dbgevents --;
+      }
+    else if (arg == 3)
+      {
+        for (int i = 0; i < n_dbgevents; i ++)
+         sim_printf ("    %s %05o:%06o %s\r\n", dbgevents[i].t0 ? "T0" : "  ", dbgevents[i].segno, dbgevents[i].offset,dbgevents[i].tag);
+      }
+    else if (arg == 4)
+      {
+        n_dbgevents = 0;
+        sim_printf ("dbgevents cleared\r\n");
+      }
+    else
+      {
+        sim_printf ("set_dbgevent bad arg %d\r\n", arg);
+        return SCPE_ARG;
+      }
+    return SCPE_OK;
+  }
+#endif
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // simh Command table
@@ -3439,6 +3560,14 @@ static CTAB dps8_cmds[] =
     {"SPATH",               set_search_path,          0, "spath: Set source code search path\n", NULL, NULL},
     {"BT2",                 boot2,                    0, "boot2: Boot CPU-B\n", NULL, NULL},
     {"TEST",                brkbrk,                   0, "test: GDB hook\n", NULL, NULL},
+#ifdef DBGEVENT
+    {"DBG0EVENT",           set_dbgevent,             0, "dbg0event: set t0 event\n", NULL, NULL},
+    {"DBGEVENT",            set_dbgevent,             1, "dbgevent: set event\n", NULL, NULL},
+    {"DBGNOEVENT",          set_dbgevent,             2, "dbgnoevent: clear event\n", NULL, NULL},
+    {"DBGLISTEVENTS",       set_dbgevent,             3, "dbglistevents: list events\n", NULL, NULL},
+    {"DBGCLEAREVENTS",      set_dbgevent,             4, "dbgevent: clear events\n", NULL, NULL},
+#endif
+
 // copied from scp.c
 #define SSH_ST          0                               /* set */
 #define SSH_SH          1                               /* show */
@@ -3486,6 +3615,15 @@ static CTAB dps8_cmds[] =
     {"CLRAUTOINPUT",        clear_opc_autoinput,    0, "clrautoinput: Clear console auto-input\n", NULL, NULL},
     {"CLRAUTOINPUT2",       clear_opc_autoinput,    1, "clrautoinput1: Clear CPU-B console auto-input\n", NULL, NULL},
 
+
+//
+// Tuning
+//
+
+#if YIELD
+    {"CLEAR_YIELD",         clear_yield,            1, "clear_yield: clear yield data\n", NULL, NULL},
+    {"YIELD",               yield,                  1, "yield: define yield point\n", NULL, NULL},
+#endif
 
 //
 // Misc.

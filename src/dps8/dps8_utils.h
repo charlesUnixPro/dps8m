@@ -869,8 +869,8 @@ word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
 word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf);
 word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf);
 
-#if defined(THREADZ) || defined(LOCKLESS)
 void timespec_diff(struct timespec *start, struct timespec *stop,
                    struct timespec *result);
+#if defined(THREADZ) || defined(LOCKLESS)
 void currentTR (word27 * trunits, bool * ovf);
 #endif

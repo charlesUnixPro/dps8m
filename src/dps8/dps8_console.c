@@ -659,6 +659,13 @@ static int opc_cmd (uint iomUnitIdx, uint chan)
         case 023:               // Read ASCII
           {
             csp->io_mode = opc_read_mode;
+#if 0
+extern struct timespec cioc_t0;
+struct timespec now, delta;
+clock_gettime (CLOCK_REALTIME, & now);
+timespec_diff (& cioc_t0, & now, & delta);
+sim_printf ("#### %ld/%ld\r\n", delta.tv_sec, delta.tv_nsec);
+#endif
             sim_debug (DBG_NOTIFY, & opc_dev, 
                        "%s: Read ASCII command received\n", __func__);
             if (csp->tailp != csp->buf)
