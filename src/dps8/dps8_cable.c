@@ -15,6 +15,7 @@
 #include "dps8_simh.h"
 #include "dps8_iom.h"
 #include "dps8_mt.h"
+#include "dps8_socket_dev.h"
 #include "dps8_scu.h"
 #include "dps8_sys.h"
 #include "dps8_faults.h"
@@ -43,7 +44,7 @@ struct cables_s * cables = NULL;
 char * ctlr_type_strs [/* enum ctlr_type_e */] =
   {
     "none", "MTP", "MSP", "IPC", "OPC", 
-    "URP", "FNP", "ABSI"
+    "URP", "FNP", "ABSI", "SKC"
   };
 
 char * chan_type_strs [/* enum ctlr_type_e */] =
@@ -537,6 +538,7 @@ static t_stat cable_ctlr (int uncable,
 //    cable IOMx chan# OPC        // Operator console
 //    cable IOMx chan# FNPx       // FNP 
 //    cable IOMx chan# ABSIx      // ABSI 
+//    cable IOMx chan# SKCx       // Socket controller
 
 static t_stat cable_iom (int uncable, uint iom_unit_idx, char * * name_save)
   {
@@ -690,9 +692,9 @@ static t_stat cable_iom (int uncable, uint iom_unit_idx, char * * name_save)
 // IOMx OPCx
     if (name_match (param, "OPC", & unit_idx))
       {
-        if (unit_idx >= N_MTP_UNITS_MAX)
+        if (unit_idx >= N_OPC_UNITS_MAX)
           {
-            sim_printf ("error: CABLE IOM: MTP unit number out of range <%d>\n", unit_idx);
+            sim_printf ("error: CABLE IOM: OPC unit number out of range <%d>\n", unit_idx);
             return SCPE_ARG;
           }
 
@@ -747,11 +749,28 @@ static t_stat cable_iom (int uncable, uint iom_unit_idx, char * * name_save)
                            & absi_unit [unit_idx], absi_iom_cmd);
       }
 
-    else
+// IOMx SKCx
+    if (name_match (param, "SKC", & unit_idx))
       {
-        sim_printf ("cable IOM: can't parse controller type\n");
-        return SCPE_ARG;
+        if (unit_idx >= N_SKC_UNITS_MAX)
+          {
+            sim_printf ("error: CABLE IOM: SKC unit number out of range <%d>\n", unit_idx);
+            return SCPE_ARG;
+          }
+
+        uint skc_port_num = 0;
+        return cable_ctlr (uncable,
+                           iom_unit_idx, (uint) chan_num,
+                           unit_idx, skc_port_num,
+                           "CABLE IOMx SKCx",
+                           & skc_dev,
+                           & cables->sk_to_iom[unit_idx][skc_port_num],
+                           CTLR_T_SKC, chan_type_direct,
+                           & sk_unit [unit_idx], skc_iom_cmd);
       }
+
+    sim_printf ("cable IOM: can't parse controller type\n");
+    return SCPE_ARG;
   }
 
 static t_stat cable_periph_to_ctlr (int uncable,
@@ -896,12 +915,8 @@ static t_stat cable_mtp (int uncable, uint ctlr_unit_idx, char * * name_save)
                              "CABLE MTPx TAPEx");
       }
 
-
-    else
-      {
-        sim_printf ("cable MTP: can't parse device name\n");
-        return SCPE_ARG;
-      }
+    sim_printf ("cable MTP: can't parse device name\n");
+    return SCPE_ARG;
   }
 
 //     cable IPCx dev_code DISKx
@@ -954,12 +969,8 @@ static t_stat cable_ipc (int uncable, uint ctlr_unit_idx, char * * name_save)
                              "CABLE IPCx DISKx");
       }
 
-
-    else
-      {
-        sim_printf ("cable IPC: can't parse device name\n");
-        return SCPE_ARG;
-      }
+    sim_printf ("cable IPC: can't parse device name\n");
+    return SCPE_ARG;
   }
 
 //     cable MSPx dev_code DISKx
@@ -1012,12 +1023,8 @@ static t_stat cable_msp (int uncable, uint ctlr_unit_idx, char * * name_save)
                              "CABLE MSPx DISKx");
       }
 
-
-    else
-      {
-        sim_printf ("cable MSP: can't parse device name\n");
-        return SCPE_ARG;
-      }
+    sim_printf ("cable MSP: can't parse device name\n");
+    return SCPE_ARG;
   }
 
 //     cable URPx dev_code [RDRx PUNx PRTx]
@@ -1110,12 +1117,8 @@ static t_stat cable_urp (int uncable, uint ctlr_unit_idx, char * * name_save)
                              "CABLE URPx PRTx");
       }
 
-
-    else
-      {
-        sim_printf ("cable URP: can't parse device name\n");
-        return SCPE_ARG;
-      }
+    sim_printf ("cable URP: can't parse device name\n");
+    return SCPE_ARG;
   }
 
 t_stat sys_cable (int32 arg, const char * buf)

@@ -72,6 +72,12 @@ enum { N_MT_UNITS_MAX = 34 };
 // Printer
 enum { N_PRT_UNITS_MAX = 34 };
 
+// Socket controller
+enum { N_SKC_UNITS_MAX = 1 };
+
+// Sockets
+enum { N_SK_UNITS_MAX = 1 };
+
 // Card reader
 enum { N_RDR_UNITS_MAX = 16 };
 

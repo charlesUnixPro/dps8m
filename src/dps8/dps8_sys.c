@@ -43,6 +43,7 @@
 #include "dps8_loader.h"
 #include "dps8_math.h"
 #include "dps8_mt.h"
+#include "dps8_socket_dev.h"
 #include "dps8_disk.h"
 #include "dps8_append.h"
 #include "dps8_fnp2.h"
@@ -225,6 +226,7 @@ static char * default_base_system_script [] =
     "set rdr nunits=1",
     "set pun nunits=1",
     "set prt nunits=1",
+    "set skc nunits=1",
     "set absi nunits=1",
 
 #if 0
@@ -1168,6 +1170,17 @@ static char * default_base_system_script [] =
     "cable MTP0 16 TAPE16",
     "set tape16 name=tapa_16",
 
+    "cable IOM0 033 SKC0",
+#if 0
+    for (uint i = 0; i < N_SK_UNITS_MAX; i ++)
+      {
+        char line [128];
+        // ; Attach socket device i to IOM 0, chan 033, dev_code i
+        //doIniLine ("cable sk,0,0,033,0");
+        sprintf (line, "cable sk,%d,0,033,%d", i, i);
+        doIniLine (line);
+      }
+#endif
 
 // 4 3381 disks
 
@@ -3723,6 +3736,7 @@ static void dps8_init (void)
     iom_init ();
     disk_init ();
     mt_init ();
+    sk_init ();
     fnpInit ();
     console_init (); // must come after fnpInit due to libuv initiailization
     //mpc_init ();
@@ -4151,6 +4165,7 @@ DEVICE * sim_devices[] =
     & cpu_dev, // dev[0] is special to simh; it is the 'default device'
     & iom_dev,
     & tape_dev,
+    & skc_dev,
     & mtp_dev,
     & fnp_dev,
     & dsk_dev,
