@@ -186,7 +186,7 @@ struct ctlr_to_iom_s
 //     cable URPx dev_code PUNx
 //     cable URPx dev_code PRTx
 //
-//  skt doesn't have a device
+//  skc doesn't have a cableable device; channel n connects to unit n.
 
 struct ctlr_to_dev_s
   {
