@@ -1027,7 +1027,7 @@ static void consoleProcessIdx (int conUnitIdx)
     if (csp->io_mode == opc_read_mode &&
         csp->autop != NULL)
       {
-        if (csp->autop == '\0')
+        if (*csp->autop == '\0')
           {
             free (csp->auto_input);
             csp->auto_input = NULL;
