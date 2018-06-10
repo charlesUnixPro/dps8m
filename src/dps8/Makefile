@@ -151,6 +151,7 @@ C_SRCS += ./dps8_opcodetable.c
 C_SRCS += ./dps8_prt.c
 C_SRCS += ./dps8_scu.c
 C_SRCS += ./dps8_simh.c
+C_SRCS += ./dps8_socket_dev.c
 C_SRCS += ./dps8_sys.c
 C_SRCS += ./dps8_urp.c
 C_SRCS += ./dps8_utils.c
@@ -206,6 +207,7 @@ H_SRCS += dps8_math128.h
 H_SRCS += dps8_mt.h
 H_SRCS += dps8_opcodetable.h
 H_SRCS += dps8_prt.h
+H_SRCS += dps8_socket_dev.h
 H_SRCS += dps8_scu.h
 H_SRCS += dps8_simh.h
 H_SRCS += dps8_sys.h
@@ -378,6 +380,11 @@ clean_dps8:
 dps8_sys.o : dps8.sha1.txt
 dps8_sys.d : dps8.sha1.txt
 
+dps8_socket_dev.c: errnos.h
+errnos.h:
+	echo '#include <errno.h>' > dump.c
+	$(CC) -E -dD dump.c | awk '/^#define E/ { printf "{\"%s\",%s},\n", $$2, $$2 }' > errnos.h
+	rm -f dump.c
 
 %.d: %.c
 	@set -e; rm -f $@; \

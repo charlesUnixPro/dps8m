@@ -57,21 +57,6 @@ static int emCall (void);
 #endif
 
 #ifdef LOOPTRC
-#include <time.h>
-void timespec_diff(struct timespec *start, struct timespec *stop,
-                   struct timespec *result)
-{
-    if ((stop->tv_nsec - start->tv_nsec) < 0) {
-        result->tv_sec = stop->tv_sec - start->tv_sec - 1;
-        result->tv_nsec = stop->tv_nsec - start->tv_nsec + 1000000000;
-    } else {
-        result->tv_sec = stop->tv_sec - start->tv_sec;
-        result->tv_nsec = stop->tv_nsec - start->tv_nsec;
-    }
-
-    return;
-}
-
 void elapsedtime (void)
   {
     static bool init = false;
@@ -1629,6 +1614,19 @@ restart_1:
 
       {
         traceInstruction (DBG_TRACE);
+#ifdef DBGEVENT
+        int dbgevt;
+        if (n_dbgevents && (dbgevt = (dbgevent_lookup (cpu.PPR.PSR, cpu.PPR.IC))) >= 0)
+          {
+            if (dbgevents[dbgevt].t0)
+              clock_gettime (CLOCK_REALTIME, & dbgevent_t0);
+            struct timespec now, delta;
+            clock_gettime (CLOCK_REALTIME, & now);
+            timespec_diff (& dbgevent_t0, & now, & delta);
+            sim_printf ("[%d] %5ld.%03ld %s\r\n", dbgevt, delta.tv_sec, delta.tv_nsec/1000000, dbgevents[dbgevt].tag);
+          }
+#endif
+
 #ifdef HDBG
         hdbgTrace ();
 #endif // HDBG

@@ -36,6 +36,7 @@
 #include "dps8_iefp.h"
 #include "dps8_console.h"
 #include "dps8_fnp2.h"
+#include "dps8_socket_dev.h"
 #include "dps8_crdrdr.h"
 #include "dps8_absi.h"
 #include "dps8_utils.h"
@@ -985,6 +986,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
 
       }
     fnpProcessEvent (); 
+    sk_process_event (); 
     consoleProcess ();
     machine_room_process ();
 #ifndef __MINGW64__
