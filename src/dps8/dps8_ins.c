@@ -3130,12 +3130,14 @@ static t_stat doInstruction (void)
           //  C(TPR.CA) -> C(PPR.IC)
           //  C(TPR.TSR) -> C(PPR.PSR)
           {
+#ifdef PANEL
             uint32 n;
             if (opcode10 <= 0273)
               n = (opcode10 & 3);
             else
               n = (opcode10 & 3) + 4;
             CPTUR (cptUsePRn + n);
+#endif
 
             do_caf ();
             // PR[n] is set in read_tra_op().
