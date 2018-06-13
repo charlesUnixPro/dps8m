@@ -2302,6 +2302,9 @@ int send_terminate_interrupt (uint iomUnitIdx, uint chan)
   {
     status_service (iomUnitIdx, chan, false);
     send_general_interrupt (iomUnitIdx, chan, imwTerminatePic);
+    if (chan == 033) {
+        sim_printf("skt sent terminate interrupt\r\n");
+    }
     return 0;
   }
 
