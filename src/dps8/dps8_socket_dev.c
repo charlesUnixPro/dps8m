@@ -222,7 +222,11 @@ sim_printf ("socket() protocol %d\n", protocol);
 sim_printf ("socket() domain EAFNOSUPPORT\n");
         _errno = EAFNOSUPPORT;
       }
+#if defined(__APPLE__)
+    else if (type != SOCK_STREAM && type != (SOCK_STREAM)) // Only SOCK_STREAM or SOCK_STREAM + SOCK_NONBLOCK
+#else
     else if (type != SOCK_STREAM && type != (SOCK_STREAM|SOCK_NONBLOCK)) // Only SOCK_STREAM or SOCK_STREAM + SOCK_NONBLOCK
+#endif
       {
 sim_printf ("socket() type EPROTOTYPE\n");
         _errno = EPROTOTYPE;
@@ -244,7 +248,11 @@ sim_printf ("errno %d\n", errno);
         else if (fd < N_FDS)
           {
             sk_data.fd_unit[fd] = unit_num;
+#if defined(__APPLE__)
+            sk_data.fd_nonblock[fd] = 0;
+#else
             sk_data.fd_nonblock[fd] = !! (type & SOCK_NONBLOCK);
+#endif
           }
         else
           {
@@ -566,6 +574,7 @@ static int skt_read8 (int unit_num, uint tally, word36 * buffer)
 /*   buffer */
 
     int socket_fd = (int) buffer[0];
+    uint count = (uint) buffer[1];
 sim_printf ("read8() socket     %d\n", socket_fd);
 
     int rc = 0;
@@ -578,7 +587,7 @@ sim_printf ("read8() socket doesn't belong to us\n");
         return 2; // send terminate interrupt
       }
     sk_data.unit_data[unit_num].read_fd = socket_fd;
-    sk_data.unit_data[unit_num].read_buffer_sz = tally;
+    sk_data.unit_data[unit_num].read_buffer_sz = count;
     sk_data.unit_data[unit_num].unit_state = unit_read;
     return 3; // don't send terminate interrupt
 
@@ -911,10 +920,12 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
             iomIndirectDataService (iom_unit_idx, chan, buffer,
                                     & words_processed, false);
 
-            skt_read8 ((int) p->IDCW_DEV_CODE, tally, buffer);
+            rc = skt_read8 ((int) p->IDCW_DEV_CODE, tally, buffer);
 
             iomIndirectDataService (iom_unit_idx, chan, buffer,
                                     & words_processed, true);
+            return rc; // 3:command pending, don't send terminate interrupt, or
+                       // 2:sent terminate interrupt
           }
           break;
 
@@ -1035,22 +1046,24 @@ static void do_try_accept (uint unit_num)
                             & words_processed, true);
     iomChanData_t * p = & iomChanData[iom_unit_idx][chan];
     p->stati = 04000;
+    sk_data.unit_data[unit_num].unit_state = unit_idle;
     send_terminate_interrupt (iom_unit_idx, chan);
   }
 
 static void do_try_read (uint unit_num)
   {
     int _errno = 0;
-    uint tally = sk_data.unit_data[unit_num].read_buffer_sz;
-    uint tally_wds = (tally + 3) / 4;
-    word36 buffer [tally_wds];
-    uint8_t netdata [tally];
-    ssize_t nread = read (sk_data.unit_data[unit_num].read_fd, & netdata, tally);
+    uint count = sk_data.unit_data[unit_num].read_buffer_sz;
+    uint buffer_size_wds = (count + 3) / 4;
+    word36 buffer [buffer_size_wds];
+    uint8_t netdata [count];
+    ssize_t nread = read (sk_data.unit_data[unit_num].read_fd, & netdata, count);
     if (nread == -1)
       {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
           return;
         _errno = errno;
+        nread = 0;
       }
 
     // sign extend int into word36
@@ -1073,6 +1086,7 @@ static void do_try_read (uint unit_num)
     uint words_processed;
     iomIndirectDataService (iom_unit_idx, chan, buffer,
                             & words_processed, true);
+    sk_data.unit_data[unit_num].unit_state = unit_idle;
     send_terminate_interrupt (iom_unit_idx, chan);
   }
 
