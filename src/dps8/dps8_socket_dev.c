@@ -114,7 +114,7 @@ static DEBTAB sk_dt [] =
 
 #define SK_UNIT_NUM(uptr) ((uptr) - sk_unit)
 
-static t_stat sk_reset (DEVICE * dptr)
+static t_stat sk_reset (UNUSED DEVICE * dptr)
   {
     return SCPE_OK;
   }
@@ -565,7 +565,7 @@ done:
     set_error (& buffer[2], _errno);
   }
 
-static int skt_read8 (int unit_num, uint tally, word36 * buffer)
+static int skt_read8 (int unit_num, UNUSED uint tally, word36 * buffer)
   {
 // dcl 1 SOCKETDEV_read_data8 aligned,
 //       2 sockfd fixed bin,                    // 0
