@@ -166,8 +166,15 @@ void sk_init(void)
 static void set_error_str (word36 * error_str, const char * str)
   {
     char work [8];
-    strncpy (work, "        ", 8);
-    strncpy (work, str, 8);
+    //strncpy (work, "        ", 8);
+    //strncpy (work, str, 8);
+    for (uint i = 0; i < 8; i ++)
+     work[i] = ' ';
+    size_t l = strlen (str);
+    if (l > 8)
+      l = 8;
+    for (uint i = 0; i < l; i ++)
+     work[i] = str[i];
     error_str[0] = 0;
     error_str[1] = 0;
     putbits36_8 (error_str + 0,  1, (word8) work [0]);
