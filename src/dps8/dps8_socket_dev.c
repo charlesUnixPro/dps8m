@@ -677,6 +677,82 @@ sim_printf ("write8() socket doesn't belong to us\n");
     return 2; // send terminate interrupt
   }
 
+static int skt_connect (uint iom_unit_idx, uint chan, int unit_num, uint tally, word36 * buffer)
+  {
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
+
+// dcl 1 SOCKETDEV_connect_data aligned,
+//      2 socket fixed bin,     // 0 
+//      2 sockaddr_in,
+//        3 sin_family fixed bin,  // 1
+//        3 sin_port fixed bin (16) unsigned unaligned, // 2
+//        3 pad1 bit(30) unaligned,
+//        3 sin_addr,
+//          4 octets (4) fixed bin(8) unsigned unal, // 3
+//      2 errno char(8);   // 4,5
+
+    if (tally < 5)
+      {
+        p->stati = 050012; // BUG: arbitrary error code; config switch
+        return -1;
+      }
+
+/* Tally >= 5 */
+/* In: */
+/*   socket */
+/*   sin_family */
+/*   sin_port */
+/*   sin_addr */
+/* Out: */
+/*   errno */
+
+    int socket_fd = (int) buffer[0];
+sim_printf ("connect() socket     %d\n", socket_fd);
+
+    int _errno = 0;
+    // Does this socket belong to us?
+    if (sk_data.fd_unit[socket_fd] != unit_num)
+      {
+sim_printf ("connect() socket doesn't belong to us\n");
+        set_error (& buffer[4], EBADF);
+        return 2; // send terminate interrupt
+      }
+
+    int sin_family = (int) buffer[1];
+    uint sin_port = (uint) getbits36_16 (buffer [2], 0);
+    word8 octet [4] = { getbits36_8 (buffer [3], 0),
+                        getbits36_8 (buffer [3], 8),
+                        getbits36_8 (buffer [3], 16),
+                        getbits36_8 (buffer [3], 24)};
+    uint32_t addr = (uint32_t) octet[0];
+    addr <<= 8;
+    addr |= (uint32_t) octet[1];
+    addr <<= 8;
+    addr |= (uint32_t) octet[2];
+    addr <<= 8;
+    addr |= (uint32_t) octet[3];
+
+sim_printf ("connect() sin_family %d\n", sin_family);
+sim_printf ("connect() sin_port   %u\n", sin_port);
+sim_printf ("connect() s_addr     %hhu.%hhu.%hhu.%hhu\n", octet[0], octet[1], octet[2], octet[3]);
+sim_printf ("connect() s_addr     %08x\n", addr);
+
+    struct sockaddr_in serv_addr;
+    bzero ((char *) & serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = htonl (addr);
+    serv_addr.sin_port = htons (sin_port);
+
+    int rc = connect (socket_fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
+    if (rc == -1) {
+      _errno = errno;
+sim_printf ("errno %d\n", errno);
+    }
+
+    set_error (& buffer[4], _errno);
+    return 2; // send terminate interrupt
+  }
+
 static int get_ddcw (iom_chan_data_t * p, uint iom_unit_idx, uint chan, bool * ptro, uint expected_tally, uint * tally)
   {
     bool send, uff;
@@ -753,7 +829,7 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
           {
             sim_debug (DBG_DEBUG, & skc_dev,
                        "%s: socket_dev_$socket\n", __func__);
-            const int expected_tally = 6;
+            const uint expected_tally = 6;
             uint tally;
             int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
@@ -778,7 +854,7 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
             sim_debug (DBG_DEBUG, & skc_dev,
                        "%s: socket_dev_$bind\n", __func__);
 
-            const int expected_tally = 6;
+            const uint expected_tally = 6;
             uint tally;
             int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
@@ -811,7 +887,7 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
             sim_debug (DBG_DEBUG, & skc_dev,
                        "%s: socket_dev_$gethostbyname\n", __func__);
 
-            const int expected_tally = 68;
+            const uint expected_tally = 68;
             uint tally;
             int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
@@ -837,7 +913,7 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
             sim_debug (DBG_DEBUG, & skc_dev,
                        "%s: socket_dev_$listen\n", __func__);
 
-            const int expected_tally = 5;
+            const uint expected_tally = 5;
             uint tally;
             int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
@@ -863,7 +939,7 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
             sim_debug (DBG_DEBUG, & skc_dev,
                        "%s: socket_dev_$accept\n", __func__);
 
-            const int expected_tally = 7;
+            const uint expected_tally = 7;
             uint tally;
             int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
@@ -891,7 +967,7 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
             sim_debug (DBG_DEBUG, & skc_dev,
                        "%s: socket_dev_$close\n", __func__);
 
-            const int expected_tally = 4;
+            const uint expected_tally = 4;
             uint tally;
             int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
@@ -916,7 +992,7 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
             sim_debug (DBG_DEBUG, & skc_dev,
                        "%s: socket_dev_$read8\n", __func__);
 
-            const int expected_tally = 0;
+            const uint expected_tally = 0;
             uint tally;
             int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
@@ -941,9 +1017,9 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
         case 9:               // CMD 9 -- write8()
           {
             sim_debug (DBG_DEBUG, & skc_dev,
-                       "%s: socket_dev_$read8\n", __func__);
+                       "%s: socket_dev_$write8\n", __func__);
 
-            const int expected_tally = 0;
+            const uint expected_tally = 0;
             uint tally;
             int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
@@ -963,6 +1039,29 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
           }
           break;
 
+        case 10:                // CMD 10 -- connect()
+          {
+              sim_debug (DBG_DEBUG, &skc_dev, "%s: socket_dev_$connect\n", __func__);
+
+              const uint expected_tally = 0;
+              uint tally;
+              int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
+              if (rc)
+                  return rc;
+
+              // Fetch parameters from core into buffer
+
+              word36 buffer [tally];
+              uint words_processed;
+              iom_indirect_data_service (iom_unit_idx, chan, buffer,
+                                      & words_processed, false);
+              
+              skt_connect (iom_unit_idx, chan, (int) p->IDCW_DEV_CODE, tally, buffer);
+              
+              iom_indirect_data_service (iom_unit_idx, chan, buffer,
+                                      & words_processed, true);
+          }
+          break;
         case 040:               // CMD 040 -- Reset Status
           {
             p->stati = 04000;
