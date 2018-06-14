@@ -1876,6 +1876,8 @@ char * strdupesc (const char * str)
           }
         if (p [1] == '\\')           //   \\    backslash
           * p = '\\';
+        else if (p [1] == 'a')       //   \a    ^A
+          * p = '\001';
         else if (p [1] == 'w')       //   \w    backslash
           * p = '\\';
         else if (p [1] == 'n')       //   \n    newline
