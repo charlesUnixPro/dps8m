@@ -1019,7 +1019,7 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
 #endif
     char ipaddr [256];
     sprintf (ipaddr, "%d.%d.%d.%d", oct1, oct2, oct3, oct4);
-    printf ("calling %s:%d\n", ipaddr,port);
+    sim_printf ("calling %s:%d\n", ipaddr,port);
 
     struct sockaddr_in dest;
     uv_ip4_addr(ipaddr, (int) port, &dest);
@@ -1237,7 +1237,7 @@ static void fnoTUNProcessLine (int fnpno, int lineno, struct t_line * linep)
         //exit (1);
         if (errno == EAGAIN)
           return;
-        printf ("%ld %d\n", nread, errno);
+        sim_printf ("%ld %d\n", nread, errno);
         return;
       }
 
@@ -1258,11 +1258,11 @@ static void fnoTUNProcessLine (int fnpno, int lineno, struct t_line * linep)
 // 4 bytes of metadata
 #define ip 4 
     /* Do whatever with the data */
-    printf("Read %ld bytes\n", nread);
-    printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
+    sim_printf("Read %ld bytes\n", nread);
+    sim_printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
       buffer [0], buffer [1], buffer [2], buffer [3], 
       buffer [4], buffer [5], buffer [6], buffer [7]);
-    printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
+    sim_printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
       buffer [8], buffer [9], buffer [10], buffer [11], 
       buffer [12], buffer [13], buffer [14], buffer [15]);
     uint version =                            (buffer [ip + 0] >> 4) & 0xf;
@@ -1295,26 +1295,26 @@ static void fnoTUNProcessLine (int fnpno, int lineno, struct t_line * linep)
         uint type = buffer [payload_offset + 0];
         if (type == 0x08)
           {
-            printf ("ICMP Echo Request %d.%d.%d.%d %d.%d.%d.%d\n", 
+            sim_printf ("ICMP Echo Request %d.%d.%d.%d %d.%d.%d.%d\n", 
               buffer [ip + 12], buffer [ip + 13], buffer [ip + 14], buffer [ip + 15],
               buffer [ip + 16], buffer [ip + 17], buffer [ip + 18], buffer [ip + 19]);
           }
         else
           {
-            printf ("ICMP 0x%02x\n", type);
-            printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
+            sim_printf ("ICMP 0x%02x\n", type);
+            sim_printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
               buffer [payload_offset + 0], buffer [payload_offset + 1], buffer [payload_offset + 2], buffer [payload_offset + 3], 
               buffer [payload_offset + 4], buffer [payload_offset + 5], buffer [payload_offset + 6], buffer [payload_offset + 7]);
           }
       }
     if (protocol == 0x11)
       {
-        printf ("UDP\n");
+        sim_printf ("UDP\n");
        
       }
     else
       {
-        printf ("protocol %02x\n", protocol);
+        sim_printf ("protocol %02x\n", protocol);
       }
   }
 
