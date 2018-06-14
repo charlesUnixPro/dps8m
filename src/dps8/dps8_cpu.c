@@ -212,11 +212,13 @@ static config_value_list_t cfg_interlace [] =
     { NULL, 0 }
   };
 
+#ifdef AFFINITY
 static config_value_list_t cfg_affinity [] =
   {
     { "off", -1 },
     { NULL, 0 }
   };
+#endif
 
 static config_value_list_t cfg_size_list [] =
   {
