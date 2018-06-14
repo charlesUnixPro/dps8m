@@ -1788,6 +1788,10 @@ typedef struct
 //    bool havelock; // Vetinari 
 //bool have_tst_lock;
 //#endif
+#ifdef AFFINITY
+    bool set_affinity;
+    uint affinity;
+#endif
   } cpu_state_t;
 
 #ifdef M_SHARED

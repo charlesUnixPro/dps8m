@@ -132,6 +132,13 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
     sim_msg ("Disable cache:            %01o(8)\n",
                 cpus[cpu_unit_idx].switches.disable_cache);
 
+#ifdef AFFINITY
+    if (cpus[cpu_unit_idx].set_affinity)
+      sim_msg ("CPU affinity              %d\n", cpus[cpu_unit_idx].affinity);
+    else
+      sim_msg ("CPU affinity              not set\n");
+#endif
+
     return SCPE_OK;
   }
 
@@ -202,6 +209,12 @@ static config_value_list_t cfg_interlace [] =
     { "off", 0 },
     { "2", 2 },
     { "4", 4 },
+    { NULL, 0 }
+  };
+
+static config_value_list_t cfg_affinity [] =
+  {
+    { "off", -1 },
     { NULL, 0 }
   };
 
@@ -301,6 +314,13 @@ static config_list_t cpu_config_list [] =
     { "useMap", 0, 1, cfg_on_off },
     { "address", 0, 0777777, NULL },
     { "disable_cache", 0, 1, cfg_on_off },
+
+    // Tuning
+
+#ifdef AFFINITY
+    { "affinity", -1, 32767, cfg_affinity },
+#endif
+
     { NULL, 0, 0, NULL }
   };
 
@@ -379,6 +399,18 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value,
           cpus[cpu_unit_idx].switches.useMap = v;
         else if (strcmp (p, "disable_cache") == 0)
           cpus[cpu_unit_idx].switches.disable_cache = v;
+#ifdef AFFINITY
+        else if (strcmp (p, "affinity") == 0)
+          if (v < 0)
+            {
+              cpus[cpu_unit_idx].set_affinity = false;
+            }
+          else
+            {
+              cpus[cpu_unit_idx].set_affinity = true;
+              cpus[cpu_unit_idx].affinity = (uint) v;
+            }
+#endif
         else
           {
             sim_warn ("error: cpu_set_config: invalid cfg_parse rc <%d>\n",

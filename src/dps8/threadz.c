@@ -337,6 +337,18 @@ void createCPUThread (uint cpuNum)
 #else
     pthread_set_name_np (p->cpuThread, nm);
 #endif
+#ifdef AFFINITY
+    if (cpus[cpuNum].set_affinity)
+      {
+        cpu_set_t cpuset;
+        CPU_ZERO (& cpuset);
+        CPU_SET (cpus[cpuNum].affinity, & cpuset);
+        int s = pthread_setaffinity_np (p->cpuThread, sizeof (cpu_set_t), & cpuset);
+        if (s)
+          sim_printf ("pthread_setaffinity_np %u on CPU %u returned %d\n",
+                      cpus[cpuNum].affinity, cpuNum, s);
+      }
+#endif
   }
 
 void stopCPUThread()
