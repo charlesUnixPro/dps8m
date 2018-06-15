@@ -41,12 +41,12 @@ CC = clang
 LD = clang
 endif
 
-CFLAGS = $(X_FLAGS)
-LDFLAGS = $(X_FLAGS)
-
 # for Linux (Ubuntu 12.10 64-bit) or Apple OS/X 10.8
 #CFLAGS  += -g -O0
 CFLAGS  += -g -O3
+
+CFLAGS += $(X_FLAGS)
+LDFLAGS += $(X_FLAGS)
 
 # Our Cygwin users are using gcc.
 ifeq ($(OS),Windows_NT)

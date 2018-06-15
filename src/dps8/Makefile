@@ -16,6 +16,8 @@
 #  TESTING=1    Enables sim_debug and additional runtime checks
 #
 
+all :
+
 SIMHx = ../simh-master
 
 INSTALL_ROOT ?= /usr/local/
@@ -241,7 +243,7 @@ H_SRCS += ./uvutil.h
 
 
 
-all: utils $(TAGS) locallibs_then_dps8 
+all: utils $(TAGS) locallibs_then_dps8
 
 #fnpx : fnpx.c fnp_udplib.o
 #	$(CC) fnpx.c -o fnpx fnp_udplib.o
