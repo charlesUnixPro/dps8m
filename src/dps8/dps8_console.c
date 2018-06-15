@@ -42,7 +42,9 @@
 #include "dps8_utils.h"
 
 #include "libtelnet.h"
+#ifdef CONSOLE_FIX
 #include "threadz.h"
+#endif
 
 #define DBG_CTR 1
 
@@ -1548,12 +1550,16 @@ void startRemoteConsole (void)
         console_state[conUnitIdx].console_access.connectPrompt = consoleConnectPrompt;
         console_state[conUnitIdx].console_access.connected = NULL;
         console_state[conUnitIdx].console_access.useTelnet = true;
+#ifdef CONSOLE_FIX
 #if defined(THREADZ) || defined(LOCKLESS)
         lock_libuv ();
 #endif
+#endif
         uv_open_access (& console_state[conUnitIdx].console_access);
+#ifdef CONSOLE_FIX
 #if defined(THREADZ) || defined(LOCKLESS)
         unlock_libuv ();
+#endif
 #endif
       }
   }

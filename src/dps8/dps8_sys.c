@@ -4432,8 +4432,10 @@ static unsigned char favicon [] =
 
 static void http_do_get (char * uri)
   {
+#ifdef CONSOLE_FIX
 #if defined(THREADZ) || defined(LOCKLESS)
     lock_libuv ();
+#endif
 #endif
     char buf [4096];
     if (strcmp (uri, "/") == 0)
@@ -4511,8 +4513,10 @@ static void http_do_get (char * uri)
     else
       sim_warn ("http_do_get ? <%s>\r\n", uri);
     accessCloseConnection ((uv_stream_t *) sys_opts.machine_room_access.client);
+#ifdef CONSOLE_FIX
 #if defined(THREADZ) || defined(LOCKLESS)
     unlock_libuv ();
+#endif
 #endif
   }
 
@@ -4602,6 +4606,7 @@ static void machine_room_connected (UNUSED uv_tcp_t * client)
   {
   }
 
+#ifdef CONSOLE_FIX
 #ifdef NO_EV_POLL
 static inline int lockAccessGetChar (uv_access * access)
   {
@@ -4617,13 +4622,18 @@ static inline int lockAccessGetChar (uv_access * access)
 #else
 #define lockAccessGetChar accessGetChar
 #endif
+#endif
 
 void machine_room_process (void)
   {
     uv_access * access = & sys_opts.machine_room_access;
     //int c = accessGetChar (access);
     int c;
+#ifdef CONSOLE_FIX
     while ((c = lockAccessGetChar (access)) != SCPE_OK)
+#else
+    while ((c = accessGetChar (access)) != SCPE_OK)
+#endif
       {
         if (c < SCPE_KFLAG)
           {
@@ -4701,12 +4711,16 @@ void machine_room_process (void)
 
 static void machine_room_connect_prompt (uv_tcp_t * client)
   {
+#ifdef CONSOLE_FIX
 #if defined(THREADZ) || defined(LOCKLESS)
     lock_libuv ();
 #endif
+#endif
     accessStartWriteStr (client, "password: \r\n");
+#ifdef CONSOLE_FIX
 #if defined(THREADZ) || defined(LOCKLESS)
     unlock_libuv ();
+#endif
 #endif
     uv_access * access = (uv_access *) client->data;
     access->pwPos = 0;
@@ -4721,12 +4735,16 @@ void start_machine_room (void)
     sys_opts.mr_buffer_cnt = 0;
     sys_opts.httpState = hsInitial;
     sys_opts.httpRequest = hrNone;
+#ifdef CONSOLE_FIX
 #if defined(THREADZ) || defined(LOCKLESS)
     lock_libuv ();
 #endif
+#endif
     uv_open_access (& sys_opts.machine_room_access);
+#ifdef CONSOLE_FIX
 #if defined(THREADZ) || defined(LOCKLESS)
     unlock_libuv ();
+#endif
 #endif
   }
 

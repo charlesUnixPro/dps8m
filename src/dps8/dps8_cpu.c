@@ -1711,12 +1711,16 @@ setCPU:;
         if (fast_queue_subsample ++ > sys_opts.sys_poll_check_rate) // ~ 1KHz
           {
             fast_queue_subsample = 0;
+#ifdef CONSOLE_FIX
 #if defined(THREADZ) || defined(LOCKLESS)
             lock_libuv ();
 #endif
+#endif
             uv_run (ev_poll_loop, UV_RUN_NOWAIT);
+#ifdef CONSOLE_FIX
 #if defined(THREADZ) || defined(LOCKLESS)
             unlock_libuv ();
+#endif
 #endif
             PNL (panel_process_event ());
           }
@@ -2345,12 +2349,16 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                     usleep (sys_opts.sys_poll_interval * 1000/*10000*/);
 #ifndef NO_EV_POLL
                     // Trigger I/O polling
+#ifdef CONSOLE_FIX
 #if defined(THREADZ) || defined(LOCKLESS)
                     lock_libuv ();
 #endif
+#endif
                     uv_run (ev_poll_loop, UV_RUN_NOWAIT);
+#ifdef CONSOLE_FIX
 #if defined(THREADZ) || defined(LOCKLESS)
                     unlock_libuv ();
+#endif
 #endif
                     fast_queue_subsample = 0;
 #else // NO_EV_POLL
