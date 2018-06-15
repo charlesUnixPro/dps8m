@@ -88,6 +88,11 @@ ifneq ($(M32),)
 CFLAGS += -DNEED_128 -Wno-format-zero-length -Wno-sign-conversion
 endif
 
+ifeq ($(M_SHARED),1)
+CFLAGS += -DM_SHARED
+LDFLAGS += -lrt
+endif
+
 # Configuration switches
 
 ifeq ($(CROSS),MINGW64)
