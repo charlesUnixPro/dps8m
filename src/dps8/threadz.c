@@ -422,7 +422,7 @@ unsigned long  sleepCPU (unsigned long usec)
     rc = pthread_cond_timedwait (& p->sleepCond,
                                  & scu_lock,
                                  & abstime);
-//sim_printf ("wake %u %u %lu\n", cpu.rTR, current_running_cpu_idx, usec);
+if (current_running_cpu_idx == 1) sim_printf ("wake %u %u %lu\n", cpu.rTR, current_running_cpu_idx, usec);
     if (rc && rc != ETIMEDOUT)
       sim_printf ("sleepCPU pthread_cond_timedwait %d\n", rc);
     if (rc == ETIMEDOUT)
@@ -430,7 +430,7 @@ unsigned long  sleepCPU (unsigned long usec)
     struct timespec newtime, delta;
     clock_gettime (CLOCK_REALTIME, & newtime);
     timespec_diff (& abstime, & newtime, & delta);
-//sim_printf ("wake %u %u %lu %lu\n", cpu.rTR, current_running_cpu_idx, usec, delta.tv_nsec / 1000);
+if (current_running_cpu_idx == 1) sim_printf ("early wake %u %u %lu %lu\n", cpu.rTR, current_running_cpu_idx, usec, delta.tv_nsec / 1000);
     if (delta.tv_nsec < 0)
       return 0; // safety
     return (unsigned long) delta.tv_nsec / 1000;
@@ -442,7 +442,7 @@ void wakeCPU (uint cpuNum)
   {
     int rc;
     struct cpuThreadz_t * p = & cpuThreadz[cpuNum];
-
+if (cpuNum == 1) sim_printf ("send wake from %d\n", current_running_cpu_idx);
     rc = pthread_cond_signal (& p->sleepCond);
     if (rc)
       sim_printf ("wakeCPU pthread_cond_signal %d\n", rc);

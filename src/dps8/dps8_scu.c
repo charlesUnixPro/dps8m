@@ -1391,26 +1391,26 @@ static void deliver_interrupts (uint scu_unit_idx)
                     sim_warn ("bad scu_unit_idx %u\n", scu_unit_idx);
                     continue;
                   }
-                uint cpu_unit_udx = cables->scu_to_cpu[scu_unit_idx][port][sn].cpu_unit_idx;
+                uint cpu_unit_idx = cables->scu_to_cpu[scu_unit_idx][port][sn].cpu_unit_idx;
 #if defined(THREADZ) || defined(LOCKLESS)
-                cpus[cpu_unit_udx].events.XIP[scu_unit_idx] = true;
+                cpus[cpu_unit_idx].events.XIP[scu_unit_idx] = true;
 #ifdef HDBG
-                hdbgIntrSet (inum, cpu_unit_udx, scu_unit_idx);
+                hdbgIntrSet (inum, cpu_unit_idx, scu_unit_idx);
 #endif
-                createCPUThread((uint) cpu_unit_udx);
+                createCPUThread((uint) cpu_unit_idx);
 #ifndef NO_TIMEWAIT
-                wakeCPU ((uint) cpu_unit_udx);
+                wakeCPU ((uint) cpu_unit_idx);
 #endif
                 sim_debug (DBG_DEBUG, & scu_dev,
                            "interrupt set for CPU %d SCU %d\n",
-                           cpu_unit_udx, scu_unit_idx);
+                           cpu_unit_idx, scu_unit_idx);
 #else // ! THREADZ
-//if (cpu_unit_udx && ! cpu.isRunning) sim_printf ("starting CPU %c\n", cpu_unit_udx + 'A');
+//if (cpu_unit_idx && ! cpu.isRunning) sim_printf ("starting CPU %c\n", cpu_unit_idx + 'A');
 #ifdef ROUND_ROBIN
-                cpus[cpu_unit_udx].isRunning = true;
+                cpus[cpu_unit_idx].isRunning = true;
 #endif
-                cpus[cpu_unit_udx].events.XIP[scu_unit_idx] = true;
-sim_debug (DBG_DEBUG, & scu_dev, "interrupt set for CPU %d SCU %d\n", cpu_unit_udx, scu_unit_idx);
+                cpus[cpu_unit_idx].events.XIP[scu_unit_idx] = true;
+sim_debug (DBG_DEBUG, & scu_dev, "interrupt set for CPU %d SCU %d\n", cpu_unit_idx, scu_unit_idx);
                 sim_debug (DBG_INTR, & scu_dev,
                            "XIP set for SCU %d\n", scu_unit_idx);
 #endif // ! THREADZ
@@ -1419,7 +1419,7 @@ sim_debug (DBG_DEBUG, & scu_dev, "interrupt set for CPU %d SCU %d\n", cpu_unit_u
       }
   }
 
-t_stat scu_smic (uint scu_unit_idx, uint UNUSED cpu_unit_udx, 
+t_stat scu_smic (uint scu_unit_idx, uint UNUSED cpu_unit_idx, 
                  uint UNUSED cpu_port_num, word36 rega)
   {
 #if defined(THREADZ) || defined(LOCKLESS)
@@ -1515,7 +1515,7 @@ t_stat scu_smic (uint scu_unit_idx, uint UNUSED cpu_unit_udx,
 // x = any octal digit
 //
 
-t_stat scu_sscr (uint scu_unit_idx, UNUSED uint cpu_unit_udx, 
+t_stat scu_sscr (uint scu_unit_idx, UNUSED uint cpu_unit_idx, 
                  UNUSED uint cpu_port_num, word18 addr, 
                  word36 rega, word36 regq)
   {
@@ -1789,7 +1789,7 @@ t_stat scu_sscr (uint scu_unit_idx, UNUSED uint cpu_unit_udx,
     return SCPE_OK;
   }
 
-t_stat scu_rscr (uint scu_unit_idx, uint cpu_unit_udx, word18 addr, 
+t_stat scu_rscr (uint scu_unit_idx, uint cpu_unit_idx, word18 addr, 
                  word36 * rega, word36 * regq)
   {
     // Only valid for a 4MW SCU
@@ -1897,7 +1897,7 @@ t_stat scu_rscr (uint scu_unit_idx, uint cpu_unit_udx, word18 addr,
                   {
                     if (cables->scu_to_cpu[scu_unit_idx][pn][sn].in_use && 
                         cables->scu_to_cpu[scu_unit_idx][pn][sn].cpu_unit_idx ==
-                          cpu_unit_udx)
+                          cpu_unit_idx)
                      {
                         scu_port_num = pn;
                         goto gotit;
@@ -1911,8 +1911,8 @@ gotit:;
                 unlock_scu ();
 #endif
                 sim_warn ("%s: can't find cpu port in the snarl of cables; "
-                           "scu_unit_no %d, cpu_unit_udx %d\n", 
-                           __func__, scu_unit_idx, cpu_unit_udx);
+                           "scu_unit_no %d, cpu_unit_idx %d\n", 
+                           __func__, scu_unit_idx, cpu_unit_idx);
                 return SCPE_OK;
               }
 
@@ -2102,7 +2102,7 @@ gotit:;
 struct timespec cioc_t0;
 #endif
 
-int scu_cioc (uint cpu_unit_udx, uint scu_unit_idx, uint scu_port_num, 
+int scu_cioc (uint cpu_unit_idx, uint scu_unit_idx, uint scu_port_num, 
               uint expander_command, uint sub_mask)
   {
 #if 0
@@ -2111,7 +2111,7 @@ clock_gettime (CLOCK_REALTIME, & cioc_t0);
     sim_debug (DBG_DEBUG, & scu_dev, 
                "scu_cioc: Connect from %o sent to "
                "unit %o port %o exp %o mask %03o\n", 
-               cpu_unit_udx, scu_unit_idx, scu_port_num,
+               cpu_unit_idx, scu_unit_idx, scu_port_num,
               expander_command, sub_mask);
 
 #if defined(THREADZ) || defined(LOCKLESS)
@@ -2203,7 +2203,6 @@ clock_gettime (CLOCK_REALTIME, & cioc_t0);
     else if (portp -> type == ADEV_CPU)
       {
 
-#if 1
 // by subport_enables
         if (portp->is_exp)
           {
@@ -2217,9 +2216,19 @@ clock_gettime (CLOCK_REALTIME, & cioc_t0);
                         sim_warn ("Can't find CPU to interrupt\n");
                         continue;
                       }
-                    uint cpu_unit_udx = cables->
+                    uint cpu_unit_idx = cables->
                       scu_to_cpu[scu_unit_idx][scu_port_num][sn].cpu_unit_idx;
-                    setG7fault ((uint) cpu_unit_udx, FAULT_CON, fst_zero);
+//#if 0
+                    setG7fault ((uint) cpu_unit_idx, FAULT_CON, fst_zero);
+//#else
+                    createCPUThread((uint) cpu_unit_idx);
+#ifndef NO_TIMEWAIT
+                    wakeCPU ((uint) cpu_unit_idx);
+#endif
+#ifdef ROUND_ROBIN
+                    cpus[cpu_unit_idx].isRunning = true;
+#endif
+//#endif
                   }
               }
           }
@@ -2231,32 +2240,20 @@ clock_gettime (CLOCK_REALTIME, & cioc_t0);
                 rc = 1;
                 goto done;
               }
-            uint cpu_unit_udx =
+            uint cpu_unit_idx =
               cables->scu_to_cpu[scu_unit_idx][scu_port_num][0].cpu_unit_idx;
-            setG7fault ((uint) cpu_unit_udx, FAULT_CON, fst_zero);
-          }
-#else
-// by xipmaskval
-        int cpu_unit_udx = -1;
-        if (portp->is_exp)
-          {
-            cpu_unit_udx =
-              cables->cablesFromCpus[scu_unit_idx][scu_port_num]
-                [portp->xipmaskval].cpu_unit_udx;
-          }
-        else
-          {
-            cpu_unit_udx = cables ->cablesFromCpus[scu_unit_idx]
-              [scu_port_num][0].cpu_unit_udx;
-          }
-        if (cpu_unit_udx < 0)
-          {
-            sim_warn ("Can't find CPU to interrupt\n");
-            rc = 1;
-            goto done;
-          }
-        setG7fault (cpu_unit_udx, FAULT_CON, (_fault_subtype) {.bits=0});
+//#if 0
+            setG7fault ((uint) cpu_unit_idx, FAULT_CON, fst_zero);
+//#else
+            createCPUThread((uint) cpu_unit_idx);
+#ifndef NO_TIMEWAIT
+            wakeCPU ((uint) cpu_unit_idx);
 #endif
+#ifdef ROUND_ROBIN
+            cpus[cpu_unit_idx].isRunning = true;
+#endif
+//#endif
+          }
         goto done;
       }
     else
@@ -2385,7 +2382,7 @@ void scu_init (void)
 
   }
 
-t_stat scu_rmcm (uint scu_unit_idx, uint cpu_unit_udx, word36 * rega, 
+t_stat scu_rmcm (uint scu_unit_idx, uint cpu_unit_idx, word36 * rega, 
                  word36 * regq)
   {
     scu_t * up = scu + scu_unit_idx;
@@ -2394,7 +2391,7 @@ t_stat scu_rmcm (uint scu_unit_idx, uint cpu_unit_udx, word36 * rega,
     * rega = 0;
     * regq = 0;
 
-    // Which port is cpu_unit_udx connected to? (i.e. which port did the 
+    // Which port is cpu_unit_idx connected to? (i.e. which port did the 
     // command come in on?
     int scu_port_num = -1; // The port that the rscr instruction was
                            // received on
@@ -2405,7 +2402,7 @@ t_stat scu_rmcm (uint scu_unit_idx, uint cpu_unit_udx, word36 * rega,
           {
             if (cables->scu_to_cpu[scu_unit_idx][pn][sn].in_use &&
                 cables->scu_to_cpu[scu_unit_idx][pn][sn].cpu_unit_idx ==
-                  cpu_unit_udx)
+                  cpu_unit_idx)
               {
                 scu_port_num = pn;
                 goto gotit;
@@ -2420,12 +2417,12 @@ gotit:;
     if (scu_port_num < 0)
       {
         sim_warn ("%s: can't find cpu port in the snarl of cables; "
-                  "scu_unit_no %d, cpu_unit_udx %d\n", 
-                  __func__, scu_unit_idx, cpu_unit_udx);
+                  "scu_unit_no %d, cpu_unit_idx %d\n", 
+                  __func__, scu_unit_idx, cpu_unit_idx);
         sim_debug (DBG_ERR, & scu_dev, 
                    "%s: can't find cpu port in the snarl of cables; "
-                   "scu_unit_no %d, cpu_unit_udx %d\n", 
-                   __func__, scu_unit_idx, cpu_unit_udx);
+                   "scu_unit_no %d, cpu_unit_idx %d\n", 
+                   __func__, scu_unit_idx, cpu_unit_idx);
         // Non 4MWs do a store fault
         return SCPE_OK;
       }
@@ -2481,15 +2478,15 @@ gotit:;
     return SCPE_OK;
   }
 
-t_stat scu_smcm (uint scu_unit_idx, uint cpu_unit_udx, word36 rega, word36 regq)
+t_stat scu_smcm (uint scu_unit_idx, uint cpu_unit_idx, word36 rega, word36 regq)
   {
     sim_debug (DBG_TRACE, & scu_dev, 
               "SMCM SCU unit %d CPU unit %d A %012"PRIo64" Q %012"PRIo64"\n",
-               scu_unit_idx, cpu_unit_udx, rega, regq);
+               scu_unit_idx, cpu_unit_idx, rega, regq);
 
     scu_t * up = scu + scu_unit_idx;
 
-    // Which port is cpu_unit_udx connected to? (i.e. which port did the 
+    // Which port is cpu_unit_idx connected to? (i.e. which port did the 
     // command come in on?
     int scu_port_num = -1; // The port that the rscr instruction was
                            // received on
@@ -2500,7 +2497,7 @@ t_stat scu_smcm (uint scu_unit_idx, uint cpu_unit_udx, word36 rega, word36 regq)
           {
             if (cables->scu_to_cpu[scu_unit_idx][pn][sn].in_use &&
                 cables->scu_to_cpu[scu_unit_idx][pn][sn].cpu_unit_idx ==
-                  cpu_unit_udx)
+                  cpu_unit_idx)
               {
                 scu_port_num = pn;
                 goto gotit;
@@ -2514,8 +2511,8 @@ gotit:;
     if (scu_port_num < 0)
       {
         sim_warn ("%s: can't find cpu port in the snarl of cables; "
-                   "scu_unit_no %d, cpu_unit_udx %d\n", 
-                   __func__, scu_unit_idx, cpu_unit_udx);
+                   "scu_unit_no %d, cpu_unit_idx %d\n", 
+                   __func__, scu_unit_idx, cpu_unit_idx);
         return SCPE_OK;
       }
 
