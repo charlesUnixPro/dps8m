@@ -1798,6 +1798,10 @@ typedef struct
 //    bool havelock; // Vetinari 
 //bool have_tst_lock;
 //#endif
+#ifdef AFFINITY
+    bool set_affinity;
+    uint affinity;
+#endif
   } cpu_state_t;
 
 #ifdef M_SHARED
@@ -2316,3 +2320,4 @@ word18 get_BAR_address(word18 addr);
 t_stat threadz_sim_instr (void);
 void * cpu_thread_main (void * arg);
 #endif
+void cpu_reset_unit_idx (UNUSED uint cpun, bool clear_mem);

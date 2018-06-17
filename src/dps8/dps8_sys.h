@@ -62,6 +62,23 @@ typedef struct
     uint sys_poll_check_rate; // Check for pooling interval rate in CPU cycles
 } sysinfo_t;
 
+#ifdef DBGEVENT
+#define max_dbgevents 128u
+#define dbgevent_tagsize 128
+struct dbgevent_t
+  {
+    word15 segno;
+    word18 offset;
+    bool t0;
+    char tag[dbgevent_tagsize];
+  };
+
+extern uint n_dbgevents;
+extern struct dbgevent_t dbgevents[max_dbgevents];
+extern struct timespec dbgevent_t0;
+int dbgevent_lookup (word15 segno, word18 offset);
+#endif
+
 #ifndef SCUMEM
 extern vol word36 * M;
 #endif

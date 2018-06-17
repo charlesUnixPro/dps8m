@@ -1404,7 +1404,7 @@ startCA:;
                 word36 indword;
                 Read (cpu.TPR.CA, & indword, APU_DATA_RMW);
 
-		cpu.cu.pot = 0;
+                cpu.cu.pot = 0;
 
                 Yi = GETHI (indword);
                 cpu.AM_tally = GET_TALLY (indword); // 12-bits
@@ -1526,7 +1526,7 @@ startCA:;
                 word36 indword;
                 Read (cpu.TPR.CA, & indword, APU_DATA_RMW);
 
-		cpu.cu.pot = 0;
+                cpu.cu.pot = 0;
 
                 Yi = GETHI (indword);
                 cpu.AM_tally = GET_TALLY (indword); // 12-bits

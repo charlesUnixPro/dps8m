@@ -310,6 +310,7 @@ void createCPUThread (uint cpuNum)
     struct cpuThreadz_t * p = & cpuThreadz[cpuNum];
     if (p->run)
       return;
+    cpu_reset_unit_idx (cpuNum, false);
     p->cpuThreadArg = (int) cpuNum;
     // initialize run/stop switch
     rc = pthread_mutex_init (& p->runLock, NULL);
@@ -333,10 +334,27 @@ void createCPUThread (uint cpuNum)
 
     char nm [17];
     sprintf (nm, "CPU %c", 'a' + cpuNum);
-#ifndef __FreeBSD__
-    pthread_setname_np (p->cpuThread, nm);
-#else
+#ifdef __FreeBSD__
     pthread_set_name_np (p->cpuThread, nm);
+#else
+#ifdef __APPLE__
+    pthread_setname_np (nm);
+#else
+    pthread_setname_np (p->cpuThread, nm);
+#endif
+#endif
+
+#ifdef AFFINITY
+    if (cpus[cpuNum].set_affinity)
+      {
+        cpu_set_t cpuset;
+        CPU_ZERO (& cpuset);
+        CPU_SET (cpus[cpuNum].affinity, & cpuset);
+        int s = pthread_setaffinity_np (p->cpuThread, sizeof (cpu_set_t), & cpuset);
+        if (s)
+          sim_printf ("pthread_setaffinity_np %u on CPU %u returned %d\n",
+                      cpus[cpuNum].affinity, cpuNum, s);
+      }
 #endif
   }
 
@@ -411,6 +429,7 @@ unsigned long  sleepCPU (unsigned long usec)
     rc = pthread_cond_timedwait (& p->sleepCond,
                                  & scu_lock,
                                  & abstime);
+//sim_printf ("wake %u %u %lu\n", cpu.rTR, current_running_cpu_idx, usec);
     if (rc && rc != ETIMEDOUT)
       sim_printf ("sleepCPU pthread_cond_timedwait %d\n", rc);
     if (rc == ETIMEDOUT)
@@ -418,6 +437,7 @@ unsigned long  sleepCPU (unsigned long usec)
     struct timespec newtime, delta;
     clock_gettime (CLOCK_REALTIME, & newtime);
     timespec_diff (& abstime, & newtime, & delta);
+//sim_printf ("wake %u %u %lu %lu\n", cpu.rTR, current_running_cpu_idx, usec, delta.tv_nsec / 1000);
     if (delta.tv_nsec < 0)
       return 0; // safety
     return (unsigned long) delta.tv_nsec / 1000;
@@ -769,7 +789,7 @@ void initThreadz (void)
     pthread_cond_init (& iomCond, NULL);
     pthread_mutex_init (& iom_start_lock, NULL);
 #endif
-}
+  }
 
 // Set up per-thread signal handlers
 

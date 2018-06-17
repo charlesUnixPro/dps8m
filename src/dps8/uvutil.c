@@ -577,7 +577,7 @@ void uv_open_access (uv_access * access)
     uv_tcp_init (access->loop, & access->server);
     access->server.data = (void *) access;
     struct sockaddr_in addr;
-    uv_ip4_addr ("0.0.0.0", access->port, & addr);
+    uv_ip4_addr (access->address, access->port, & addr);
     uv_tcp_bind (& access->server, (const struct sockaddr *) & addr, 0);
 #define DEFAULT_BACKLOG 16
     int r = uv_listen ((uv_stream_t *) & access->server,

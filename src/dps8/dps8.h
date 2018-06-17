@@ -101,11 +101,11 @@ typedef struct { int64_t h; uint64_t l; } __int128_t;
 //#define ISOLTS
 
 // Experimential dial_out line disconnect delay
-// FNP polled ~100Hz; 10 secs. is 1000 polls
-#define DISC_DELAY 1000
+// FNP polled ~100Hz; 2 secs. is 200 polls
+#define DISC_DELAY 200
 
 // Enable simh 'launch' command
-#define LAUNCH
+// #define LAUNCH
 
 
 //
@@ -175,6 +175,7 @@ typedef struct { int64_t h; uint64_t l; } __int128_t;
 // to support both configurations
 
 #if defined(THREADZ) || defined(LOCKLESS)
+#define CWO
 #define vol volatile
 #else
 #define vol

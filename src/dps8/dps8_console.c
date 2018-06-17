@@ -45,6 +45,9 @@
 #endif
 
 #include "libtelnet.h"
+#ifdef CONSOLE_FIX
+#include "threadz.h"
+#endif
 
 #define DBG_CTR 1
 
@@ -215,6 +218,9 @@ typedef struct opc_state_t
     int simh_buffer_cnt;
 
     uv_access console_access;
+
+    // ^T 
+    //unsigned long keyboard_poll_cnt;
 
  } opc_state_t;
 
@@ -669,6 +675,13 @@ static int opc_cmd (uint iomUnitIdx, uint chan)
         case 023:               // Read ASCII
           {
             csp->io_mode = opc_read_mode;
+#if 0
+extern struct timespec cioc_t0;
+struct timespec now, delta;
+clock_gettime (CLOCK_REALTIME, & now);
+timespec_diff (& cioc_t0, & now, & delta);
+sim_printf ("#### %ld/%ld\r\n", delta.tv_sec, delta.tv_nsec);
+#endif
             sim_debug (DBG_NOTIFY, & opc_dev, 
                        "%s: Read ASCII command received\n", __func__);
             if (csp->tailp != csp->buf)
@@ -896,7 +909,9 @@ sim_warn ("uncomfortable with this\n");
 #ifndef __MINGW64__
                 newlineOff ();
 #endif
+#ifdef COLOR
                 sim_print (""); // force text color reset
+#endif
                 while (tally)
                   {
                     word36 datum = * bufp ++;
@@ -1028,15 +1043,19 @@ static void consoleProcessIdx (int conUnitIdx)
     if (csp->io_mode == opc_read_mode &&
         csp->autop != NULL)
       {
-        if (csp->autop == '\0')
+#if 0
+        if (*csp->autop == '\0')
           {
             free (csp->auto_input);
             csp->auto_input = NULL;
             csp->autop = NULL;
             return;
           }
+#endif
         int announce = 1;
+#ifdef COLOR
         sim_print (""); // force text color reset
+#endif
         for (;;)
           {
             if (csp->tailp >= csp->buf + sizeof (csp->buf))
@@ -1168,6 +1187,17 @@ eol:
         return;
       }
 
+    if (c == 024) // ^T
+      {
+        char buf[256];
+        char cms[3] = "?RW";
+        sprintf (buf, "^T attn %c %c\r\n",
+                 console_state[0].attn_pressed+'0',
+                 cms[console_state[0].io_mode]);
+        console_putstr (conUnitIdx, buf);
+        return;
+      }
+
     if (csp->simh_attn_pressed)
       {
         if (c == '\177' || c == '\010')  // backspace/del
@@ -1253,7 +1283,7 @@ eol:
 
     if (csp->io_mode != opc_read_mode)
       {
-        if (c == '\033') // escape
+        if (c == '\033' || c == '\001') // escape or ^A
           csp->attn_pressed = true;
         return;
       }
@@ -1308,7 +1338,9 @@ eol:
         if (csp->tailp >= csp->buf + sizeof (csp->buf))
           return;
 
+#ifdef COLOR
         sim_print (""); // force text color reset
+#endif
         * csp->tailp ++ = (unsigned char) c;
         console_putchar (conUnitIdx, (char) c);
         return;
@@ -1468,6 +1500,17 @@ t_stat set_console_port (int32 arg, const char * buf)
     return SCPE_OK;
   }
 
+t_stat set_console_address (int32 arg, const char * buf)
+  {
+    if (arg < 0 || arg >= N_OPC_UNITS_MAX)
+      return SCPE_ARG;
+    if (console_state[arg].console_access.address)
+      free (console_state[arg].console_access.address);
+    console_state[arg].console_access.address = strdup (buf);
+    sim_msg ("Console %d address set to %s\n", arg, console_state[arg].console_access.address);
+    return SCPE_OK;
+  }
+
 t_stat set_console_pw (int32 arg, UNUSED const char * buf)
   {
     if (arg < 0 || arg >= N_OPC_UNITS_MAX)
@@ -1492,7 +1535,9 @@ t_stat set_console_pw (int32 arg, UNUSED const char * buf)
 
 static void console_putstr (int conUnitIdx, char * str)
   {
+#ifdef COLOR
     sim_print (""); // Force text color reset
+#endif
     size_t l = strlen (str);
     for (size_t i = 0; i < l; i ++)
       sim_putchar (str[i]);
@@ -1524,7 +1569,17 @@ void startRemoteConsole (void)
         console_state[conUnitIdx].console_access.connectPrompt = consoleConnectPrompt;
         console_state[conUnitIdx].console_access.connected = NULL;
         console_state[conUnitIdx].console_access.useTelnet = true;
+#ifdef CONSOLE_FIX
+#if defined(THREADZ) || defined(LOCKLESS)
+        lock_libuv ();
+#endif
+#endif
         uv_open_access (& console_state[conUnitIdx].console_access);
+#ifdef CONSOLE_FIX
+#if defined(THREADZ) || defined(LOCKLESS)
+        unlock_libuv ();
+#endif
+#endif
       }
   }
 

@@ -94,7 +94,7 @@ struct decoded_t
     uint chan_num;
     word24 smbx;
     word24 fsmbx;
-    struct fnpUnitData * fudp;
+    struct fnpUnitData_s * fudp;
     uint cell;
   };
 
@@ -168,8 +168,7 @@ static int wcd (struct decoded_t *decoded_p)
             if (linep->line_client && linep->service == service_login)
               fnpuv_start_writestr (linep->line_client, (unsigned char *) "Multics has disconnected you\r\n");
 #ifdef DISC_DELAY
-            // '1' --> disconnect on next poll
-            linep -> line_disconnected = 1;
+            linep -> line_disconnected = DISC_DELAY;
 #else
             linep -> line_disconnected = true;
 #endif
@@ -489,6 +488,15 @@ static int wcd (struct decoded_t *decoded_p)
 
         case 30: // input_fc_chars
           {
+// dcl 1 input_flow_control_info aligned based,
+//     2 suspend_seq unaligned,
+//       3 count fixed bin (9) unsigned,
+//       3 chars char (3),
+//     2 resume_seq unaligned,
+//       3 count fixed bin (9) unsigned,
+//       3 chars char (3),
+//     2 timeout bit (1);
+
             sim_debug (DBG_TRACE, & fnp_dev, "[%u]    input_fc_chars\n", decoded_p->slot_no);
             word36 suspendStr = command_data[0];
             linep->inputSuspendStr[0] = getbits36_8 (suspendStr, 10);
@@ -513,6 +521,8 @@ static int wcd (struct decoded_t *decoded_p)
                 resumeLen = 3;
               }
             linep->inputResumeLen = resumeLen;
+
+            // XXX timeout ignored
           }
           break;
 
@@ -1592,14 +1602,14 @@ sim_printf ("3270 controller found at unit %u line %u\r\n", devUnitIdx, lineno);
               }
           }
       }
-    fnpuvInit (fnpData.telnet_port);
+    fnpuvInit (fnpData.telnet_port, fnpData.telnet_address);
     fnpuv3270Init (fnpData.telnet3270_port);
   }
 
 static void processMBX (uint iomUnitIdx, uint chan)
   {
     uint fnp_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
-    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
+    struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
 
 // 60132445 FEP Coupler EPS
 // 2.2.1 Control Intercommunication

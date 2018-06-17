@@ -331,8 +331,18 @@ void close_connection (uv_stream_t* stream)
             else
               {
                 sim_printf ("[FNP emulation: DISCONNECT %c.d%03d]\n", p->fnpno+'a', p->lineno);
+#ifdef DISC_DELAY
+                linep -> line_disconnected = DISC_DELAY;
+#else
                 linep -> line_disconnected = true;
+#endif
                 linep -> listen = false;
+                if (linep->inBuffer)
+                  free (linep->inBuffer);
+                linep->inBuffer = NULL;
+                linep->inSize = 0;
+                linep->inUsed = 0;
+                linep->nPos = 0;
               }
             if (linep->line_client)
               {
@@ -837,40 +847,7 @@ sim_printf ("[FNP emulation: dropping 2nd slave]\n");
         uvClientData * p = (uvClientData *) server->data;
         struct t_line * linep = & fnpData.fnpUnitData[p->fnpno].MState.line[p->lineno];
         linep->accept_new_terminal = true;
-        linep->was_CR = false;
-        //linep->listen = false;
-        linep->inputBufferSize = 0;
-        linep->ctrlStrIdx = 0;
-        linep->breakAll = false;
-        linep->handleQuit = false;
-        linep->echoPlex = false;
-        linep->crecho = false;
-        linep->lfecho = false;
-        linep->tabecho = false;
-        linep->replay = false;
-        linep->polite = false;
-        linep->prefixnl = false;
-        linep->eight_bit_out = false;
-        linep->eight_bit_in = false;
-        linep->odd_parity = false;
-        linep->output_flow_control = false;
-        linep->input_flow_control = false;
-        linep->block_xfer_in_frame_sz = 0;
-        linep->block_xfer_out_frame_sz = 0;
-        memset (linep->delay_table, 0, sizeof (linep->delay_table));
-        linep->inputSuspendLen = 0;
-        memset (linep->inputSuspendStr, 0, sizeof (linep->inputSuspendStr));
-        linep->inputResumeLen = 0;
-        memset (linep->inputResumeStr, 0, sizeof (linep->inputResumeStr));
-        linep->outputSuspendLen = 0;
-        memset (linep->outputSuspendStr, 0, sizeof (linep->outputSuspendStr));
-        linep->outputResumeLen = 0;
-        memset (linep->outputResumeStr, 0, sizeof (linep->outputResumeStr));
-        linep->frame_begin = 0;
-        linep->frame_end = 0;
-        memset (linep->echnego, 0, sizeof (linep->echnego));
-        linep->echnego_len = 0;
-        linep->line_break = false;
+        reset_line (linep);
       }
   }
 
@@ -878,7 +855,7 @@ sim_printf ("[FNP emulation: dropping 2nd slave]\n");
 // Setup the dialup listener
 //
 
-void fnpuvInit (int telnet_port)
+void fnpuvInit (int telnet_port, char * telnet_address)
   {
     // Ignore multiple calls; this means that once the listen port is
     // opened, it can't be changed. Fixing this requires non-trivial
@@ -902,8 +879,8 @@ void fnpuvInit (int telnet_port)
 
     // Bind and listen
     struct sockaddr_in addr;
-    sim_printf ("[FNP emulation: listening to %d]\n", telnet_port);
-    uv_ip4_addr ("0.0.0.0", telnet_port, & addr);
+    sim_printf ("[FNP emulation: listening to %s %d]\n", telnet_address, telnet_port);
+    uv_ip4_addr (telnet_address, telnet_port, & addr);
     uv_tcp_bind (& fnpData.du_server, (const struct sockaddr *) & addr, 0);
     int r = uv_listen ((uv_stream_t *) & fnpData.du_server, DEFAULT_BACKLOG, 
                        on_new_connection);
@@ -1042,7 +1019,7 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
 #endif
     char ipaddr [256];
     sprintf (ipaddr, "%d.%d.%d.%d", oct1, oct2, oct3, oct4);
-    printf ("calling %s:%d\n", ipaddr,port);
+    sim_printf ("calling %s:%d\n", ipaddr,port);
 
     struct sockaddr_in dest;
     uv_ip4_addr(ipaddr, (int) port, &dest);
@@ -1260,7 +1237,7 @@ static void fnoTUNProcessLine (int fnpno, int lineno, struct t_line * linep)
         //exit (1);
         if (errno == EAGAIN)
           return;
-        printf ("%ld %d\n", nread, errno);
+        sim_printf ("%ld %d\n", nread, errno);
         return;
       }
 
@@ -1281,11 +1258,11 @@ static void fnoTUNProcessLine (int fnpno, int lineno, struct t_line * linep)
 // 4 bytes of metadata
 #define ip 4 
     /* Do whatever with the data */
-    printf("Read %ld bytes\n", nread);
-    printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
+    sim_printf("Read %ld bytes\n", nread);
+    sim_printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
       buffer [0], buffer [1], buffer [2], buffer [3], 
       buffer [4], buffer [5], buffer [6], buffer [7]);
-    printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
+    sim_printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
       buffer [8], buffer [9], buffer [10], buffer [11], 
       buffer [12], buffer [13], buffer [14], buffer [15]);
     uint version =                            (buffer [ip + 0] >> 4) & 0xf;
@@ -1318,26 +1295,26 @@ static void fnoTUNProcessLine (int fnpno, int lineno, struct t_line * linep)
         uint type = buffer [payload_offset + 0];
         if (type == 0x08)
           {
-            printf ("ICMP Echo Request %d.%d.%d.%d %d.%d.%d.%d\n", 
+            sim_printf ("ICMP Echo Request %d.%d.%d.%d %d.%d.%d.%d\n", 
               buffer [ip + 12], buffer [ip + 13], buffer [ip + 14], buffer [ip + 15],
               buffer [ip + 16], buffer [ip + 17], buffer [ip + 18], buffer [ip + 19]);
           }
         else
           {
-            printf ("ICMP 0x%02x\n", type);
-            printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
+            sim_printf ("ICMP 0x%02x\n", type);
+            sim_printf ("%02x %02x %02x %02x %02x %02x %02x %02x\n",
               buffer [payload_offset + 0], buffer [payload_offset + 1], buffer [payload_offset + 2], buffer [payload_offset + 3], 
               buffer [payload_offset + 4], buffer [payload_offset + 5], buffer [payload_offset + 6], buffer [payload_offset + 7]);
           }
       }
     if (protocol == 0x11)
       {
-        printf ("UDP\n");
+        sim_printf ("UDP\n");
        
       }
     else
       {
-        printf ("protocol %02x\n", protocol);
+        sim_printf ("protocol %02x\n", protocol);
       }
   }
 

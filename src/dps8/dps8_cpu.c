@@ -36,6 +36,7 @@
 #include "dps8_iefp.h"
 #include "dps8_console.h"
 #include "dps8_fnp2.h"
+#include "dps8_socket_dev.h"
 #include "dps8_crdrdr.h"
 #include "dps8_absi.h"
 #include "dps8_utils.h"
@@ -67,6 +68,10 @@ static UNIT cpu_unit [N_CPU_UNITS_MAX] =
   };
 
 #define UNIT_IDX(uptr) ((uptr) - cpu_unit)
+
+#ifdef PANEL
+static void panel_process_event (void);
+#endif
 
 static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr, 
                                UNUSED int val, UNUSED const void * desc)
@@ -126,6 +131,13 @@ static t_stat cpu_show_config (UNUSED FILE * st, UNIT * uptr,
                 cpus[cpu_unit_idx].switches.useMap);
     sim_msg ("Disable cache:            %01o(8)\n",
                 cpus[cpu_unit_idx].switches.disable_cache);
+
+#ifdef AFFINITY
+    if (cpus[cpu_unit_idx].set_affinity)
+      sim_msg ("CPU affinity              %d\n", cpus[cpu_unit_idx].affinity);
+    else
+      sim_msg ("CPU affinity              not set\n");
+#endif
 
     return SCPE_OK;
   }
@@ -199,6 +211,14 @@ static config_value_list_t cfg_interlace [] =
     { "4", 4 },
     { NULL, 0 }
   };
+
+#ifdef AFFINITY
+static config_value_list_t cfg_affinity [] =
+  {
+    { "off", -1 },
+    { NULL, 0 }
+  };
+#endif
 
 static config_value_list_t cfg_size_list [] =
   {
@@ -296,6 +316,13 @@ static config_list_t cpu_config_list [] =
     { "useMap", 0, 1, cfg_on_off },
     { "address", 0, 0777777, NULL },
     { "disable_cache", 0, 1, cfg_on_off },
+
+    // Tuning
+
+#ifdef AFFINITY
+    { "affinity", -1, 32767, cfg_affinity },
+#endif
+
     { NULL, 0, 0, NULL }
   };
 
@@ -374,6 +401,18 @@ static t_stat cpu_set_config (UNIT * uptr, UNUSED int32 value,
           cpus[cpu_unit_idx].switches.useMap = v;
         else if (strcmp (p, "disable_cache") == 0)
           cpus[cpu_unit_idx].switches.disable_cache = v;
+#ifdef AFFINITY
+        else if (strcmp (p, "affinity") == 0)
+          if (v < 0)
+            {
+              cpus[cpu_unit_idx].set_affinity = false;
+            }
+          else
+            {
+              cpus[cpu_unit_idx].set_affinity = true;
+              cpus[cpu_unit_idx].affinity = (uint) v;
+            }
+#endif
         else
           {
             sim_warn ("error: cpu_set_config: invalid cfg_parse rc <%d>\n",
@@ -455,7 +494,7 @@ uint set_cpu_idx (UNUSED uint cpu_idx)
     return prev;
   }
 
-static void cpu_reset_unit_idx (UNUSED uint cpun, bool clear_mem)
+void cpu_reset_unit_idx (UNUSED uint cpun, bool clear_mem)
   {
     uint save = set_cpu_idx (cpun);
     if (clear_mem)
@@ -983,6 +1022,7 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
 
       }
     fnpProcessEvent (); 
+    sk_process_event (); 
     consoleProcess ();
     machine_room_process ();
 #ifdef IO_ASYNC_PAYLOAD_CHAN
@@ -1396,7 +1436,11 @@ t_stat sim_instr (void)
           }
 #endif
 #if 1
+
 // Check for all CPUs stopped
+
+// This doesn't work for multiple CPU Multics; only one processor does the
+// BCE dis; the other processors are doing the pxss 'dis 0776' dance; 
 
         uint n_running = 0;
         for (uint i = 0; i < cpu_dev.numunits; i ++)
@@ -1708,7 +1752,17 @@ setCPU:;
         if (fast_queue_subsample ++ > sys_opts.sys_poll_check_rate) // ~ 1KHz
           {
             fast_queue_subsample = 0;
+#ifdef CONSOLE_FIX
+#if defined(THREADZ) || defined(LOCKLESS)
+            lock_libuv ();
+#endif
+#endif
             uv_run (ev_poll_loop, UV_RUN_NOWAIT);
+#ifdef CONSOLE_FIX
+#if defined(THREADZ) || defined(LOCKLESS)
+            unlock_libuv ();
+#endif
+#endif
             PNL (panel_process_event ());
           }
 #else
@@ -1742,6 +1796,11 @@ setCPU:;
         // wait on run/switch
         cpuRunningWait ();
 #endif // THREADZ
+#ifdef LOCKLESS
+	core_unlock_all ();
+	// wait on run/switch
+	//        cpuRunningWait ();
+#endif
 
 #ifdef LOCKLESS
 	core_unlock_all();
@@ -2342,7 +2401,17 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
                     usleep (sys_opts.sys_poll_interval * 1000/*10000*/);
 #ifndef NO_EV_POLL
                     // Trigger I/O polling
+#ifdef CONSOLE_FIX
+#if defined(THREADZ) || defined(LOCKLESS)
+                    lock_libuv ();
+#endif
+#endif
                     uv_run (ev_poll_loop, UV_RUN_NOWAIT);
+#ifdef CONSOLE_FIX
+#if defined(THREADZ) || defined(LOCKLESS)
+                    unlock_libuv ();
+#endif
+#endif
                     fast_queue_subsample = 0;
 #else // NO_EV_POLL
                     // this ignores the amount of time since the last poll;

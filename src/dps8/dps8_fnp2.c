@@ -258,6 +258,7 @@ void fnpInit(void)
   {
     // 0 sets set service to service_undefined
     memset(& fnpData, 0, sizeof(fnpData));
+    fnpData.telnet_address = strdup ("0.0.0.0");
     fnpData.telnet_port = 6180;
     fnpData.telnet3270_port = 3270;
     fnpTelnetInit ();
@@ -281,7 +282,7 @@ static t_stat fnpReset (UNUSED DEVICE * dptr)
 
 static int findMbx (uint fnpUnitIdx)
   {
-    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnpUnitIdx];
+    struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnpUnitIdx];
     for (uint i = 0; i < 4; i ++)
       if (! fudp -> fnpMBXinUse [i])
         return (int) i;
@@ -293,7 +294,7 @@ static void notifyCS (uint mbx, int fnp_unit_idx, int lineno)
 #ifdef FNPDBG
 sim_printf ("notifyCS mbx %d\n", mbx);
 #endif
-    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
+    struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
     word24 fsmbx = fudp->mailboxAddress + FNP_SUB_MBXES + mbx*FNP_SUB_MBX_SIZE;
 
     uint ctlr_port_num = 0; // FNPs are single ported
@@ -319,7 +320,7 @@ sim_printf ("notifyCS mbx %d\n", mbx);
 static void fnp_rcd_ack_echnego_init (uint mbx, int fnp_unit_idx, int lineno)
   {
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd ack_echnego_init\n", lineno);
-    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
+    struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
     word24 fsmbx = fudp->mailboxAddress + FNP_SUB_MBXES + mbx*FNP_SUB_MBX_SIZE;
 
     uint ctlr_port_num = 0; // FNPs are single ported
@@ -338,7 +339,7 @@ static void fnp_rcd_ack_echnego_init (uint mbx, int fnp_unit_idx, int lineno)
 static void fnp_rcd_line_disconnected (uint mbx, int fnp_unit_idx, int lineno)
   {
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd line_disconnected\n", lineno);
-    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
+    struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
     word24 fsmbx = fudp->mailboxAddress + FNP_SUB_MBXES + mbx*FNP_SUB_MBX_SIZE;
 
     uint ctlr_port_num = 0; // FNPs are single ported
@@ -357,7 +358,7 @@ static void fnp_rcd_line_disconnected (uint mbx, int fnp_unit_idx, int lineno)
 static void fnp_rcd_input_in_mailbox (uint mbx, int fnp_unit_idx, int lineno)
   {
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd input_in_mailbox\n", lineno);
-    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
+    struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
     struct t_line * linep = & fudp->MState.line[lineno];
     word24 fsmbx = fudp->mailboxAddress + FNP_SUB_MBXES + mbx*FNP_SUB_MBX_SIZE;
 
@@ -445,7 +446,7 @@ sim_printf ("\n");
 
 static void fnp_rcd_line_status  (uint mbx, int fnp_unit_idx, int lineno)
   {
-    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
+    struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
     struct t_line * linep = & fudp->MState.line[lineno];
     word24 fsmbx = fudp->mailboxAddress + FNP_SUB_MBXES + mbx*FNP_SUB_MBX_SIZE;
 
@@ -468,7 +469,7 @@ static void fnp_rcd_line_status  (uint mbx, int fnp_unit_idx, int lineno)
 static void fnp_rcd_accept_input (uint mbx, int fnp_unit_idx, int lineno)
   {
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd accept_input\n", lineno);
-    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
+    struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
     struct t_line * linep = & fudp->MState.line[lineno];
     word24 fsmbx = fudp->mailboxAddress + FNP_SUB_MBXES + mbx*FNP_SUB_MBX_SIZE;
 
@@ -508,7 +509,7 @@ static void fnp_rcd_accept_input (uint mbx, int fnp_unit_idx, int lineno)
 static void fnp_rcd_line_break (uint mbx, int fnp_unit_idx, int lineno)
   {
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd line_break\n", lineno);
-    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
+    struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
     word24 fsmbx = fudp->mailboxAddress + FNP_SUB_MBXES + mbx*FNP_SUB_MBX_SIZE;
 
     uint ctlr_port_num = 0; // FNPs are single ported
@@ -530,7 +531,7 @@ static void fnp_rcd_send_output (uint mbx, int fnp_unit_idx, int lineno)
 #ifdef FNPDBG
 sim_printf ("send_output\n");
 #endif
-    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
+    struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
     word24 fsmbx = fudp->mailboxAddress + FNP_SUB_MBXES + mbx*FNP_SUB_MBX_SIZE;
 
     uint ctlr_port_num = 0; // FNPs are single ported
@@ -550,7 +551,7 @@ static void fnp_rcd_acu_dial_failure (uint mbx, int fnp_unit_idx, int lineno)
   {
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd acu_dial_failure\n", lineno);
     //sim_printf ("acu_dial_failure %d %d %d\n", mbx, fnp_unit_idx, lineno);
-    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
+    struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
     word24 fsmbx = fudp->mailboxAddress + FNP_SUB_MBXES + mbx*FNP_SUB_MBX_SIZE;
 
     uint ctlr_port_num = 0; // FNPs are single ported
@@ -570,7 +571,7 @@ static void fnp_rcd_accept_new_terminal (uint mbx, int fnp_unit_idx, int lineno)
   {
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd accept_new_terminal\n", lineno);
     //sim_printf ("accept_new_terminal %d %d %d\n", mbx, fnp_unit_idx, lineno);
-    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
+    struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
     struct t_line * linep = & fudp->MState.line[lineno];
     word24 fsmbx = fudp->mailboxAddress + FNP_SUB_MBXES + mbx*FNP_SUB_MBX_SIZE;
 
@@ -635,7 +636,7 @@ static void fnp_rcd_wru_timeout (uint mbx, int fnp_unit_idx, int lineno)
   {
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd wru_timeout\n", lineno);
     //sim_printf ("wru_timeout %d %d %d\n", mbx, fnp_unit_idx, lineno);
-    struct fnpUnitData * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
+    struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
     word24 fsmbx = fudp->mailboxAddress + FNP_SUB_MBXES + mbx*FNP_SUB_MBX_SIZE;
 
     uint ctlr_port_num = 0; // FNPs are single ported
@@ -762,7 +763,6 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
               linep->buffer[linep->nPos++] = 0;
             linep->accept_input = 1;
             linep->input_break = true;
-//sim_printf ("set nPos to %d\n", (int) linep->nPos);
             return true;
 #endif
           }
@@ -850,11 +850,21 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
         // Internal buffer full
         (size_t) linep->nPos >= sizeof (linep->buffer) ||
 
+#if 0
         // block xfer buffer size met
         (linep->block_xfer_out_frame_sz != 0 && linep->nPos >= linep->block_xfer_out_frame_sz) ||
 
         // 'listen' command buffer size met
-        (linep->inputBufferSize != 0 && linep->nPos >= linep->inputBufferSize))
+        (linep->inputBufferSize != 0 && linep->nPos >= (int) linep->inputBufferSize))
+#endif
+        ((linep->block_xfer_out_frame_sz != 0)
+          ?
+            // block xfer buffer size met
+            (linep->nPos >= (int) linep->block_xfer_out_frame_sz)
+          :
+            // 'listen' command buffer size met
+            (linep->inputBufferSize != 0 && linep->nPos >= (int) linep->inputBufferSize))
+        )  
       {
         linep->accept_input = 1;
         linep->input_break = false;
@@ -1541,7 +1551,7 @@ static t_stat fnpShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val,
       }
 
     sim_printf ("FNP unit number %ld\n", fnpUnitIdx);
-    struct fnpUnitData * fudp = fnpData.fnpUnitData + fnpUnitIdx;
+    struct fnpUnitData_s * fudp = fnpData.fnpUnitData + fnpUnitIdx;
 
     sim_printf ("FNP Mailbox Address:         %04o(8)\n", fudp -> mailboxAddress);
  
@@ -1562,7 +1572,7 @@ static t_stat fnpShowStatus (UNUSED FILE * st, UNIT * uptr, UNUSED int val,
       }
 
     sim_printf ("FNP unit number %ld\n", fnpUnitIdx);
-    struct fnpUnitData * fudp = fnpData.fnpUnitData + fnpUnitIdx;
+    struct fnpUnitData_s * fudp = fnpData.fnpUnitData + fnpUnitIdx;
 
     sim_printf ("mailboxAddress:              %04o\n", fudp->mailboxAddress);
     sim_printf ("fnpIsRunning:                %o\n", fudp->fnpIsRunning);
@@ -1581,7 +1591,11 @@ static t_stat fnpShowStatus (UNUSED FILE * st, UNIT * uptr, UNUSED int val,
         sim_printf ("line_break:                  %d\n", fudp->MState.line[l].line_break);
         sim_printf ("send_output:                 %d\n", fudp->MState.line[l].send_output);
         sim_printf ("accept_new_terminal:         %d\n", fudp->MState.line[l].accept_new_terminal);
+#if DISC_DELAY
         sim_printf ("line_disconnected:           %d\n", fudp->MState.line[l].line_disconnected);
+#else
+        sim_printf ("line_disconnected:           %c\n", fudp->MState.line[l].line_disconnected ? 'T' : 'F');
+#endif
         sim_printf ("acu_dial_failure:            %d\n", fudp->MState.line[l].acu_dial_failure);
         sim_printf ("accept_input:                %d\n", fudp->MState.line[l].accept_input);
         sim_printf ("waitForMbxDone:              %d\n", fudp->MState.line[l].waitForMbxDone);
@@ -1617,7 +1631,7 @@ static t_stat fnpSetConfig (UNIT * uptr, UNUSED int value, const char * cptr, UN
         return SCPE_ARG;
       }
 
-    struct fnpUnitData * fudp = fnpData.fnpUnitData + fnpUnitIdx;
+    struct fnpUnitData_s * fudp = fnpData.fnpUnitData + fnpUnitIdx;
 
     config_state_t cfg_state = { NULL, NULL };
 
@@ -1758,7 +1772,15 @@ t_stat set_fnp_server_port (UNUSED int32 arg, const char * buf)
       return SCPE_ARG;
     fnpData.telnet_port = n;
     sim_printf ("FNP telnet server port set to %d\n", n);
-    //fnpuvInit (telnet_port);
+    return SCPE_OK;
+  }
+
+t_stat set_fnp_server_address (UNUSED int32 arg, const char * buf)
+  {
+    if (fnpData.telnet_address)
+      free (fnpData.telnet_address);
+    fnpData.telnet_address = strdup (buf);
+    sim_printf ("FNP telnet server address set to %s\n", fnpData.telnet_address);
     return SCPE_OK;
   }
 
@@ -1775,7 +1797,7 @@ t_stat set_fnp_3270_server_port (UNUSED int32 arg, const char * buf)
 t_stat fnp_start (UNUSED int32 arg, UNUSED const char * buf)
   {
     sim_printf ("FNP force start\n");
-    fnpuvInit (fnpData.telnet_port);
+    fnpuvInit (fnpData.telnet_port, fnpData.telnet_address);
     fnpuv3270Init (fnpData.telnet3270_port);
     return SCPE_OK;
   }
@@ -2069,6 +2091,43 @@ done:;
     //fnpuv_read_stop (client);
   }
 
+void reset_line (struct t_line * linep)
+  {
+    linep->was_CR = false;
+    linep->inputBufferSize = 0;
+    linep->ctrlStrIdx = 0;
+    linep->breakAll = false;
+    linep->handleQuit = false;
+    linep->echoPlex = false;
+    linep->crecho = false;
+    linep->lfecho = false;
+    linep->tabecho = false;
+    linep->replay = false;
+    linep->polite = false;
+    linep->prefixnl = false;
+    linep->eight_bit_out = false;
+    linep->eight_bit_in = false;
+    linep->odd_parity = false;
+    linep->output_flow_control = false;
+    linep->input_flow_control = false;
+    linep->block_xfer_in_frame_sz = 0;
+    linep->block_xfer_out_frame_sz = 0;
+    memset (linep->delay_table, 0, sizeof (linep->delay_table));
+    linep->inputSuspendLen = 0;
+    memset (linep->inputSuspendStr, 0, sizeof (linep->inputSuspendStr));
+    linep->inputResumeLen = 0;
+    memset (linep->inputResumeStr, 0, sizeof (linep->inputResumeStr));
+    linep->outputSuspendLen = 0;
+    memset (linep->outputSuspendStr, 0, sizeof (linep->outputSuspendStr));
+    linep->outputResumeLen = 0;
+    memset (linep->outputResumeStr, 0, sizeof (linep->outputResumeStr));
+    linep->frame_begin = 0;
+    linep->frame_end = 0;
+    memset (linep->echnego, 0, sizeof (linep->echnego));
+    linep->echnego_len = 0;
+    linep->line_break = false;
+  }
+
 void processUserInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
   {
     if (! client || ! client->data)
@@ -2263,12 +2322,12 @@ associate:;
 
     fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].lineType = 1 /* LINE_ASCII */;
     fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].accept_new_terminal = true;
-    fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].was_CR = false;
+    reset_line (& fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno]);
     ltnRaw (p->telnetp);
   }
 
 void startFNPListener (void)
   {
-    fnpuvInit (fnpData.telnet_port);
+    fnpuvInit (fnpData.telnet_port, fnpData.telnet_address);
   }
 

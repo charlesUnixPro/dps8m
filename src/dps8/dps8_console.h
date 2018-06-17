@@ -20,5 +20,6 @@ int opc_iom_cmd (uint iomUnitIdx, uint chan);
 int check_attn_key (void);
 void consoleProcess (void);
 t_stat set_console_port (UNUSED int32 arg, const char * buf);
+t_stat set_console_address (UNUSED int32 arg, const char * buf);
 t_stat set_console_pw (UNUSED int32 arg, const char * buf);
 void startRemoteConsole (void);

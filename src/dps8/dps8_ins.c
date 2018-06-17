@@ -40,6 +40,10 @@
 #include "dps8_iefp.h"
 #include "dps8_utils.h"
 
+#if defined(THREADZ) || defined(LOCKLESS)
+#include "threadz.h"
+#endif
+
 #define DBG_CTR cpu.cycleCnt
 
 // Forward declarations
@@ -53,21 +57,6 @@ static int emCall (void);
 #endif
 
 #ifdef LOOPTRC
-#include <time.h>
-void timespec_diff(struct timespec *start, struct timespec *stop,
-                   struct timespec *result)
-{
-    if ((stop->tv_nsec - start->tv_nsec) < 0) {
-        result->tv_sec = stop->tv_sec - start->tv_sec - 1;
-        result->tv_nsec = stop->tv_nsec - start->tv_nsec + 1000000000;
-    } else {
-        result->tv_sec = stop->tv_sec - start->tv_sec;
-        result->tv_nsec = stop->tv_nsec - start->tv_nsec;
-    }
-
-    return;
-}
-
 void elapsedtime (void)
   {
     static bool init = false;
@@ -1581,7 +1570,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "%s sets XSF to %o\n", __func__, cpu.cu.XSF)
 #endif
       }
 
-    if (unlikely (RPx_fault))
+    if (unlikely (RPx_fault != 0))
       {
         doFault (FAULT_IPR,
                  (_fault_subtype) {.fault_ipr_subtype=RPx_fault},
@@ -1698,7 +1687,7 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "%s sets XSF to %o\n", __func__, cpu.cu.XSF)
 
 #ifdef DPS8M
     // DPS8M raises it delayed
-    if (unlikely (mod_fault))
+    if (unlikely (mod_fault != 0))
       {
         doFault (FAULT_IPR,
                  (_fault_subtype) {.fault_ipr_subtype=mod_fault},
@@ -1749,6 +1738,19 @@ restart_1:
 
       {
         traceInstruction (DBG_TRACE);
+#ifdef DBGEVENT
+        int dbgevt;
+        if (n_dbgevents && (dbgevt = (dbgevent_lookup (cpu.PPR.PSR, cpu.PPR.IC))) >= 0)
+          {
+            if (dbgevents[dbgevt].t0)
+              clock_gettime (CLOCK_REALTIME, & dbgevent_t0);
+            struct timespec now, delta;
+            clock_gettime (CLOCK_REALTIME, & now);
+            timespec_diff (& dbgevent_t0, & now, & delta);
+            sim_printf ("[%d] %5ld.%03ld %s\r\n", dbgevt, delta.tv_sec, delta.tv_nsec/1000000, dbgevents[dbgevt].tag);
+          }
+#endif
+
 #ifdef HDBG
         hdbgTrace ();
 #endif // HDBG
@@ -2568,9 +2570,14 @@ static t_stat doInstruction (void)
         uint col = grp % 36;
         CPT (cpt3U + row, col); // 3U 0-35, 3L 0-17
       }
+#ifdef L68
+    bool is_ou = false;
+#endif
     if (opcodes10[opcode10].reg_use & is_OU)
       {
+#ifdef L68
         is_ou = true;
+#endif
     // XXX Punt on RP FULL, RS FULL
         cpu.ou.RB1_FULL = cpu.ou.RP_FULL = cpu.ou.RS_FULL = 1;
         cpu.ou.cycle |= ou_GIN;
@@ -2588,10 +2595,15 @@ static t_stat doInstruction (void)
         if (reguse & ru_X6) CPT (cpt5U, 12);
         if (reguse & ru_X7) CPT (cpt5U, 13);
       }
-#endif
 #ifdef L68
-    bool is_ou = false;
+    bool is_du = false;
+    if (opcodes10[opcode10].reg_use & is_DU)
+      {
+        is_du = true;
+        PNL (DU_CYCLE_nDUD;) // set not idle
+      }
 #endif
+#endif // PANEL
 
     switch (opcode10)
       {
@@ -3253,12 +3265,14 @@ static t_stat doInstruction (void)
           //  C(TPR.CA) -> C(PPR.IC)
           //  C(TPR.TSR) -> C(PPR.PSR)
           {
+#ifdef PANEL
             uint32 n;
             if (opcode10 <= 0273)
               n = (opcode10 & 3);
             else
               n = (opcode10 & 3) + 4;
             CPTUR (cptUsePRn + n);
+#endif
 
             do_caf ();
             // PR[n] is set in read_tra_op().
@@ -8702,21 +8716,35 @@ elapsedtime ();
                 longjmp (cpu.jmpMain, JMP_STOP);
               }
 
+#ifdef LOCKLESS
+          if (cpu.PPR.PSR == 044 && cpu.PPR.IC == 0005217)
+              {
+                sim_printf ("[%lld] pxss:delete_me DIS causes CPU halt\n", cpu.cycleCnt);
+                sim_debug (DBG_MSG, & cpu_dev, "pxss:delete_me DIS causes CPU halt\n");
+                stopCPUThread ();
+              }
+#endif
 #ifdef ROUND_ROBIN
           if (cpu.PPR.PSR == 034 && cpu.PPR.IC == 03535)
               {
-                sim_printf ("[%lld] sys_trouble$die  DIS causes CPU halt\n", cpu.cycleCnt);
-                sim_debug (DBG_MSG, & cpu_dev, "BCE DIS causes CPU halt\n");
+                sim_printf ("[%lld] sys_trouble$die DIS causes CPU halt\n", cpu.cycleCnt);
+                sim_debug (DBG_MSG, & cpu_dev, "sys_trouble$die DIS causes CPU halt\n");
                 //longjmp (cpu.jmpMain, JMP_STOP);
                 cpu.isRunning = false;
               }
 #endif
+#if 0
           if (i->address == 0777)
               {
                 sim_printf ("Multics DIS disables CPU: CA: 0x%x\n",cpu.TPR.CA);
                 sim_debug (DBG_MSG, & cpu_dev, "Multics DIS disables CPU\n");
+#if 1
+                setCPURun (current_running_cpu_idx, false);
+#else
                 longjmp (cpu.jmpMain, JMP_STOP);
+#endif
               }
+#endif
 
           sim_debug (DBG_TRACEEXT, & cpu_dev, "entered DIS_cycle\n");
           //sim_printf ("entered DIS_cycle\n");

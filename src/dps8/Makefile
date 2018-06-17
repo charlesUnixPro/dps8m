@@ -16,6 +16,8 @@
 #  TESTING=1    Enables sim_debug and additional runtime checks
 #
 
+all :
+
 SIMHx = ../simh-master
 
 INSTALL_ROOT ?= /usr/local/
@@ -53,7 +55,8 @@ LIBS += -lpthread
 endif
 
 ifeq ($(LOCKLESS),1)
-CFLAGS += -pthread -DLOCKLESS -DWAM
+#CFLAGS += -pthread -DLOCKLESS -DWAM
+CFLAGS += -pthread -DLOCKLESS 
 LDFLAGS += -pthread
 LIBS += -lpthread
 endif
@@ -84,7 +87,12 @@ CFLAGS += -Wall -Wno-conversion -Wsign-conversion
 endif
 
 ifneq ($(M32),)
-CFLAGS += -DNEED_128
+CFLAGS += -DNEED_128 -Wno-format-zero-length -Wno-sign-conversion
+endif
+
+ifeq ($(M_SHARED),1)
+CFLAGS += -DM_SHARED
+LDFLAGS += -lrt
 endif
 
 # Configuration switches
@@ -150,6 +158,7 @@ C_SRCS += ./dps8_opcodetable.c
 C_SRCS += ./dps8_prt.c
 C_SRCS += ./dps8_scu.c
 C_SRCS += ./dps8_simh.c
+C_SRCS += ./dps8_socket_dev.c
 C_SRCS += ./dps8_sys.c
 C_SRCS += ./dps8_urp.c
 C_SRCS += ./dps8_utils.c
@@ -205,6 +214,7 @@ H_SRCS += dps8_math128.h
 H_SRCS += dps8_mt.h
 H_SRCS += dps8_opcodetable.h
 H_SRCS += dps8_prt.h
+H_SRCS += dps8_socket_dev.h
 H_SRCS += dps8_scu.h
 H_SRCS += dps8_simh.h
 H_SRCS += dps8_sys.h
@@ -233,7 +243,7 @@ H_SRCS += ./uvutil.h
 
 
 
-all: utils $(TAGS) locallibs_then_dps8 
+all: utils $(TAGS) locallibs_then_dps8
 
 #fnpx : fnpx.c fnp_udplib.o
 #	$(CC) fnpx.c -o fnpx fnp_udplib.o
@@ -269,8 +279,8 @@ blinkenLightsCurses : blinkenLightsCurses.c shm.o
 #all : blinkenLightsCurses
 
 dps8$(EXE) : $(OBJS) $(LOCALOBJS) $(LOCALLIBS) 
-	#@echo LD dps8$(EXE)
-	$(LD)  -o dps8$(EXE) $(LDFLAGS) $(OBJS) $(LOCALOBJS) $(LOCALLIBS) $(LIBS)
+	@echo LD dps8$(EXE)
+	@$(LD)  -o dps8$(EXE) $(LDFLAGS) $(OBJS) $(LOCALOBJS) $(LOCALLIBS) $(LIBS)
 
 .PHONY: FORCE
 
@@ -377,6 +387,11 @@ clean_dps8:
 dps8_sys.o : dps8.sha1.txt
 dps8_sys.d : dps8.sha1.txt
 
+dps8_socket_dev.c: errnos.h
+errnos.h:
+	echo '#include <errno.h>' > dump.c
+	$(CC) -E -dD dump.c | awk '/^#define E/ { printf "{\"%s\",%s},\n", $$2, $$2 }' > errnos.h
+	rm -f dump.c
 
 %.d: %.c
 	@set -e; rm -f $@; \

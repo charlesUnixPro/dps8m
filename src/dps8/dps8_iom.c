@@ -1555,7 +1555,7 @@ static int status_service (uint iom_unit_idx, uint chan, bool marker)
     putbits36_2 (& word1, 14, 0); // software status
     putbits36_1 (& word1, 16, p -> initiate ? 1 : 0);
     putbits36_1 (& word1, 17, 0); // software abort bit
-    putbits36_3 (& word1, 18, p -> chanStatus);
+    putbits36_3 (& word1, 18, (word3) p -> chanStatus);
     //putbits36_3 (& word1, 21, iom_unit_data[iom_unit_idx].iomStatus);
     putbits36_3 (& word1, 21, 0);
 #if 0
@@ -2354,6 +2354,9 @@ sim_warn ("unhandled fetch_and_parse_DCW\n");
 int send_general_interrupt (uint iom_unit_idx, uint chan, enum iomImwPics pic)
   {
 
+#ifdef IO_FENCE
+    fence ();
+#endif
 #ifdef THREADZ
     lock_mem_wr ();
 #endif

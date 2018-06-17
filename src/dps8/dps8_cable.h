@@ -75,9 +75,9 @@ enum ctlr_type_e
      CTLR_T_OPC,
      CTLR_T_URP,
      CTLR_T_FNP,
-     CTLR_T_ABSI
+     CTLR_T_ABSI,
+     CTLR_T_SKC,
      // DEVT_DN355
-
   };
 
 // Connect SCU to IOM/CPU
@@ -135,6 +135,7 @@ struct cpu_to_scu_s
 //    cable IOMx chan# FNPx       // FNP 
 //    cable IOMx chan# ABSIx      // ABSI 
 //    cable IOMx chan# URPx       // Unit record processor
+//    cable IOMx chan# SKx        // Socket
 //
 
 struct iom_to_ctlr_s
@@ -184,7 +185,8 @@ struct ctlr_to_iom_s
 //     cable URPx dev_code RDRx
 //     cable URPx dev_code PUNx
 //     cable URPx dev_code PRTx
-
+//
+//  skc doesn't have a cableable device; channel n connects to unit n.
 
 struct ctlr_to_dev_s
   {
@@ -230,6 +232,8 @@ struct cables_s
     struct ctlr_to_iom_s absi_to_iom [N_ABSI_UNITS_MAX] [MAX_CTLR_PORTS];
     //   console
     struct ctlr_to_iom_s opc_to_iom [N_OPC_UNITS_MAX] [MAX_CTLR_PORTS];
+    //   socket
+    struct ctlr_to_iom_s sk_to_iom [N_SK_UNITS_MAX] [MAX_CTLR_PORTS];
 
     // CTLR->DEV
     //   mtp->tape
