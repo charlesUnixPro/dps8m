@@ -1789,10 +1789,10 @@ typedef struct
     word18 last_write;
 #ifdef LOCKLESS
     word24 locked_addr;
-    word24 rmw_address;
     word24 char_word_address;
-    word24 pad[16];
 #endif
+    word24 rmw_address;
+    word24 pad[16];
 //#ifdef THREADZ
 //    // Set if this thread has set memlock
 //    bool havelock; // Vetinari 
