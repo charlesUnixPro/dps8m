@@ -1454,9 +1454,11 @@ A:;
     bool boolB = (thisCycle == INSTRUCTION_FETCH ||
 		  ((i->info->flags & TRANSFER_INS) &&
 		   thisCycle == OPERAND_READ));
+#if 0
     if (boolA != boolB)
       sim_warn ("do_append_cycle(B) boolA %d != boolB %d cycle %s insflag %d\n",
 		boolA, boolB, str_pct (thisCycle), i->info->flags & TRANSFER_INS);
+#endif
 
     // Transfer or instruction fetch?
     if (thisCycle == INSTRUCTION_FETCH ||
