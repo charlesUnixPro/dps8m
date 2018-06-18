@@ -1439,6 +1439,7 @@ A:;
     if (thisCycle == OPERAND_READ && (i->info->flags & CALL6_INS))
       goto E;
 
+#if 0
     // If the instruction is a transfer operand or we are doing an instruction
     // fetch, the operand is destined to be executed. Verify that the operand
     // is executable
@@ -1454,7 +1455,6 @@ A:;
     bool boolB = (thisCycle == INSTRUCTION_FETCH ||
 		  ((i->info->flags & TRANSFER_INS) &&
 		   thisCycle == OPERAND_READ));
-#if 0
     if (boolA != boolB)
       sim_warn ("do_append_cycle(B) boolA %d != boolB %d cycle %s insflag %d\n",
 		boolA, boolB, str_pct (thisCycle), i->info->flags & TRANSFER_INS);
