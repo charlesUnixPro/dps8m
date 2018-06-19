@@ -707,7 +707,7 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
                 uint nCol = linep->nPos;
                 // for now we use tabstops of 1,11,21,31,41,51, etc...
                 nCol += 10;                  // 10 spaces/tab
-                int nSpaces = 10 - (nCol % 10);
+                int nSpaces = 10 - ((int) nCol % 10);
                 for(int i = 0 ; i < nSpaces ; i += 1)
                   fnpuv_start_writestr (linep->line_client, (unsigned char *) " ");
               }

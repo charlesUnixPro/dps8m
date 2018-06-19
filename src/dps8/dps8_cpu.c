@@ -1473,11 +1473,11 @@ t_stat sim_instr (void)
 #ifdef IO_ASYNC_PAYLOAD_CHAN_THREAD
 	struct timespec next_time;
 	clock_gettime (CLOCK_REALTIME, & next_time);
-	next_time.tv_nsec += 1000ul * 1000ul;
-	if (next_time.tv_nsec >= 1000ul * 1000ul *1000ul)
+	next_time.tv_nsec += 1000l * 1000l;
+	if (next_time.tv_nsec >= 1000l * 1000l *1000l)
 	  {
-	    next_time.tv_nsec -= 1000ul * 1000ul *1000ul;
-	    next_time.tv_sec += 1ul;
+	    next_time.tv_nsec -= 1000l * 1000l *1000l;
+	    next_time.tv_sec += (time_t) 1;
 	  }
 	struct timespec new_time;
 	do

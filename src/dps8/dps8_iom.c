@@ -2419,7 +2419,7 @@ static void iom_fault (uint iom_unit_idx, uint chan, UNUSED const char * who,
 #endif
     sim_warn ("iom_fault %s\n", who);
 
-    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
+    // iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
     // TODO:
     // For a system fault:
     // Store the indicated fault into a system fault word (3.2.6) in

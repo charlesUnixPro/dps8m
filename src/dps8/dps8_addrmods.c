@@ -1415,7 +1415,9 @@ startCA:;
                            "tally=%04o idwtag=%02o\n", 
                            indword, Yi, cpu.AM_tally, idwtag);
 
+#ifdef ISOLTS
                 word24 YiSafe2 = Yi; // save indirect address for later use
+#endif
 
                 Yi -= 1;
                 Yi &= MASK18;

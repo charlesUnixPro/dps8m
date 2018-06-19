@@ -55,3 +55,4 @@ void fnpuv_3270_readcb (uv_tcp_t * client,
                            ssize_t nread,
                            unsigned char * buf);
 void fnpuv_start_3270_write (uv_tcp_t * client, unsigned char * data, ssize_t datalen);
+void reset_line (struct t_line * linep);

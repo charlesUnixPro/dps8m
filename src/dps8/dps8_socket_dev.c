@@ -753,7 +753,7 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
           {
             sim_debug (DBG_DEBUG, & skc_dev,
                        "%s: socket_dev_$socket\n", __func__);
-            const int expected_tally = 6;
+            const uint expected_tally = 6;
             uint tally;
             int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
@@ -778,7 +778,7 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
             sim_debug (DBG_DEBUG, & skc_dev,
                        "%s: socket_dev_$bind\n", __func__);
 
-            const int expected_tally = 6;
+            const uint expected_tally = 6;
             uint tally;
             int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
@@ -811,7 +811,7 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
             sim_debug (DBG_DEBUG, & skc_dev,
                        "%s: socket_dev_$gethostbyname\n", __func__);
 
-            const int expected_tally = 68;
+            const uint expected_tally = 68;
             uint tally;
             int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
@@ -837,7 +837,7 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
             sim_debug (DBG_DEBUG, & skc_dev,
                        "%s: socket_dev_$listen\n", __func__);
 
-            const int expected_tally = 5;
+            const uint expected_tally = 5;
             uint tally;
             int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
@@ -863,7 +863,7 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
             sim_debug (DBG_DEBUG, & skc_dev,
                        "%s: socket_dev_$accept\n", __func__);
 
-            const int expected_tally = 7;
+            const uint expected_tally = 7;
             uint tally;
             int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
@@ -891,7 +891,7 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
             sim_debug (DBG_DEBUG, & skc_dev,
                        "%s: socket_dev_$close\n", __func__);
 
-            const int expected_tally = 4;
+            const uint expected_tally = 4;
             uint tally;
             int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
@@ -916,7 +916,7 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
             sim_debug (DBG_DEBUG, & skc_dev,
                        "%s: socket_dev_$read8\n", __func__);
 
-            const int expected_tally = 0;
+            const uint expected_tally = 0;
             uint tally;
             int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)
@@ -943,7 +943,7 @@ sim_printf ("device %u\n", p->IDCW_DEV_CODE);
             sim_debug (DBG_DEBUG, & skc_dev,
                        "%s: socket_dev_$read8\n", __func__);
 
-            const int expected_tally = 0;
+            const uint expected_tally = 0;
             uint tally;
             int rc = get_ddcw (p, iom_unit_idx, chan, & ptro, expected_tally, & tally);
             if (rc)

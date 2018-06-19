@@ -826,7 +826,9 @@ sim_warn ("uncomfortable with this\n");
                   }
 
                 uint tally = p->DDCW_TALLY;
+#ifdef ATTN_HACK
                 uint daddr = p->DDCW_ADDR;
+#endif
 
 // We would hope that number of valid characters in the last word
 // would be in DCW_18_20_CP, but it seems to reliably be zero.
