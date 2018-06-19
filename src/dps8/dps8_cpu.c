@@ -69,6 +69,18 @@ static UNIT cpu_unit [N_CPU_UNITS_MAX] =
 
 #define UNIT_IDX(uptr) ((uptr) - cpu_unit)
 
+// Assume CPU clock ~ 1MIPS. lockup time is 32 ms
+#define LOCKUP_KIPS 1000
+static uint kips = LOCKUP_KIPS;
+static uint64 luf_limits[] =
+  {
+     2000*LOCKUP_KIPS/1000,
+     4000*LOCKUP_KIPS/1000,
+     8000*LOCKUP_KIPS/1000,
+    16000*LOCKUP_KIPS/1000,
+    32000*LOCKUP_KIPS/1000
+  };
+
 #ifdef PANEL
 static void panel_process_event (void);
 #endif
@@ -436,10 +448,36 @@ static t_stat cpu_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr,
 static t_stat cpu_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value,
                               const char * cptr, UNUSED void * desc)
   {
+    if (! cptr)
+      return SCPE_ARG;
     int n = atoi (cptr);
     if (n < 1 || n > N_CPU_UNITS_MAX)
       return SCPE_ARG;
     cpu_dev.numunits = (uint32) n;
+    return SCPE_OK;
+  }
+
+static t_stat cpu_show_kips (UNUSED FILE * st, UNUSED UNIT * uptr, 
+                             UNUSED int val, UNUSED const void * desc)
+  {
+    sim_msg ("CPU KIPS %u\n", kips);
+    return SCPE_OK;
+  }
+
+static t_stat cpu_set_kips (UNUSED UNIT * uptr, UNUSED int32 value,
+                            const char * cptr, UNUSED void * desc)
+  {
+    if (! cptr)
+      return SCPE_ARG;
+    int n = atoi (cptr);
+    if (n < 1 || n > 1000000)
+      return SCPE_ARG;
+    kips = (uint) n;
+    luf_limits[0] =  2000*kips/1000;
+    luf_limits[1] =  4000*kips/1000;
+    luf_limits[2] =  8000*kips/1000;
+    luf_limits[3] = 16000*kips/1000;
+    luf_limits[4] = 32000*kips/1000;
     return SCPE_OK;
   }
 
@@ -688,6 +726,18 @@ static MTAB cpu_mod[] =
       NULL                       // help
     },
 
+
+    {
+      MTAB_dev_value,            // mask
+      0,                         // match
+      "KIPS",                    // print string
+      "KIPS",                    // match string
+      cpu_set_kips,              // validation routine
+      cpu_show_kips,             // display routine
+      NULL,                      // value descriptor
+      NULL                       // help
+    },
+
     { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
   };
 
@@ -725,17 +775,6 @@ static DEBTAB cpu_dt[] =
     { "FINAL",      DBG_FINAL, NULL       },
     { "AVC",        DBG_AVC, NULL       },
     { NULL,         0, NULL               }
-  };
-
-// Assume CPU clock ~ 1MIPS. lockup time is 32 ms
-#define LOCKUP_KIPS 1000
-static uint64 luf_limits[] =
-  {
-     2000*LOCKUP_KIPS/1000,
-     4000*LOCKUP_KIPS/1000,
-     8000*LOCKUP_KIPS/1000,
-    16000*LOCKUP_KIPS/1000,
-    32000*LOCKUP_KIPS/1000
   };
 
 // This is part of the simh interface

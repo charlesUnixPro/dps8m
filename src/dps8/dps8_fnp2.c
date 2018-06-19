@@ -1430,6 +1430,8 @@ static t_stat fnpShowNUnits (UNUSED FILE * st, UNUSED UNIT * uptr,
 static t_stat fnpSetNUnits (UNUSED UNIT * uptr, UNUSED int32 value, 
                              const char * cptr, UNUSED void * desc)
   {
+    if (! cptr)
+      return SCPE_ARG;
     int n = atoi (cptr);
     if (n < 1 || n > N_FNP_UNITS_MAX)
       return SCPE_ARG;
@@ -1767,6 +1769,8 @@ t_stat fnpLoad (UNUSED int32 arg, const char * buf)
 
 t_stat set_fnp_server_port (UNUSED int32 arg, const char * buf)
   {
+    if (! buf)
+      return SCPE_ARG;
     int n = atoi (buf);
     if (n < 1 || n > 65535)
       return SCPE_ARG;
@@ -1786,6 +1790,8 @@ t_stat set_fnp_server_address (UNUSED int32 arg, const char * buf)
 
 t_stat set_fnp_3270_server_port (UNUSED int32 arg, const char * buf)
   {
+    if (! buf)
+      return SCPE_ARG;
     int n = atoi (buf);
     if (n < 1 || n > 65535)
       return SCPE_ARG;
