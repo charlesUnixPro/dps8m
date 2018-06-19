@@ -148,6 +148,8 @@ static t_stat mtp_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr,
 static t_stat mtp_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, 
                               const char * cptr, UNUSED void * desc)
   {
+    if (! cptr)
+      return SCPE_ARG;
     int n = atoi (cptr);
     if (n < 0 || n > N_MTP_UNITS_MAX)
       return SCPE_ARG;
@@ -179,6 +181,8 @@ static t_stat mtp_set_boot_drive (UNIT * uptr, UNUSED int32 value,
         sim_printf ("Controller unit number out of range\n");
         return SCPE_ARG;
       }
+    if (! cptr)
+      return SCPE_ARG;
     int n = (int) atoi (cptr);
     if (n < 0 || n >= N_DEV_CODES)
       return SCPE_ARG;
@@ -347,6 +351,8 @@ static t_stat mt_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr,
 static t_stat mt_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, 
                              const char * cptr, UNUSED void * desc)
   {
+    if (! cptr)
+      return SCPE_ARG;
     int n = atoi (cptr);
     if (n < 1 || n > N_MT_UNITS_MAX)
       return SCPE_ARG;

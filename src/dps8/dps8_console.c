@@ -1387,6 +1387,8 @@ static t_stat opc_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr,
 static t_stat opc_set_nunits (UNUSED UNIT * uptr, int32 UNUSED value,
                                 const char * cptr, UNUSED void * desc)
   {
+    if (! cptr)
+      return SCPE_ARG;
     int n = atoi (cptr);
     if (n < 1 || n > N_OPC_UNITS_MAX)
       return SCPE_ARG;
@@ -1471,6 +1473,8 @@ static t_stat opc_show_config (UNUSED FILE * st, UNUSED UNIT * uptr,
 
 t_stat set_console_port (int32 arg, const char * buf)
   {
+    if (! buf)
+      return SCPE_ARG;
     int n = atoi (buf);
     if (n < 0 || n > 65535) // 0 is 'disable'
       return SCPE_ARG;

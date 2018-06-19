@@ -155,6 +155,8 @@ static t_stat show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr,
 static t_stat set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, 
                              const char * cptr, UNUSED void * desc)
   {
+    if (! cptr)
+      return SCPE_ARG;
     int n = atoi (cptr);
     if (n < 1 || n > N_DIA_UNITS_MAX)
       return SCPE_ARG;

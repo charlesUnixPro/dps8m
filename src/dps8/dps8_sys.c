@@ -1539,6 +1539,8 @@ static t_stat set_default_base_system (UNUSED int32 arg, UNUSED const char * buf
 
 static t_stat set_machine_room_port (UNUSED int32 arg, const char * buf)
   {
+    if (! buf)
+      return SCPE_ARG;
     int n = atoi (buf);
     if (n < 0 || n > 65535) // 0 is 'disable'
       return SCPE_ARG;
@@ -1600,6 +1602,8 @@ static t_stat do_execute_fault (UNUSED int32 arg,  UNUSED const char * buf)
 
 static t_stat set_sys_polling_interval (UNUSED int32 arg, const char * buf)
   {
+    if (! buf)
+      return SCPE_ARG;
     int n = atoi (buf);
     if (n < 1 || n > 1000) // 1 millisecond to 1 second
       {
@@ -1613,6 +1617,8 @@ static t_stat set_sys_polling_interval (UNUSED int32 arg, const char * buf)
 
 static t_stat set_sys_slow_polling_interval (UNUSED int32 arg, const char * buf)
   {
+    if (! buf)
+      return SCPE_ARG;
     int n = atoi (buf);
     if (n < 1 || n > 1000) // 1 - slow poll every pool; 1000 - slow poll every 1000 polls
       {
@@ -1626,6 +1632,8 @@ static t_stat set_sys_slow_polling_interval (UNUSED int32 arg, const char * buf)
 
 static t_stat set_sys_poll_check_rate (UNUSED int32 arg, const char * buf)
   {
+    if (! buf)
+      return SCPE_ARG;
     int n = atoi (buf);
     if (n < 1 || n > 1024*1024) // 1 - poll check rate in CPY cycles: 1 - check every cycle; 1024 check every 1024 cycles
       {
