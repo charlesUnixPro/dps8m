@@ -2231,17 +2231,26 @@ int core_unlock_all();
 #define LOCK_CORE_WORD(addr)						\
      do									\
        {								\
-	 int i = DEADLOCK_DETECT;					\
+	 unsigned int i = DEADLOCK_DETECT;					\
 	 while ((__sync_fetch_and_or((volatile u_long *)&M[addr], MEM_LOCKED) & MEM_LOCKED) \
 		&&  i > 0)						\
 	   {								\
 	    i--;							\
+	    if ((i & 0xff) == 0) {					\
+	      pthread_yield();						\
+	      cpu.lockYield++;						\
 	    }								\
+	   }								\
 	 if (i == 0)							\
 	   {								\
 	    sim_warn ("%s: locked %x addr %x deadlock\n", __FUNCTION__, cpu.locked_addr, addr); \
 	    }								\
-	 }								\
+	 cpu.lockCnt++;							\
+	 if (i == DEADLOCK_DETECT)					\
+	   cpu.lockImmediate++;						\
+	 cpu.lockWait += (DEADLOCK_DETECT-i);				\
+	 cpu.lockWaitMax = ((DEADLOCK_DETECT-i) > cpu.lockWaitMax) ? (DEADLOCK_DETECT-i) : cpu.lockWaitMax; \
+       }								\
      while (0)
 
 #define LOAD_ACQ_CORE_WORD(res, addr)			\
