@@ -8725,7 +8725,8 @@ elapsedtime ();
               {
                 sim_printf ("[%lld] pxss:delete_me DIS causes CPU halt\n", cpu.cycleCnt);
                 sim_debug (DBG_MSG, & cpu_dev, "pxss:delete_me DIS causes CPU halt\n");
-                stopCPUThread ();
+                longjmp (cpu.jmpMain, JMP_STOP);
+                //stopCPUThread ();
               }
 #endif
 #ifdef ROUND_ROBIN
