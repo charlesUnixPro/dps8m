@@ -366,7 +366,7 @@ static void fnp_rcd_input_in_mailbox (uint mbx, int fnp_unit_idx, int lineno)
     uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
     uint chan_num = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].chan_num;
 
-    uint n_chars = max(linep->nPos, 100);
+    uint n_chars = min(linep->nPos, 100);
     
 //Sim_printf ("fnp_rcd_input_in_mailbox nPos %d\n", linep->nPos);
     word36 data = 0;
