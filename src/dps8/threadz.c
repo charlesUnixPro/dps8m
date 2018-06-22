@@ -55,6 +55,24 @@ void unlock_libuv (void)
     pthread_mutex_unlock (& libuv_lock);
   }
 
+bool test_libuv_lock (void)
+  {
+    //sim_debug (DBG_TRACE, & cpu_dev, "test_libuv_lock\n");
+    int rc;
+    rc = pthread_mutex_trylock (& libuv_lock);
+    if (rc)
+      {
+         // couldn't lock; presumably already  
+         return true;
+      }
+    // lock acquired, it wasn't locked
+    rc = pthread_mutex_unlock (& libuv_lock);
+    if (rc)
+      sim_printf ("test_libuv_lock pthread_mutex_lock libuv_lock %d\n", rc);
+    return false;   
+  }
+
+
 // Memory serializer
 
 //   addrmods RMW lock

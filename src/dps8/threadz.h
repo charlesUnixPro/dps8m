@@ -79,6 +79,7 @@ extern pthread_rwlock_t mem_lock;
 
 void lock_libuv (void);
 void unlock_libuv (void);
+bool test_libuv_lock (void);
 
 // simh resource lock
 

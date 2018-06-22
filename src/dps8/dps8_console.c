@@ -51,7 +51,7 @@
 
 #define DBG_CTR 1
 
-//#define ASSUME0 0
+#define ASSUME0 0
 
 #define N_OPC_UNITS 1 // default
 
@@ -65,24 +65,28 @@ static t_stat opc_show_nunits (FILE *st, UNIT *uptr, int val,
                                  const void *desc);
 static t_stat opc_set_nunits (UNIT * uptr, int32 value, const char * cptr,
                                 void * desc);
-static int opc_autoinput_set (UNIT *uptr, int32 val, const char *cptr,
+static t_stat opc_autoinput_set (UNIT *uptr, int32 val, const char *cptr,
                                 void *desc);
-static int opc_autoinput_show (FILE *st, UNIT *uptr, int val,
+static t_stat opc_autoinput_show (FILE *st, UNIT *uptr, int val,
                                  const void *desc);
-
 static t_stat opc_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
                               const char * cptr, UNUSED void * desc);
 static t_stat opc_show_config (UNUSED FILE * st, UNUSED UNIT * uptr,
                                UNUSED int  val, UNUSED const void * desc);
-static MTAB opc_mtab[] = {
-    { MTAB_XTD | MTAB_VUN | MTAB_NC, /* mask */
-        0,            /* match */
-        "AUTOINPUT",  /* print string */
-        "AUTOINPUT",  /* match pstring */
-        opc_autoinput_set, 
-        opc_autoinput_show, 
-        NULL, 
-        NULL },
+
+static MTAB opc_mtab[] =
+  {
+    {
+       MTAB_XTD | MTAB_VUN | MTAB_NC, /* mask */
+       0,            /* match */
+       "AUTOINPUT",  /* print string */
+       "AUTOINPUT",  /* match pstring */
+       opc_autoinput_set, 
+       opc_autoinput_show, 
+       NULL, 
+       NULL
+    },
+
     {
       MTAB_XTD | MTAB_VDV | MTAB_VALR, /* mask */
       0,            /* match */
@@ -93,6 +97,7 @@ static MTAB opc_mtab[] = {
       "Number of OPC units in the system", /* value descriptor */
       NULL // Help
     },
+
     {
       MTAB_XTD | MTAB_VUN /* | MTAB_VALR */, /* mask */
       0,            /* match */
@@ -103,6 +108,7 @@ static MTAB opc_mtab[] = {
       NULL,          /* value descriptor */
       NULL,            /* help */
     },
+
     { 0, 0, NULL, NULL, 0, 0, NULL, NULL }
 };
 
@@ -144,11 +150,11 @@ UNIT opc_unit[N_OPC_UNITS_MAX] =
 #define OPC_UNIT_NUM(uptr) ((uptr) - opc_unit)
 
 DEVICE opc_dev = {
-    "OPC",       /* name */
-    opc_unit,    /* units */
+    "OPC",         /* name */
+    opc_unit,      /* units */
     NULL,          /* registers */
-    opc_mtab,     /* modifiers */
-    N_OPC_UNITS, /* #units */
+    opc_mtab,      /* modifiers */
+    N_OPC_UNITS,   /* #units */
     10,            /* address radix */
     8,             /* address width */
     1,             /* address increment */
@@ -156,14 +162,14 @@ DEVICE opc_dev = {
     8,             /* data width */
     NULL,          /* examine routine */
     NULL,          /* deposit routine */
-    opc_reset,   /* reset routine */
+    opc_reset,     /* reset routine */
     NULL,          /* boot routine */
     NULL,          /* attach routine */
     NULL,          /* detach routine */
     NULL,          /* context */
     DEV_DEBUG,     /* flags */
     0,             /* debug control flags */
-    opc_dt,      /* debug flag names */
+    opc_dt,        /* debug flag names */
     NULL,          /* memory size change */
     NULL,          /* logical name */
     NULL,          // help
@@ -210,6 +216,7 @@ typedef struct opc_state_t
 #ifdef ATTN_HACK
     int attn_hack;
 #endif
+    int autoaccept;
 
     bool attn_pressed;
     bool simh_attn_pressed;
@@ -345,7 +352,7 @@ void console_init (void)
     //uv_open_console (ASSUME0, console_port);
 }
 
-static int opc_autoinput_set (UNUSED UNIT * uptr, UNUSED int32 val,
+static int opc_autoinput_set (UNIT * uptr, UNUSED int32 val,
                                 const char *  cptr, UNUSED void * desc)
   {
     int devUnitIdx = (int) OPC_UNIT_NUM (uptr);
@@ -542,6 +549,24 @@ static void handleRCP (char * text)
         return;
       }
 
+//  1629  as   dial_ctl_: Channel d.h000 dialed to Initializer
+
+    if (console_state[ASSUME0].autoaccept)
+      {
+        rc = sscanf (text, "%*d  as   dial_ctl_: Channel %s dialed to Initializer",
+                     label);
+        if (rc == 1)
+          {
+            //sim_printf (" dial system <%s>\r\n", label);
+            opc_autoinput_set (opc_unit + ASSUME0, 0, "accept ", NULL);
+            opc_autoinput_set (opc_unit + ASSUME0, 0, label, NULL);
+            opc_autoinput_set (opc_unit + ASSUME0, 0, "\r", NULL);
+// XXX This is subject to race conditions
+            if (console_state[ASSUME0].io_mode != opc_read_mode)
+              console_state[ASSUME0].attn_pressed = true;
+            return;
+          }
+      }
 // Just because RCP has detached the drive, it doesn't mean that 
 // it doesn't remeber what tape is on there, and expects to be there
 
@@ -1339,7 +1364,7 @@ eol:
                   {
                     t_stat stat = cmdp->action (cmdp->arg, cptr);
                        /* if found, exec */
-                    if (stat != SCPE_OK)
+                    //if (stat != SCPE_OK)
                       {
                         char buf[4096];
                         sprintf (buf, "SIMH returned %d '%s'\r\n", stat,
@@ -1385,6 +1410,7 @@ eol:
 
 //// Console not in read mode
 
+// XXX This is subject to race conditions
     if (csp->io_mode != opc_read_mode)
       {
         if (c == '\033' || c == '\001') // escape or ^A
@@ -1542,7 +1568,6 @@ static t_stat opc_set_nunits (UNUSED UNIT * uptr, int32 UNUSED value,
 
 
 
-#ifdef ATTN_HACK
 static config_value_list_t cfg_on_off[] =
   {
     { "off", 0 },
@@ -1551,23 +1576,21 @@ static config_value_list_t cfg_on_off[] =
     { "enable", 1 },
     { NULL, 0 }
   };
-#endif
 
 static config_list_t opc_config_list[] =
   {
 #ifdef ATTN_HACK
     /* 0 */ { "attn_hack", 0, 1, cfg_on_off },
 #endif
+   { "autoaccept", 0, 1, cfg_on_off },
    { NULL, 0, 0, NULL }
   };
 
 static t_stat opc_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
                               const char * cptr, UNUSED void * desc)
   {
-#ifdef ATTN_HACK
     int devUnitIdx = (int) OPC_UNIT_NUM (uptr);
     opc_state_t * csp = console_state + devUnitIdx;
-#endif
 // XXX Minor bug; this code doesn't check for trailing garbage
     config_state_t cfg_state = { NULL, NULL };
 
@@ -1578,18 +1601,29 @@ static t_stat opc_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
                            & cfg_state, & v);
         switch (rc)
           {
-            case -2: // error
-              cfg_parse_done (& cfg_state);
-              return SCPE_ARG;
-
-            case -1: // done
+            if (rc == -1) // done
               break;
+
+            if (rc == -2) // error
+              {
+                cfg_parse_done (& cfg_state);
+                return SCPE_ARG;
+              }
+
+            const char * p = opc_config_list[rc].name;
 
 #ifdef ATTN_HACK
-            case  0: // attn_hack
-              csp->attn_hack = (int) v;
-              break;
+            if (strcmp (p, "attn_hack") == 0)
+              {
+                csp->attn_hack = (int) v;
+                break;
+              }
 #endif
+            if (strcmp (p, "autoaccept") == 0)
+              {
+                csp->autoaccept = (int) v;
+                break;
+              }
     
             default:
               sim_warn ("error: opc_set_config: invalid cfg_parse rc <%d>\n",
