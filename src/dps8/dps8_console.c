@@ -235,51 +235,6 @@ static opc_state_t console_state[N_OPC_UNITS_MAX];
 
 //-- #define N_LINES 4
 
-#ifndef TA_BUFFER_SIZE
-#define TA_BUFFER_SIZE 4096
-#endif
-
-static int ta_buffer[TA_BUFFER_SIZE];
-static uint ta_cnt = 0;
-static uint ta_next = 0;
-static bool ta_ovf = false;
-
-static void ta_flush (void)
-  {
-    ta_cnt = ta_next = 0;
-    ta_ovf = false;
-  }
-
-static void ta_push (int c)
-  {
-    // discard overflow
-    if (ta_cnt >= TA_BUFFER_SIZE)
-      {
-        if (! ta_ovf)
-          sim_print ("typeahead buffer overflow");
-        ta_ovf = true;
-        return;
-      }
-    ta_buffer [ta_cnt ++] = c;
-  }
-
-static int ta_peek (void)
-  {
-    if (ta_next >= ta_cnt)
-      return SCPE_OK;
-    int c = ta_buffer[ta_next];
-    return c;
-  }
-
-static int ta_get (void)
-  {
-    if (ta_next >= ta_cnt)
-      return SCPE_OK;
-    int c = ta_buffer[ta_next ++];
-    if (ta_next >= ta_cnt)
-      ta_flush ();
-    return c;
-  }
 
 static t_stat opc_reset (UNUSED DEVICE * dptr)
   {
@@ -1112,10 +1067,6 @@ static void consoleProcessIdx (int conUnitIdx)
 // Simplifying logic here; if we have autoinput, then process it and skip
 // the keyboard checks, we'll get them on the next cycle.
     opc_state_t * csp = console_state + conUnitIdx;
-
-
-//// Console is reading and autoinput is ready
-
     if (csp->io_mode == opc_read_mode &&
         csp->autop != NULL)
       {
@@ -1202,8 +1153,7 @@ eol:
           } // for (;;)
       } // if (autop)
 
-//// read mode and nothing typed; check for timeout
-
+   // read mode and nothing typed
     if (csp->io_mode == opc_read_mode &&
         csp->tailp == csp->buf)
       {
@@ -1217,78 +1167,44 @@ eol:
           }
       }
 
-//// Poll keyboard
-
     int c;
 
-//// Fill type ahead
+    c = sim_poll_kbd ();
+    if (c == SCPE_OK)
+      c = accessGetChar (& csp->console_access);
 
-    for (;;)
-      {
-        c = sim_poll_kbd ();
-        if (c == SCPE_OK)
-          c = accessGetChar (& csp->console_access);
-
-//// Check for stop signaled by simh
-
-        if (breakEnable && stop_cpu)
-          {
-            console_putstr (conUnitIdx,  "Got <sim stop>\r\n");
-            return;
-          }
-
-        if (c == SCPE_OK)
-          break;
-        ta_push (c);
-      }
-
-//poll:
-    c = ta_peek ();
-
-//// Check for stop signaled by simh
-
+// XXX replace attn key signal with escape char check here
+// XXX check for escape to scpe (^E?)
     if (breakEnable && stop_cpu)
       {
         console_putstr (conUnitIdx,  "Got <sim stop>\r\n");
         return;
       }
-
-//// Poll returned nothing
-
     if (c == SCPE_OK)
         return; // no input
-
-
-//// Windows doesn't handle ^E as a signal; need to explictily test for it.
-
+// Windows doesn't handle ^E as a signal; need to explictily test for it.
     if (breakEnable && c == SCPE_STOP)
       {
         console_putstr (conUnitIdx,  "Got <sim stop>\r\n");
         stop_cpu = 1;
         return; // User typed ^E to stop simulation
       }
-
-//// Test for ^E
-
     if (breakEnable && c == SCPE_BREAK)
       {
         console_putstr (conUnitIdx,  "Got <sim break>\r\n");
         return; // User typed ^E to stop simulation
       }
-
-//// simh sanity test
-
     if (c < SCPE_KFLAG)
       {
         return; // Should be impossible
       }
     c -= SCPE_KFLAG;    // translate to ascii
 
-//// ^S
+    if (c == 0) // no char
+      return;
 
     if (c == 023) // ^S simh command
       {
-        ta_get ();
         if (! csp->simh_attn_pressed)
           {
             csp->simh_attn_pressed = true;
@@ -1298,11 +1214,8 @@ eol:
         return;
       }
 
-//// ^T
-
     if (c == 024) // ^T
       {
-        ta_get ();
         char buf[256];
         char cms[3] = "?RW";
         sprintf (buf, "^T attn %c %c\r\n",
@@ -1312,11 +1225,8 @@ eol:
         return;
       }
 
-//// In ^S mode (accumulating a simh command)?
-
     if (csp->simh_attn_pressed)
       {
-        ta_get ();
         if (c == '\177' || c == '\010')  // backspace/del
           {
             if (csp->simh_buffer_cnt > 0)
@@ -1328,8 +1238,6 @@ eol:
             return;
           }
 
-    //// simh ^R
-
         if (c == '\022')  // ^R
           {
             console_putstr (conUnitIdx,  "^R\r\nSIMH> ");
@@ -1338,16 +1246,12 @@ eol:
             return;
           }
 
-    //// simh ^U
-
         if (c == '\025')  // ^U
           {
             console_putstr (conUnitIdx,  "^U\r\nSIMH> ");
             csp->simh_buffer_cnt = 0;
             return;
           }
-
-    //// simh CR/LF
 
         if (c == '\012' || c == '\015')  // CR/LF
           {
@@ -1382,8 +1286,6 @@ eol:
             return;
           }
 
-    //// simh ESC/^D/^Z
-
         if (c == '\033' || c == '\004' || c == '\032')  // ESC/^D/^Z
           {
             console_putstr (conUnitIdx,  "\r\nSIMH cancel\r\n");
@@ -1393,8 +1295,6 @@ eol:
             csp->simh_attn_pressed = false;
             return;
           }
-
-    //// simh isprint?
 
         if (isprint (c))
           {
@@ -1406,28 +1306,15 @@ eol:
             return;
           }
         return;
-      } // if (simh_attn_pressed)
-
-//// Console not in read mode
+      }
 
 // XXX This is subject to race conditions
     if (csp->io_mode != opc_read_mode)
       {
         if (c == '\033' || c == '\001') // escape or ^A
-          {
-            csp->attn_pressed = true;
-            // empty typeahead
-            ta_flush ();
-          }
+          csp->attn_pressed = true;
         return;
       }
-
-//// Console in read mode
-
-    ta_get ();
-
-    //// ^H/DEL
-
     if (c == '\177' || c == '\010')  // backspace/del
       {
         if (csp->tailp > csp->buf)
@@ -1439,8 +1326,6 @@ eol:
         return;
       }
 
-    //// ^R
-
     if (c == '\022')  // ^R
       {
         console_putstr (conUnitIdx,  "^R\r\nM-> ");
@@ -1449,8 +1334,6 @@ eol:
         return;
       }
 
-    //// ^U
-
     if (c == '\025')  // ^U
       {
         console_putstr (conUnitIdx,  "^U\r\nM-> ");
@@ -1458,16 +1341,12 @@ eol:
         return;
       }
 
-    //// CR/LF
-
     if (c == '\012' || c == '\015')  // CR/LF
       {
         console_putstr (conUnitIdx,  "\r\n");
         sendConsole (conUnitIdx, 04000); // Normal status
         return;
       }
-
-    //// ESC/^D/^Z
 
     if (c == '\033' || c == '\004' || c == '\032')  // ESC/^D/^Z
       {
@@ -1480,8 +1359,6 @@ eol:
         console_putstr (conUnitIdx,  "CONSOLE: RELEASED\n");
         return;
       }
-
-    //// isprint
 
     if (isprint (c))
       {
@@ -1497,7 +1374,7 @@ eol:
         return;
       }
     // ignore other chars...
-    return;
+    return;    
   }
 
 void consoleProcess (void)
