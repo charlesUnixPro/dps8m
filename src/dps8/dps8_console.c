@@ -1,4 +1,5 @@
-/* Copyright (c) 2007-2013 Michael Mondy
+/*
+ Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
 
@@ -8,7 +9,7 @@
  ICU License -- ICU 1.8.1 and later.
  See the LICENSE file at the top-level directory of this distribution and
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
- */
+*/
 
 //
 //  dps8_console.c
@@ -18,16 +19,22 @@
 //  Copyright (c) 2013 Harry Reed. All rights reserved.
 //
 
-//#ifdef __MINGW64__
-//#include <inttypes.h>
-//#include "signal_gnu.h"
-//#endif
+/*
+ Copyright (c) 2007-2013 Michael Mondy
+ 
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at http://example.org/project/LICENSE.
+ */
+
 #include <stdio.h>
 #include <unistd.h>
 #include <signal.h>
 #ifndef __MINGW64__
 #include <termios.h>
 #endif
+#include <ctype.h>
 
 #include "dps8.h"
 #include "dps8_iom.h"
@@ -45,9 +52,6 @@
 #endif
 
 #include "libtelnet.h"
-#ifdef CONSOLE_FIX
-#include "threadz.h"
-#endif
 
 #define DBG_CTR 1
 
@@ -130,26 +134,33 @@ static DEBTAB opc_dt[] =
 
 #define N_OPC_UNITS 1 // default
 
-//#define OPC_UNIT_NUM 0
 #define OPC_UNIT_NUM(uptr) ((uptr) - opc_unit)
+
+
+// sim_activate counts in instructions, is dependent on the execution
+// model
+#if defined(THREADZ) || defined(LOCKLESS)
+// 1K ~= 1 sec
+#define ACTIVATE_1SEC 1000
+#else
+// 4M ~= 1 sec
+#define ACTIVATE_1SEC 4000000
+#endif
 
 static t_stat opc_svc (UNIT * unitp);
 
 UNIT opc_unit[N_OPC_UNITS_MAX] =
   {
-    { UDATA (& opc_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& opc_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& opc_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& opc_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& opc_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& opc_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& opc_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& opc_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL }
+    [0 ... N_OPC_UNITS_MAX - 1] =
+      {
+        UDATA (& opc_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL
+      }
   };
 
 #define OPC_UNIT_NUM(uptr) ((uptr) - opc_unit)
 
-DEVICE opc_dev = {
+DEVICE opc_dev =
+  {
     "OPC",         /* name */
     opc_unit,      /* units */
     NULL,          /* registers */
@@ -177,21 +188,11 @@ DEVICE opc_dev = {
     NULL,          // help context
     NULL,          // description
     NULL
-};
+  };
 
-/*
- Copyright (c) 2007-2013 Michael Mondy
- 
- This software is made available under the terms of the
- ICU License -- ICU 1.8.1 and later.
- See the LICENSE file at the top-level directory of this distribution and
- at http://example.org/project/LICENSE.
- */
-
-#include <ctype.h>
+// Hangs off the device structure
 typedef struct opc_state_t
   {
-    // Hangs off the device structure
     enum console_mode { opc_no_mode, opc_read_mode, opc_write_mode } io_mode;
     // SIMH console library has only putc and getc; the SIMH terminal
     // library has more features including line buffering.
@@ -199,23 +200,16 @@ typedef struct opc_state_t
     unsigned char buf[bufsize];
     unsigned char *tailp;
     unsigned char *readp;
-    bool have_eol;
     unsigned char *auto_input;
     unsigned char *autop;
 #ifdef ATTN_HACK
     bool once_per_boot;
+    int attn_hack;
 #endif
     
     // stuff saved from the Read ASCII command
     time_t startTime;
-    uint tally;
-    uint daddr;
-    UNIT * unitp;
-    int chan;
 
-#ifdef ATTN_HACK
-    int attn_hack;
-#endif
     int autoaccept;
 
     bool attn_pressed;
@@ -226,15 +220,69 @@ typedef struct opc_state_t
 
     uv_access console_access;
 
-    // ^T 
-    //unsigned long keyboard_poll_cnt;
-
  } opc_state_t;
 
 static opc_state_t console_state[N_OPC_UNITS_MAX];
 
-//-- #define N_LINES 4
+//
+// Typeahead buffer
+//
 
+#ifndef TA_BUFFER_SIZE
+#define TA_BUFFER_SIZE 4096
+#endif
+
+static int ta_buffer[TA_BUFFER_SIZE];
+static uint ta_cnt = 0;
+static uint ta_next = 0;
+static bool ta_ovf = false;
+
+static void ta_flush (void)
+  {
+    ta_cnt = ta_next = 0;
+    ta_ovf = false;
+  }
+
+static void ta_push (int c)
+  {
+    // discard overflow
+    if (ta_cnt >= TA_BUFFER_SIZE)
+      {
+        if (! ta_ovf)
+          sim_print ("typeahead buffer overflow");
+        ta_ovf = true;
+        return;
+      }
+    ta_buffer [ta_cnt ++] = c;
+  }
+
+static int ta_peek (void)
+  {
+    if (ta_next >= ta_cnt)
+      return SCPE_OK;
+    int c = ta_buffer[ta_next];
+    return c;
+  }
+
+static int ta_get (void)
+  {
+    if (ta_next >= ta_cnt)
+      return SCPE_OK;
+    int c = ta_buffer[ta_next ++];
+    if (ta_next >= ta_cnt)
+      ta_flush ();
+    return c;
+  }
+
+#if 0
+static bool ta_scan (int c)
+  {
+    for (uint i = ta_next; i < ta_cnt; i ++)
+      if (c == ta_buffer[i])
+        return true;
+    return false;
+  }
+#endif
 
 static t_stat opc_reset (UNUSED DEVICE * dptr)
   {
@@ -250,16 +298,6 @@ static t_stat opc_reset (UNUSED DEVICE * dptr)
     return SCPE_OK;
   }
 
-
-#if 0
-//#ifndef __MINGW64__
-static void quit_sig_hndlr (int UNUSED signum)
-  {
-    //printf ("quit\n");
-    csp->attn_pressed = true;
-  }
-//#endif
-#endif
 
 int check_attn_key (void)
   {
@@ -278,7 +316,7 @@ int check_attn_key (void)
 // Once-only initialation
 
 void console_init (void)
-{
+  {
     opc_reset (& opc_dev);
     for (uint i = 0; i < opc_dev.numunits; i ++)
       {
@@ -293,18 +331,6 @@ void console_init (void)
         csp->simh_buffer_cnt = 0;
         strcpy (csp->console_access.pw, "MulticsRulez");
       }
-
-#if 0
-//#ifndef __MINGW64__
-    // The quit signal is used has the console ATTN key
-    struct sigaction quit_action;
-    quit_action.sa_handler = quit_sig_hndlr;
-    quit_action.sa_flags = SA_RESTART;
-    sigemptyset (& quit_action.sa_mask);
-    sigaction (SIGQUIT, & quit_action, NULL);
-//#endif
-#endif
-    //uv_open_console (ASSUME0, console_port);
 }
 
 static int opc_autoinput_set (UNIT * uptr, UNUSED int32 val,
@@ -328,7 +354,6 @@ static int opc_autoinput_set (UNIT * uptr, UNUSED int32 val,
           }
         else
           csp->auto_input = new;
-        //csp->auto_input = strdup (cptr);
         sim_debug (DBG_NOTIFY, & opc_dev,
                    "%s: Auto-input now: %s\n", __func__, cptr);
       }
@@ -371,7 +396,6 @@ int add_opc_autoinput (int32 flag, const char * cptr)
       }
     else
       csp->auto_input = new;
-    //csp->auto_input = strdup (cptr);
     sim_debug (DBG_NOTIFY, & opc_dev,
                "%s: Auto-input now: %s\n", __func__, cptr);
     csp->autop = csp->auto_input;
@@ -387,14 +411,6 @@ static int opc_autoinput_show (UNUSED FILE * st, UNIT * uptr,
                "%s: FILE=%p, uptr=%p, val=%d,desc=%p\n",
                __func__, (void *) st, (void *) uptr, val, desc);
 
-#if 0
-    if (csp->auto_input == NULL)
-      sim_debug (DBG_NOTIFY, & opc_dev,
-                 "%s: No auto-input exists.\n", __func__);
-    else
-      sim_debug (DBG_NOTIFY, & opc_dev,
-        "%s: Auto-input is/was: %s\n", __func__, csp->auto_input);
- #endif
     if (csp->auto_input)
       sim_print ("Autoinput: '%s'\n", csp->auto_input); 
     else
@@ -406,14 +422,10 @@ static t_stat console_attn (UNUSED UNIT * uptr);
 
 static UNIT attn_unit[N_OPC_UNITS_MAX] = 
   {
-    { UDATA (& console_attn, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& console_attn, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& console_attn, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& console_attn, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& console_attn, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& console_attn, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& console_attn, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (& console_attn, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL }
+    [0 ... N_OPC_UNITS_MAX - 1] =
+      {
+        UDATA (& console_attn, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL
+      }
   };
 
 static t_stat console_attn (UNUSED UNIT * uptr)
@@ -466,20 +478,10 @@ static void newlineOn (void)
 
 static void handleRCP (char * text)
   {
-// It appears that Cygwin doesn't grok "%ms"
-#if 0
-    char * label = NULL;
-    char * with = NULL;
-    char * drive = NULL;
-// 1750.1  RCP: Mount Reel 12.3EXEC_CF0019_1 without ring on tapa_01 
-    int rc = sscanf (text, "%*d.%*d RCP: Mount Reel %ms %ms ring on %ms",
-                & label, & with, & drive);
-#endif
     size_t len = strlen (text);
     char label [len + 1];
     char with [len + 1];
     char drive [len + 1];
-    //char whom [len];
     int rc = sscanf (text, "%*d.%*d RCP: Mount Reel %s %s ring on %s",
                 label, with, drive);
     if (rc == 3)
@@ -522,6 +524,7 @@ static void handleRCP (char * text)
             return;
           }
       }
+
 // Just because RCP has detached the drive, it doesn't mean that 
 // it doesn't remeber what tape is on there, and expects to be there
 
@@ -557,17 +560,6 @@ static void handleRCP (char * text)
         attachDisk (labelDotDsk);
       }
 #endif
-
-
-
-#if 0
-    if (label)
-      free (label);
-    if (with)
-      free (with);
-    if (drive)
-      free (drive);
-#endif
   }
 
 #ifdef OSCAR
@@ -599,15 +591,13 @@ static void oscar (char * text)
 static void sendConsole (int conUnitIdx, word12 stati)
   {
     opc_state_t * csp = console_state + conUnitIdx;
-    uint tally = csp->tally;
     uint ctlr_port_num = 0; // Consoles are single ported
     uint iomUnitIdx = cables->opc_to_iom[conUnitIdx][ctlr_port_num].iom_unit_idx;
     uint chan_num = cables->opc_to_iom[conUnitIdx][ctlr_port_num].chan_num;
     iom_chan_data_t * p = & iom_chan_data[iomUnitIdx][chan_num];
+    uint tally = p->DDCW_TALLY;
 
     ASSURE (csp->io_mode == opc_read_mode);
-
-    // XXX this should be iom_indirect_data_service
 
 #ifdef OSCAR
     char text[257];
@@ -669,7 +659,6 @@ static int opc_cmd (uint iomUnitIdx, uint chan)
   {
     iom_chan_data_t * p = & iom_chan_data[iomUnitIdx][chan];
     uint con_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
-    UNIT * unitp = & opc_unit[con_unit_idx];
     opc_state_t * csp = console_state + con_unit_idx;
 
 
@@ -683,8 +672,6 @@ static int opc_cmd (uint iomUnitIdx, uint chan)
 
     p->dev_code = p->IDCW_DEV_CODE;
     p->stati = 0;
-
-    //int conUnitIdx = (int) d->devUnitIdx;
 
     switch (p->IDCW_DEV_CMD)
       {
@@ -700,13 +687,6 @@ static int opc_cmd (uint iomUnitIdx, uint chan)
         case 023:               // Read ASCII
           {
             csp->io_mode = opc_read_mode;
-#if 0
-extern struct timespec cioc_t0;
-struct timespec now, delta;
-clock_gettime (CLOCK_REALTIME, & now);
-timespec_diff (& cioc_t0, & now, & delta);
-sim_printf ("#### %ld/%ld\r\n", delta.tv_sec, delta.tv_nsec);
-#endif
             sim_debug (DBG_NOTIFY, & opc_dev, 
                        "%s: Read ASCII command received\n", __func__);
             if (csp->tailp != csp->buf)
@@ -769,7 +749,6 @@ sim_warn ("uncomfortable with this\n");
               }
 
             uint tally = p->DDCW_TALLY;
-            uint daddr = p->DDCW_ADDR;
 
             if (tally == 0)
               {
@@ -779,10 +758,6 @@ sim_warn ("uncomfortable with this\n");
                 tally = 4096;
               }
             csp->startTime = time (NULL);
-            csp->tally = tally;
-            csp->daddr = daddr;
-            csp->unitp = unitp;
-            csp->chan = (int) chan;
 
           }
           //break;
@@ -893,13 +868,7 @@ sim_warn ("uncomfortable with this\n");
                   {
                     if (! csp->once_per_boot)
                       {
-#if defined(THREADZ) || defined(LOCKLESS)
-                        // 1K ~= 1 sec
-                        sim_activate (& attn_unit[con_unit_idx], 1000);
-#else
-                        // 4M ~= 1 sec
-                        sim_activate (& attn_unit[con_unit_idx], 4000000);
-#endif
+                        sim_activate (& attn_unit[con_unit_idx], ACTIVATE_1SEC);
                         csp->once_per_boot = true;
                       }
                   }
@@ -913,13 +882,7 @@ sim_warn ("uncomfortable with this\n");
                   {
                     if (! csp->once_per_boot)
                       {
-#if defined(THREADZ) || defined(LOCKLESS)
-                        // 1K ~= 1 sec
-                        sim_activate (& attn_unit[con_unit_idx], 1000);
-#else
-                        // 4M ~= 1 sec
-                        sim_activate (& attn_unit[con_unit_idx], 4000000);
-#endif
+                        sim_activate (& attn_unit[con_unit_idx], ACTIVATE_1SEC);
                         csp->once_per_boot = true;
                       }
                   }
@@ -970,13 +933,7 @@ sim_warn ("uncomfortable with this\n");
                     if (strncmp (text, (char *) (csp->autop + 1), expl) == 0)
                       {
                         csp->autop += expl + 2;
-#if defined(THREADZ) || defined(LOCKLESS)
-                        // 1K ~= 1 sec
-                        sim_activate (& attn_unit[con_unit_idx], 1000);
-#else
-                        // 4M ~= 1 sec
-                        sim_activate (& attn_unit[con_unit_idx], 4000000);
-#endif
+                        sim_activate (& attn_unit[con_unit_idx], ACTIVATE_1SEC);
                       }
                   }
                 // autoinput expect
@@ -993,13 +950,7 @@ sim_warn ("uncomfortable with this\n");
                     if (strstr (text, needle))
                       {
                         csp->autop += expl + 2;
-#if defined(THREADZ) || defined(LOCKLESS)
-                        // 1K ~= 1 sec
-                        sim_activate (& attn_unit[con_unit_idx], 1000);
-#else
-                        // 4M ~= 1 sec
-                        sim_activate (& attn_unit[con_unit_idx], 4000000);
-#endif
+                        sim_activate (& attn_unit[con_unit_idx], ACTIVATE_1SEC);
                       }
                   }
                 handleRCP (text);
@@ -1064,21 +1015,215 @@ sim_warn ("uncomfortable with this\n");
 
 static void consoleProcessIdx (int conUnitIdx)
   {
-// Simplifying logic here; if we have autoinput, then process it and skip
-// the keyboard checks, we'll get them on the next cycle.
     opc_state_t * csp = console_state + conUnitIdx;
+    int c;
+
+//// Move data from keyboard buffers into type-ahead buffer
+
+    for (;;)
+      {
+        c = sim_poll_kbd ();
+        if (c == SCPE_OK)
+          c = accessGetChar (& csp->console_access);
+
+        // Check for stop signaled by simh
+
+        if (breakEnable && stop_cpu)
+          {
+            console_putstr (conUnitIdx,  "Got <sim stop>\r\n");
+            return;
+          }
+
+        // Check for ^E
+        //   (Windows doesn't handle ^E as a signal; need to explictily test 
+        //   for it.)
+
+        if (breakEnable && c == SCPE_STOP)
+          {
+            console_putstr (conUnitIdx,  "Got <sim stop>\r\n");
+            stop_cpu = 1;
+            return; // User typed ^E to stop simulation
+          }
+
+        // Check for simh break
+
+        if (breakEnable && c == SCPE_BREAK)
+          {
+            console_putstr (conUnitIdx,  "Got <sim stop>\r\n");
+            stop_cpu = 1;
+            return; // User typed ^E to stop simulation
+          }
+
+        // End of available input
+
+        if (c == SCPE_OK)
+          break;
+
+        // simh sanity test
+
+        if (c < SCPE_KFLAG)
+          {
+            sim_printf ("impossible %d %o\n", c, c);
+            continue; // Should be impossible
+          }
+
+        // translate to ascii
+
+        int ch = c - SCPE_KFLAG;
+
+        // XXX This is subject to race conditions
+        if (csp->io_mode != opc_read_mode)
+          {
+            if (ch == '\033' || ch == '\001') // escape or ^A
+              {
+                ta_flush ();
+                csp->attn_pressed = true;
+                continue;
+              }
+          }
+
+        // ^S
+
+        if (ch == 023) // ^S simh command
+          {
+            if (! csp->simh_attn_pressed)
+              {
+                csp->simh_attn_pressed = true;
+                csp->simh_buffer_cnt = 0;
+                console_putstr (conUnitIdx,  "SIMH> ");
+              }
+            continue;
+          }
+
+//// ^T
+
+        if (ch == 024) // ^T
+          {
+            char buf[256];
+            char cms[3] = "?RW";
+            sprintf (buf, "^T attn %c %c\r\n",
+                     console_state[0].attn_pressed+'0',
+                     cms[console_state[0].io_mode]);
+            console_putstr (conUnitIdx, buf);
+            continue;
+          }
+
+//// In ^S mode (accumulating a simh command)?
+
+        if (csp->simh_attn_pressed)
+          {
+            ta_get ();
+            if (ch == '\177' || ch == '\010')  // backspace/del
+              {
+                if (csp->simh_buffer_cnt > 0)
+                  {
+                    -- csp->simh_buffer_cnt;
+                    csp->simh_buffer[csp->simh_buffer_cnt] = 0;
+                    console_putstr (conUnitIdx,  "\b \b");
+                  }
+                return;
+              }
+
+            //// simh ^R
+
+            if (ch == '\022')  // ^R
+              {
+                console_putstr (conUnitIdx,  "^R\r\nSIMH> ");
+                for (int i = 0; i < csp->simh_buffer_cnt; i ++)
+                  console_putchar (conUnitIdx, (char) (csp->simh_buffer[i]));
+                return;
+              }
+
+            //// simh ^U
+    
+            if (ch == '\025')  // ^U
+              {
+                console_putstr (conUnitIdx,  "^U\r\nSIMH> ");
+                csp->simh_buffer_cnt = 0;
+                return;
+              }
+
+            //// simh CR/LF
+
+            if (ch == '\012' || ch == '\015')  // CR/LF
+              {
+                console_putstr (conUnitIdx,  "\r\n");
+                csp->simh_buffer[csp->simh_buffer_cnt] = 0;
+
+                char * cptr = csp->simh_buffer;
+                char gbuf[simh_buffer_sz];
+                cptr = (char *) get_glyph (cptr, gbuf, 0); /* get command glyph */
+                if (strlen (gbuf))
+                  {
+                    CTAB *cmdp;
+                    if ((cmdp = find_cmd (gbuf))) /* lookup command */
+                      {
+                        t_stat stat = cmdp->action (cmdp->arg, cptr);
+                           /* if found, exec */
+                        if (stat != SCPE_OK)
+                          {
+                            char buf[4096];
+                            sprintf (buf, "SIMH returned %d '%s'\r\n", stat,
+                                     sim_error_text (stat));
+                            console_putstr (conUnitIdx,  buf);
+                          }
+                      }
+                    else
+                       console_putstr (conUnitIdx,
+                                       "SIMH didn't recognize the command\r\n");
+                  }
+                csp->simh_buffer_cnt = 0;
+                csp->simh_buffer[0] = 0;
+                csp->simh_attn_pressed = false;
+                return;
+              }
+
+            //// simh ESC/^D/^Z
+
+            if (ch == '\033' || ch == '\004' || ch == '\032')  // ESC/^D/^Z
+              {
+                console_putstr (conUnitIdx,  "\r\nSIMH cancel\r\n");
+                // Empty input buffer
+                csp->simh_buffer_cnt = 0;
+                csp->simh_buffer[0] = 0;
+                csp->simh_attn_pressed = false;
+                return;
+              }
+
+            //// simh isprint?
+
+            if (isprint (ch))
+              {
+                // silently drop buffer overrun
+                if (csp->simh_buffer_cnt + 1 >= simh_buffer_sz)
+                  return;
+                csp->simh_buffer[csp->simh_buffer_cnt ++] = (char) ch;
+                console_putchar (conUnitIdx, (char) ch);
+                return;
+              }
+            return;
+          } // if (simh_attn_pressed)
+
+        // Save the character
+
+        ta_push (c);
+      }
+
+//// Check for stop signaled by simh
+
+    if (breakEnable && stop_cpu)
+      {
+        console_putstr (conUnitIdx,  "Got <sim stop>\r\n");
+        return;
+      }
+
+
+//// Console is reading and autoinput is ready
+////   Move line of text from autoinput buffer to console buffer
+
     if (csp->io_mode == opc_read_mode &&
         csp->autop != NULL)
       {
-#if 0
-        if (*csp->autop == '\0')
-          {
-            free (csp->auto_input);
-            csp->auto_input = NULL;
-            csp->autop = NULL;
-            return;
-          }
-#endif
         int announce = 1;
 #ifdef COLOR
         sim_print (""); // force text color reset
@@ -1153,7 +1298,10 @@ eol:
           } // for (;;)
       } // if (autop)
 
-   // read mode and nothing typed
+
+//// Read mode and nothing in console buffer
+////   Check for timeout
+
     if (csp->io_mode == opc_read_mode &&
         csp->tailp == csp->buf)
       {
@@ -1167,156 +1315,39 @@ eol:
           }
       }
 
-    int c;
+//// Peek at the character in the typeahead buffer
 
-    c = sim_poll_kbd ();
-    if (c == SCPE_OK)
-      c = accessGetChar (& csp->console_access);
+    c = ta_peek ();
 
-// XXX replace attn key signal with escape char check here
-// XXX check for escape to scpe (^E?)
-    if (breakEnable && stop_cpu)
-      {
-        console_putstr (conUnitIdx,  "Got <sim stop>\r\n");
-        return;
-      }
+    // No data
     if (c == SCPE_OK)
-        return; // no input
-// Windows doesn't handle ^E as a signal; need to explictily test for it.
-    if (breakEnable && c == SCPE_STOP)
-      {
-        console_putstr (conUnitIdx,  "Got <sim stop>\r\n");
-        stop_cpu = 1;
-        return; // User typed ^E to stop simulation
-      }
-    if (breakEnable && c == SCPE_BREAK)
-      {
-        console_putstr (conUnitIdx,  "Got <sim break>\r\n");
-        return; // User typed ^E to stop simulation
-      }
+        return; 
+
+    // Convert from simh encoding to ASCII
     if (c < SCPE_KFLAG)
       {
+        sim_printf ("impossible %d %o\n", c, c);
         return; // Should be impossible
       }
-    c -= SCPE_KFLAG;    // translate to ascii
 
-    if (c == 0) // no char
-      return;
+    // translate to ascii
 
-    if (c == 023) // ^S simh command
-      {
-        if (! csp->simh_attn_pressed)
-          {
-            csp->simh_attn_pressed = true;
-            csp->simh_buffer_cnt = 0;
-            console_putstr (conUnitIdx,  "SIMH> ");
-          }
-        return;
-      }
+    int ch = c - SCPE_KFLAG;
 
-    if (c == 024) // ^T
-      {
-        char buf[256];
-        char cms[3] = "?RW";
-        sprintf (buf, "^T attn %c %c\r\n",
-                 console_state[0].attn_pressed+'0',
-                 cms[console_state[0].io_mode]);
-        console_putstr (conUnitIdx, buf);
-        return;
-      }
-
-    if (csp->simh_attn_pressed)
-      {
-        if (c == '\177' || c == '\010')  // backspace/del
-          {
-            if (csp->simh_buffer_cnt > 0)
-              {
-                -- csp->simh_buffer_cnt;
-                csp->simh_buffer[csp->simh_buffer_cnt] = 0;
-                console_putstr (conUnitIdx,  "\b \b");
-              }
-            return;
-          }
-
-        if (c == '\022')  // ^R
-          {
-            console_putstr (conUnitIdx,  "^R\r\nSIMH> ");
-            for (int i = 0; i < csp->simh_buffer_cnt; i ++)
-              console_putchar (conUnitIdx, (char) (csp->simh_buffer[i]));
-            return;
-          }
-
-        if (c == '\025')  // ^U
-          {
-            console_putstr (conUnitIdx,  "^U\r\nSIMH> ");
-            csp->simh_buffer_cnt = 0;
-            return;
-          }
-
-        if (c == '\012' || c == '\015')  // CR/LF
-          {
-            console_putstr (conUnitIdx,  "\r\n");
-            csp->simh_buffer[csp->simh_buffer_cnt] = 0;
-
-            char * cptr = csp->simh_buffer;
-            char gbuf[simh_buffer_sz];
-            cptr = (char *) get_glyph (cptr, gbuf, 0); /* get command glyph */
-            if (strlen (gbuf))
-              {
-                CTAB *cmdp;
-                if ((cmdp = find_cmd (gbuf))) /* lookup command */
-                  {
-                    t_stat stat = cmdp->action (cmdp->arg, cptr);
-                       /* if found, exec */
-                    //if (stat != SCPE_OK)
-                      {
-                        char buf[4096];
-                        sprintf (buf, "SIMH returned %d '%s'\r\n", stat,
-                                 sim_error_text (stat));
-                        console_putstr (conUnitIdx,  buf);
-                      }
-                  }
-                else
-                   console_putstr (conUnitIdx,
-                                   "SIMH didn't recognize the command\r\n");
-              }
-            csp->simh_buffer_cnt = 0;
-            csp->simh_buffer[0] = 0;
-            csp->simh_attn_pressed = false;
-            return;
-          }
-
-        if (c == '\033' || c == '\004' || c == '\032')  // ESC/^D/^Z
-          {
-            console_putstr (conUnitIdx,  "\r\nSIMH cancel\r\n");
-            // Empty input buffer
-            csp->simh_buffer_cnt = 0;
-            csp->simh_buffer[0] = 0;
-            csp->simh_attn_pressed = false;
-            return;
-          }
-
-        if (isprint (c))
-          {
-            // silently drop buffer overrun
-            if (csp->simh_buffer_cnt + 1 >= simh_buffer_sz)
-              return;
-            csp->simh_buffer[csp->simh_buffer_cnt ++] = (char) c;
-            console_putchar (conUnitIdx, (char) c);
-            return;
-          }
-        return;
-      }
-
-// XXX This is subject to race conditions
+    // XXX This is subject to race conditions
     if (csp->io_mode != opc_read_mode)
       {
-        if (c == '\033' || c == '\001') // escape or ^A
-          csp->attn_pressed = true;
+        if (ch == '\033' || ch == '\001') // escape or ^A
+          {
+            ta_get ();
+            csp->attn_pressed = true;
+          }
         return;
       }
-    if (c == '\177' || c == '\010')  // backspace/del
+
+    if (ch == '\177' || ch == '\010')  // backspace/del
       {
+        ta_get ();
         if (csp->tailp > csp->buf)
           {
             * csp->tailp = 0;
@@ -1326,30 +1357,34 @@ eol:
         return;
       }
 
-    if (c == '\022')  // ^R
+    if (ch == '\022')  // ^R
       {
+        ta_get ();
         console_putstr (conUnitIdx,  "^R\r\nM-> ");
         for (unsigned char * p = csp->buf; p < csp->tailp; p ++)
           console_putchar (conUnitIdx, (char) (*p));
         return;
       }
 
-    if (c == '\025')  // ^U
+    if (ch == '\025')  // ^U
       {
+        ta_get ();
         console_putstr (conUnitIdx,  "^U\r\nM-> ");
         csp->tailp = csp->buf;
         return;
       }
 
-    if (c == '\012' || c == '\015')  // CR/LF
+    if (ch == '\012' || ch == '\015')  // CR/LF
       {
+        ta_get ();
         console_putstr (conUnitIdx,  "\r\n");
         sendConsole (conUnitIdx, 04000); // Normal status
         return;
       }
 
-    if (c == '\033' || c == '\004' || c == '\032')  // ESC/^D/^Z
+    if (ch == '\033' || ch == '\004' || ch == '\032')  // ESC/^D/^Z
       {
+        ta_get ();
         console_putstr (conUnitIdx,  "\r\n");
         // Empty input buffer
         csp->readp = csp->buf;
@@ -1360,8 +1395,9 @@ eol:
         return;
       }
 
-    if (isprint (c))
+    if (isprint (ch))
       {
+        ta_get ();
         // silently drop buffer overrun
         if (csp->tailp >= csp->buf + sizeof (csp->buf))
           return;
@@ -1369,11 +1405,12 @@ eol:
 #ifdef COLOR
         sim_print (""); // force text color reset
 #endif
-        * csp->tailp ++ = (unsigned char) c;
-        console_putchar (conUnitIdx, (char) c);
+        * csp->tailp ++ = (unsigned char) ch;
+        console_putchar (conUnitIdx, (char) ch);
         return;
       }
     // ignore other chars...
+    ta_get ();
     return;    
   }
 
@@ -1609,17 +1646,7 @@ void startRemoteConsole (void)
         console_state[conUnitIdx].console_access.connectPrompt = consoleConnectPrompt;
         console_state[conUnitIdx].console_access.connected = NULL;
         console_state[conUnitIdx].console_access.useTelnet = true;
-#ifdef CONSOLE_FIX
-#if defined(THREADZ) || defined(LOCKLESS)
-        lock_libuv ();
-#endif
-#endif
         uv_open_access (& console_state[conUnitIdx].console_access);
-#ifdef CONSOLE_FIX
-#if defined(THREADZ) || defined(LOCKLESS)
-        unlock_libuv ();
-#endif
-#endif
       }
   }
 
