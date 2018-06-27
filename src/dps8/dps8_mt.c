@@ -299,6 +299,141 @@ DEVICE mtp_dev =
 //////////////
 //////////////
 //
+// tape labeler
+//
+
+// https://www.ibm.com/support/knowledgecenter/en/SSLTBW_2.1.0/com.ibm.zos.v2r1.idam300/da4m342.htm
+
+// 80 bytes
+// 1-4   "VOL1"
+// 5-10  Volume Identifier
+// 11    Accessibility
+// 12-24 Reserved
+// 25-37 Implementation Identifier
+// 38-51 Owner Identifier
+// 52-79 Reserved
+// 80    Label Standard Level
+
+// 1-12   VOL1SOCKET__ 
+// 13-28 ________________
+// 29-44   _________LMBMULT
+// 45-60   001____________
+// 61-76 ________________
+// 77-80 ___3   
+
+
+// library_dir_dir/system_library_1/source/bound_tape_label_util_.s.archive/authenticate_.pl1
+
+/* the extra dashes hold slots for other punctuation we may later consider
+ * important */
+#define label_alphabet "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ-----abcdefghijklmnopqrstuvwxyz"
+#define magic_constant 89
+#define auth_code_alphabet "BCDFGHJKLMNPQRSTVWXY"
+
+// auth_code must be char[4]
+static char * authenticate (char * resource_name, char * auth_code)
+  {
+    size_t l = strlen (resource_name);
+    if (l < 6)
+      l = 6;
+    char name_temp [l+1];
+    strcpy (name_temp, resource_name);
+/* for compatibility with old authentications, pad to six chars with spaces
+   if it is at all alphabetic */
+
+    rtrim (name_temp);
+    if (strlen (name_temp) < 6)
+      {
+        if (strpbrk (name_temp, "0123456789"))
+          {
+            strncat (name_temp, "      ", 6 - strlen (name_temp));
+          }
+      }
+
+    l = strlen (name_temp);
+
+    int factor_up = 1;
+    int factor_down = 1 << (l-1) /* 2 ** (l - 1) */;
+    // The original code is fixed bin (71)
+    int128 hash_up = 0, hash_down = 0;
+
+    for (int i = 0; i < l; i ++) /* Loop on chars in input. */
+      {
+        /* Translate letter to number. */
+        char * p = index (label_alphabet, name_temp[i]);
+        /* Treat all unknown punctuation alike. */
+        int letter_val = strlen (label_alphabet);
+        if (p)
+          letter_val = p - label_alphabet;
+
+        /* Perform hashing function. */
+
+        /* Shift each value left. */
+        hash_up = hash_up + letter_val * factor_up;
+        /* ... another hash sum, shifting opposite. */
+        hash_down = hash_down + letter_val * factor_down;
+        /* Double factor_up, to shift another position. */
+        factor_up = factor_up + factor_up;
+        /* Halve factor_down to shift one less. */
+        factor_down /= 2;
+      }
+
+
+    /* Generate partial hash value. */
+    hash_up = (hash_up % magic_constant) * magic_constant;
+    /* Generate rest of hash value. */
+    hash_up = hash_up + (hash_down % magic_constant);
+
+    auth_code[3] = 0;
+    auth_code[2] = auth_code_alphabet[hash_up % strlen (auth_code_alphabet)];
+    hash_up /= strlen (auth_code_alphabet); /* Take it base 20. */
+    auth_code[1] = auth_code_alphabet[hash_up % strlen (auth_code_alphabet)];
+    hash_up /= strlen (auth_code_alphabet); /* .. and turn it into letters. */
+    auth_code[0] = auth_code_alphabet[hash_up % strlen (auth_code_alphabet)];
+    return auth_code;
+  }
+
+static void write_label (UNIT * unitp, char * volume_id)
+  {
+// xx/xx/label.tap
+    if (! volume_id)
+      return;
+    // Find the last slash
+    char * last = NULL;
+    for (char * p = volume_id; * p; p++)
+      if (* p == '/')
+        last = p;
+    if (last)
+      last ++;
+    else 
+      last = volume_id;
+    size_t id_len = strspn (last, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 -");
+    if (id_len > 6)
+      id_len = 6;
+    char id [7];
+    strncpy (id, last, id_len);
+    id[id_len] = 0;
+
+    char auth_code [4];
+    char label [80];
+
+    memset (label, ' ', 80);
+    strncpy (label + 0, "VOL1", 4);
+    strncpy (label + 4, id, id_len);
+    authenticate (id, auth_code);
+    strncpy (label + 37, auth_code, 3);
+    strncpy (label + 40, "MULT001", 7);
+    label[79] = '3';
+
+    sim_tape_wrrecf (unitp, (uint8 *) label, 80);
+    sim_tape_wrtmk (unitp);
+    sim_tape_wrtmk (unitp);
+    sim_tape_rewind (unitp);
+  }
+
+//////////////
+//////////////
+//
 // tape drive
 //
 
@@ -545,6 +680,17 @@ void loadTape (uint driveNumber, char * tapeFilename, bool ro)
     else
       mt_unit [driveNumber] . flags &= ~ MTUF_WRP;
 
+    // If the tape is r/w and zero length, put a label on it.
+    if (! ro)
+      {
+        sim_tape_rewind (& mt_unit [driveNumber]);
+        t_mtrlnt tbc;
+        stat = sim_tape_sprecf (& mt_unit [driveNumber], & tbc);
+        if (stat == MTSE_EOM) // Immediate EOF?
+          {
+            write_label (& mt_unit [driveNumber], tapeFilename);
+          }
+      }
     uint ctlr_unit_idx = cables->tape_to_mtp [driveNumber].ctlr_unit_idx;
     // Which port should the controller send the interrupt to? All of them...
     bool sent_one = false;
