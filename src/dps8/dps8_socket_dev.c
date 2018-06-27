@@ -165,6 +165,25 @@ void sk_init(void)
       //FD_ZERO (& sk_data.unit_data[i].accept_fds);
   }
 
+static int set_nonblock (int fd)
+  {
+    errno = 0;
+    int flags = fcntl (fd, F_GETFL, 0);
+    if (errno)
+      {
+sim_printf ("F_GETFL errno %d\n", errno);
+        return -1;
+      }
+    fcntl (fd, F_SETFL, flags | O_NONBLOCK);
+    if (errno)
+      {
+sim_printf ("F_SETFL errno %d\n", errno);
+        return -1;
+      }
+    sk_data.fd_nonblock[fd] = true;
+    return 0;
+  }
+
 static void set_error_str (word36 * error_str, const char * str)
   {
     char work [8];
@@ -213,8 +232,8 @@ static void skt_socket (int unit_num, word36 * buffer)
 // dcl 1 SOCKETDEV_socket_data aligned,
 //       2 domain fixed bin,   // 0
 //       2 type fixed bin,     // 1
-//       2 protocol fixed bin; // 2
-//       2 fd fixed bin;       // 3
+//       2 protocol fixed bin, // 2
+//       2 fd fixed bin,       // 3
 //       2 errno char(8);      // 4,5
 
     int domain =   (int) buffer[0];
@@ -234,7 +253,7 @@ sim_printf ("socket() domain EAFNOSUPPORT\n");
         _errno = EAFNOSUPPORT;
       }
 #if defined(__APPLE__)
-    else if (type != SOCK_STREAM && type != (SOCK_STREAM)) // Only SOCK_STREAM or SOCK_STREAM + SOCK_NONBLOCK
+    else if (type != SOCK_STREAM) // Only SOCK_STREAM 
 #else
     else if (type != SOCK_STREAM && type != (SOCK_STREAM|SOCK_NONBLOCK)) // Only SOCK_STREAM or SOCK_STREAM + SOCK_NONBLOCK
 #endif
@@ -259,11 +278,18 @@ sim_printf ("errno %d\n", errno);
         else if (fd < N_FDS)
           {
             sk_data.fd_unit[fd] = unit_num;
-#if defined(__APPLE__)
-            sk_data.fd_nonblock[fd] = 0;
-#else
-            sk_data.fd_nonblock[fd] = !! (type & SOCK_NONBLOCK);
-#endif
+//#if defined(__APPLE__)
+//            sk_data.fd_nonblock[fd] = false;
+//#else
+//            sk_data.fd_nonblock[fd] = !! (type & SOCK_NONBLOCK);
+//#endif
+            sk_data.fd_nonblock[fd] = false;
+            if (set_nonblock (fd))
+              {
+                close (fd);
+                fd = -1;
+                _errno = EMFILE;
+              }
           }
         else
           {
@@ -278,20 +304,22 @@ sim_printf ("errno %d\n", errno);
     set_error (& buffer[4], _errno);
   }
 
+// https://linux.die.net/man/3/getaddrinfo_a
+
 static void skt_gethostbyname (word36 * buffer)
   {
 // dcl 1 SOCKETDEV_gethostbyname_data aligned,
 //       2 name char varying (255),  
-//       3 addr fixed uns bin (32),
-//       3 errno char(8);
+//       2 addr fixed uns bin (32),
+//       2 errno char(8);
 //
 //
-//       len:36                    //  0
-//       c1: 9, c2: 9, c3:9, c4:9  //  1
+//       len:36                             //  0
+//       c1: 9, c2: 9, c3:9, c4:9           //  1
 //       ...
-//       c253: 9, c254: 9, c255: 9, pad: 9, //63
-//       addr: 32, pad: 4,          // 65
-//       errno: 72                   // 66, 67
+//       c253: 9, c254: 9, c255: 9, pad: 9, // 63
+//       addr: 32, pad: 4,                  // 65
+//       errno: 72                          // 66, 67
 //
 
     word9 cnt = getbits36_9 (buffer [0], 27);
@@ -312,13 +340,13 @@ static void skt_gethostbyname (word36 * buffer)
     sim_printf ("\"\n");
 #endif
 
-    if (cnt > 256)
+    if (cnt > 255)
       {
-        sim_warn ("socket$gethostbyname() clipping cnt from %u to 256\n", cnt);
-        cnt = 256;
+        sim_warn ("socket$gethostbyname() clipping cnt from %u to 255\n", cnt);
+        cnt = 255;
       }
 
-    unsigned char name [257];
+    unsigned char name [256];
     for (uint i = 0; i < cnt; i ++)
       {
          uint wordno = (i+4) / 4;
@@ -364,13 +392,14 @@ sim_printf ("h_errno %d\n", h_errno);
 static void skt_bind (int unit_num, word36 * buffer)
   {
 // dcl 1 SOCKETDEV_bind_data aligned,
-//       2 socket fixed bin,              // 0
+//       2 socket fixed bin,                             // 0
 //       2 sockaddr_in,
-//         3 sin_family fixed bin,        // 1
-//         3 sin_port fixed uns bin (16), // 2
-//         3 sin_addr,                    // 3
+//         3 sin_family fixed bin,                       // 1
+//         3 sin_port fixed bin (16) unsigned unaligned, // 2
+//         3 pad1 bit(20) unsigned unaligned
+//         3 sin_addr,                                   // 3
 //           4 octets (4) fixed bin(8) unsigned unal,
-//       2 errno char(8);               // 4,5
+//       2 errno char(8);                                // 4,5
 
 // /* Expecting tally to be 6 */
 // /* sockaddr is from the API parameter */
@@ -432,16 +461,16 @@ static void skt_listen (int unit_num, word36 * buffer)
   {
 // dcl 1 SOCKETDEV_listen_data aligned,
 //       2 sockfd fixed bin,  // 0
-//       3 backlog fixed bin, // 1
-//       2 rc fixed bin;      // 3
-//       2 errno char(8);   // 4, 5
+//       2 backlog fixed bin, // 1
+//       2 rc fixed bin,      // 3
+//       2 errno char(8);     // 4, 5
 // 
 // /* Tally 5 */
 // /* In: */
 // /*   sockfd */
 // /*   backlog */
 // /* Out: */
-// /*   fd */
+// /*   rc */
 // /*   errno */
 
     int socket_fd = (int) buffer[0];
@@ -470,6 +499,7 @@ sim_printf ("listen() setsockopt returned %d\n", rc);
         goto done;
       }
 
+#if 0
     rc = ioctl (socket_fd, FIONBIO, (char *) & on);
 sim_printf ("listen() ioctl returned %d\n", rc);
     if (rc < 0)
@@ -477,6 +507,13 @@ sim_printf ("listen() ioctl returned %d\n", rc);
         _errno = errno;
         goto done;
       }
+#endif
+    if (!sk_data.fd_nonblock[socket_fd])
+      if (set_nonblock (socket_fd))
+        { 
+          _errno = EMFILE;
+          goto done;
+        }
 
     rc = listen (socket_fd, backlog);
 sim_printf ("listen() returned %d\n", rc);
@@ -569,12 +606,12 @@ done:
 
 static int skt_read8 (int unit_num, UNUSED uint tally, word36 * buffer)
   {
-// dcl 1 SOCKETDEV_read_data8 aligned,
-//       2 sockfd fixed bin,                    // 0
-//       2 count  fixed bin, /* buffer size */  // 1
-//       2 rc     fixed bin,                    // 2
-//       2 errno  char(8),                      // 3,4
-//       2 buffer char (0 refer (SOCKETDEV_read_data9.count); // 5,....
+// dcl 1 SOCKETDEV_read8_data aligned,
+//       2 sockfd fixed bin,                                  // 0
+//       2 count  fixed bin, /* buffer size */                // 1
+//       2 rc     fixed bin,                                  // 2
+//       2 errno  char(8),                                    // 3,4
+//       2 buffer char (0 refer (SOCKETDEV_read8_data.count); // 5,....
 
 /* Tally >= 5 */
 /* In: */
@@ -609,12 +646,12 @@ sim_printf ("read8() socket doesn't belong to us\n");
 static int skt_write8 (uint iom_unit_idx, uint chan, int unit_num, uint tally, word36 * buffer)
   {
     iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
-// dcl 1 SOCKETDEV_write_data8 aligned,
-//       2 sockfd fixed bin,                    // 0
-//       2 count  fixed bin, /* buffer size */  // 1
-//       2 rc     fixed bin,                    // 2
-//       2 errno  char(8),                      // 3,4
-//       2 buffer char (0 refer (SOCKETDEV_read_data9.count); // 5,....
+// dcl 1 SOCKETDEV_write8_data aligned based,
+//       2 sockfd fixed bin,                                   // 0
+//       2 count  fixed bin, /* buffer size */                 // 1
+//       2 rc     fixed bin,                                   // 2
+//       2 errno  char(8),                                     // 3,4
+//       2 buffer char (0 refer (SOCKETDEV_write8_data.count); // 5,....
 
     if (tally < 5)
       {
@@ -684,14 +721,14 @@ static int skt_connect (uint iom_unit_idx, uint chan, int unit_num, uint tally, 
     iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
 
 // dcl 1 SOCKETDEV_connect_data aligned,
-//      2 socket fixed bin,     // 0 
+//      2 socket fixed bin,                             // 0 
 //      2 sockaddr_in,
-//        3 sin_family fixed bin,  // 1
+//        3 sin_family fixed bin,                       // 1
 //        3 sin_port fixed bin (16) unsigned unaligned, // 2
 //        3 pad1 bit(30) unaligned,
 //        3 sin_addr,
-//          4 octets (4) fixed bin(8) unsigned unal, // 3
-//      2 errno char(8);   // 4,5
+//          4 octets (4) fixed bin(8) unsigned unal,    // 3
+//      2 errno char(8);                                // 4,5
 
     if (tally < 5)
       {
@@ -1130,6 +1167,12 @@ static void do_try_accept (uint unit_num)
       {
         sk_data.fd_unit[fd] = (int) unit_num;
         sk_data.fd_nonblock[fd] = false ; // !! (type & SOCK_NONBLOCK);
+        if (set_nonblock (fd))
+          { 
+            close (fd);
+            fd = -1; 
+            _errno = EMFILE;
+          }
       }
     else
       {
