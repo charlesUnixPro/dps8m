@@ -1476,40 +1476,33 @@ static t_stat opc_set_config (UNUSED UNIT *  uptr, UNUSED int32 value,
         int64_t v;
         int rc = cfg_parse (__func__, cptr, opc_config_list,
                            & cfg_state, & v);
-        switch (rc)
+        if (rc == -1) // done
+          break;
+
+        if (rc == -2) // error
           {
-            if (rc == -1) // done
-              break;
-
-            if (rc == -2) // error
-              {
-                cfg_parse_done (& cfg_state);
-                return SCPE_ARG;
-              }
-
-            const char * p = opc_config_list[rc].name;
+            cfg_parse_done (& cfg_state);
+            return SCPE_ARG;
+          }
+        const char * p = opc_config_list[rc].name;
 
 #ifdef ATTN_HACK
-            if (strcmp (p, "attn_hack") == 0)
-              {
-                csp->attn_hack = (int) v;
-                break;
-              }
+        if (strcmp (p, "attn_hack") == 0)
+          {
+            csp->attn_hack = (int) v;
+            continue;
+          }
 #endif
-            if (strcmp (p, "autoaccept") == 0)
-              {
-                csp->autoaccept = (int) v;
-                break;
-              }
-    
-            default:
-              sim_warn ("error: opc_set_config: invalid cfg_parse rc <%d>\n",
-                          rc);
-              cfg_parse_done (& cfg_state);
-              return SCPE_ARG;
-          } // switch
-        if (rc < 0)
-          break;
+        if (strcmp (p, "autoaccept") == 0)
+          {
+            csp->autoaccept = (int) v;
+            continue;
+          }
+ 
+        sim_warn ("error: opc_set_config: invalid cfg_parse rc <%d>\n",
+                  rc);
+        cfg_parse_done (& cfg_state);
+        return SCPE_ARG;
       } // process statements
     cfg_parse_done (& cfg_state);
     return SCPE_OK;
