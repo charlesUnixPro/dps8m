@@ -2327,17 +2327,24 @@ word24 do_append_cycle_ins_fetch (word36 * data, uint nWords)
 //  I am concerned about cpu.RSDWH_R1; I am asuming that it the cache 
 //  matches, it should be left untouched.
 
+//#define test
+#ifndef test
     if (cpu.fetch_cache.valid)
       {
         // If the IC is on the same page as the cached IC
         if ((cpu.TPR.CA >> 10) == cpu.fetch_cache.ca_page &&
         // and the segment register is the same
             cpu.TPR.TSR == cpu.fetch_cache.tsr)
-         {
-            finalAddress = ((word24) cpu.fetch_cache.final_page << 10) | (cpu.TPR.CA & MASK10);
+          {
+            cpu.RSDWH_R1 = cpu.fetch_cache.r1;
+            cpu.cu.XSF = cpu.fetch_cache.xsf;
+            cpu.PPR.P = cpu.fetch_cache.p;
+            finalAddress = (((word24) cpu.fetch_cache.final_page << 10) | (cpu.TPR.CA & MASK10)) & MASK24;
+            core_readN (finalAddress, data, nWords, str_pct (INSTRUCTION_FETCH));
             goto Exit2;
-         }
+          }
       }
+#endif
 #ifdef WAM
     // AL39: The associative memory is ignored (forced to "no match") during
     // address preparation.
@@ -2800,9 +2807,29 @@ HI:
 
 Exit:;
 
+#ifdef test
+    if (cpu.fetch_cache.valid)
+      {
+        // If the IC is on the same page as the cached IC
+        if ((cpu.TPR.CA >> 10) == cpu.fetch_cache.ca_page &&
+        // and the segment register is the same
+            cpu.TPR.TSR == cpu.fetch_cache.tsr)
+          {
+            if (finalAddress != (((word24) cpu.fetch_cache.final_page << 10) | (cpu.TPR.CA & MASK10)))
+              {
+                sim_printf ("fetch_cache fail\n");
+                sim_printf ("  IC    %05o:%06o %08o\n", cpu.TPR.TSR, cpu.TPR.CA, finalAddress);
+                sim_printf ("  cache %05o:%06o %08o\n", cpu.fetch_cache.tsr, cpu.fetch_cache.ca_page<<10, cpu.fetch_cache.final_page << 10);
+              }
+          }
+      }
+#endif
     cpu.fetch_cache.valid = true;
     cpu.fetch_cache.ca_page = (cpu.TPR.CA >> 10) & MASK8;
     cpu.fetch_cache.tsr = cpu.TPR.TSR;
+    cpu.fetch_cache.r1 = cpu.RSDWH_R1;
+    cpu.fetch_cache.xsf = cpu.cu.XSF;
+    cpu.fetch_cache.p = cpu.PPR.P;
     cpu.fetch_cache.final_page = (finalAddress >> 10) & MASK14;
 
 Exit2:

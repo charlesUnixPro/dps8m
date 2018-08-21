@@ -1809,6 +1809,9 @@ typedef struct
         bool valid;
         word8 ca_page;
         word15 tsr;
+        word3  r1;
+        word1  xsf;
+        word1  p;
         word14 final_page;
       } fetch_cache;
   } cpu_state_t;
