@@ -117,6 +117,7 @@ static inline void set_apu_status (apuStatusBits status)
 t_stat dump_sdwam (void);
 word24 do_append_cycle (processor_cycle_type thisCycle, 
                       word36 * data, uint nWords);
+word24 do_append_cycle_ins_fetch (word36 * data, uint nWords);
 void do_ldbr (word36 * Ypair);
 void do_sdbr (word36 * Ypair);
 void do_camp (word36 Y);
@@ -128,5 +129,10 @@ sdw0_s * getSDW (word15 segno);
 static inline void fauxDoAppendCycle (processor_cycle_type thisCycle)
   {
     cpu.apu.lastCycle = thisCycle;
+  }
+
+static inline void invalidate_fetch_cache (void)
+  {
+    cpu.fetch_cache.valid = false;
   }
 

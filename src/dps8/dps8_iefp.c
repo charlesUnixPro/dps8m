@@ -109,7 +109,10 @@ B29:;
               }
             else 
               {
-                cpu.iefpFinalAddress = do_append_cycle (cyctyp, result, 1);
+                if (cyctyp == INSTRUCTION_FETCH)
+                  cpu.iefpFinalAddress = do_append_cycle_ins_fetch (result, 1);
+                else
+                  cpu.iefpFinalAddress = do_append_cycle (cyctyp, result, 1);
                 // XXX Don't trace Multics idle loop
                 if (cpu.PPR.PSR != 061 && cpu.PPR.IC != 0307)
                   {

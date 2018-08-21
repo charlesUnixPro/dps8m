@@ -3311,7 +3311,8 @@ static t_stat doInstruction (void)
           Read2 (cpu.TPR.CA, cpu.Ypair, RTCD_OPERAND_FETCH);
           // RTCD always ends up in append mode.
           set_addr_mode (APPEND_mode);
-            
+          invalidate_fetch_cache ();
+ 
           return CONT_RET;
 
         case x0 (0604):  // tmi
@@ -7252,6 +7253,7 @@ elapsedtime ();
  sim_printf (" RALR set to %o  PSR:IC %05o:%06o\r\n", cpu.rRALR, cpu.PPR.PSR, cpu.PPR.IC);
 }
 #endif
+            invalidate_fetch_cache ();
             break;
 
         case x0 (0257):  // lsdp
@@ -7893,6 +7895,7 @@ elapsedtime ();
             cpu.PTW0.USE = 0;
 #endif
           }
+          invalidate_fetch_cache ();
           break;
 
         case x0 (0532):  // cams
@@ -7950,6 +7953,7 @@ elapsedtime ();
             cpu.SDW0.USE = 0;
 #endif
   }
+          invalidate_fetch_cache ();
           break;
 
         /// Privileged - Configuration and Status

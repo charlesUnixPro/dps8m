@@ -2297,6 +2297,528 @@ Exit:;
     return finalAddress;    // or 0 or -1???
   }
 
+word24 do_append_cycle_ins_fetch (word36 * data, uint nWords)
+  {
+    DCDstruct * i = & cpu.currentInstruction;
+    DBGAPP ("do_append_cycle_ins_fetch(Entry) thisCycle=INSTRUCTIO_FETCH\n");
+    DBGAPP ("do_append_cycle_ins_fetch(Entry) lastCycle=%s\n",
+            str_pct (cpu.apu.lastCycle));
+    DBGAPP ("do_append_cycle_ins_fetch(Entry) CA %06o\n",
+            cpu.TPR.CA);
+    DBGAPP ("do_append_cycle_ins_fetch(Entry) n=%2u\n",
+            nWords);
+    DBGAPP ("do_append_cycle_ins_fetch(Entry) PPR.PRR=%o PPR.PSR=%05o\n",
+            cpu.PPR.PRR, cpu.PPR.PSR);
+    DBGAPP ("do_append_cycle_ins_fetch(Entry) TPR.TRR=%o TPR.TSR=%05o\n",
+            cpu.TPR.TRR, cpu.TPR.TSR);
+
+    if (i->b29)
+      {
+        DBGAPP ("do_append_cycle_ins_fetch(Entry) isb29 PRNO %o\n",
+                GET_PRN (IWB_IRODD));
+      }
+
+    cpu.apu.lastCycle = INSTRUCTION_FETCH;
+
+    word24 finalAddress = (word24) -1;  // not everything requires a final
+                                        // address
+    
+// Check the cache.
+//  I am concerned about cpu.RSDWH_R1; I am asuming that it the cache 
+//  matches, it should be left untouched.
+
+    if (cpu.fetch_cache.valid)
+      {
+        // If the IC is on the same page as the cached IC
+        if ((cpu.TPR.CA >> 10) == cpu.fetch_cache.ca_page &&
+        // and the segment register is the same
+            cpu.TPR.TSR == cpu.fetch_cache.tsr)
+         {
+            finalAddress = ((word24) cpu.fetch_cache.final_page << 10) | (cpu.TPR.CA & MASK10);
+            goto Exit2;
+         }
+      }
+#ifdef WAM
+    // AL39: The associative memory is ignored (forced to "no match") during
+    // address preparation.
+    // lptp,lptr,lsdp,lsdr,sptp,sptr,ssdp,ssdr
+    // Unfortunately, ISOLTS doesn't try to execute any of these in append mode.
+    // XXX should this be only for OPERAND_READ and OPERAND_STORE?
+    bool nomatch = ((i->opcode == 0232 || i->opcode == 0254 ||
+                     i->opcode == 0154 || i->opcode == 0173) &&
+                     i->opcodeX ) ||
+                    ((i->opcode == 0557 || i->opcode == 0257) &&
+                     ! i->opcodeX);
+#else
+    const bool nomatch = true;
+#endif
+
+    DBGAPP ("do_append_cycle_ins_fetch(Entry) XSF %o\n", cpu.cu.XSF);
+
+    PNL (L68_ (cpu.apu.state = 0;))
+
+    cpu.RSDWH_R1 = 0;
+    
+    cpu.acvFaults = 0;
+
+//#define FMSG(x) x
+#define FMSG(x) 
+    FMSG (char * acvFaultsMsg = "<unknown>";)
+
+
+////////////////////////////////////////
+//
+// Sheet 1: "START APPEND"
+//
+////////////////////////////////////////
+
+// START APPEND
+
+    // If the rtcd instruction is executed with the processor in absolute
+    // mode with bit 29 of the instruction word set OFF and without
+    // indirection through an ITP or ITS pair, then:
+    //
+    //   appending mode is entered for address preparation for the
+    //   rtcd operand and is retained if the instruction executes
+    //   successfully, and the effective segment number generated for
+    //   the SDW fetch and subsequent loading into C(TPR.TSR) is equal
+    //   to C(PPR.PSR) and may be undefined in absolute mode, and the
+    //   effective ring number loaded into C(TPR.TRR) prior to the SDW
+    //   fetch is equal to C(PPR.PRR) (which is 0 in absolute mode)
+    //   implying that control is always transferred into ring 0.
+    //
+
+////////////////////////////////////////
+//
+// Sheet 2: "A"
+//
+////////////////////////////////////////
+
+//
+//  A:
+//    Get SDW
+
+// A:;
+
+    //PNL (cpu.APUMemAddr = address;)
+    PNL (cpu.APUMemAddr = cpu.TPR.CA;)
+
+    DBGAPP ("do_append_cycle_ins_fetch(A)\n");
+    
+#ifdef WAM
+    // is SDW for C(TPR.TSR) in SDWAM?
+    if (nomatch || ! fetch_sdw_from_sdwam (cpu.TPR.TSR))
+#endif
+      {
+        // No
+        DBGAPP ("do_append_cycle_ins_fetch(A):SDW for segment %05o not in SDWAM\n",
+                 cpu.TPR.TSR);
+        
+        DBGAPP ("do_append_cycle_ins_fetch(A):DSBR.U=%o\n",
+                cpu.DSBR.U);
+        
+        if (cpu.DSBR.U == 0)
+          {
+            fetch_dsptw (cpu.TPR.TSR);
+            
+            if (! cpu.PTW0.DF)
+              doFault (FAULT_DF0 + cpu.PTW0.FC, fst_zero,
+                       "do_append_cycle_ins_fetch(A): PTW0.F == 0");
+            
+            if (! cpu.PTW0.U)
+              modify_dsptw (cpu.TPR.TSR);
+            
+            fetch_psdw (cpu.TPR.TSR);
+          }
+        else
+          fetch_nsdw (cpu.TPR.TSR); // load SDW0 from descriptor segment table.
+        
+        if (cpu.SDW0.DF == 0)
+          {
+            DBGAPP ("do_append_cycle_ins_fetch(A): SDW0.F == 0! "
+                    "Initiating directed fault\n");
+            // initiate a directed fault ...
+            doFault (FAULT_DF0 + cpu.SDW0.FC, fst_zero, "SDW0.F == 0");
+          }
+        // load SDWAM .....
+        load_sdwam (cpu.TPR.TSR, nomatch);
+      }
+    DBGAPP ("do_append_cycle_ins_fetch(A) R1 %o R2 %o R3 %o E %o\n",
+            cpu.SDW->R1, cpu.SDW->R2, cpu.SDW->R3, cpu.SDW->E);
+
+    // Yes...
+    cpu.RSDWH_R1 = cpu.SDW->R1;
+
+////////////////////////////////////////
+//
+// Sheet 3: "B"
+//
+////////////////////////////////////////
+
+//
+// B: Check the ring
+//
+
+    DBGAPP ("do_append_cycle_ins_fetch(B)\n");
+
+    // check ring bracket consistency
+    
+    //C(SDW.R1) <= C(SDW.R2) <= C(SDW .R3)?
+    if (! (cpu.SDW->R1 <= cpu.SDW->R2 && cpu.SDW->R2 <= cpu.SDW->R3))
+      {
+        // Set fault ACV0 = IRO
+        cpu.acvFaults |= ACV0;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(B) C(SDW.R1) <= C(SDW.R2) <= "
+                              "C(SDW .R3)";)
+      }
+
+    // lastCycle == RTCD_OPERAND_FETCH
+    // if a fault happens between the RTCD_OPERAND_FETCH and the INSTRUCTION_FETCH
+    // of the next instruction - this happens about 35 time for just booting  and
+    // shutting down multics -- a stored lastCycle is useless.
+    // the opcode is preserved accross faults and only replaced as the
+    // INSTRUCTION_FETCH succeeds.
+    if (i->opcode == 0610  && ! i->opcodeX)
+      goto C;
+
+
+    // Transfer or instruction fetch?
+    goto F;
+
+////////////////////////////////////////
+//
+// Sheet 4: "C" "D"
+//
+////////////////////////////////////////
+
+C:;
+    DBGAPP ("do_append_cycle_ins_fetch(C)\n");
+
+    //
+    // check ring bracket for instruction fetch after rtcd instruction
+    //
+    //   allow outbound transfers (cpu.TPR.TRR >= cpu.PPR.PRR)
+    //
+
+    // C(TPR.TRR) < C(SDW.R1)?
+    // C(TPR.TRR) > C(SDW.R2)?
+    if (cpu.TPR.TRR < cpu.SDW->R1 ||
+        cpu.TPR.TRR > cpu.SDW->R2)
+      {
+        DBGAPP ("ACV1 c\n");
+        DBGAPP ("acvFaults(C) ACV1 ! ( C(SDW .R1) %o <= C(TPR.TRR) %o <= C(SDW .R2) %o )\n",
+                cpu.SDW->R1, cpu.TPR.TRR, cpu.SDW->R2);
+        //Set fault ACV1 = OEB
+        cpu.acvFaults |= ACV1;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(C) C(SDW.R1 > C(TPR.TRR) > C(SDW.R2)";)
+      }
+    // SDW.E set ON?
+    if (! cpu.SDW->E)
+      {
+        DBGAPP ("ACV2 a\n");
+        DBGAPP ("do_append_cycle_ins_fetch(C) ACV2\n");
+        //Set fault ACV2 = E-OFF
+        cpu.acvFaults |= ACV2;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(C) SDW.E";)
+      }
+    if (cpu.TPR.TRR > cpu.PPR.PRR)
+      sim_warn ("rtcd: outbound call cpu.TPR.TRR %d cpu.PPR.PRR %d\n",
+                cpu.TPR.TRR, cpu.PPR.PRR);
+    // C(TPR.TRR) >= C(PPR.PRR)
+    if (cpu.TPR.TRR < cpu.PPR.PRR)
+      {
+        DBGAPP ("ACV11\n");
+        DBGAPP ("do_append_cycle_ins_fetch(C) ACV11\n");
+        //Set fault ACV11 = INRET
+        cpu.acvFaults |= ACV11;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(C) TRR>=PRR";)
+      }
+
+D:;
+    DBGAPP ("do_append_cycle_ins_fetch(D)\n");
+    
+    // transfer or instruction fetch
+
+    // check ring alarm to catch outbound transfers
+
+    if (cpu.rRALR == 0)
+        goto G;
+    
+    // C(PPR.PRR) < RALR?
+    if (! (cpu.PPR.PRR < cpu.rRALR))
+      {
+        DBGAPP ("ACV13\n");
+        DBGAPP ("acvFaults(D) C(PPR.PRR) %o < RALR %o\n", 
+                cpu.PPR.PRR, cpu.rRALR);
+        cpu.acvFaults |= ACV13;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(D) C(PPR.PRR) < RALR";)
+      }
+    
+    goto G;
+    
+////////////////////////////////////////
+//
+// Sheet 6: "F"
+//
+////////////////////////////////////////
+
+F:;
+    PNL (L68_ (cpu.apu.state |= apu_PIAU;))
+    DBGAPP ("do_append_cycle_ins_fetch(F): transfer or instruction fetch\n");
+
+    //
+    // check ring bracket for instruction fetch
+    //
+
+    // C(TPR.TRR) < C(SDW .R1)?
+    // C(TPR.TRR) > C(SDW .R2)?
+    if (cpu.TPR.TRR < cpu.SDW->R1 ||
+        cpu.TPR.TRR > cpu.SDW->R2)
+      {
+        DBGAPP ("ACV1 a/b\n");
+        DBGAPP ("acvFaults(F) ACV1 !( C(SDW .R1) %o <= C(TPR.TRR) %o <= C(SDW .R2) %o )\n",
+                cpu.SDW->R1, cpu.TPR.TRR, cpu.SDW->R2);
+        cpu.acvFaults |= ACV1;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(F) C(TPR.TRR) < C(SDW .R1)";)
+      }
+    // SDW .E set ON?
+    if (! cpu.SDW->E)
+      {
+        DBGAPP ("ACV2 c \n");
+        DBGAPP ("do_append_cycle_ins_fetch(F) ACV2\n");
+        cpu.acvFaults |= ACV2;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(F) SDW .E set OFF";)
+      }
+    
+    // C(PPR.PRR) = C(TPR.TRR)?
+    if (cpu.PPR.PRR != cpu.TPR.TRR)
+      {
+        DBGAPP ("ACV12\n");
+        DBGAPP ("do_append_cycle_ins_fetch(F) ACV12\n");
+        //Set fault ACV12 = CRT
+        cpu.acvFaults |= ACV12;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(F) C(PPR.PRR) != C(TPR.TRR)";)
+      }
+    
+    goto D;
+
+////////////////////////////////////////
+//
+// Sheet 7: "G"
+//
+////////////////////////////////////////
+
+G:;
+    
+    DBGAPP ("do_append_cycle_ins_fetch(G)\n");
+    
+    //C(TPR.CA)0,13 > SDW.BOUND?
+    if (((cpu.TPR.CA >> 4) & 037777) > cpu.SDW->BOUND)
+      {
+        DBGAPP ("ACV15\n");
+        DBGAPP ("do_append_cycle_ins_fetch(G) ACV15\n");
+        cpu.acvFaults |= ACV15;
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        FMSG (acvFaultsMsg = "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND";)
+        DBGAPP ("acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND\n"
+                "   CA %06o CA>>4 & 037777 %06o SDW->BOUND %06o",
+                cpu.TPR.CA, ((cpu.TPR.CA >> 4) & 037777), cpu.SDW->BOUND);
+      }
+    
+    if (cpu.acvFaults)
+      {
+        DBGAPP ("do_append_cycle_ins_fetch(G) acvFaults\n");
+        PNL (L68_ (cpu.apu.state |= apu_FLT;))
+        // Initiate an access violation fault
+        doFault (FAULT_ACV, (_fault_subtype) {.fault_acv_subtype=cpu.acvFaults},
+                 "ACV fault");
+      }
+
+    // is segment C(TPR.TSR) paged?
+    if (cpu.SDW->U)
+      goto H; // Not paged
+    
+    // Yes. segment is paged ...
+    // is PTW for C(TPR.CA) in PTWAM?
+    
+    DBGAPP ("do_append_cycle_ins_fetch(G) CA %06o\n", cpu.TPR.CA);
+#ifdef WAM
+    if (nomatch ||
+        ! fetch_ptw_from_ptwam (cpu.SDW->POINTER, cpu.TPR.CA))  //TPR.CA))
+#endif
+      {
+        fetch_ptw (cpu.SDW, cpu.TPR.CA);
+        if (! cpu.PTW0.DF)
+          {
+            doFault (FAULT_DF0 + cpu.PTW0.FC, (_fault_subtype) {.bits=0},
+            "PTW0.F == 0");
+          }
+        loadPTWAM (cpu.SDW->POINTER, cpu.TPR.CA, nomatch); // load PTW0 to PTWAM
+      }
+    
+    // Prepage mode?
+    // check for "uninterruptible" EIS instruction
+    // ISOLTS-878 02: mvn,cmpn,mvne,ad3d; obviously also
+    // ad2/3d,sb2/3d,mp2/3d,dv2/3d
+    // DH03 p.8-13: probably also mve,btd,dtb
+    if (i->opcodeX && ((i->opcode & 0770)== 0200|| (i->opcode & 0770) == 0220
+        || (i->opcode & 0770)== 020|| (i->opcode & 0770) == 0300))
+      {
+        do_ptw2 (cpu.SDW, cpu.TPR.CA);
+      } 
+    goto I;
+    
+////////////////////////////////////////
+//
+// Sheet 8: "H", "I"
+//
+////////////////////////////////////////
+
+H:;
+    DBGAPP ("do_append_cycle_ins_fetch(H): FANP\n");
+
+    PNL (L68_ (cpu.apu.state |= apu_FANP;))
+    set_apu_status (apuStatus_FANP);
+
+    DBGAPP ("do_append_cycle_ins_fetch(H): SDW->ADDR=%08o CA=%06o \n",
+            cpu.SDW->ADDR, cpu.TPR.CA);
+
+    finalAddress = (cpu.SDW->ADDR & 077777760) + cpu.TPR.CA;
+    finalAddress &= 0xffffff;
+    PNL (cpu.APUMemAddr = finalAddress;)
+    
+    DBGAPP ("do_append_cycle_ins_fetch(H:FANP): (%05o:%06o) finalAddress=%08o\n",
+            cpu.TPR.TSR, cpu.TPR.CA, finalAddress);
+    
+    goto HI;
+    
+I:;
+
+// Set PTW.M
+
+    DBGAPP ("do_append_cycle_ins_fetch(I): FAP\n");
+    
+    // final address paged
+    set_apu_status (apuStatus_FAP);
+    PNL (L68_ (cpu.apu.state |= apu_FAP;))
+    
+    word24 y2 = cpu.TPR.CA % 1024;
+    
+    // AL39: The hardware ignores low order bits of the main memory page
+    // address according to page size    
+    finalAddress = (((word24)cpu.PTW->ADDR & 0777760) << 6) + y2; 
+    finalAddress &= 0xffffff;
+    PNL (cpu.APUMemAddr = finalAddress;)
+    
+#ifdef L68
+    if (cpu.MR_cache.emr && cpu.MR_cache.ihr)
+      add_APU_history (APUH_FAP);
+#endif
+    DBGAPP ("do_append_cycle_ins_fetch(H:FAP): (%05o:%06o) finalAddress=%08o\n",
+            cpu.TPR.TSR, cpu.TPR.CA, finalAddress);
+
+    goto HI;
+
+HI:
+    DBGAPP ("do_append_cycle_ins_fetch(HI)\n");
+
+    // isolts 870
+    cpu.cu.XSF = 1;
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "loading of cpu.TPR.TSR sets XSF to 1\n");
+
+     core_readN (finalAddress, data, nWords, str_pct (INSTRUCTION_FETCH));
+
+// L:; // Transfer or instruction fetch
+
+    DBGAPP ("do_append_cycle_ins_fetch(L)\n");
+
+    // lastCycle == RTCD_OPERAND_FETCH
+    
+    if (i->opcode == 0610  && ! i->opcodeX)
+      {
+        // C(PPR.PRR) -> C(PRn.RNR) for n = (0, 1, ..., 7)
+        // Use TRR here; PRR not set until KL
+        CPTUR (cptUsePRn + 0);
+        CPTUR (cptUsePRn + 1);
+        CPTUR (cptUsePRn + 2);
+        CPTUR (cptUsePRn + 3);
+        CPTUR (cptUsePRn + 4);
+        CPTUR (cptUsePRn + 5);
+        CPTUR (cptUsePRn + 6);
+        CPTUR (cptUsePRn + 7);
+        cpu.PR[0].RNR =
+        cpu.PR[1].RNR =
+        cpu.PR[2].RNR =
+        cpu.PR[3].RNR =
+        cpu.PR[4].RNR =
+        cpu.PR[5].RNR =
+        cpu.PR[6].RNR =
+        cpu.PR[7].RNR = cpu.TPR.TRR;
+        HDBGRegPR (0);
+        HDBGRegPR (1);
+        HDBGRegPR (2);
+        HDBGRegPR (3);
+        HDBGRegPR (4);
+        HDBGRegPR (5);
+        HDBGRegPR (6);
+        HDBGRegPR (7);
+      }
+    // goto KL;
+
+// KL:
+    DBGAPP ("do_append_cycle_ins_fetch(KL)\n");
+
+    // C(TPR.TSR) -> C(PPR.PSR)
+    cpu.PPR.PSR = cpu.TPR.TSR;
+    // C(TPR.CA) -> C(PPR.IC) 
+    cpu.PPR.IC = cpu.TPR.CA;
+
+// M: // Set P
+    DBGAPP ("do_append_cycle_ins_fetch(M)\n");
+
+    // C(TPR.TRR) = 0?
+    if (cpu.TPR.TRR == 0)
+      {
+        // C(SDW.P) -> C(PPR.P) 
+        cpu.PPR.P = cpu.SDW->P;
+      }
+    else
+      {
+        // 0 C(PPR.P)
+        cpu.PPR.P = 0;
+      }
+
+    goto Exit; 
+
+Exit:;
+
+    cpu.fetch_cache.valid = true;
+    cpu.fetch_cache.ca_page = (cpu.TPR.CA >> 10) & MASK8;
+    cpu.fetch_cache.tsr = cpu.TPR.TSR;
+    cpu.fetch_cache.final_page = (finalAddress >> 10) & MASK14;
+
+Exit2:
+    PNL (cpu.APUDataBusOffset = cpu.TPR.CA;)
+    PNL (cpu.APUDataBusAddr = finalAddress;)
+
+    PNL (L68_ (cpu.apu.state |= apu_FA;))
+
+    DBGAPP ("do_append_cycle_ins_fetch (Exit) PRR %o PSR %05o P %o IC %06o\n",
+            cpu.PPR.PRR, cpu.PPR.PSR, cpu.PPR.P, cpu.PPR.IC);
+    DBGAPP ("do_append_cycle_ins_fetch (Exit) TRR %o TSR %05o TBR %02o CA %06o\n",
+            cpu.TPR.TRR, cpu.TPR.TSR, cpu.TPR.TBR, cpu.TPR.CA);
+
+    return finalAddress;    // or 0 or -1???
+  }
+
 // Translate a segno:offset to a absolute address.
 // Return 0 if successful.
 

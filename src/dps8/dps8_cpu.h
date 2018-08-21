@@ -1802,6 +1802,15 @@ typedef struct
     bool set_affinity;
     uint affinity;
 #endif
+
+// Append cycle instruction fetch cache
+    struct
+      {
+        bool valid;
+        word8 ca_page;
+        word15 tsr;
+        word14 final_page;
+      } fetch_cache;
   } cpu_state_t;
 
 #ifdef M_SHARED
