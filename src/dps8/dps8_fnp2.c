@@ -1032,6 +1032,7 @@ sim_printf ("\r\n");
 for (size_t i = 0; i < linep->nPos; i ++) sim_printf (" %03o", linep->buffer[i]);
 sim_printf ("\r\n");
 #endif
+    linep->force_accept_input = true;
     linep->accept_input = 1;
     linep->input_break = brk ? 1 : 0;
   }
@@ -1134,6 +1135,7 @@ sim_printf ("handling ETX\r\n");
 #ifdef FNP2_DEBUG
 sim_printf ("I think data starts %02hhx\r\n", linep->buffer[0]);
 #endif
+        linep->force_accept_input = true;
         linep->accept_input = 1;
         linep->nPos = sz;
       }
@@ -1344,6 +1346,13 @@ void fnpProcessEvent (void)
               {
                 if (linep->accept_input == 1)
                   {
+                    if (linep->nPos == 0) 
+                      { 
+                        sim_printf ("dropping nPos of 0");
+                      }
+                    else
+                      {
+                        //sim_printf ("\n nPos %d\n", linep->nPos);
 #if 0
 {
   sim_printf ("\n nPos %d:", linep->nPos);
@@ -1357,7 +1366,7 @@ void fnpProcessEvent (void)
       //sim_printf ("%c", *p);
      //else
       //sim_printf ("\\%03o", *p);
-   sim_printf ("\n");
+   sim_printf ("\r\n");
 }
 #endif
 // There is a bufferful of data that needs to be sent to the CS.
@@ -1366,31 +1375,32 @@ void fnpProcessEvent (void)
 // sequence.
 
 #if 0
-                    fnp_rcd_accept_input (mbx, (int) fnp_unit_idx, lineno);
-                    //linep->input_break = false;
-                    linep->input_reply_pending = true;
-                    // accept_input cleared below
-#else
-                    if (linep->nPos > 100)
-                      {
-                        fnp_rcd_accept_input ((uint)mbx, (int) fnp_unit_idx, lineno);
-#ifdef FNPDBG
-sim_printf ("accept_input\n");
-#endif
+                        fnp_rcd_accept_input (mbx, (int) fnp_unit_idx, lineno);
                         //linep->input_break = false;
                         linep->input_reply_pending = true;
                         // accept_input cleared below
-                      }
-                    else
-                      {
-                        fnp_rcd_input_in_mailbox ((uint)mbx, (int) fnp_unit_idx, lineno);
+#else
+                        if (linep->force_accept_input || linep->nPos > 100)
+                          {
+                            fnp_rcd_accept_input ((uint)mbx, (int) fnp_unit_idx, lineno);
+#ifdef FNPDBG
+sim_printf ("accept_input\n");
+#endif
+                            //linep->input_break = false;
+                            linep->input_reply_pending = true;
+                            // accept_input cleared below
+                          }
+                        else
+                          {
+                            fnp_rcd_input_in_mailbox ((uint)mbx, (int) fnp_unit_idx, lineno);
 #ifdef FNPDBG
 sim_printf ("input_in_mailbox\n");
 #endif
-                        linep->nPos = 0;
-                        // accept_input cleared below
-                      }
+                            linep->nPos = 0;
+                            // accept_input cleared below
+                          }
 #endif
+                      }
                   }
                 linep->accept_input --;
               }

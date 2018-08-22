@@ -117,6 +117,9 @@ typedef struct t_MState
         uint accept_input; // If non-zero, the number of centiseconds until
                           // an accept_input message should be sent; this is
                           // deal with 'reject_request' retries.
+        // The 3270 controller always uses ACCEPT_INPUT 
+        bool force_accept_input;
+
         bool waitForMbxDone; // If set, the line has sent input to the CS, 
                              // but the CS has not completed the mbx transaction;
                              // in order to prevent input data reordering, serialize

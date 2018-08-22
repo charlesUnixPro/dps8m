@@ -1175,9 +1175,9 @@ static void fnp_rtx_input_accepted (struct decoded_t *decoded_p)
 	iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fsmbx+DCWS+j, & data, direct_load);
 	word24 addr = getbits36_24 (data, 0);
 	word12 tally = getbits36_12 (data, 24);
-#if 0
+#if 1
 if_sim_debug (DBG_TRACE, & fnp_dev) {
-{ sim_printf ("[%u][FNP emulator: long IN: '", decoded_p->slot_no);
+{ sim_printf ("[%u][FNP emulator: nPos %d long IN: '", decoded_p->slot_no, linep->nPos);
 for (int i = 0; i < linep->nPos; i ++)
 {
 if (isgraph (linep->buffer [i]))
@@ -1374,6 +1374,7 @@ static int interruptL66_FNP_to_CS (struct decoded_t *decoded_p)
 
                 case 14: // reject_request_temp
                   {
+sim_printf ("reject_request_temp\r\n");
                     sim_debug (DBG_TRACE, & fnp_dev, "[%u]        reject_request_temp\n", decoded_p->slot_no);
                     //sim_printf ("fnp reject_request_temp\n");
                     // Retry in one second;
