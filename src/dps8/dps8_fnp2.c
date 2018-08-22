@@ -1072,6 +1072,8 @@ sim_printf ("send_stn_in_buffer\r\n");
     // Idle until buffer availible
     if (linep->accept_input)
       return;
+    if (linep->input_reply_pending)
+      return;
 
     struct ibm3270ctlr_s * ctlrp = & fnpData.ibm3270ctlr[ASSUME0];
     struct station_s * stnp = & fnpData.ibm3270ctlr[ASSUME0].stations[ctlrp->stn_no];
