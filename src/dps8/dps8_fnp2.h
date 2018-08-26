@@ -96,14 +96,12 @@ typedef struct t_MState
 
         // Echonego
         bool echnego_break_table [256];
-#ifdef ECHNEGO
         word18 echnego_sync_ctr; // Sent by MCS
         word18 echnego_screen_left;
-        //uint echnego_unechoed_cnt;
-        uint echnego_echoed_cnt;
+        uint echnego_unechoed_cnt;
+        //uint echnego_echoed_cnt;
         bool echnego_on;
         bool echnego_synced;
-#endif
 
         uint sync_msg_size;
         // Pending requests

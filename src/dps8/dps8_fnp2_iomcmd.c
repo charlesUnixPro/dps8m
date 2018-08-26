@@ -536,31 +536,47 @@ static int wcd (struct decoded_t *decoded_p)
           }
           break;
 
+// MTB418, pg 13:
+// "When·Ring Zero MCS is called upon to begin negotiated echo (echo negotiate
+// get chars, as in the previous paper), and has no characters to ·deliver
+// immediately (already accumulated), it calls upon the inferior multiplexer to
+// "start negotiated echo'', via a control order, also specifying the number of
+// characters left on the line, as in the protocol of the previous paper. If
+// this control order is refused (the multiplexer does not support the new
+// protocol (of course, fnp multiplexer in specific, does)), ring zero proceeds
+// as today, with interrupt-side negotiated echo. If the multiplexer goes along
+// with the order, the channel is marked (in the ring-zero echo data) as having
+// a multiplexer knowledgeable about the protocol. In either case, ring zero
+// will enter the ''ring zero echo state" (of the previous paper). 
+
         case 25: // start_negotiated_echo
           {
             sim_debug (DBG_TRACE, & fnp_dev,
               "[%u]    start_negotiated_echo\n", decoded_p->slot_no);
-#ifdef ECHNEGO
+
             linep->echnego_sync_ctr = 
               getbits36_18 (command_data[0], 0);
             linep->echnego_screen_left = getbits36_18 (command_data[0], 18);
+
+#ifdef ECHNEGO_DEBUG
+            sim_printf ("start_negotiated_echo ctr %d screenleft %d "
+              "unechoed cnt %d\n", linep->echnego_sync_ctr,
+              linep->echnego_screen_left,linep->echnego_unechoed_cnt);
+#endif
 
 // MTB-418 pg 15
 // If the counts are not equal, it must be the case that non-echoed characters
 // are ''in transit'', and the order must not be honored. 
 
-#ifdef ECHNEGO_DEBUG
-            sim_printf ("start_negotiated_echo ctr %d screenleft %d "
-              "echoed cnt %d\n", linep->echnego_sync_ctr,
-              linep->echnego_screen_left,linep->echnego_echoed_cnt);
-#endif
             linep->echnego_on =
-              linep->echnego_sync_ctr == linep->echnego_echoed_cnt;
+              linep->echnego_sync_ctr == linep->echnego_unechoed_cnt;
+
 #ifdef ECHNEGO_DEBUG
             sim_printf ("echnego is %s\n", linep->echnego_on ? "on" : "off");
 #endif
-#endif // ECHNEGO
+
           }
+          break;
 
         case 26: // stop_negotiated_echo
           {
@@ -569,6 +585,7 @@ static int wcd (struct decoded_t *decoded_p)
 #ifdef ECHNEGO_DEBUG
             sim_printf ("stop_negotiated_echo\r\n");
 #endif
+            linep->echnego_on = false;
           }
           break;
 
@@ -580,15 +597,14 @@ static int wcd (struct decoded_t *decoded_p)
             sim_printf ("init_echo_negotiation\r\n");
 #endif
 
-#ifdef ECHNEGO
 // At the time the multiplexer's input processor (which maintains the (
 // multiplexer's synchronization counter) receives the init echo negotiation
 // control order, it zeroes its synchronization counter, begins counting
 // characters (it must be in the non-echoing state) thereafter, and sends a new
 // type of interrupt to Ring Zero MCS, ACK ECHNEGO START. 
 
-            linep->echnego_echoed_cnt = 0;
-#endif
+            linep->echnego_unechoed_cnt = 0;
+
             // Post a ack echnego init to MCS
             linep->ack_echnego_init = true;
             // Post a send output

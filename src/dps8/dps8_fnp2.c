@@ -417,7 +417,7 @@ sim_printf ("\n");
         if (i + 3 < linep->nPos)
           l_putbits36_9 (& v, 27, linep->buffer [i + 3]);
 //sim_printf ("%012"PRIo64"\n", v);
-	iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+MYSTERY+j, & v, direct_store);
+       iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+MYSTERY+j, & v, direct_store);
       }
 
 // command_data is at mystery[25]?
@@ -494,15 +494,10 @@ static void fnp_rcd_accept_input (uint mbx, int fnp_unit_idx, int lineno)
     l_putbits36_12 (& data, 24, (word12) linep->nPos);
     iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+DCWS+0, & data, direct_store);
 
-#ifdef ECHNEGO
     // Tell the MCS that we have emptied the output buffer; because of the
     // miracle of TCP, this is essentially true. echnego cares about this
     // for reason that are not clear to me.
     word1 output_chain_present = 0;
-#else
-    // temporary until the logic is in place XXX
-    word1 output_chain_present = 1;
-#endif
 
     data = 0;
     l_putbits36_1 (& data, 16, (word1) output_chain_present);
@@ -741,7 +736,6 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
           {
             linep->buffer[linep->nPos ++] = kar;
             linep->buffer[linep->nPos] = 0;
-#ifdef ECHNEGO
 // Echnego
 
 // MTB-418, pg 13. 
@@ -762,6 +756,7 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
 // The multiplexer input processor will also count characters processed by it
 // since it last echoed a character.
 
+            // Are we echoing?
             if (linep->echnego_on)
               {
                 // This decrements even for non-printing, but they will be
@@ -774,25 +769,79 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
                     linep->echnego_screen_left == 0)
                   {
                     // Break.
+
+                    // MTB418 pg 14:
+                    // "Whenever the multiplexer delivers to the Ring Zero MCS
+                    // interrupt side a character that takes ring zero out of
+                    // the echo state, the multiplexer itself will be known to
+                    // have stopped echoing."
+
                     // Leave echnego mode.
                     linep->echnego_on = false;
-                    linep->echnego_echoed_cnt ++;
+
+                    //linep->echnego_echoed_cnt ++;
+
                     // "If [input_break] is off, the delivery consists
                     // of characters all of which were echoed ..., 
                     // except for perhaps the last ... ."
                     linep->input_break = false;
+
+
+
+                    // MTB418 pg 15:
+                    // "This determination is made by the ''input processor''
+                    // of the multiplexer based upon a value called the
+                    // synchronization counter sent with the start negotiated
+                    // echo control order: the value sent by ring zero is the
+                    // count of all characters received by the ring zero
+                    // interrupt side since the last character echoed by the
+                    // multiplexer."
+                    if (linep->echnego_break_table[kar])
+                      linep->echnego_unechoed_cnt ++;
+
+#ifdef ECHNEGO_DEBUG
+                    sim_printf ("echnedo break nPos %d unechoed cnt %d\r\n",
+                      linep->nPos, linep->echnego_unechoed_cnt);
+#endif
                     linep->accept_input = 1;
                     return true;
                   }
+
+#ifdef ECHNEGO_DEBUG
+                sim_printf ("echoing '%c'\r\n", kar);
+#endif
                 // Not break; so echo
                 unsigned char str [2] = { kar, 0 };
                 fnpuv_start_writestr (linep->line_client, str);
+
+                // MTB418 pg 15:
+                // "This determination is made by the ''input processor'' of
+                // the multiplexer based upon a value called the
+                // synchronization counter sent with the start negotiated echo
+                // control order: the value sent by ring zero is the count of
+                // all characters received by the ring zero interrupt side
+                // since the last character echoed by the multiplexer."
+                linep->echnego_unechoed_cnt = 0;
+
                 return true;
               }
-#endif
+
+            // MTB418 pg 15:
+            // "This determination is made by the ''input processor''
+            // of the multiplexer based upon a value called the
+            // synchronization counter sent with the start negotiated
+            // echo control order: the value sent by ring zero is the
+            // count of all characters received by the ring zero
+            // interrupt side since the last character echoed by the
+            // multiplexer."
+            linep->echnego_unechoed_cnt += linep->nPos;
 
             linep->input_break = true;
             linep->accept_input = 1;
+#ifdef ECHNEGO_DEBUG
+            sim_printf ("break nPos %d unechoed cnt %d\r\n",
+              linep->nPos, linep->echnego_unechoed_cnt);
+#endif
             return true;
           } // break all
     
@@ -2199,15 +2248,12 @@ void reset_line (struct t_line * linep)
     linep->frame_begin = 0;
     linep->frame_end = 0;
     memset (linep->echnego_break_table, 0, sizeof (linep->echnego_break_table));
-#ifdef ECHNEGO
     linep->echnego_sync_ctr = 0;
     linep->echnego_screen_left = 0;
-    //linep->echnego_unechoed_cnt = 0;
-    linep->echnego_echoed_cnt = 0;
+    linep->echnego_unechoed_cnt = 0;
     linep->echnego_on = false;
     linep->echnego_synced = false;
     linep->line_break = false;
-#endif
   }
 
 void processUserInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
