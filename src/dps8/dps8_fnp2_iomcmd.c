@@ -462,6 +462,9 @@ static int wcd (struct decoded_t *decoded_p)
             sim_debug (DBG_TRACE, & fnp_dev,
                        "[%u]    set_echnego_break_table\n", decoded_p->slot_no);
 
+#ifdef ECHNEGO_DEBUG
+            sim_printf ("set_echnego_break_table\r\n");
+#endif
             // Get the table pointer and length
             word36 word6;
             iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num,
@@ -486,14 +489,15 @@ static int wcd (struct decoded_t *decoded_p)
               }
 
             word36 echoTable [echoTableLen];
-memset (echoTable, 0, sizeof (echoTable));
             if (data_len == 0)
               {
-                memset (linep->echnego, 0, sizeof (linep->echnego));
+                memset (linep->echnego_break_table, 0,
+                  sizeof (linep->echnego_break_table));
               }
             else if (data_len == MASK18)
               {
-                memset (linep->echnego, 1, sizeof (linep->echnego));
+                memset (linep->echnego_break_table, 1,
+                  sizeof (linep->echnego_break_table));
               }
             else
               {
@@ -511,17 +515,21 @@ memset (echoTable, 0, sizeof (echoTable));
                   {
                     word36 w = echoTable [i];
                     for (uint j = 0; j < 16; j ++)
-                      linep->echnego[offset++] = !! getbits36_1 (w, j);
+                      linep->echnego_break_table[offset++] =
+                        !! getbits36_1 (w, j);
                     for (uint j = 0; j < 16; j ++)
-                      linep->echnego[offset++] = !! getbits36_1 (w, j + 18);
+                      linep->echnego_break_table[offset++] =
+                        !! getbits36_1 (w, j + 18);
                   }
               }
-#if 1
+#if 0
             sim_printf ("addr %o echoTableLen %d\n", data_addr, echoTableLen);
+#endif
+#if 0
             for (int i = 0; i < 256; i += 8)
               {
                 for (int j = 0; j < 8; j ++)
-                  sim_printf (" %o", linep->echnego[i+j]);
+                  sim_printf (" %o", linep->echnego_break_table[i+j]);
                 sim_printf ("\r\n");
               }
 #endif
@@ -530,24 +538,61 @@ memset (echoTable, 0, sizeof (echoTable));
 
         case 25: // start_negotiated_echo
           {
-            sim_debug (DBG_TRACE, & fnp_dev, "[%u]    start_negotiated_echo\n", decoded_p->slot_no);
-            //word18 ctr = getbits36_18 (decoded_p->smbxp -> command_data [0], 0);
-            //word18 screenleft = getbits36_18 (decoded_p->smbxp -> command_data [0], 18);
+            sim_debug (DBG_TRACE, & fnp_dev,
+              "[%u]    start_negotiated_echo\n", decoded_p->slot_no);
+#ifdef ECHNEGO
+            linep->echnego_sync_ctr = 
+              getbits36_18 (command_data[0], 0);
+            linep->echnego_screen_left = getbits36_18 (command_data[0], 18);
 
-//sim_printf ("start_negotiated_echo ctr %d screenleft %d\n", ctr, screenleft);
+// MTB-418 pg 15
+// If the counts are not equal, it must be the case that non-echoed characters
+// are ''in transit'', and the order must not be honored. 
+
+#ifdef ECHNEGO_DEBUG
+            sim_printf ("start_negotiated_echo ctr %d screenleft %d "
+              "echoed cnt %d\n", linep->echnego_sync_ctr,
+              linep->echnego_screen_left,linep->echnego_echoed_cnt);
+#endif
+            linep->echnego_on =
+              linep->echnego_sync_ctr == linep->echnego_echoed_cnt;
+#ifdef ECHNEGO_DEBUG
+            sim_printf ("echnego is %s\n", linep->echnego_on ? "on" : "off");
+#endif
+#endif // ECHNEGO
           }
+
         case 26: // stop_negotiated_echo
           {
-            sim_debug (DBG_TRACE, & fnp_dev, "[%u]    stop_negotiated_echo\n", decoded_p->slot_no);
+            sim_debug (DBG_TRACE, & fnp_dev,
+               "[%u]    stop_negotiated_echo\n", decoded_p->slot_no);
+#ifdef ECHNEGO_DEBUG
+            sim_printf ("stop_negotiated_echo\r\n");
+#endif
           }
           break;
 
         case 27: // init_echo_negotiation
           {
-            sim_debug (DBG_TRACE, & fnp_dev, "[%u]    init_echo_negotiation\n", decoded_p->slot_no);
-            //linep -> send_output = true;
-            linep -> send_output = SEND_OUTPUT_DELAY;
-            linep -> ack_echnego_init = true;
+            sim_debug (DBG_TRACE, & fnp_dev,
+               "[%u]    init_echo_negotiation\n", decoded_p->slot_no);
+#ifdef ECHNEGO_DEBUG
+            sim_printf ("init_echo_negotiation\r\n");
+#endif
+
+#ifdef ECHNEGO
+// At the time the multiplexer's input processor (which maintains the (
+// multiplexer's synchronization counter) receives the init echo negotiation
+// control order, it zeroes its synchronization counter, begins counting
+// characters (it must be in the non-echoing state) thereafter, and sends a new
+// type of interrupt to Ring Zero MCS, ACK ECHNEGO START. 
+
+            linep->echnego_echoed_cnt = 0;
+#endif
+            // Post a ack echnego init to MCS
+            linep->ack_echnego_init = true;
+            // Post a send output
+            linep->send_output = SEND_OUTPUT_DELAY;
           }
           break;
 

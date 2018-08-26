@@ -494,8 +494,15 @@ static void fnp_rcd_accept_input (uint mbx, int fnp_unit_idx, int lineno)
     l_putbits36_12 (& data, 24, (word12) linep->nPos);
     iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+DCWS+0, & data, direct_store);
 
+#ifdef ECHNEGO
+    // Tell the MCS that we have emptied the output buffer; because of the
+    // miracle of TCP, this is essentially true. echnego cares about this
+    // for reason that are not clear to me.
+    word1 output_chain_present = 0;
+#else
     // temporary until the logic is in place XXX
     word1 output_chain_present = 1;
+#endif
 
     data = 0;
     l_putbits36_1 (& data, 16, (word1) output_chain_present);
@@ -734,10 +741,60 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
           {
             linep->buffer[linep->nPos ++] = kar;
             linep->buffer[linep->nPos] = 0;
+#ifdef ECHNEGO
+// Echnego
+
+// MTB-418, pg 13. 
+// "If the [input_break] bit is on, the delivery consists.of characters none of
+// which were echoed by the multiplexer; the multiplexer may decide for any
+// reason (e.g., internal buffer shortages, internal races, etc.) to stop
+// echoing (as can ring zero vis-a-vis ring 4). Of course, it must stop echoing
+// for the defined echo negotiation.break conditions. If the "break character"
+// bit is off, the delivery consists of characters all of which were echoed by
+// the multiplexer, except for perhaps the la~ character of the delivery. MCS
+// must determine, for such a delivery, whether the last character of such a
+// delivery was capable of being echoed by the multiplexer, and if so, assume
+// that it was, otherwise not. 
+
+// "start negotiated echo'', via a control order, also specifying the number of
+// characters left on the line
+
+// The multiplexer input processor will also count characters processed by it
+// since it last echoed a character.
+
+            if (linep->echnego_on)
+              {
+                // This decrements even for non-printing, but they will be
+                // break characters which will cause echnego_screen_left to
+                // be reset.
+                if (linep->echnego_screen_left)
+                  linep->echnego_screen_left --;
+
+                if (linep->echnego_break_table[kar] ||
+                    linep->echnego_screen_left == 0)
+                  {
+                    // Break.
+                    // Leave echnego mode.
+                    linep->echnego_on = false;
+                    linep->echnego_echoed_cnt ++;
+                    // "If [input_break] is off, the delivery consists
+                    // of characters all of which were echoed ..., 
+                    // except for perhaps the last ... ."
+                    linep->input_break = false;
+                    linep->accept_input = 1;
+                    return true;
+                  }
+                // Not break; so echo
+                unsigned char str [2] = { kar, 0 };
+                fnpuv_start_writestr (linep->line_client, str);
+                return true;
+              }
+#endif
+
             linep->input_break = true;
             linep->accept_input = 1;
             return true;
-          }
+          } // break all
     
         if ((linep-> frame_begin != 0 &&
              linep-> frame_begin == kar) ||
@@ -1369,7 +1426,7 @@ void fnpProcessEvent (void)
    sim_printf ("\r\n");
 }
 #endif
-// There is a bufferful of data that needs to be sent to the CS.
+// There is a bufferfull of data that needs to be sent to the CS.
 // If the buffer has < 101 characters, use the 'input_in_mailbox'
 // command; otherwise use the 'accept_input/input_accepted'
 // sequence.
@@ -2141,8 +2198,16 @@ void reset_line (struct t_line * linep)
     memset (linep->outputResumeStr, 0, sizeof (linep->outputResumeStr));
     linep->frame_begin = 0;
     linep->frame_end = 0;
-    memset (linep->echnego, 0, sizeof (linep->echnego));
+    memset (linep->echnego_break_table, 0, sizeof (linep->echnego_break_table));
+#ifdef ECHNEGO
+    linep->echnego_sync_ctr = 0;
+    linep->echnego_screen_left = 0;
+    //linep->echnego_unechoed_cnt = 0;
+    linep->echnego_echoed_cnt = 0;
+    linep->echnego_on = false;
+    linep->echnego_synced = false;
     linep->line_break = false;
+#endif
   }
 
 void processUserInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
