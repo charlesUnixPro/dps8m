@@ -423,43 +423,108 @@ static int wcd (struct decoded_t *decoded_p)
           }
           break;
 
+//
+//  1 echo_neg_data          based (echo_neg_datap) aligned,
+//    /* Echo negotiation data */
+//    2 version                     fixed bin,
+//    2 break (0:255)               bit (1) unaligned,                /* Break table, 1 = break */
+//    2 pad                         bit (7) unaligned,
+//    2 rubout_trigger_chars (2) unaligned,                           /* Characters that cause rubout action */
+//      3 char                      char (1) unaligned,
+//    2 rubout_sequence_length      fixed bin (4) unsigned unaligned, /* Length of rubout sequence, output */
+//    2 rubout_pad_count            fixed bin (4) unsigned unaligned, /* Count of pads needed */
+//    2 buffer_rubouts              bit (1) unaligned,                /* 1 = put rubouts and rubbed out in buffer */
+//    2 rubout_sequence             char (12) unaligned;              /* Actual rubout sequence */
+//
+//   0  version
+//   1  break(0:35)
+//   2  break(36:71)
+//   3  break(72:107)
+//   4  break(108:143)
+//   5  break(144:179)
+//   6  break(180:215)
+//   7  break(216:251)
+//   8  
+//      0:3 break(252:255)
+//      4:10 pad
+//      11:17  padding inserted by compiler to align to char boundary
+//      18:35 rubout_trigger_chars
+//   9  0:3 rubout_sequence_length
+//      4:7 rubout_pad_count
+//      8: buffer_rubouts
+//      9:35 rubout_sequence (1:3)
+//  10  rubout_sequence (4:7)
+//  12  rubout_sequence (8:11)
+//  13  0:8 rubout_sequence (12)
+
         case 24: // set_echnego_break_table
           {
-            sim_debug (DBG_TRACE, & fnp_dev, "[%u]    set_echnego_break_table\n", decoded_p->slot_no);
-            //sim_printf ("fnp set_echnego_break_table\n");
+            sim_debug (DBG_TRACE, & fnp_dev,
+                       "[%u]    set_echnego_break_table\n", decoded_p->slot_no);
+
+            // Get the table pointer and length
             word36 word6;
-	    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num,  decoded_p->smbx+WORD6, & word6, direct_load);
+            iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num,
+                                     decoded_p->smbx+WORD6, & word6,
+                                     direct_load);
             uint data_addr = getbits36_18 (word6, 0);
             uint data_len = getbits36_18 (word6, 18);
 
-            //sim_printf ("set_echnego_break_table %d addr %06o len %d\n", decoded_p->slot_no, data_addr, data_len);
+            //sim_printf ("set_echnego_break_table %d addr %06o len %d\n",
+            //            decoded_p->slot_no, data_addr, data_len);
+
+            // According to the MOWSE documentation, length of 0
+            // means no break characters and -1 means all break.
 
 #define echoTableLen 8
-            if (data_len != echoTableLen && data_len != 0)
+
+            if (data_len != echoTableLen && data_len != 0 &&
+                data_len != MASK18)
               {
                 sim_printf ("set_echnego_break_table data_len !=8 (%d)\n", data_len);
                 break;
               }
 
             word36 echoTable [echoTableLen];
+memset (echoTable, 0, sizeof (echoTable));
             if (data_len == 0)
               {
-                // Assuming that this means set everything to zeroes.
-                memset (echoTable, 0, sizeof (echoTable));
+                memset (linep->echnego, 0, sizeof (linep->echnego));
+              }
+            else if (data_len == MASK18)
+              {
+                memset (linep->echnego, 1, sizeof (linep->echnego));
               }
             else
               {
                 for (uint i = 0; i < echoTableLen; i ++)
-		    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, data_addr + i, & echoTable [i], direct_load);
+                  {
+                    iom_direct_data_service (decoded_p->iom_unit,
+                      decoded_p->chan_num, data_addr + i, & echoTable [i],
+                      direct_load);
+                      //sim_printf ("%012llo\n", echoTable[i]);
+                  }
+// Table format is actually
+//   16 bits 2 pad 15 bits 2 pad
+                uint offset = 0;
+                for (uint i = 0; i < 8; i ++)
+                  {
+                    word36 w = echoTable [i];
+                    for (uint j = 0; j < 16; j ++)
+                      linep->echnego[offset++] = !! getbits36_1 (w, j);
+                    for (uint j = 0; j < 16; j ++)
+                      linep->echnego[offset++] = !! getbits36_1 (w, j + 18);
+                  }
               }
-            for (int i = 0; i < 256; i ++)
+#if 1
+            sim_printf ("addr %o echoTableLen %d\n", data_addr, echoTableLen);
+            for (int i = 0; i < 256; i += 8)
               {
-                int wordno = i / 32;
-                int bitno = i % 32;
-                int bitoffset = bitno > 16 ? 35 - bitno : 33 - bitno; 
-                linep->echnego[i] = !!(echoTable[wordno] & (1u << bitoffset));
+                for (int j = 0; j < 8; j ++)
+                  sim_printf (" %o", linep->echnego[i+j]);
+                sim_printf ("\r\n");
               }
-            linep->echnego_len = data_len;
+#endif
           }
           break;
 
@@ -1035,7 +1100,7 @@ static void fnp_wtx_output (struct decoded_t *decoded_p, uint tally, uint dataAd
          if (wordOff != lastWordOff)
            {
              lastWordOff = wordOff;
-	     iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, dataAddr + wordOff, & word, direct_load);
+             iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, dataAddr + wordOff, & word, direct_load);
            }
          byte = getbits36_9 (word, byteOff * 9);
          data [i] = byte & 0377;
@@ -1103,7 +1168,7 @@ static int wtx (struct decoded_t *decoded_p)
         // The address of the dcw in the dcw list
         // The dcw
         word36 dcw;
-	iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, dcwAddr + i, & dcw, direct_load);
+        iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, dcwAddr + i, & dcw, direct_load);
 
         // Get the address and the tally from the dcw
         uint dataAddr = getbits36_18 (dcw, 0);
@@ -1171,10 +1236,10 @@ static void fnp_rtx_input_accepted (struct decoded_t *decoded_p)
     uint off = 0;
     for (uint j = 0; j < n_buffers && off < n_chars; j++)
       {
-	word36 data;
-	iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fsmbx+DCWS+j, & data, direct_load);
-	word24 addr = getbits36_24 (data, 0);
-	word12 tally = getbits36_12 (data, 24);
+        word36 data;
+        iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, decoded_p->fsmbx+DCWS+j, & data, direct_load);
+        word24 addr = getbits36_24 (data, 0);
+        word12 tally = getbits36_12 (data, 24);
 #if 1
 if_sim_debug (DBG_TRACE, & fnp_dev) {
 { sim_printf ("[%u][FNP emulator: nPos %d long IN: '", decoded_p->slot_no, linep->nPos);
@@ -1192,19 +1257,19 @@ sim_printf ("']\n");
 //sim_printf ("long  in; line %d tally %d\n", decoded_p->slot_no, linep->nPos);
         uint n_chars_in_buf = min(n_chars-off, tally);
         for (int i = 0; i < n_chars_in_buf; i += 4)
-	  {
-	    word36 v = 0;
-	    if (i < n_chars_in_buf)
-		putbits36_9 (& v, 0, data_p [off++]);
-	    if (i + 1 < n_chars_in_buf)
-		putbits36_9 (& v, 9, data_p [off++]);
-	    if (i + 2 < n_chars_in_buf)
-		putbits36_9 (& v, 18, data_p [off++]);
-	    if (i + 3 < n_chars_in_buf)
-		putbits36_9 (& v, 27, data_p [off++]);
-	    iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, addr, & v, direct_store);
-	    addr ++;
-	  }
+          {
+            word36 v = 0;
+            if (i < n_chars_in_buf)
+              putbits36_9 (& v, 0, data_p [off++]);
+            if (i + 1 < n_chars_in_buf)
+              putbits36_9 (& v, 9, data_p [off++]);
+            if (i + 2 < n_chars_in_buf)
+              putbits36_9 (& v, 18, data_p [off++]);
+            if (i + 3 < n_chars_in_buf)
+              putbits36_9 (& v, 27, data_p [off++]);
+            iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num, addr, & v, direct_store);
+            addr ++;
+          }
       }
     // temporary until the logic is in place XXX
     // This appears to only be used in tty_interrupt.pl1 as
@@ -1624,7 +1689,7 @@ static void processMBX (uint iomUnitIdx, uint chan)
     word36 dia_pcw;
     iom_direct_data_service (iomUnitIdx, chan, fudp->mailboxAddress+DIA_PCW, & dia_pcw, direct_load);
     sim_debug (DBG_TRACE, & fnp_dev,
-	       "%s: chan %d dia_pcw %012"PRIo64"\n", __func__, chan, dia_pcw);
+               "%s: chan %d dia_pcw %012"PRIo64"\n", __func__, chan, dia_pcw);
 
 // Mailbox word 0:
 //
@@ -1733,9 +1798,9 @@ static void processMBX (uint iomUnitIdx, uint chan)
 
     if (command == 000) // reset
       {
-	sim_debug (DBG_TRACE, & fnp_dev,
-		   "%s: chan %d reset command\n", __func__, chan);
-	send_general_interrupt (iomUnitIdx, chan, imwTerminatePic);
+        sim_debug (DBG_TRACE, & fnp_dev,
+                   "%s: chan %d reset command\n", __func__, chan);
+        send_general_interrupt (iomUnitIdx, chan, imwTerminatePic);
       }
     else if (command == 072) // bootload
       {
@@ -1746,7 +1811,7 @@ static void processMBX (uint iomUnitIdx, uint chan)
 #if defined(THREADZ) || defined(LOCKLESS)
         unlock_libuv ();
 #endif
-	send_general_interrupt (iomUnitIdx, chan, imwTerminatePic);
+        send_general_interrupt (iomUnitIdx, chan, imwTerminatePic);
         fudp -> fnpIsRunning = true;
       }
     else if (command == 071) // interrupt L6
@@ -1846,14 +1911,14 @@ sim_printf ("data xfer??\n");
 #ifdef FNPDBG
 dmpmbx (fudp->mailboxAddress);
 #endif
-	iom_chan_data [iomUnitIdx] [chan] . in_use = false;
+        iom_chan_data [iomUnitIdx] [chan] . in_use = false;
         dia_pcw = 0;
         iom_direct_data_service (iomUnitIdx, chan, fudp -> mailboxAddress+DIA_PCW, & dia_pcw, direct_store);
         putbits36_1 (& bootloadStatus, 0, 1); // real_status = 1
         putbits36_3 (& bootloadStatus, 3, 0); // major_status = BOOTLOAD_OK;
         putbits36_8 (& bootloadStatus, 9, 0); // substatus = BOOTLOAD_OK;
         putbits36_17 (& bootloadStatus, 17, 0); // channel_no = 0;
-	iom_direct_data_service (iomUnitIdx, chan, fudp -> mailboxAddress+CRASH_DATA, & bootloadStatus, direct_store);
+        iom_direct_data_service (iomUnitIdx, chan, fudp -> mailboxAddress+CRASH_DATA, & bootloadStatus, direct_store);
       }
     else
       {
@@ -1861,7 +1926,7 @@ dmpmbx (fudp->mailboxAddress);
         dmpmbx (fudp->mailboxAddress);
 #endif
 // 3 error bit (1) unaligned, /* set to "1"b if error on connect */
-	iom_chan_data [iomUnitIdx] [chan] . in_use = false;
+        iom_chan_data [iomUnitIdx] [chan] . in_use = false;
         putbits36_1 (& dia_pcw, 18, 1); // set bit 18
         iom_direct_data_service (iomUnitIdx, chan, fudp -> mailboxAddress+DIA_PCW, & dia_pcw, direct_store);
       }
@@ -1874,20 +1939,20 @@ static int fnpCmd (uint iomUnitIdx, uint chan)
     switch (p -> IDCW_DEV_CMD)
       {
       case 000: // CMD 00 Request status
-	{
-	  p -> stati = 04000;
-	  processMBX (iomUnitIdx, chan);
-	  // no status_service and no additional terminate interrupt
-	  // ???
-	  return IOM_CMD_PENDING;
-	}
+        {
+          p -> stati = 04000;
+          processMBX (iomUnitIdx, chan);
+          // no status_service and no additional terminate interrupt
+          // ???
+          return IOM_CMD_PENDING;
+        }
       default:
-	{
-	  p -> stati = 04501;
-	  sim_debug (DBG_ERR, & fnp_dev,
-		     "%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
-	  return IOM_CMD_NO_DCW;
-	}
+        {
+          p -> stati = 04501;
+          sim_debug (DBG_ERR, & fnp_dev,
+                     "%s: Unknown command 0%o\n", __func__, p -> IDCW_DEV_CMD);
+          return IOM_CMD_NO_DCW;
+        }
       }
   }
 

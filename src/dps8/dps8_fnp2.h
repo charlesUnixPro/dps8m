@@ -94,7 +94,6 @@ typedef struct t_MState
         uint frame_begin;
         uint frame_end;
         bool echnego [256];
-        uint echnego_len;
         uint sync_msg_size;
         // Pending requests
         bool line_break;

@@ -1458,7 +1458,6 @@ static void on_new_3270_connection (uv_stream_t * server, int status)
         //linep->frame_begin = 0;
         //linep->frame_end = 0;
         //memset (linep->echnego, 0, sizeof (linep->echnego));
-        //linep->echnego_len = 0;
         //linep->line_break = false;
   }
 
