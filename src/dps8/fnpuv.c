@@ -1182,21 +1182,7 @@ static void processPacketInput (int fnpno, int lineno, unsigned char * buf, ssiz
  //sim_printf ("\n");
 //}
 
-    if (! fnpData.fnpUnitData[fnpno].MState.accept_calls)
-      {
-        //fnpuv_start_writestr (client, "Multics is not accepting calls\r\n");
-        sim_printf ("[FNP emulation: TUN traffic, but Multics is not accepting calls]\n");
-        return;
-      }
     struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
-#if 0
-    if (! linep->listen)
-      {
-        //fnpuv_start_writestr (client, "Multics is not listening to this line\r\n");
-        sim_printf ("TUN traffic, but Multics is not listening to the line\n");
-        return;
-      }
-#endif
     if (linep->inBuffer)
       {
         unsigned char * new = realloc (linep->inBuffer, (unsigned long) (linep->inSize + nread));

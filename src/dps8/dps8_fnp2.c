@@ -1835,6 +1835,8 @@ void fnpConnectPrompt (uv_tcp_t * client)
         for (uint lineno = 0; lineno < MAX_LINES; lineno ++)
           {
             struct t_line * linep = & fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno];
+            if (! linep->listen)
+              continue;
             if (linep->service == service_login && ! linep->line_client)
               {
                 if (! first)
@@ -1976,18 +1978,6 @@ void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
 //}
 
     struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
-    if (! fnpData.fnpUnitData[fnpno].MState.accept_calls)
-      {
-        if (linep->service == service_login)
-          fnpuv_start_writestr (client, (unsigned char *) "Multics is not accepting calls\r\n");
-        return;
-      }
-    if (! linep->listen)
-      {
-        if (linep->service == service_login)
-          fnpuv_start_writestr (client, (unsigned char *) "Multics is not listening to this line\r\n");
-        return;
-      }
 
 // By design, inBuffer overun shouldn't happen, but it has been seen in IMFT.
 // (When the TCP backs up, the buffers are merged so that larger and larger 
