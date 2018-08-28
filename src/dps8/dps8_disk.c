@@ -21,6 +21,8 @@
 
 // source/library_dir_dir/system_library_1/source/bound_volume_rldr_ut_.s.archive/rdisk_.pl1
 
+// source/library_dir_dir/system_library_1/source/bound_rcp_.s.archive/rcp_disk_.pl1
+
 #include <stdio.h>
 
 #include "dps8.h"
@@ -1367,6 +1369,13 @@ static int read_and_clear_statistics (uint dev_unit_idx, uint iom_unit_idx, uint
     return 0;
   }
 
+// source/library_dir_dir/system_library_1/source/bound_rcp_.s.archive/rcp_disk_.pl1
+//
+//  dcl set_standby_command    bit (6) internal static init ("72"b3);
+//  dcl request_status_command bit (6) internal static init ("00"b3);
+//  dcl read_command           bit (6) internal static init ("25"b3);
+//  dcl reset_status_command   bit (6) internal static init ("40"b3);
+
 static int disk_cmd (uint iomUnitIdx, uint chan)
   {
     iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
@@ -1426,6 +1435,7 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
             //p -> stati = 04000;
             break;
           }
+
         case 025: // CMD 25 READ
           {
             // XXX is it correct to not process the DDCWs?
@@ -1510,6 +1520,14 @@ static int disk_cmd (uint iomUnitIdx, uint chan)
           }
           break;
 
+        case 072: // CMD 72 SET STANDBY
+          {
+            sim_debug (DBG_NOTIFY, & dsk_dev, "Standby %d\n", devUnitIdx);
+            p -> stati = 04000;
+            if (! unitp -> fileref)
+              p -> stati = 04240; // device offline
+          }
+          break;
 
         default:
           {
