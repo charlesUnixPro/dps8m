@@ -421,6 +421,44 @@ static t_stat mt_set_capac (UNUSED UNIT * uptr, UNUSED int32 value,
     return SCPE_OK;
   }
 
+static t_stat signal_mt_ready (uint drive_number)
+  {
+    uint ctlr_unit_idx = cables->tape_to_mtp [drive_number].ctlr_unit_idx;
+    // Which port should the controller send the interrupt to? All of them...
+    bool sent_one = false;
+    for (uint ctlr_port_num = 0; ctlr_port_num < MAX_CTLR_PORTS; ctlr_port_num ++)
+      if (cables->mtp_to_iom[ctlr_unit_idx][ctlr_port_num].in_use)
+        {
+          uint iom_unit_idx = cables->mtp_to_iom[ctlr_unit_idx][ctlr_port_num].iom_unit_idx;
+          uint chan_num = cables->mtp_to_iom[ctlr_unit_idx][ctlr_port_num].chan_num;
+          uint dev_code = cables->tape_to_mtp[drive_number].dev_code;
+
+          send_special_interrupt (iom_unit_idx, chan_num, dev_code, 0, 020 /* tape drive to ready */);
+          sent_one = true;
+        }
+    if (! sent_one)
+      {
+        sim_printf ("loadTape can't find controller; dropping interrupt\n");
+        return SCPE_ARG;
+      }
+    return SCPE_OK;
+  }
+
+static t_stat mt_set_ready (UNIT * uptr, UNUSED int32 value,
+                            UNUSED const char * cptr,
+                            UNUSED void * desc)
+  {
+    long mt_unit_idx = MT_UNIT_NUM (uptr);
+    if (mt_unit_idx >= (long) tape_dev.numunits)
+      {
+        sim_debug (DBG_ERR, & tape_dev,
+                   "Tape set ready: Invalid unit number %ld\n", mt_unit_idx);
+        sim_printf ("error: invalid unit number %ld\n", mt_unit_idx);
+        return SCPE_ARG;
+      }
+    return signal_mt_ready ((uint) mt_unit_idx);
+  }
+
 
 static MTAB mt_mod [] =
   {
@@ -486,6 +524,18 @@ static MTAB mt_mod [] =
       "Set the tape capacity of all drives", /* value descriptor */
       NULL          // help
     },
+
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_VALR, /* mask */
+      0,            /* match */
+      "READY",     /* print string */
+      "READY",         /* match string */
+      mt_set_ready,         /* validation routine */
+      NULL, /* display routine */
+      NULL,          /* value descriptor */
+      NULL   // help string
+    },
+
     { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
   };
 
@@ -534,6 +584,11 @@ DEVICE tape_dev =
 
 void loadTape (uint driveNumber, char * tapeFilename, bool ro)
   {
+    if (ro)
+      sim_switches = SWMASK ('R');
+    else
+      sim_switches = 0;
+
     t_stat stat = sim_tape_attach (& mt_unit [driveNumber], tapeFilename);
     if (stat != SCPE_OK)
       {
