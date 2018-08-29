@@ -120,6 +120,7 @@ static t_stat mt_set_device_name (UNIT * uptr, int32 value, const char * cptr, v
 static t_stat mt_show_tape_path (FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat mt_set_tape_path (UNIT * uptr, int32 value, const char * cptr, void * desc);
 static t_stat mt_set_capac (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat mt_set_ready (UNIT * uptr, int32 value, const char * cptr, void * desc);
 //static t_stat mt_show_device_length (FILE *st, UNIT *uptr, int val, void *desc);
 //static t_stat mt_set_device_length (UNIT * uptr, int32 value, char * cptr, void * desc);
 
@@ -243,6 +244,17 @@ static MTAB mt_mod [] =
       "Set the path to the directory containing tape images", /* value descriptor */
       NULL          // help
     },
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_VALR, /* mask */
+      0,            /* match */
+      "READY",     /* print string */
+      "READY",         /* match string */
+      mt_set_ready,         /* validation routine */
+      NULL, /* display routine */
+      NULL,          /* value descriptor */
+      NULL   // help string
+    },
+
     { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
   };
 
@@ -353,6 +365,11 @@ void tape_send_special_interrupt (uint driveNumber)
 
 void loadTape (uint driveNumber, char * tapeFilename, bool ro)
   {
+    if (ro)
+      sim_switches = SWMASK ('R');
+    else
+      sim_switches = 0;
+
     t_stat stat = sim_tape_attach (& mt_unit [driveNumber], tapeFilename);
     if (stat != SCPE_OK)
       {
@@ -1991,6 +2008,31 @@ static t_stat mt_set_capac (UNUSED UNIT * uptr, UNUSED int32 value,
           return rc;
       }
     return SCPE_OK;
+  }
+
+static t_stat signal_mt_ready (uint drive_number)
+  {
+    send_special_interrupt (
+      (uint) cables->cablesFromIomToTap[drive_number].iomUnitIdx,
+      (uint) cables->cablesFromIomToTap[drive_number].chan_num,
+      (uint) cables->cablesFromIomToTap[drive_number].dev_code,
+      0, 020 /* tape drive to ready */);
+    return SCPE_OK;
+  }
+
+static t_stat mt_set_ready (UNIT * uptr, UNUSED int32 value,
+                            UNUSED const char * cptr,
+                            UNUSED void * desc)
+  {
+    long mt_unit_idx = MT_UNIT_NUM (uptr);
+    if (mt_unit_idx >= (long) tape_dev.numunits)
+      {
+        sim_debug (DBG_ERR, & tape_dev,
+                   "Tape set ready: Invalid unit number %ld\n", mt_unit_idx);
+        sim_printf ("error: invalid unit number %ld\n", mt_unit_idx);
+        return SCPE_ARG;
+      }
+    return signal_mt_ready ((uint) mt_unit_idx);
   }
 
 #if 0
