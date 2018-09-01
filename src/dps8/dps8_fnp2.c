@@ -1266,12 +1266,14 @@ void fnpProcessEvent (void)
 #endif
             // Need to send a 'send_output' command to CS?
 
-            if (linep -> send_output)
-              {
-                //linep -> send_output = false;
+            bool do_send_output = linep->send_output == 1;
+
+            if (linep -> send_output > 0)
                 linep->send_output --;
-                if (linep->send_output == 0)
-                  fnp_rcd_send_output ((uint)mbx, (int) fnp_unit_idx, lineno);
+
+            if (do_send_output) 
+              {
+                fnp_rcd_send_output ((uint)mbx, (int) fnp_unit_idx, lineno);
               }
 
             // Need to send a 'line_break' command to CS?
