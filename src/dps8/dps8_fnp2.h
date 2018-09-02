@@ -343,3 +343,4 @@ void setTIMW (uint iom_unit_idx, uint chan, word24 mailboxAddress, int mbx);
 #ifdef SCUMEM
 uint get_scu_unit_idx_iom (uint fnp_unit_idx, word24 addr, word24 * offset);
 #endif
+bool is_polite (struct t_line * linep);

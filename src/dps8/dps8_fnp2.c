@@ -1222,6 +1222,15 @@ sim_printf("Specific poll\r\n");
       }
   }
 
+bool is_polite (struct t_line * linep)
+  {
+    return ! (linep->polite && // polite mode
+              linep->nPos && // data in the input buffer
+              (! linep->breakAll) && // line mode
+              linep->service == service_login &&
+              linep->polite_time); // countdown timer running
+
+  }
 //
 // Called @ 100Hz to process FNP background events
 //
@@ -1286,11 +1295,12 @@ void fnpProcessEvent (void)
               {
                 if (linep->line_client && linep->line_client->data)
                   {
-                    if (! (linep->polite && // polite mode
-                           linep->nPos && // data in the input buffer
-                           (! linep->breakAll) && // line mode
-                           linep->service == service_login && 
-                           linep->polite_time)) // countdown timer running
+                    // if (! (linep->polite && // polite mode
+                    //        linep->nPos && // data in the input buffer
+                    //        (! linep->breakAll) && // line mode
+                    //        linep->service == service_login && 
+                    //        linep->polite_time)) // countdown timer running
+                    if (is_polite (linep))
                       {
                         uvClientData * p = linep->line_client->data;
                         (* p->write_cb) (linep->line_client,

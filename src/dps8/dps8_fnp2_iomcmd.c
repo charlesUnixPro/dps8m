@@ -1139,6 +1139,15 @@ sim_printf ("']\n");
             return;
           }
 #if 1
+        // If it is polite to do so, send immediately
+        if (is_polite (linep))
+          {
+            uvClientData * p = linep->line_client->data;
+            (* p->write_cb) (linep->line_client, data, tally);
+            return;
+          }
+
+       // Queue it for transmission when polite
        if (! linep->out_buffer)
          {
             linep->out_buffer = malloc (tally);
