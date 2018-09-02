@@ -1138,8 +1138,42 @@ sim_printf ("']\n");
             sim_warn ("fnp_wtx_output bad client data\r\n");
             return;
           }
+#if 1
+       if (! linep->out_buffer)
+         {
+            linep->out_buffer = malloc (tally);
+            if (! linep->out_buffer)
+              {
+                sim_warn ("fnp_wtx_output malloc failed; dropping data\r\n");
+                return;
+              }
+                
+            linep->out_buffer_size = tally;
+            linep->out_buffer_use = tally;
+            memcpy (linep->out_buffer, data, tally);
+          }
+        else
+          {
+             size_t need = linep->out_buffer_use + tally;
+             if (need > linep->out_buffer_size)
+               {
+                 unsigned char * new = realloc (linep->out_buffer, need);
+                 if (! new)
+                  {
+                    sim_warn ("fnp_wtx_output realloc failed; dropping data\r\n");
+                    return;
+                  }
+                linep->out_buffer = new;
+              }
+            memcpy (linep->out_buffer + linep->out_buffer_use,
+              data, tally);
+            linep->out_buffer_size = need;
+            linep->out_buffer_use = need;
+          }
+#else
         uvClientData * p = linep->line_client->data;
         (* p->write_cb) (linep->line_client, data, tally);
+#endif
       }
   }
 

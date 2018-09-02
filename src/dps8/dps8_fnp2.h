@@ -73,7 +73,12 @@ typedef struct t_MState
         t_bool lfecho;      // echos and inserts  a LF in the users input stream when a CR is typed
         t_bool tabecho;     // echos the appropriate number of spaces when a TAB is typed
         t_bool replay;
-        t_bool polite;
+
+// 30 polite expires 30 seconds after last character typed.
+#define POLITE_TIME 30
+        t_bool polite;      // polite setting
+        uint polite_time;   // countdown timer in seconds.
+
         t_bool prefixnl;
         t_bool eight_bit_out;
         t_bool eight_bit_in;
@@ -136,6 +141,12 @@ typedef struct t_MState
         unsigned char * inBuffer;
         uint inSize; // Number of bytes in inBuffer
         uint inUsed; // Number of consumed bytes in buffer
+
+
+        // WTX buffer
+        unsigned char * out_buffer;
+        size_t out_buffer_use;
+        size_t out_buffer_size;
 
 
         // Dialout hooks

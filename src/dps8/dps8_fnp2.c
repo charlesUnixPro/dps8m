@@ -681,6 +681,9 @@ static inline bool processInputCharacter (struct t_line * linep, unsigned char k
         //sim_printf ("was CR %d\n", linep->was_CR);
       }
 
+    // Reset polite countdown timer (sys_poll_interval is in milliseconds)
+    linep->polite_time = (POLITE_TIME * 1000) / sys_opts.sys_poll_interval;
+
 //sim_printf ("%03o %c\n", kar, isgraph (kar) ? kar : '.');
     if (linep->service == service_login)
       {
@@ -1234,18 +1237,31 @@ void fnpProcessEvent (void)
 
     fnpProcessBuffers ();
 
-    // Look for posted requests
     uint numunits = (uint) fnp_dev.numunits;
+
+    // Update countdown timers
+    //   This is done separately from the loop below as there is not
+    //   a requirement for an availible mailbox.
+
     for (uint fnp_unit_idx = 0; fnp_unit_idx < numunits; fnp_unit_idx ++)
       {
         if (! fnpData.fnpUnitData[fnp_unit_idx].fnpIsRunning)
           continue;
-        int mbx = findMbx (fnp_unit_idx);
-        if (mbx == -1)
-          continue;
         for (int lineno = 0; lineno < MAX_LINES; lineno ++)
           {
-            struct t_line * linep = & fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno];
+            struct t_line * linep =
+              & fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno];
+
+
+            if (linep->polite_time)
+              linep->polite_time --;
+
+            if (linep->send_output > 1)
+                linep->send_output --;
+
+            if (linep->accept_input > 1)
+                linep->accept_input --;
+
 
 #ifdef DISC_DELAY
             // Disconnect pending?
@@ -1264,15 +1280,47 @@ void fnpProcessEvent (void)
                   }
               }
 #endif
+
+            // WTX data queued?
+            if (linep->out_buffer_use)
+              {
+                if (linep->line_client && linep->line_client->data)
+                  {
+                    if (! (linep->polite && // polite mode
+                           linep->nPos && // data in the input buffer
+                           (! linep->breakAll) && // line mode
+                           linep->service == service_login && 
+                           linep->polite_time)) // countdown timer running
+                      {
+                        uvClientData * p = linep->line_client->data;
+                        (* p->write_cb) (linep->line_client,
+                          linep->out_buffer, (ssize_t) linep->out_buffer_use);
+                        linep->out_buffer_use = 0;
+                      }
+                  }
+              }
+          } // for lineno
+      } // for fnp_unit_index
+
+
+
+    // Look for posted requests
+    for (uint fnp_unit_idx = 0; fnp_unit_idx < numunits; fnp_unit_idx ++)
+      {
+        if (! fnpData.fnpUnitData[fnp_unit_idx].fnpIsRunning)
+          continue;
+        int mbx = findMbx (fnp_unit_idx);
+        if (mbx == -1)
+          continue;
+        for (int lineno = 0; lineno < MAX_LINES; lineno ++)
+          {
+            struct t_line * linep = & fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno];
+
             // Need to send a 'send_output' command to CS?
 
-            bool do_send_output = linep->send_output == 1;
-
-            if (linep -> send_output > 0)
-                linep->send_output --;
-
-            if (do_send_output) 
+            if (linep->send_output == 1) 
               {
+                linep->send_output = 0;
                 fnp_rcd_send_output ((uint)mbx, (int) fnp_unit_idx, lineno);
               }
 
@@ -1344,67 +1392,34 @@ void fnpProcessEvent (void)
 
             // Need to send an 'accept_input' or 'input_in_mailbox' command to CS?
 
-            else if (linep->accept_input && ! linep->waitForMbxDone)
+            else if (linep->accept_input == 1 && ! linep->waitForMbxDone)
               {
-                if (linep->accept_input == 1)
+                linep->accept_input = 0;
+                if (linep->nPos == 0) 
+                  { 
+                    sim_printf ("dropping nPos of 0");
+                  }
+                else
                   {
-                    if (linep->nPos == 0) 
-                      { 
-                        sim_printf ("dropping nPos of 0");
-                      }
-                    else
-                      {
-                        //sim_printf ("\n nPos %d\n", linep->nPos);
-#if 0
-{
-  sim_printf ("\n nPos %d:", linep->nPos);
-  for (int i = 0; i < linep->nPos; i ++)
-     if (isgraph (linep->buffer [i]))
-      sim_printf ("%c", linep->buffer [i]);
-     else
-      sim_printf ("\\%03o", linep->buffer [i]);
-  //for (unsigned char * p = linep->buffer; *p; p ++)
-     //if (isgraph (*p))
-      //sim_printf ("%c", *p);
-     //else
-      //sim_printf ("\\%03o", *p);
-   sim_printf ("\r\n");
-}
-#endif
+
 // There is a bufferful of data that needs to be sent to the CS.
 // If the buffer has < 101 characters, use the 'input_in_mailbox'
 // command; otherwise use the 'accept_input/input_accepted'
 // sequence.
 
-#if 0
-                        fnp_rcd_accept_input (mbx, (int) fnp_unit_idx, lineno);
-                        //linep->input_break = false;
+                    if (linep->force_accept_input || linep->nPos > 100)
+                      {
+                        fnp_rcd_accept_input ((uint)mbx,
+                          (int) fnp_unit_idx, lineno);
                         linep->input_reply_pending = true;
-                        // accept_input cleared below
-#else
-                        if (linep->force_accept_input || linep->nPos > 100)
-                          {
-                            fnp_rcd_accept_input ((uint)mbx, (int) fnp_unit_idx, lineno);
-#ifdef FNPDBG
-sim_printf ("accept_input\n");
-#endif
-                            //linep->input_break = false;
-                            linep->input_reply_pending = true;
-                            // accept_input cleared below
-                          }
-                        else
-                          {
-                            fnp_rcd_input_in_mailbox ((uint)mbx, (int) fnp_unit_idx, lineno);
-#ifdef FNPDBG
-sim_printf ("input_in_mailbox\n");
-#endif
-                            linep->nPos = 0;
-                            // accept_input cleared below
-                          }
-#endif
+                      }
+                    else
+                      {
+                        fnp_rcd_input_in_mailbox ((uint)mbx,
+                          (int) fnp_unit_idx, lineno);
+                        linep->nPos = 0;
                       }
                   }
-                linep->accept_input --;
               }
 
             else if (linep->sendLineStatus)
@@ -1415,6 +1430,8 @@ sim_printf ("input_in_mailbox\n");
 
             else
               {
+                // 'continue' here because we did not consume the mailbox
+                // and should skip over the findMbx below. A minor optimization.
                 continue;
               }
 
@@ -1423,9 +1440,9 @@ sim_printf ("input_in_mailbox\n");
 
             mbx = findMbx (fnp_unit_idx);
             if (mbx == -1)
-              goto nombx;
+              break; // out of lineno loop; advance to next FNP which has
+                     // it's own set of mailboxes
           } // for lineno
-nombx:;
       } // for fnp_unit_idx
 
 #ifdef TUN
