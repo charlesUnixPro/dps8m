@@ -516,7 +516,7 @@ memset (echoTable, 0, sizeof (echoTable));
                       linep->echnego[offset++] = !! getbits36_1 (w, j + 18);
                   }
               }
-#if 1
+#if 0
             sim_printf ("addr %o echoTableLen %d\n", data_addr, echoTableLen);
             for (int i = 0; i < 256; i += 8)
               {
