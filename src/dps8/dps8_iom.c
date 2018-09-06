@@ -2669,6 +2669,8 @@ static t_stat iomShowUnits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val
 
 static t_stat iomSetUnits (UNUSED UNIT * uptr, UNUSED int value, const char * cptr, UNUSED void * desc)
   {
+    if (! cptr)
+      return SCPE_ARG;
     int n = atoi (cptr);
     if (n < 1 || n > N_IOM_UNITS_MAX)
       return SCPE_ARG;

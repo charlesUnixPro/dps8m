@@ -1942,6 +1942,8 @@ static t_stat fnpShowNUnits (UNUSED FILE * st, UNUSED UNIT * uptr,
 static t_stat fnpSetNUnits (UNUSED UNIT * uptr, UNUSED int32 value, 
                              char * cptr, UNUSED void * desc)
   {
+    if (! cptr)
+      return SCPE_ARG;
     int n = atoi (cptr);
     if (n < 1 || n > N_FNP_UNITS_MAX)
       return SCPE_ARG;
@@ -1954,6 +1956,8 @@ static t_stat fnpSetNUnits (UNUSED UNIT * uptr, UNUSED int32 value,
 
 static t_stat fnpAttach (UNIT * uptr, char * cptr)
   {
+    if (! cptr)
+      return SCPE_ARG;
     int unitno = (int) FNP_UNIT_IDX (uptr);
 
     t_stat ret;

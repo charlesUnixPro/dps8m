@@ -347,6 +347,8 @@ static MTAB mux_mod[] =
 
 static t_stat mux_attach(UNIT *unitp, char *cptr)
 {
+    if (! cptr)
+      return SCPE_ARG;
 //    int muxU = muxWhatUnitAttached();
 //    if (muxU != -1)
 //        return SCPE_ALATT;  // a mux unit is already attached. Only can have 1 MUX unix per instance of simh

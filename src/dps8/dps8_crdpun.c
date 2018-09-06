@@ -605,6 +605,8 @@ static t_stat crdpun_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED i
 
 static t_stat crdpun_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, const char * cptr, UNUSED void * desc)
   {
+    if (! cptr)
+      return SCPE_ARG;
     int n = atoi (cptr);
     if (n < 1 || n > N_CRDPUN_UNITS_MAX)
       return SCPE_ARG;

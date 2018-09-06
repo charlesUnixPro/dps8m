@@ -270,6 +270,8 @@ int opconAutoinput (int32 flag, const char *  cptr)
   {
     if (! flag)
       {
+        if (! cptr)
+          return SCPE_ARG;
         unsigned char * new = (unsigned char *) strdupesc (cptr);
         if (console_state . auto_input)
           {
@@ -1089,6 +1091,8 @@ static t_stat opcon_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED in
 
 static t_stat opcon_set_nunits (UNUSED UNIT * uptr, int32 UNUSED value, const char * cptr, UNUSED void * desc)
   {
+    if (! cptr)
+      return SCPE_ARG;
     int n = atoi (cptr);
     if (n < 1 || n > N_OPCON_UNITS_MAX)
       return SCPE_ARG;

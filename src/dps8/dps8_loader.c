@@ -1402,6 +1402,8 @@ static t_stat sim_dump (FILE *fileref, UNUSED const char * cptr, UNUSED const ch
 // This is part of the simh interface
 t_stat sim_load (FILE *fileref, const char *cptr, const char *fnam, int flag)
 {
+    if (! cptr)
+      return SCPE_ARG;
     if (flag)
         return sim_dump (fileref, cptr, fnam, flag);
       
