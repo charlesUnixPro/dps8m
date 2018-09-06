@@ -1017,6 +1017,32 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
           return;
         }
 #endif
+
+
+// firewall
+
+    // Default is accept
+    bool accept = true;
+    uint32_t ip_addr = (uint32_t) ((oct1 << 24) | (oct2 << 16) | (oct3 << 8) | oct4);
+    uint this_line = encodeline (fnpno, lineno);
+    for (uint i = 0; i < n_fw_entries; i ++)
+      {
+        struct fw_entry_s * p = fw_entries + i;
+        if (this_line < p->line_0 || this_line > p->line_1)
+          continue;
+        if ((ip_addr & p->cidr_mask) != (p->ipaddr & p->cidr_mask))
+          continue;
+        accept = p->accept;
+        break;
+      }
+
+    if (! accept)
+      {
+        sim_printf ("Dialout %c.d%03d denied\r\n", fnpno + 'a', lineno);
+        linep->acu_dial_failure = true;
+        return;
+      }
+
     char ipaddr [256];
     sprintf (ipaddr, "%d.%d.%d.%d", oct1, oct2, oct3, oct4);
     sim_printf ("calling %s:%d\n", ipaddr,port);

@@ -309,6 +309,18 @@ extern const unsigned char e2a [256];
 // addr_map [stn_no] == selDevChar
 extern const unsigned char addr_map [ADDR_MAP_ENTRIES];
 
+#define N_FW_ENTRIES 1024
+extern int n_fw_entries;
+struct fw_entry_s
+  {
+    uint line_0, line_1; // range of lines
+    uint32_t ipaddr;
+    uint cidr;
+    uint32_t cidr_mask;
+    bool accept;
+  };
+extern struct fw_entry_s fw_entries [N_FW_ENTRIES];
+
 void fnpInit(void);
 int lookupFnpsIomUnitNumber (int fnpUnitNum);
 int lookupFnpLink (int fnpUnitNum);
