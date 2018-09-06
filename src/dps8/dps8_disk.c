@@ -1598,6 +1598,8 @@ static t_stat ipc_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr,
 static t_stat ipc_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value,
                               const char * cptr, UNUSED void * desc)
   {
+    if (! cptr)
+      return SCPE_ARG;
     int n = atoi (cptr);
     if (n < 0 || n > N_DSK_UNITS_MAX)
       return SCPE_ARG;
@@ -1721,6 +1723,8 @@ static t_stat msp_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr,
 static t_stat msp_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value,
                               const char * cptr, UNUSED void * desc)
   {
+    if (! cptr)
+      return SCPE_ARG;
     int n = atoi (cptr);
     if (n < 0 || n > N_DSK_UNITS_MAX)
       return SCPE_ARG;

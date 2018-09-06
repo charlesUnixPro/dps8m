@@ -1514,6 +1514,8 @@ static t_stat fnpShowService (UNUSED FILE * st, UNIT * uptr,
 static t_stat fnpSetService (UNIT * uptr, UNUSED int32 value,
                              const char * cptr, UNUSED void * desc)
   {
+    if (! cptr)
+      return SCPE_ARG;
     long devnum = FNP_UNIT_IDX (uptr);
     if (devnum < 0 || devnum >= N_FNP_UNITS_MAX)
       return SCPE_ARG;
