@@ -139,8 +139,8 @@
 // the dialout line HSLA, and if the Telnet flag is set, the Telnet processor
 // is initialized. The TCP connect is initiated and the procedure returns.
 //
-// When the connection succeeds or times out, the 'on_do_connect()' callback 
-// is called. on_do_connect retrieves the 'uvClientData'. If the connection
+// When the connection succeeds or times out, the 'on_dialout_connect()' callback 
+// is called. on_dialout_connect retrieves the 'uvClientData'. If the connection
 // succeeded, the connection data field is set to the 'uvClientData'; read is
 // enabled on the connection, and the 'accept_new_terminal' flag is set which
 // will cause an 'accept_new_terminal' command to be send to Multics.
@@ -912,14 +912,14 @@ void fnpuvProcessEvent (void)
 // dialout line connection callback
 //
 
-static void on_do_connect (uv_connect_t * server, int status)
+static void on_dialout_connect (uv_connect_t * server, int status)
   {
     sim_printf ("[FNP emulation: dialout connect]\n");
     uvClientData * p = (uvClientData *) server->handle->data;
     // If data is NULL, assume that the line has already been torn down.
     if (! p)
       {
-         sim_printf ("[FNP emulation note: on_do_connect called with data == NULL]\n");
+         sim_printf ("[FNP emulation note: on_dialout_connect called with data == NULL]\n");
          return;
       }
     struct t_line * linep = & fnpData.fnpUnitData[p->fnpno].MState.line[p->lineno];
@@ -1038,6 +1038,9 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
     p->read_cb = fnpuv_associated_readcb;
     p->nPos = 0;
     p->ttype = NULL;
+    p->fnpno = fnpno;
+    p->lineno = lineno;
+    linep->line_client->data = p;
 
     if (flags & 1)
       {
@@ -1055,12 +1058,8 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
         p->write_actual_cb = fnpuv_start_write_actual;
         p->telnetp = NULL; // Mark this line as 'not a telnet connection'
       }
-    p->fnpno = fnpno;
-    p->lineno = lineno;
 
-    linep->line_client->data = p;
-
-    uv_tcp_connect (& linep->doConnect, linep->line_client, (const struct sockaddr *) & dest, on_do_connect);
+    uv_tcp_connect (& linep->doConnect, linep->line_client, (const struct sockaddr *) & dest, on_dialout_connect);
   }
 
 #if 0
