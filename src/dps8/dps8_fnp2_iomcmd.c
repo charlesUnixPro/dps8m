@@ -87,7 +87,7 @@ static inline void l_putbits36_1 (vol word36 * x, uint p, word1 val)
 
 struct decoded_t
   {
-    uint devUnitIdx;
+    uint iom_unit_idx;
     uint op_code;
     uint slot_no;
     uint iom_unit;
@@ -211,7 +211,7 @@ static int wcd (struct decoded_t *decoded_p)
           {
             sim_debug (DBG_TRACE, & fnp_dev, "[%u]    dial out\n", decoded_p->slot_no);
             //sim_printf ("XXX dial_out %d %012"PRIo64" %012"PRIo64" %012"PRIo64"", decoded_p->slot_no, command_data0, command_data1, command_data2);
-            fnpuv_dial_out (decoded_p->devUnitIdx, decoded_p->slot_no, command_data[0], command_data[1], command_data[2]);
+            fnpuv_dial_out (decoded_p->iom_unit_idx, decoded_p->slot_no, command_data[0], command_data[1], command_data[2]);
           }
           break;
 
@@ -296,7 +296,7 @@ static int wcd (struct decoded_t *decoded_p)
                     fnpData.ibm3270ctlr[ASSUME0].pollCtlrChar = (unsigned char) (c1 & 0xff);
                     fnpData.ibm3270ctlr[ASSUME0].pollDevChar = (unsigned char) (c3 & 0xff);
                     fnpData.
-                      fnpUnitData[decoded_p->devUnitIdx].
+                      fnpUnitData[decoded_p->iom_unit_idx].
                         MState.
                           line[decoded_p->slot_no].
                             line_client = NULL;
@@ -332,7 +332,7 @@ static int wcd (struct decoded_t *decoded_p)
                     if (fnpData.ibm3270ctlr[ASSUME0].selDevChar == 127)
                       {
                         fnpData.
-                          fnpUnitData[decoded_p->devUnitIdx].
+                          fnpUnitData[decoded_p->iom_unit_idx].
                             MState.
                               line[decoded_p->slot_no].
                                 line_client = NULL;
@@ -352,7 +352,7 @@ static int wcd (struct decoded_t *decoded_p)
                         break;
                       }
                     fnpData.
-                      fnpUnitData[decoded_p->devUnitIdx].
+                      fnpUnitData[decoded_p->iom_unit_idx].
                         MState.
                           line[decoded_p->slot_no].
                             line_client = 
@@ -678,7 +678,7 @@ memset (echoTable, 0, sizeof (echoTable));
                 case 16: // Listen
                   {
                     sim_debug (DBG_TRACE, & fnp_dev, "[%u]        alter_parameters listen %u\n", decoded_p->slot_no, flag);
-                    //sim_printf ("fnp listen %p %d.%d %d\n", linep->line_client, decoded_p->devUnitIdx,decoded_p->slot_no, flag);
+                    //sim_printf ("fnp listen %p %d.%d %d\n", linep->line_client, decoded_p->iom_unit_idx,decoded_p->slot_no, flag);
                     uint bufsz = getbits36_18 (command_data[0], 18);
                     linep->listen = !! flag;
                     linep->inputBufferSize = bufsz;
@@ -694,7 +694,7 @@ memset (echoTable, 0, sizeof (echoTable));
                             (unsigned char *) "Multics is no longer listening to this line\r\n");
                       }
                     if (linep->service == service_slave && ! linep -> line_client)
-                      fnpuv_open_slave (decoded_p->devUnitIdx, decoded_p->slot_no);
+                      fnpuv_open_slave (decoded_p->iom_unit_idx, decoded_p->slot_no);
                   }
                   break;
 
@@ -1146,7 +1146,7 @@ sim_printf ("']\n");
 static int wtx (struct decoded_t *decoded_p)
   {
     sim_debug (DBG_TRACE, & fnp_dev, "[%u]wtx op_code %u 0%o\n", decoded_p->slot_no, decoded_p->op_code, decoded_p->op_code);
-//sim_printf ("wtx op_code %o (%d.) %c.h%03d\n", decoded_p->op_code, decoded_p->op_code, decoded_p->devUnitIdx+'a', decoded_p->slot_no);
+//sim_printf ("wtx op_code %o (%d.) %c.h%03d\n", decoded_p->op_code, decoded_p->op_code, decoded_p->iom_unit_idx+'a', decoded_p->slot_no);
     if (decoded_p->op_code != 012 && decoded_p->op_code != 014)
       {
         sim_debug (DBG_TRACE, & fnp_dev, "[%u]     unimplemented opcode\n", decoded_p->slot_no);
@@ -1541,7 +1541,7 @@ sim_printf ("Multics marked cell %d (mbx %d) as unused; was %o\n", decoded_p->ce
         decoded_p->fudp -> fnpMBXinUse [mbx] = false;
         if (decoded_p->fudp->lineWaiting[mbx])
           {
-            struct t_line * linep = & fnpData.fnpUnitData[decoded_p->devUnitIdx].MState.line[decoded_p->fudp->fnpMBXlineno[mbx]];
+            struct t_line * linep = & fnpData.fnpUnitData[decoded_p->iom_unit_idx].MState.line[decoded_p->fudp->fnpMBXlineno[mbx]];
 #ifdef FNPDBG
 sim_printf ("clearing wait; was %d\n", linep->waitForMbxDone);
 #endif
@@ -1560,8 +1560,8 @@ static int interruptL66 (uint iomUnitIdx, uint chan)
     struct decoded_t *decoded_p = &decoded;
     decoded_p->iom_unit = iomUnitIdx;
     decoded_p->chan_num = chan;
-    decoded_p->devUnitIdx = get_ctlr_idx (iomUnitIdx, chan);
-    decoded_p->fudp = & fnpData.fnpUnitData [decoded_p->devUnitIdx];
+    decoded_p->iom_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
+    decoded_p->fudp = & fnpData.fnpUnitData [decoded_p->iom_unit_idx];
 #ifdef SCUMEM
     word24 offset;
     int scuUnitNum =  query_IOM_SCU_bank_map (iomUnitIdx, decoded_p->fudp->mailboxAddress, & offset);
@@ -1633,22 +1633,74 @@ sim_printf ("CS interrupt %u\n", decoded_p->cell);
     return 0;
   }
 
-static void fnpcmdBootload (uint devUnitIdx)
+static word18 chan_memory (uint address18, uint address, uint iom_unit_idx, uint chan)
+  {
+    uint waddress = address18 / 2;
+    word36 word;
+    iom_direct_data_service (iom_unit_idx, chan, address + 1 + waddress,
+      & word, direct_load);
+    if (address18 & 1)
+      return word & MASK18;
+    return (word >> 18) & MASK18;
+  }
+
+static void debug_mem (uint address18, char * label, uint address,
+   uint iom_unit_idx, uint chan)
+  {
+    word18 w18 = chan_memory (address18, address, iom_unit_idx, chan);
+    sim_printf ("%6o: %06o %s\r\n", address18, w18, label);
+  }
+
+/*
+static void foo (uint address, uint iom_unit_idx, uint chan)
+  {
+    word36 word;
+    iom_direct_data_service (iom_unit_idx, chan, address, & word, direct_load);
+    sim_printf ("%06o: %012llo\r\n", address, word);
+  }
+*/
+
+// At bootload, the bootstrap code is mapped into the channel memory.
+// The foo shows:
+//
+//  010000: 100000000517
+//  010001: 100002060002
+//  010002: 000000000070
+//
+// gicb.list
+//
+//  00000 100002  70        vfd     3/w.2,15/*+2    bootload list icw
+//  00001 060002  71        vfd     3/0,1/1,1/1,13/2
+//  00002 0 00000 72        zero
+//  00003 000070  73        vfd     18/diadis       disconnect dcw
+//
+//
+//  gicb starts at 010001; packed two 18 bit words to a 36 bit word.
+//
+
+
+static void fnpcmdBootload (uint iom_unit_idx, uint chan, uint address)
   {
     sim_printf("Received BOOTLOAD command...\n");
-    fnpData.fnpUnitData[devUnitIdx].MState.accept_calls = false;
+sim_printf ("iom %u chan %u address %u\r\n", iom_unit_idx, chan, address);
+    word36 icw;
+    iom_direct_data_service (iom_unit_idx, chan, address,
+      & icw, direct_load);
+sim_printf ("icw %012llo\r\n", icw);
+//debug_mem (0654, ".crnhs", iom_unit_idx, chan, address);
+    fnpData.fnpUnitData[iom_unit_idx].MState.accept_calls = false;
     for (uint lineno = 0; lineno < MAX_LINES; lineno ++)
       {
-        fnpData.fnpUnitData[devUnitIdx].MState.line [lineno] . listen = false;
-        if (fnpData.fnpUnitData[devUnitIdx].MState.line [lineno].line_client)
+        fnpData.fnpUnitData[iom_unit_idx].MState.line [lineno] . listen = false;
+        if (fnpData.fnpUnitData[iom_unit_idx].MState.line [lineno].line_client)
           {
-            fnpuv_start_writestr (fnpData.fnpUnitData[devUnitIdx].MState.line [lineno].line_client,
+            fnpuv_start_writestr (fnpData.fnpUnitData[iom_unit_idx].MState.line [lineno].line_client,
               (unsigned char *) "The FNP has been restarted\r\n");
           }
-        if (fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].service == service_3270)
+        if (fnpData.fnpUnitData[iom_unit_idx].MState.line[lineno].service == service_3270)
           {
 #ifdef FNP2_DEBUG
-sim_printf ("3270 controller found at unit %u line %u\r\n", devUnitIdx, lineno);
+sim_printf ("3270 controller found at unit %u line %u\r\n", iom_unit_idx, lineno);
 #endif
 // XXX assuming only single controller
             if (fnpData.ibm3270ctlr[ASSUME0].configured)
@@ -1659,12 +1711,12 @@ sim_printf ("3270 controller found at unit %u line %u\r\n", devUnitIdx, lineno);
               {
                 memset (& fnpData.ibm3270ctlr[ASSUME0], 0, sizeof (struct ibm3270ctlr_s));
                 fnpData.ibm3270ctlr[ASSUME0].configured = true;
-                fnpData.ibm3270ctlr[ASSUME0].fnpno = devUnitIdx;
+                fnpData.ibm3270ctlr[ASSUME0].fnpno = iom_unit_idx;
                 fnpData.ibm3270ctlr[ASSUME0].lineno = lineno;
                 
                 // 3270 controller connects immediately
-                fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].lineType  = 7 /* LINE_BSC */;
-                fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].accept_new_terminal = true;
+                fnpData.fnpUnitData[iom_unit_idx].MState.line[lineno].lineType  = 7 /* LINE_BSC */;
+                fnpData.fnpUnitData[iom_unit_idx].MState.line[lineno].accept_new_terminal = true;
               }
           }
       }
@@ -1794,6 +1846,8 @@ static void processMBX (uint iomUnitIdx, uint chan)
 //
 
     uint command = getbits36_6 (dia_pcw, 30);
+    uint address = getbits36_18 (dia_pcw, 0);
+
     word36 bootloadStatus = 0;
 
     if (command == 000) // reset
@@ -1807,7 +1861,7 @@ static void processMBX (uint iomUnitIdx, uint chan)
 #if defined(THREADZ) || defined(LOCKLESS)
         lock_libuv ();
 #endif
-        fnpcmdBootload (fnp_unit_idx);
+        fnpcmdBootload (fnp_unit_idx, chan, address);
 #if defined(THREADZ) || defined(LOCKLESS)
         unlock_libuv ();
 #endif
