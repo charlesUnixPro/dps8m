@@ -1633,7 +1633,7 @@ sim_printf ("CS interrupt %u\n", decoded_p->cell);
     return 0;
   }
 
-static word18 chan_memory (uint address18, uint address, uint iom_unit_idx, uint chan)
+static word18 get_bootload_word (uint address18, uint address, uint iom_unit_idx, uint chan)
   {
     uint waddress = address18 / 2;
     word36 word;
@@ -1647,7 +1647,7 @@ static word18 chan_memory (uint address18, uint address, uint iom_unit_idx, uint
 static void debug_mem (uint address18, char * label, uint address,
    uint iom_unit_idx, uint chan)
   {
-    word18 w18 = chan_memory (address18, address, iom_unit_idx, chan);
+    word18 w18 = get_bootload_word (address18, address, iom_unit_idx, chan);
     sim_printf ("%6o: %06o %s\r\n", address18, w18, label);
   }
 
@@ -1679,28 +1679,75 @@ static void foo (uint address, uint iom_unit_idx, uint chan)
 //
 
 
-static void fnpcmdBootload (uint iom_unit_idx, uint chan, uint address)
+// dcl  1 boot_seg aligned based (boot_segp),     /* segment to hold FNP bootload image */
+//        2 boot_dcw like icw,                    /* used by DIA during bootload */
+//        2 gicb (gicb_len) bit (36),             /* the boot program */
+//        2 fnp_prog (prog_len) bit (36);         /* actual program -- MCS */
+//
+// gicb_len is in 36-bit words
+//
+
+
+static void fnpcmdBootload (uint iom_unit_idx, uint fnp_unit_idx, uint chan, uint address)
   {
     sim_printf("Received BOOTLOAD command...\n");
-sim_printf ("iom %u chan %u address %u\r\n", iom_unit_idx, chan, address);
+
+    // 'address' is the I/O xfer address from the PCW; it points to the
+    // bootload pages in the channel memory map; should be 010000.
+    // The first word in the bootload pages is the 'boot dcw' (aka ICW),
+    // which is used by the FNP's IOM to copy the gicb into FNP memory.
     word36 icw;
     iom_direct_data_service (iom_unit_idx, chan, address,
       & icw, direct_load);
-sim_printf ("icw %012llo\r\n", icw);
-//debug_mem (0654, ".crnhs", iom_unit_idx, chan, address);
+
+    // Get the length of the GICB from the ICW
+    word18 gicb_len = (word18) (icw & MASK18);
+
+    // The start of the core image is the GICB length plus one word for the
+    // ICW, rounded up to 64 words.
+    word18 core_image_addr = (gicb_len + 1 + 63) & 0777700;
+
+sim_printf ("core_image_addr %o\r\n", core_image_addr);
+
+//debug_mem (core_image_addr + 0654, ".crnhs", iom_unit_idx, chan, address);
+
+// site_mcs.list
+// Component  Modnum  Start  Length  Date Compiled   Directory
+
+// init            9  51056    5324  02/03/86  925  >spec>inst>1063>o
+//       01472  0 00000    0          282 setclk ind     **
+//       01473  0 54 025     1520     283        sti     scindc-*        save io select register
+//       01474  073  077   0          284        sel     tmch            select clock channel
+//       01475  0 60 017     1514     285        cioc    scoff-*         turn clock off
+
+// ds >system_library_unbundled>site_mcs 0 100
+// 000000 000000027204 000000000000 000000000000 000000000000
+// 000004 000000000000 000000000000 000000000000 000000000000
+// ======
+// 000074 000000000000 000000000000 000000000000 000000000000
+
+debug_mem (core_image_addr * 2 + 0, "site_mcs+0", iom_unit_idx, chan, address);
+debug_mem (core_image_addr * 2 + 1, "site_mcs+1", iom_unit_idx, chan, address);
+debug_mem (core_image_addr * 2 + 2, "site_mcs+2", iom_unit_idx, chan, address);
+debug_mem (core_image_addr * 2 + 3, "site_mcs+3", iom_unit_idx, chan, address);
+
+
+
+
+
     fnpData.fnpUnitData[iom_unit_idx].MState.accept_calls = false;
     for (uint lineno = 0; lineno < MAX_LINES; lineno ++)
       {
-        fnpData.fnpUnitData[iom_unit_idx].MState.line [lineno] . listen = false;
-        if (fnpData.fnpUnitData[iom_unit_idx].MState.line [lineno].line_client)
+        fnpData.fnpUnitData[fnp_unit_idx].MState.line [lineno] . listen = false;
+        if (fnpData.fnpUnitData[fnp_unit_idx].MState.line [lineno].line_client)
           {
-            fnpuv_start_writestr (fnpData.fnpUnitData[iom_unit_idx].MState.line [lineno].line_client,
+            fnpuv_start_writestr (fnpData.fnpUnitData[fnp_unit_idx].MState.line [lineno].line_client,
               (unsigned char *) "The FNP has been restarted\r\n");
           }
-        if (fnpData.fnpUnitData[iom_unit_idx].MState.line[lineno].service == service_3270)
+        if (fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].service == service_3270)
           {
 #ifdef FNP2_DEBUG
-sim_printf ("3270 controller found at unit %u line %u\r\n", iom_unit_idx, lineno);
+sim_printf ("3270 controller found at unit %u line %u\r\n", fnp_unit_idx, lineno);
 #endif
 // XXX assuming only single controller
             if (fnpData.ibm3270ctlr[ASSUME0].configured)
@@ -1711,12 +1758,12 @@ sim_printf ("3270 controller found at unit %u line %u\r\n", iom_unit_idx, lineno
               {
                 memset (& fnpData.ibm3270ctlr[ASSUME0], 0, sizeof (struct ibm3270ctlr_s));
                 fnpData.ibm3270ctlr[ASSUME0].configured = true;
-                fnpData.ibm3270ctlr[ASSUME0].fnpno = iom_unit_idx;
+                fnpData.ibm3270ctlr[ASSUME0].fnpno = fnp_unit_idx;
                 fnpData.ibm3270ctlr[ASSUME0].lineno = lineno;
                 
                 // 3270 controller connects immediately
-                fnpData.fnpUnitData[iom_unit_idx].MState.line[lineno].lineType  = 7 /* LINE_BSC */;
-                fnpData.fnpUnitData[iom_unit_idx].MState.line[lineno].accept_new_terminal = true;
+                fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].lineType  = 7 /* LINE_BSC */;
+                fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].accept_new_terminal = true;
               }
           }
       }
@@ -1861,7 +1908,7 @@ static void processMBX (uint iomUnitIdx, uint chan)
 #if defined(THREADZ) || defined(LOCKLESS)
         lock_libuv ();
 #endif
-        fnpcmdBootload (fnp_unit_idx, chan, address);
+        fnpcmdBootload (iomUnitIdx, fnp_unit_idx, chan, address);
 #if defined(THREADZ) || defined(LOCKLESS)
         unlock_libuv ();
 #endif
