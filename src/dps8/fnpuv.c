@@ -266,6 +266,10 @@ void fnpuv_associated_brk (uv_tcp_t * client)
     uint fnpno = p -> fnpno;
     uint lineno = p -> lineno;
     struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
+    // The break key forces an input buffer flush.
+    // XXX is this a race condition? Is it possible for processFnpMbx to see
+    // the line_break before the accept input?
+    linep->accept_input = 1;
     linep->line_break=true;
   }
 

@@ -1293,7 +1293,10 @@ void fnpProcessEvent (void)
 
             // Need to send a 'line_break' command to CS?
 
-            else if (linep -> line_break)
+            // Line_break forces an input flush; wait until the flush
+            // is done before signaling the break to avoid race condittions.
+
+            else if (linep->line_break  && (! linep->waitForMbxDone))
               {
                 fnp_rcd_line_break ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep -> line_break = false;
@@ -1370,7 +1373,10 @@ void fnpProcessEvent (void)
               {
                 if (linep->accept_input == 1)
                   {
-                    if (linep->nPos == 0) 
+                    // This check was added as part of 3270 support,
+                    // but breaks break key logic. Disabling until
+                    // a case can be made that the 3270 requires this.
+                    if (0 && linep->nPos == 0) 
                       { 
                         sim_printf ("dropping nPos of 0");
                       }
