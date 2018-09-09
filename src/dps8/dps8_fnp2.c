@@ -327,7 +327,7 @@ sim_printf ("notifyCS mbx %d\n", mbx);
     setTIMW (iom_unit_idx, chan_num, fudp->mailboxAddress, (int)(mbx + 8));
 
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]notifyCS %d %d\n", lineno, mbx, chan_num);
-    send_general_interrupt (iom_unit_idx, chan_num, imwTerminatePic);
+    //send_general_interrupt (iom_unit_idx, chan_num, imwTerminatePic);
   }
 
 static void fnp_rcd_ack_echnego_init (uint mbx, int fnp_unit_idx, int lineno)
@@ -1256,6 +1256,7 @@ void fnpProcessEvent (void)
         int mbx = findMbx (fnp_unit_idx);
         if (mbx == -1)
           continue;
+        bool need_intr = false;
         for (int lineno = 0; lineno < MAX_LINES; lineno ++)
           {
             struct t_line * linep = & fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno];
@@ -1287,6 +1288,7 @@ void fnpProcessEvent (void)
             if (do_send_output) 
               {
                 fnp_rcd_send_output ((uint)mbx, (int) fnp_unit_idx, lineno);
+                need_intr = true;
               }
 
             // Need to send a 'line_break' command to CS?
@@ -1295,6 +1297,7 @@ void fnpProcessEvent (void)
               {
                 fnp_rcd_line_break ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep -> line_break = false;
+                need_intr = true;
               }
 
             // Need to send an 'acu_dial_failure' command to CS?
@@ -1303,6 +1306,7 @@ void fnpProcessEvent (void)
               {
                 fnp_rcd_acu_dial_failure ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep->acu_dial_failure = false;
+                need_intr = true;
               }
 
             // Need to send an 'accept_new_terminal' command to CS?
@@ -1317,6 +1321,7 @@ void fnpProcessEvent (void)
               {
                 fnp_rcd_accept_new_terminal ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep->accept_new_terminal = false;
+                need_intr = true;
               }
 
             // Need to send an 'ack_echnego_init' command to CS?
@@ -1327,6 +1332,7 @@ void fnpProcessEvent (void)
                 linep -> ack_echnego_init = false;
                 //linep -> send_output = true;
                 linep -> send_output = SEND_OUTPUT_DELAY;
+                need_intr = true;
               }
 
             // Need to send an 'line_disconnected' command to CS?
@@ -1337,6 +1343,7 @@ void fnpProcessEvent (void)
                 fnp_rcd_line_disconnected ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep -> line_disconnected = 0;
                 linep -> listen = false;
+                need_intr = true;
               }
 #else
             else if (linep -> line_disconnected)
@@ -1344,6 +1351,7 @@ void fnpProcessEvent (void)
                 fnp_rcd_line_disconnected ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep -> line_disconnected = false;
                 linep -> listen = false;
+                need_intr = true;
               }
 #endif
 
@@ -1353,6 +1361,7 @@ void fnpProcessEvent (void)
               {
                 fnp_rcd_wru_timeout ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep -> wru_timeout = false;
+                need_intr = true;
               }
 
             // Need to send an 'accept_input' or 'input_in_mailbox' command to CS?
@@ -1404,6 +1413,7 @@ sim_printf ("accept_input\n");
                             //linep->input_break = false;
                             linep->input_reply_pending = true;
                             // accept_input cleared below
+                            need_intr = true;
                           }
                         else
                           {
@@ -1413,17 +1423,19 @@ sim_printf ("input_in_mailbox\n");
 #endif
                             linep->nPos = 0;
                             // accept_input cleared below
+                            need_intr = true;
                           }
 #endif
                       }
                   }
                 linep->accept_input --;
-              }
+              } // accept_input
 
             else if (linep->sendLineStatus)
               {
                 linep->sendLineStatus = false;
                 fnp_rcd_line_status ((uint)mbx, (int) fnp_unit_idx, lineno);
+                need_intr = true;
               }
 
             else
@@ -1436,9 +1448,17 @@ sim_printf ("input_in_mailbox\n");
 
             mbx = findMbx (fnp_unit_idx);
             if (mbx == -1)
-              goto nombx;
+              break;
           } // for lineno
-nombx:;
+
+        // If any of the mailboxes had a command posted.
+        if (need_intr)
+          {
+            uint ctlr_port_num = 0; // FNPs are single ported
+            uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
+            uint chan_num = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].chan_num;
+            send_general_interrupt (iom_unit_idx, chan_num, imwTerminatePic);
+          }
       } // for fnp_unit_idx
 
 #ifdef TUN
