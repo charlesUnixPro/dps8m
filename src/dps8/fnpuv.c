@@ -540,7 +540,7 @@ sim_printf ("\r\n");
         break;
     if (stn_no >= ADDR_MAP_ENTRIES)
       {
-        sim_printf ("fnpuv_start_write_3270_actual couldn't find selDevChar %02hhx\r\n", fnpData.ibm3270ctlr[ASSUME0].selDevChar);
+        sim_printf ("fnpuv_start_write_3270_actual couldn't find selDevChar %02"PRIx8"\r\n", fnpData.ibm3270ctlr[ASSUME0].selDevChar);
         return;
       }
     uv_tcp_t * stn_client = fnpData.ibm3270ctlr[ASSUME0].stations[stn_no].client;

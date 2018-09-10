@@ -3745,7 +3745,9 @@ static void dps8_init (void)
     iom_init ();
     disk_init ();
     mt_init ();
+#ifndef __MINGW64__
     sk_init ();
+#endif
     fnpInit ();
     console_init (); // must come after fnpInit due to libuv initiailization
     //mpc_init ();
@@ -4174,7 +4176,6 @@ DEVICE * sim_devices[] =
     & cpu_dev, // dev[0] is special to simh; it is the 'default device'
     & iom_dev,
     & tape_dev,
-    & skc_dev,
     & mtp_dev,
     & fnp_dev,
     & dsk_dev,
@@ -4190,6 +4191,7 @@ DEVICE * sim_devices[] =
     & prt_dev,
 #ifndef __MINGW64__
     & absi_dev,
+    & skc_dev,
 #endif
     NULL
   };

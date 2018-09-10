@@ -131,6 +131,7 @@ endif
 
 ifneq ($(CROSS),MINGW64)
 C_SRCS  = ./dps8_absi.c
+C_SRCS += ./dps8_socket_dev.c
 endif
 C_SRCS += ./dps8_addrmods.c 
 C_SRCS += ./dps8_append.c
@@ -158,7 +159,6 @@ C_SRCS += ./dps8_opcodetable.c
 C_SRCS += ./dps8_prt.c
 C_SRCS += ./dps8_scu.c
 C_SRCS += ./dps8_simh.c
-C_SRCS += ./dps8_socket_dev.c
 C_SRCS += ./dps8_sys.c
 C_SRCS += ./dps8_urp.c
 C_SRCS += ./dps8_utils.c
@@ -184,6 +184,7 @@ OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
 ifneq ($(CROSS),MINGW64)
 H_SRCS  = dps8_absi.h
+H_SRCS += dps8_socket_dev.h
 endif
 H_SRCS += dps8_addrmods.h
 H_SRCS += dps8_append.h
@@ -214,7 +215,6 @@ H_SRCS += dps8_math128.h
 H_SRCS += dps8_mt.h
 H_SRCS += dps8_opcodetable.h
 H_SRCS += dps8_prt.h
-H_SRCS += dps8_socket_dev.h
 H_SRCS += dps8_scu.h
 H_SRCS += dps8_simh.h
 H_SRCS += dps8_sys.h
