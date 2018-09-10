@@ -227,8 +227,10 @@ static char * default_base_system_script [] =
     "set rdr nunits=1",
     "set pun nunits=1",
     "set prt nunits=1",
+#ifndef __MINGW64__
     "set skc nunits=1",
     "set absi nunits=1",
+#endif
 
 #if 0
 #ifndef __MINGW64__
