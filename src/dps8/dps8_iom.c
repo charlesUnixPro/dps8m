@@ -2452,9 +2452,9 @@ static void iom_fault (uint iom_unit_idx, uint chan, UNUSED const char * who,
 
     word36 faultWord = 0;
     putbits36_9 (& faultWord, 9, (word9) chan);
-    putbits36_5 (& faultWord, 18, req);
+    putbits36_5 (& faultWord, 18, (word5) req);
     // IAC, bits 26..29
-    putbits36_6 (& faultWord, 30, signal);
+    putbits36_6 (& faultWord, 30, (word6) signal);
 
     uint chanloc = mbxLoc (iom_unit_idx, IOM_SYSTEM_FAULT_CHAN);
 
