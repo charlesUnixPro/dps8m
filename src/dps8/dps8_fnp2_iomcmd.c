@@ -586,6 +586,8 @@ static int wcd (struct decoded_t *decoded_p)
             sim_printf ("stop_negotiated_echo\r\n");
 #endif
             linep->echnego_on = false;
+            // Post a ack echnego stop to MCS
+            linep->ack_echnego_stop = true;
           }
           break;
 
@@ -607,8 +609,6 @@ static int wcd (struct decoded_t *decoded_p)
 
             // Post a ack echnego init to MCS
             linep->ack_echnego_init = true;
-            // Post a send output
-            linep->send_output = SEND_OUTPUT_DELAY;
           }
           break;
 

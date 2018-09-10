@@ -119,6 +119,7 @@ typedef struct t_MState
         bool line_disconnected;
 #endif
         bool ack_echnego_init;
+        bool ack_echnego_stop;
         bool acu_dial_failure;
         bool sendLineStatus;
         bool wru_timeout;

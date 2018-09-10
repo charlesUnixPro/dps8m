@@ -349,6 +349,25 @@ static void fnp_rcd_ack_echnego_init (uint mbx, int fnp_unit_idx, int lineno)
     notifyCS (mbx, fnp_unit_idx, lineno);
   }
 
+static void fnp_rcd_ack_echnego_stop (uint mbx, int fnp_unit_idx, int lineno)
+  {
+    sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd ack_echnego_stop\n", lineno);
+    struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
+    word24 fsmbx = fudp->mailboxAddress + FNP_SUB_MBXES + mbx*FNP_SUB_MBX_SIZE;
+
+    uint ctlr_port_num = 0; // FNPs are single ported
+    uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
+    uint chan_num = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].chan_num;
+
+    word36 data = 0;
+    l_putbits36_9 (& data, 9, 2); // cmd_data_len
+    l_putbits36_9 (& data, 18, 71); // op_code ack_echnego_stop
+    l_putbits36_9 (& data, 27, 1); // io_cmd rcd
+    iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+WORD2, & data, direct_store);
+
+    notifyCS (mbx, fnp_unit_idx, lineno);
+  }
+
 static void fnp_rcd_line_disconnected (uint mbx, int fnp_unit_idx, int lineno)
   {
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd line_disconnected\n", lineno);
@@ -1439,7 +1458,16 @@ void fnpProcessEvent (void)
               {
                 fnp_rcd_ack_echnego_init ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep -> ack_echnego_init = false;
-                //linep -> send_output = true;
+                linep -> send_output = SEND_OUTPUT_DELAY;
+                need_intr = true;
+              }
+
+            // Need to send an 'ack_echnego_stop' command to CS?
+
+            else if (linep -> ack_echnego_stop)
+              {
+                fnp_rcd_ack_echnego_stop ((uint)mbx, (int) fnp_unit_idx, lineno);
+                linep -> ack_echnego_stop = false;
                 linep -> send_output = SEND_OUTPUT_DELAY;
                 need_intr = true;
               }
