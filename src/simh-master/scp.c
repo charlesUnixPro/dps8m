@@ -3978,7 +3978,7 @@ else if ((gcmdp = find_ctab (set_glob_tab, gbuf))) {    /* global? */
     return gcmdp->action (gcmdp->arg, cptr);            /* do the rest */
     }
 else {
-    if (sim_dflt_dev->modifiers) {
+    if (sim_dflt_dev && sim_dflt_dev->modifiers) {
         if ((cvptr = strchr (gbuf, '=')))               /* = value? */
             *cvptr++ = 0;
         for (mptr = sim_dflt_dev->modifiers; mptr->mask != 0; mptr++) {
