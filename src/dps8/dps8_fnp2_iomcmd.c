@@ -1488,6 +1488,10 @@ static int interruptL66_FNP_to_CS (struct decoded_t *decoded_p)
                     // Prime the pump
                     //decoded_p->fudp->MState.line[decoded_p->slot_no].send_output = true;
                     decoded_p->fudp->MState.line[decoded_p->slot_no].send_output = SEND_OUTPUT_DELAY;
+// XXX XXX XXX XXX
+// For some reason the CS ack of accept_new_terminal is not being seen, causing the line to wedge.
+// Since a terminal accepted command always follows, clear the wedge here
+                    decoded_p->fudp->MState.line[decoded_p->slot_no].waitForMbxDone = false;
                   }
                   break;
 
@@ -1602,7 +1606,7 @@ sim_printf ("Multics marked cell %d (mbx %d) as unused; was %o\n", decoded_p->ce
         decoded_p->fudp -> fnpMBXinUse [mbx] = false;
         if (decoded_p->fudp->lineWaiting[mbx])
           {
-            struct t_line * linep = & fnpData.fnpUnitData[decoded_p->devUnitIdx].MState.line[decoded_p->fudp->fnpMBXlineno[mbx]];
+            struct t_line * linep = & decoded_p->fudp->MState.line[decoded_p->fudp->fnpMBXlineno[mbx]];
 #ifdef FNPDBG
 sim_printf ("clearing wait; was %d\n", linep->waitForMbxDone);
 #endif

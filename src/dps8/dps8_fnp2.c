@@ -326,8 +326,12 @@ sim_printf ("notifyCS mbx %d\n", mbx);
 
     setTIMW (iom_unit_idx, chan_num, fudp->mailboxAddress, (int)(mbx + 8));
 
+    fudp->lineWaiting [mbx] = true;
+    fudp->fnpMBXlineno [mbx] = lineno;
+    struct t_line * linep = & fudp->MState.line[lineno];
+    linep->waitForMbxDone=true;
+
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]notifyCS %d %d\n", lineno, mbx, chan_num);
-    //send_general_interrupt (iom_unit_idx, chan_num, imwTerminatePic);
   }
 
 static void fnp_rcd_ack_echnego_init (uint mbx, int fnp_unit_idx, int lineno)
@@ -455,10 +459,10 @@ sim_printf ("\n");
 // command_data is at mystery[25]?
 
     // temporary until the logic is in place XXX
-    int outputChainPresent = 0;
+    int output_chain_present = 0;
 
     data = 0;
-    l_putbits36_1 (& data, 16, (word1) outputChainPresent);
+    l_putbits36_1 (& data, 16, (word1) output_chain_present);
     l_putbits36_1 (& data, 17, linep->input_break ? 1 : 0);
     iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+INP_COMMAND_DATA, & data, direct_store);
 
@@ -470,9 +474,6 @@ sim_printf ("\n");
     sim_printf ("interrupting!\n"); 
 #endif
 
-    fudp->lineWaiting [mbx] = true;
-    fudp->fnpMBXlineno [mbx] = lineno;
-    linep->waitForMbxDone=true;
     notifyCS (mbx, fnp_unit_idx, lineno);
   }
 
@@ -488,7 +489,7 @@ static void fnp_rcd_line_status  (uint mbx, int fnp_unit_idx, int lineno)
 
     word36 data = 0;
     l_putbits36_9 (& data, 9, 2); // cmd_data_len
-    l_putbits36_9 (& data, 18, 0124); // op_code accept_input
+    l_putbits36_9 (& data, 18, 0124); // op_code line_status
     l_putbits36_9 (& data, 27, 1); // io_cmd rcd
     iom_direct_data_service (iom_unit_idx, chan_num, fsmbx+WORD2, & data, direct_store);
 
@@ -1403,6 +1404,11 @@ void fnpProcessEvent (void)
                   }
               }
 #endif
+
+            // Are we waiting for the previous command to complete?
+            if (linep->waitForMbxDone)
+              continue;
+
             // Need to send a 'send_output' command to CS?
 
             bool do_send_output = linep->send_output == 1;
@@ -1413,18 +1419,6 @@ void fnpProcessEvent (void)
             if (do_send_output) 
               {
                 fnp_rcd_send_output ((uint)mbx, (int) fnp_unit_idx, lineno);
-                need_intr = true;
-              }
-
-            // Need to send a 'line_break' command to CS?
-
-            // Line_break forces an input flush; wait until the flush
-            // is done before signaling the break to avoid race condittions.
-
-            else if (linep->line_break  && (! linep->waitForMbxDone))
-              {
-                fnp_rcd_line_break ((uint)mbx, (int) fnp_unit_idx, lineno);
-                linep -> line_break = false;
                 need_intr = true;
               }
 
@@ -1570,6 +1564,18 @@ sim_printf ("input_in_mailbox\n");
                   }
                 linep->accept_input --;
               } // accept_input
+
+            // Need to send a 'line_break' command to CS?
+            // This goes after the accept_input to that when BREAK occurs,
+            // first the input is flushed and then the break signal is sent.
+
+            else if (linep->line_break)
+              {
+                fnp_rcd_line_break ((uint)mbx, (int) fnp_unit_idx, lineno);
+                linep -> line_break = false;
+                need_intr = true;
+                linep -> send_output = SEND_OUTPUT_DELAY;
+              }
 
             else if (linep->sendLineStatus)
               {
