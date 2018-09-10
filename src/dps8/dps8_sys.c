@@ -183,27 +183,28 @@ static char * default_base_system_script [] =
 //
 // IOM A
 //  
-//  012 MTP0
-//  013 IPC0 port 0
-//  014 MSP0 port 0
-//  015 URP0
-//  016 URP1
-//  017 URP2
-//  020 FNPD
-//  021 FNPA
-//  022 FNPB
-//  023 FNPC
-//  024 FNPE
-//  025 FNPF
-//  026 FNPG
-//  027 FNPH
-//  032 ABSI0
-//  036 OPC0
+//  012 MTP0           tape drives
+//  013 IPC0 port 0    FIPS disk controller
+//  014 MSP0 port 0    disk controller
+//  015 URP0           card reader controller
+//  016 URP1           card punch controller
+//  017 URP2           printer controller
+//  020 FNPD           comm line controller
+//  021 FNPA           comm line controller
+//  022 FNPB           comm line controller
+//  023 FNPC           comm line controller
+//  024 FNPE           comm line controller
+//  025 FNPF           comm line controller
+//  026 FNPG           comm line controller
+//  027 FNPH           comm line controller
+//  032 ABSI0          IMP controller
+//  033 SKT0           IP socket device controller
+//  036 OPC0           operator console
 //
 // IOM B
 //
-//  013 IPC0 port 1
-//  014 MSP0 port 1
+//  013 IPC0 port 1    FIPS disk controller
+//  014 MSP0 port 1    disk controller
 
     // ; Disconnect everything...
     "cable_ripout",

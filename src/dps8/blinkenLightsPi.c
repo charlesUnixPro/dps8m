@@ -15,6 +15,59 @@
 // This code is targeted for a AdaFruit 2441 3.5" PiTFT+ 480x320 display
 //
 
+// Setup
+//
+//  as root:
+// 
+// apt-get update -y
+// apt-get upgrade -y
+// rpi-update
+// reboot
+// wget https://raw.githubusercontent.com/notro/rpi-source/master/rpi-source -O /usr/bin/rpi-source && sudo chmod +x /usr/bin/rpi-source && /usr/bin/rpi-source -q --tag-update
+// apt-get install bc
+// rpi-source
+// apt-get install libncurses5-dev
+// 
+// cd /root/linux
+// vi drivers/staging/fbtft/fb_ili9340.c
+// ; change to
+// ;  #define WIDTH           320
+// ;  #define HEIGHT          480
+// make prepare
+// make SUBDIRS=drivers/staging/fbtft/ modules
+// make SUBDIRS=drivers/staging/fbtft/ modules_install
+// depmod
+// 
+// /etc/modules-load.d/fbtft.conf:
+// 
+//     fbtft_device
+//     
+// 
+// /etc/modprobe.d/fbtft.conf
+// 
+//     options fbtft_device name=pitft txbuflen=32768
+//
+// The following step my be needed before the modprobe: Run "raspi-config"; select "5 Interfacing options", "P4 SPI", "Yes" in response to "Would you like the SPI interface to be enabled? "
+// 
+// reboot.
+// 
+// Not loaded on reboot....
+// 
+// sudo modprobe fbtft_device
+// 
+// [   43.109336] fbtft_device: module is from the staging directory, the quality is unknown, you have been warned.
+// [   43.110709] spidev spi0.0: spidev spi0.0 500kHz 8 bits mode=0x00
+// [   43.110731] spidev spi0.1: spidev spi0.1 500kHz 8 bits mode=0x00
+// [   43.110772] bcm2708_fb soc:fb: soc:fb id=-1 pdata? no
+// [   43.110824] spidev spi0.0: Deleting spi0.0
+// [   43.111783] fbtft_device: GPIOS used by 'pitft':
+// [   43.111810] fbtft_device: 'dc' = GPIO25
+// [   43.111844] spidev spi0.1: spidev spi0.1 500kHz 8 bits mode=0x00
+// [   43.111866] spi spi0.0: fb_ili9340 spi0.0 32000kHz 8 bits mode=0x00
+// [   43.141003] fb_ili9340: module is from the staging directory, the quality is unknown, you have been warned.
+// [   43.358297] graphics fb1: fb_ili9340 frame buffer, 320x480, 300 KiB video memory, 4 KiB DMA buffer memory, fps=20, spi0.0 at 32 MHz
+// 
+
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>

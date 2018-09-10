@@ -108,6 +108,8 @@ static t_stat absi_reset (UNUSED DEVICE * dptr)
 
 static t_stat absiAttach (UNIT * uptr, const char * cptr)
   {
+    if (! cptr)
+      return SCPE_ARG;
     int unitno = (int) (uptr - absi_unit);
 
     //    ATTACH HIn llll:w.x.y.z:rrrr - connect via UDP to a remote simh host

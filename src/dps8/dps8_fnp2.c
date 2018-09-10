@@ -102,6 +102,8 @@ static t_stat fnpShowIPCname (FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat fnpSetIPCname (UNIT * uptr, int32 value, const char * cptr, void * desc);
 static t_stat fnpShowService (FILE *st, UNIT *uptr, int val, const void *desc);
 static t_stat fnpSetService (UNIT * uptr, int32 value, const char * cptr, void * desc);
+static t_stat fnpShowFW (FILE *st, UNIT *uptr, int val, const void *desc);
+static t_stat fnpSetFW (UNIT * uptr, int32 value, const char * cptr, void * desc);
 
 static int findMbx (uint fnpUnitIdx);
 
@@ -130,7 +132,7 @@ static DEBTAB fnpDT [] =
 static MTAB fnpMod [] =
   {
     {
-      MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_VALR, /* mask */
+      MTAB_unitonly_value,
       0,            /* match */
       "CONFIG",     /* print string */
       "CONFIG",         /* match string */
@@ -141,7 +143,7 @@ static MTAB fnpMod [] =
     },
 
     {
-      MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_VALR, /* mask */
+      MTAB_unitonly_value,
       0,            /* match */
       "STATUS",     /* print string */
       "STATUS",         /* match string */
@@ -152,7 +154,7 @@ static MTAB fnpMod [] =
     },
 
     {
-      MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
+      MTAB_dev_value,
       0,            /* match */
       "NUNITS",     /* print string */
       "NUNITS",         /* match string */
@@ -162,7 +164,7 @@ static MTAB fnpMod [] =
       NULL          // help
     },
     {
-      MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */ 
+      MTAB_unit_valr_nouc,
       0,            /* match */ 
       "IPC_NAME",     /* print string */
       "IPC_NAME",         /* match string */
@@ -172,13 +174,24 @@ static MTAB fnpMod [] =
       NULL          // help
     },
     {
-      MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */ 
+      MTAB_unit_valr_nouc,
       0,            /* match */ 
       "SERVICE",     /* print string */
       "SERVICE",         /* match string */
       fnpSetService, /* validation routine */
       fnpShowService, /* display routine */
       "Set the device IPC name", /* value descriptor */
+      NULL          // help
+    },
+
+    {
+      MTAB_dev_valr,
+      0,            /* match */ 
+      "FW",     /* print string */
+      "FW",         /* match string */
+      fnpSetFW, /* validation routine */
+      fnpShowFW, /* display routine */
+      "Edit firewall", /* value descriptor */
       NULL          // help
     },
 
@@ -314,7 +327,7 @@ sim_printf ("notifyCS mbx %d\n", mbx);
     setTIMW (iom_unit_idx, chan_num, fudp->mailboxAddress, (int)(mbx + 8));
 
     sim_debug (DBG_TRACE, & fnp_dev, "[%d]notifyCS %d %d\n", lineno, mbx, chan_num);
-    send_general_interrupt (iom_unit_idx, chan_num, imwTerminatePic);
+    //send_general_interrupt (iom_unit_idx, chan_num, imwTerminatePic);
   }
 
 static void fnp_rcd_ack_echnego_init (uint mbx, int fnp_unit_idx, int lineno)
@@ -1349,6 +1362,7 @@ void fnpProcessEvent (void)
         int mbx = findMbx (fnp_unit_idx);
         if (mbx == -1)
           continue;
+        bool need_intr = false;
         for (int lineno = 0; lineno < MAX_LINES; lineno ++)
           {
             struct t_line * linep = & fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno];
@@ -1372,20 +1386,27 @@ void fnpProcessEvent (void)
 #endif
             // Need to send a 'send_output' command to CS?
 
-            if (linep -> send_output)
-              {
-                //linep -> send_output = false;
+            bool do_send_output = linep->send_output == 1;
+
+            if (linep -> send_output > 0)
                 linep->send_output --;
-                if (linep->send_output == 0)
-                  fnp_rcd_send_output ((uint)mbx, (int) fnp_unit_idx, lineno);
+
+            if (do_send_output) 
+              {
+                fnp_rcd_send_output ((uint)mbx, (int) fnp_unit_idx, lineno);
+                need_intr = true;
               }
 
             // Need to send a 'line_break' command to CS?
 
-            else if (linep -> line_break)
+            // Line_break forces an input flush; wait until the flush
+            // is done before signaling the break to avoid race condittions.
+
+            else if (linep->line_break  && (! linep->waitForMbxDone))
               {
                 fnp_rcd_line_break ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep -> line_break = false;
+                need_intr = true;
               }
 
             // Need to send an 'acu_dial_failure' command to CS?
@@ -1394,6 +1415,7 @@ void fnpProcessEvent (void)
               {
                 fnp_rcd_acu_dial_failure ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep->acu_dial_failure = false;
+                need_intr = true;
               }
 
             // Need to send an 'accept_new_terminal' command to CS?
@@ -1408,6 +1430,7 @@ void fnpProcessEvent (void)
               {
                 fnp_rcd_accept_new_terminal ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep->accept_new_terminal = false;
+                need_intr = true;
               }
 
             // Need to send an 'ack_echnego_init' command to CS?
@@ -1418,6 +1441,7 @@ void fnpProcessEvent (void)
                 linep -> ack_echnego_init = false;
                 //linep -> send_output = true;
                 linep -> send_output = SEND_OUTPUT_DELAY;
+                need_intr = true;
               }
 
             // Need to send an 'line_disconnected' command to CS?
@@ -1428,6 +1452,7 @@ void fnpProcessEvent (void)
                 fnp_rcd_line_disconnected ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep -> line_disconnected = 0;
                 linep -> listen = false;
+                need_intr = true;
               }
 #else
             else if (linep -> line_disconnected)
@@ -1435,6 +1460,7 @@ void fnpProcessEvent (void)
                 fnp_rcd_line_disconnected ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep -> line_disconnected = false;
                 linep -> listen = false;
+                need_intr = true;
               }
 #endif
 
@@ -1444,6 +1470,7 @@ void fnpProcessEvent (void)
               {
                 fnp_rcd_wru_timeout ((uint)mbx, (int) fnp_unit_idx, lineno);
                 linep -> wru_timeout = false;
+                need_intr = true;
               }
 
             // Need to send an 'accept_input' or 'input_in_mailbox' command to CS?
@@ -1452,7 +1479,10 @@ void fnpProcessEvent (void)
               {
                 if (linep->accept_input == 1)
                   {
-                    if (linep->nPos == 0) 
+                    // This check was added as part of 3270 support,
+                    // but breaks break key logic. Disabling until
+                    // a case can be made that the 3270 requires this.
+                    if (0 && linep->nPos == 0) 
                       { 
                         sim_printf ("dropping nPos of 0");
                       }
@@ -1495,6 +1525,7 @@ sim_printf ("accept_input\n");
                             //linep->input_break = false;
                             linep->input_reply_pending = true;
                             // accept_input cleared below
+                            need_intr = true;
                           }
                         else
                           {
@@ -1504,17 +1535,19 @@ sim_printf ("input_in_mailbox\n");
 #endif
                             linep->nPos = 0;
                             // accept_input cleared below
+                            need_intr = true;
                           }
 #endif
                       }
                   }
                 linep->accept_input --;
-              }
+              } // accept_input
 
             else if (linep->sendLineStatus)
               {
                 linep->sendLineStatus = false;
                 fnp_rcd_line_status ((uint)mbx, (int) fnp_unit_idx, lineno);
+                need_intr = true;
               }
 
             else
@@ -1527,9 +1560,17 @@ sim_printf ("input_in_mailbox\n");
 
             mbx = findMbx (fnp_unit_idx);
             if (mbx == -1)
-              goto nombx;
+              break;
           } // for lineno
-nombx:;
+
+        // If any of the mailboxes had a command posted.
+        if (need_intr)
+          {
+            uint ctlr_port_num = 0; // FNPs are single ported
+            uint iom_unit_idx = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].iom_unit_idx;
+            uint chan_num = cables->fnp_to_iom[fnp_unit_idx][ctlr_port_num].chan_num;
+            send_general_interrupt (iom_unit_idx, chan_num, imwTerminatePic);
+          }
       } // for fnp_unit_idx
 
 #ifdef TUN
@@ -1618,6 +1659,8 @@ static t_stat fnpShowService (UNUSED FILE * st, UNIT * uptr,
 static t_stat fnpSetService (UNIT * uptr, UNUSED int32 value,
                              const char * cptr, UNUSED void * desc)
   {
+    if (! cptr)
+      return SCPE_ARG;
     long devnum = FNP_UNIT_IDX (uptr);
     if (devnum < 0 || devnum >= N_FNP_UNITS_MAX)
       return SCPE_ARG;
@@ -1675,6 +1718,244 @@ static t_stat fnpShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val,
 
     sim_printf ("FNP Mailbox Address:         %04o(8)\n", fudp -> mailboxAddress);
  
+    return SCPE_OK;
+  }
+
+//  SET FNPn FW RESET
+//  SET FNPn FW ADD <line number list>:<ipaddr>:<ipmask>: ACCEPT | DENY
+//
+//   
+
+int n_fw_entries = 0;
+struct fw_entry_s fw_entries [N_FW_ENTRIES];
+
+// [a-h].h[0-9][0-9][0-9]
+// terminated by dash or NUL
+
+static int parse_line (char * line)
+  {
+    char fnp = line[0];
+    if (fnp < 'A' || fnp > 'H')
+      return -1;
+    int fnpno = fnp - 'A';
+
+    if (line [1] != '.')
+      return -2;
+
+    if (line[2] != 'H')
+      return -3;
+
+    if (line[3] < '0' || line[3] > '9')
+      return -4;
+
+    if (line[4] < '0' || line[4] > '9')
+      return -5;
+
+    if (line[5] < '0' || line[5] > '9')
+      return -6;
+    int lineno = (line[3] - '0') * 100 +
+                 (line[4] - '0') * 10 +
+                 (line[5] - '0');
+
+    if (line[6] != 0 && line[6] != '-')
+      return -7;
+
+    return encodeline (fnpno, lineno);
+
+  }
+
+// n.n.n.n
+static int parse_ipaddr (char * str, uint32_t * addr)
+  {
+    char * end1, * end2, * end3, * end4;
+
+    unsigned long o1 = strtoul (str, & end1, 10);
+    if (end1 == str || * end1 != '.' || o1 > 255)
+      return -1;
+
+    unsigned long o2 = strtoul (end1 + 1, & end2, 10);
+    if (end2 == end1 || * end2 != '.' || o2 > 255)
+      return -2;
+
+    unsigned long o3 = strtoul (end2 + 1, & end3, 10);
+    if (end3 == end2 || * end3 != '.' || o3 > 255)
+      return -3;
+
+    unsigned long o4 = strtoul (end3 + 1, & end4, 10);
+    if (end4 == end3 || * end4 != 0 || o4 > 255)
+      return -4;
+    * addr = (uint32_t) ((o1 << 24) | (o2 << 16) | (o3 << 8) | o4);
+    return 0;
+  }
+
+static t_stat fnpSetFW (UNIT * uptr, UNUSED int32 value,
+                        const char * cptr, UNUSED void * desc)
+  {
+    if (! cptr)
+      return SCPE_ARG;
+    long devnum = FNP_UNIT_IDX (uptr);
+    if (devnum < 0 || devnum >= N_FNP_UNITS_MAX)
+      return SCPE_ARG;
+
+    char sn [strlen (cptr) + 1];
+    memcpy (sn, cptr, strlen (cptr) + 1);
+    char * saveptr;
+    char * tok;
+   
+// Parse out ADD/RESET
+    tok = strtok_r (sn, ":", & saveptr);
+    if (strcasecmp (tok, "RESET") == 0)
+      {
+        n_fw_entries = 0;
+        sim_printf ("FNP firewall table reset\r\n");
+        return SCPE_OK;
+      }
+
+    if (strcasecmp (tok, "ADD") == 0)
+      {
+        if (n_fw_entries >= N_FW_ENTRIES)
+          {
+            sim_printf ("FNP firewall table full\r\n");
+            return SCPE_ARG;
+          }
+        // line range
+        int line_0, line_1;
+
+        tok = strtok_r (NULL, ":", & saveptr);
+        char * dash = index (tok, '-');
+        if (dash)
+          {
+            line_0 = parse_line (tok);
+            if (line_0 < 0)
+              {
+                sim_printf ("Cannot parse first line number\r\n");
+                return SCPE_ARG;
+              }
+
+            line_1 = parse_line (dash + 1);
+            if (line_1 < 0)
+              {
+                sim_printf ("Cannot parse second line number\r\n");
+                return SCPE_ARG;
+              }
+            if (line_0 > line_1)
+              {
+                sim_printf ("line_0 > line_1\r\n");
+                return SCPE_ARG;
+              }
+
+          }
+        else
+          {
+            line_0 = line_1 = parse_line (tok);
+            if (line_0 < 0)
+              {
+                sim_printf ("Cannot parse line number\r\n");
+                return SCPE_ARG;
+              }
+          }
+
+// parse ipaddr
+
+        tok = strtok_r (NULL, ":", & saveptr);
+        uint32_t ipaddr;
+        int rc = parse_ipaddr (tok, & ipaddr);
+        if (rc < 0)
+          return SCPE_ARG;
+
+// parse cidr
+
+
+        tok = strtok_r (NULL, ":", & saveptr);
+        char * end;
+        unsigned long cidr = strtoul (tok, & end, 10);
+        if (tok == end || * end != 0 || cidr > 32)
+          return SCPE_OK;
+        uint32_t cidr_mask = ((uint32_t)-1) << (32-cidr) & MASK32;
+
+// parse accept/deny
+
+        bool accept = false;
+        tok = strtok_r (NULL, ":", & saveptr);
+        if (strcmp (tok, "ACCEPT") == 0)
+          accept = true;
+        else if (strcmp (tok, "DENY") == 0)
+          accept = false;
+        else
+          {
+            sim_printf ("cannot parse rule ACCEPT/DENY\r\n");
+            return SCPE_ARG;
+          }
+
+        fw_entries[n_fw_entries].line_0 = (uint) line_0;
+        fw_entries[n_fw_entries].line_1 = (uint) line_1;
+        fw_entries[n_fw_entries].ipaddr = ipaddr;
+        fw_entries[n_fw_entries].cidr = (uint) cidr;
+        fw_entries[n_fw_entries].cidr_mask = (uint) cidr_mask;
+        fw_entries[n_fw_entries].accept = accept;
+        n_fw_entries ++;
+
+
+        return SCPE_OK;
+      } // ADD
+
+
+    if (strcasecmp (tok, "LIST") == 0)
+      {
+        for (uint i = 0; i < n_fw_entries; i ++)
+          {
+            struct fw_entry_s * p = fw_entries + i;
+
+            if (p->line_0 == p->line_1)
+              {
+                sim_printf ("  %c.h%03d %d.%d.%d.%d/%d %s\r\n",
+                  decodefnp (p->line_0) + 'a',
+                  decodeline (p->line_0),
+                  (p->ipaddr>>24) & 255,
+                  (p->ipaddr>>16) & 255,
+                  (p->ipaddr>>8) & 255,
+                  p->ipaddr & 255,
+                  p->cidr,
+                  p->accept ? "accept" : "deny");
+              }
+            else
+              {
+                sim_printf ("  %c.h%03d-%c.%03d %d.%d.%d.%d/%d %s\r\n",
+                  decodefnp (p->line_0) + 'a',
+                  decodeline (p->line_0),
+                  decodefnp (p->line_1) + 'a',
+                  decodeline (p->line_1),
+                  (p->ipaddr>>24) & 255,
+                  (p->ipaddr>>16) & 255,
+                  (p->ipaddr>>8) & 255,
+                  p->ipaddr & 255,
+                  p->cidr,
+                  p->accept ? "accept" : "deny");
+              }
+          }
+       return SCPE_OK;
+      }
+
+    return SCPE_ARG;
+  }
+
+static t_stat fnpShowFW (UNUSED FILE * st, UNIT * uptr, UNUSED int val, 
+                         UNUSED const void * desc)
+  {
+    long fnpUnitIdx = FNP_UNIT_IDX (uptr);
+    if (fnpUnitIdx >= (long) N_FNP_UNITS_MAX)
+      {
+        sim_debug (DBG_ERR, & fnp_dev, 
+                   "fnpShowConfig: Invalid unit number %ld\n", fnpUnitIdx);
+        sim_printf ("error: invalid unit number %ld\n", fnpUnitIdx);
+        return SCPE_ARG;
+      }
+#if 0
+    sim_printf ("FNP unit number %ld\n", fnpUnitIdx);
+    struct fnpUnitData_s * fudp = fnpData.fnpUnitData + fnpUnitIdx;
+
+    sim_printf ("FNP Mailbox Address:         %04o(8)\n", fudp -> mailboxAddress);
+#endif
     return SCPE_OK;
   }
 
@@ -1941,6 +2222,8 @@ void fnpConnectPrompt (uv_tcp_t * client)
         for (uint lineno = 0; lineno < MAX_LINES; lineno ++)
           {
             struct t_line * linep = & fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno];
+            if (! linep->listen)
+              continue;
             if (linep->service == service_login && ! linep->line_client)
               {
                 if (! first)
@@ -2082,18 +2365,6 @@ void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
 //}
 
     struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
-    if (! fnpData.fnpUnitData[fnpno].MState.accept_calls)
-      {
-        if (linep->service == service_login)
-          fnpuv_start_writestr (client, (unsigned char *) "Multics is not accepting calls\r\n");
-        return;
-      }
-    if (! linep->listen)
-      {
-        if (linep->service == service_login)
-          fnpuv_start_writestr (client, (unsigned char *) "Multics is not listening to this line\r\n");
-        return;
-      }
 
 // By design, inBuffer overun shouldn't happen, but it has been seen in IMFT.
 // (When the TCP backs up, the buffers are merged so that larger and larger 

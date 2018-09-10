@@ -1416,6 +1416,8 @@ t_stat sim_load (FILE *fileref, const char *cptr, const char *fnam, int flag)
 #ifdef SCUMEM
     return SCPE_ARG;
 #else
+    if (! cptr)
+      return SCPE_ARG;
     if (flag)
         return sim_dump (fileref, cptr, fnam, flag);
       

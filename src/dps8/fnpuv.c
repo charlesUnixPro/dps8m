@@ -139,8 +139,8 @@
 // the dialout line HSLA, and if the Telnet flag is set, the Telnet processor
 // is initialized. The TCP connect is initiated and the procedure returns.
 //
-// When the connection succeeds or times out, the 'on_do_connect()' callback 
-// is called. on_do_connect retrieves the 'uvClientData'. If the connection
+// When the connection succeeds or times out, the 'on_dialout_connect()' callback 
+// is called. on_dialout_connect retrieves the 'uvClientData'. If the connection
 // succeeded, the connection data field is set to the 'uvClientData'; read is
 // enabled on the connection, and the 'accept_new_terminal' flag is set which
 // will cause an 'accept_new_terminal' command to be send to Multics.
@@ -266,6 +266,10 @@ void fnpuv_associated_brk (uv_tcp_t * client)
     uint fnpno = p -> fnpno;
     uint lineno = p -> lineno;
     struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
+    // The break key forces an input buffer flush.
+    // XXX is this a race condition? Is it possible for processFnpMbx to see
+    // the line_break before the accept input?
+    linep->accept_input = 1;
     linep->line_break=true;
   }
 
@@ -912,14 +916,14 @@ void fnpuvProcessEvent (void)
 // dialout line connection callback
 //
 
-static void on_do_connect (uv_connect_t * server, int status)
+static void on_dialout_connect (uv_connect_t * server, int status)
   {
     sim_printf ("[FNP emulation: dialout connect]\n");
     uvClientData * p = (uvClientData *) server->handle->data;
     // If data is NULL, assume that the line has already been torn down.
     if (! p)
       {
-         sim_printf ("[FNP emulation note: on_do_connect called with data == NULL]\n");
+         sim_printf ("[FNP emulation note: on_dialout_connect called with data == NULL]\n");
          return;
       }
     struct t_line * linep = & fnpData.fnpUnitData[p->fnpno].MState.line[p->lineno];
@@ -1017,6 +1021,32 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
           return;
         }
 #endif
+
+
+// firewall
+
+    // Default is accept
+    bool accept = true;
+    uint32_t ip_addr = (uint32_t) ((oct1 << 24) | (oct2 << 16) | (oct3 << 8) | oct4);
+    uint this_line = encodeline (fnpno, lineno);
+    for (uint i = 0; i < n_fw_entries; i ++)
+      {
+        struct fw_entry_s * p = fw_entries + i;
+        if (this_line < p->line_0 || this_line > p->line_1)
+          continue;
+        if ((ip_addr & p->cidr_mask) != (p->ipaddr & p->cidr_mask))
+          continue;
+        accept = p->accept;
+        break;
+      }
+
+    if (! accept)
+      {
+        sim_printf ("Dialout %c.d%03d denied\r\n", fnpno + 'a', lineno);
+        linep->acu_dial_failure = true;
+        return;
+      }
+
     char ipaddr [256];
     sprintf (ipaddr, "%d.%d.%d.%d", oct1, oct2, oct3, oct4);
     sim_printf ("calling %s:%d\n", ipaddr,port);
@@ -1038,6 +1068,9 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
     p->read_cb = fnpuv_associated_readcb;
     p->nPos = 0;
     p->ttype = NULL;
+    p->fnpno = fnpno;
+    p->lineno = lineno;
+    linep->line_client->data = p;
 
     if (flags & 1)
       {
@@ -1055,12 +1088,8 @@ void fnpuv_dial_out (uint fnpno, uint lineno, word36 d1, word36 d2, word36 d3)
         p->write_actual_cb = fnpuv_start_write_actual;
         p->telnetp = NULL; // Mark this line as 'not a telnet connection'
       }
-    p->fnpno = fnpno;
-    p->lineno = lineno;
 
-    linep->line_client->data = p;
-
-    uv_tcp_connect (& linep->doConnect, linep->line_client, (const struct sockaddr *) & dest, on_do_connect);
+    uv_tcp_connect (& linep->doConnect, linep->line_client, (const struct sockaddr *) & dest, on_dialout_connect);
   }
 
 #if 0
@@ -1182,21 +1211,7 @@ static void processPacketInput (int fnpno, int lineno, unsigned char * buf, ssiz
  //sim_printf ("\n");
 //}
 
-    if (! fnpData.fnpUnitData[fnpno].MState.accept_calls)
-      {
-        //fnpuv_start_writestr (client, "Multics is not accepting calls\r\n");
-        sim_printf ("[FNP emulation: TUN traffic, but Multics is not accepting calls]\n");
-        return;
-      }
     struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
-#if 0
-    if (! linep->listen)
-      {
-        //fnpuv_start_writestr (client, "Multics is not listening to this line\r\n");
-        sim_printf ("TUN traffic, but Multics is not listening to the line\n");
-        return;
-      }
-#endif
     if (linep->inBuffer)
       {
         unsigned char * new = realloc (linep->inBuffer, (unsigned long) (linep->inSize + nread));

@@ -396,6 +396,8 @@ static t_stat mt_show_tape_path (UNUSED FILE * st, UNUSED UNIT * uptr,
 static t_stat mt_set_tape_path (UNUSED UNIT * uptr, UNUSED int32 value, 
                              const char * cptr, UNUSED void * desc)
   {
+    if (! cptr)
+      return SCPE_ARG;
     if (strlen (cptr) >= TAPE_PATH_LEN - 1)
       {
         sim_printf ("truncating tape path\n");
@@ -408,6 +410,8 @@ static t_stat mt_set_tape_path (UNUSED UNIT * uptr, UNUSED int32 value,
 static t_stat mt_set_capac (UNUSED UNIT * uptr, UNUSED int32 value, 
                              const char * cptr, UNUSED void * desc)
   {
+    if (! cptr)
+      return SCPE_ARG;
     t_stat rc;
     int i;
     // skip the boot tape drive; Multics doesn't use it, and this

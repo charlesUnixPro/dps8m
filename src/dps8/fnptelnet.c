@@ -164,13 +164,6 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
               {
                 fnpuv_recv_eor (client);
               }
-            else if (event->iac.cmd == TELNET_EOR)
-              {
-#ifdef FNP2_DEBUG
-sim_printf ("EOR\n");
-#endif
-                fnpuv_recv_eor (client);
-              }
             else
               sim_warn ("libtelnet unhandled IAC event %d\n", event->iac.cmd);
           }

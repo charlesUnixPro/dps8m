@@ -226,6 +226,8 @@ static t_stat reset (UNUSED DEVICE * dptr)
 
 static t_stat attach (UNIT * uptr, const char * cptr)
   {
+    if (! cptr)
+      return SCPE_ARG;
     int unitno = (int) (uptr - dia_unit);
 
     // ATTACH DNn llll:w.x.y.z:rrrr - connect via UDP to a remote simh host
