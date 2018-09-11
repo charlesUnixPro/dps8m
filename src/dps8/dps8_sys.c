@@ -1173,7 +1173,9 @@ static char * default_base_system_script [] =
     "cable MTP0 16 TAPE16",
     "set tape16 name=tapa_16",
 
+#ifndef __MINGW64__
     "cable IOM0 033 SKC0",
+#endif
 #if 0
     for (uint i = 0; i < N_SK_UNITS_MAX; i ++)
       {
@@ -1364,8 +1366,10 @@ static char * default_base_system_script [] =
     "set prt16 name=prtq",
 #endif
 
+#ifndef __MINGW64__
     // ; Attach ABSI unit 0 to IOM 0, chan 032, dev_code 0
     "cable IOM0 032 ABSI0",
+#endif
 
     // ; Attach IOM unit 0 port A (0) to SCU unit 0, port 0
     "cable SCU0 0 IOM0 0", // SCU0 port 0 IOM0 port 0
