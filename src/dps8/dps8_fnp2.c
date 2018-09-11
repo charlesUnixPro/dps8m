@@ -479,6 +479,7 @@ sim_printf ("\n");
 
 static void fnp_rcd_line_status  (uint mbx, int fnp_unit_idx, int lineno)
   {
+    sim_debug (DBG_TRACE, & fnp_dev, "[%d]rcd line_status\n", lineno);
     struct fnpUnitData_s * fudp = & fnpData.fnpUnitData [fnp_unit_idx];
     struct t_line * linep = & fudp->MState.line[lineno];
     word24 fsmbx = fudp->mailboxAddress + FNP_SUB_MBXES + mbx*FNP_SUB_MBX_SIZE;
@@ -1575,6 +1576,7 @@ void fnpProcessEvent (void)
                         fnp_rcd_accept_input ((uint)mbx,
                           (int) fnp_unit_idx, lineno);
                          // accept_input cleared below
+                         linep->input_reply_pending = true;
                          need_intr = true;
                       }
                     else

@@ -1405,7 +1405,7 @@ sim_printf ("']\n");
     // rtx_info.output_in_fnp as part of echo negotiation:
     //    if ^rtx_info.output_in_fnp  /* if there's no output going on */
     // So apparently a flag indicating that there is output queued.
-    word1 output_chain_present = 1;
+    word1 output_chain_present = 0;
 
     word36 v;
     iom_direct_data_service (decoded_p->iom_unit, decoded_p->chan_num,  decoded_p->fsmbx+INP_COMMAND_DATA, &v, direct_load);
