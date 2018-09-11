@@ -1644,10 +1644,25 @@ static word18 get_bootload_word (uint address18, uint address, uint iom_unit_idx
     return (word >> 18) & MASK18;
   }
 
-static void debug_mem (uint address18, char * label, uint address,
+static void debug_gicb_mem (uint address18, char * label, uint address,
    uint iom_unit_idx, uint chan)
   {
     word18 w18 = get_bootload_word (address18, address, iom_unit_idx, chan);
+    sim_printf ("%6o: %06o %s\r\n", address18, w18, label);
+  }
+
+static void debug_core_image_mem (uint address18, char * label, uint address,
+   uint core_offset, uint iom_unit_idx, uint chan)
+  {
+    uint waddress = address18 / 2;
+    word36 w;
+    iom_direct_data_service (iom_unit_idx, chan, address + core_offset + waddress,
+      & w, direct_load);
+    word18 w18;
+    if (address18 & 1)
+      w18 = (word18) (w & MASK18);
+    else
+      w18 = (word18) ((w >> 18) & MASK18);
     sim_printf ("%6o: %06o %s\r\n", address18, w18, label);
   }
 
@@ -1703,13 +1718,28 @@ static void fnpcmdBootload (uint iom_unit_idx, uint fnp_unit_idx, uint chan, uin
     // Get the length of the GICB from the ICW
     word18 gicb_len = (word18) (icw & MASK18);
 
+sim_printf ("gicb_len  %o\r\n", gicb_len);
+
+#if 0
+for (uint i = 0; i < 16; i ++)
+  {
+    word36 w;
+    iom_direct_data_service (iom_unit_idx, chan, address + i,
+      & w, direct_load);
+    sim_printf ("%06o %012llo\r\n", i, w);
+  }
+#endif 
+    word18 bcap = gicb_len - 17;
+for (uint i = bcap; i < bcap+32; i ++)
+  debug_gicb_mem (i, "gicb", address, iom_unit_idx, chan);
+
     // The start of the core image is the GICB length plus one word for the
     // ICW, rounded up to 64 words.
     word18 core_image_addr = (gicb_len + 1 + 63) & 0777700;
 
 sim_printf ("core_image_addr %o\r\n", core_image_addr);
 
-//debug_mem (core_image_addr + 0654, ".crnhs", iom_unit_idx, chan, address);
+//debug_gicb_mem (core_image_addr + 0654, ".crnhs", iom_unit_idx, chan, address);
 
 // site_mcs.list
 // Component  Modnum  Start  Length  Date Compiled   Directory
@@ -1726,13 +1756,42 @@ sim_printf ("core_image_addr %o\r\n", core_image_addr);
 // ======
 // 000074 000000000000 000000000000 000000000000 000000000000
 
-debug_mem (core_image_addr * 2 + 0, "site_mcs+0", iom_unit_idx, chan, address);
-debug_mem (core_image_addr * 2 + 1, "site_mcs+1", iom_unit_idx, chan, address);
-debug_mem (core_image_addr * 2 + 2, "site_mcs+2", iom_unit_idx, chan, address);
-debug_mem (core_image_addr * 2 + 3, "site_mcs+3", iom_unit_idx, chan, address);
+debug_core_image_mem (core_image_addr * 2 + 0, "site_mcs+0", address, core_image_addr, iom_unit_idx, chan);
+debug_core_image_mem (core_image_addr * 2 + 1, "site_mcs+1", address, core_image_addr, iom_unit_idx, chan);
+debug_core_image_mem (core_image_addr * 2 + 2, "site_mcs+2", address, core_image_addr, iom_unit_idx, chan);
+debug_core_image_mem (core_image_addr * 2 + 3, "site_mcs+3", address, core_image_addr, iom_unit_idx, chan);
+debug_core_image_mem (core_image_addr + 0654, ".crnhs", address, core_image_addr, iom_unit_idx, chan);
 
+// dcl  1 boot_comm_area aligned based (bcap),  /* area at end of gicb to pass info */
+//  2 list_icw like icw,              /* ICW for list to boot the program */
+//  2 load_dcw (5) like dcw,          /* the dcws used to load MCS */
+//  2 mbx_addr fixed bin (17) unal,   /* mailbox base addr for this FNP */
+//  2 pad bit (12) unal,
+//  2 term_cell bit (3) unal,         /* terminate interrupt for FNP to use */
+//  2 emergency_cell bit (3) unal,    /* emergency to use for crash */
+//  2 pad1 bit (36) unal,
+//  2 load_limits unal,
+//    3 low bit (18) unal,            /* MCS load limits */
+//    3 high bit (18) unal,           /* low and high */
+//  2 prog_cksum bit (36) unal,       /* checksum for MCS */
+//  2 boot_cksum bit (36) unal,       /* checksum for gicb */
+//  2 dia_chan_no fixed bin;          /* place where FNP IOM channel number of DIA is stored */
 
+for (uint i = 0; i < 16; i ++)
+  {
+    word36 w;
+    iom_direct_data_service (iom_unit_idx, chan, address + i + 480/2 + 1,
+      & w, direct_load);
+    sim_printf ("comarea %06o %012llo\r\n", i, w);
+  }
 
+for (uint i = 0; i < 16; i ++)
+  {
+    word36 w;
+    iom_direct_data_service (iom_unit_idx, chan, address + i + 0600,
+      & w, direct_load);
+    sim_printf ("%06o %012llo\r\n", i, w);
+  }
 
 
     fnpData.fnpUnitData[iom_unit_idx].MState.accept_calls = false;
