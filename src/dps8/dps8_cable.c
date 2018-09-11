@@ -729,6 +729,8 @@ static t_stat cable_iom (int uncable, uint iom_unit_idx, char * * name_save)
                            & fnp_unit [unit_idx], fnp_iom_cmd);
       }
 
+#ifndef __MINGW64__
+
 // IOMx ABSIx
     if (name_match (param, "ABSI", & unit_idx))
       {
@@ -768,6 +770,7 @@ static t_stat cable_iom (int uncable, uint iom_unit_idx, char * * name_save)
                            CTLR_T_SKC, chan_type_direct,
                            & sk_unit [unit_idx], skc_iom_cmd);
       }
+#endif
 
     sim_printf ("cable IOM: can't parse controller type\n");
     return SCPE_ARG;

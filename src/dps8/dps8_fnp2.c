@@ -1883,7 +1883,8 @@ static t_stat fnpSetFW (UNIT * uptr, UNUSED int32 value,
         int line_0, line_1;
 
         tok = strtok_r (NULL, ":", & saveptr);
-        char * dash = index (tok, '-');
+        char * dash = strchr (tok, '-');
+
         if (dash)
           {
             line_0 = parse_line (tok);

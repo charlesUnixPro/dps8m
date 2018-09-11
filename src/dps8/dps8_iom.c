@@ -3308,7 +3308,7 @@ int send_terminate_interrupt (uint iom_unit_idx, uint chan)
 void iom_interrupt (uint scu_unit_idx, uint iom_unit_idx)
   {
     sim_debug (DBG_DEBUG, & iom_dev,
-               "%s: IOM %c starting. [%lld] %05o:%08o\n",
+               "%s: IOM %c starting. [%"PRId64"] %05o:%08o\n",
                __func__, 'A' + iom_unit_idx,
                cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC);
 

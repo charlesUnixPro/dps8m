@@ -1169,19 +1169,19 @@ void cmp72(word72 op1, word72 op2, word18 *flags)
     cpu.ou.cycle |= ou_GOS;
 #endif
 #ifdef NEED_128
-sim_debug (DBG_TRACEEXT, & cpu_dev, "op1 %016llx%016llx\n", op1.h, op1.l);
-sim_debug (DBG_TRACEEXT, & cpu_dev, "op2 %016llx%016llx\n", op2.h, op2.l);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op1 %016l"PRIx64"%016l"PRIx64"\n", op1.h, op1.l);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op2 %016l"PRIx64"%016l"PRIx64"\n", op2.h, op2.l);
     int128 op1s =  SIGNEXT72_128 (and_128 (op1, MASK72));
     int128 op2s =  SIGNEXT72_128 (and_128 (op2, MASK72));
-sim_debug (DBG_TRACEEXT, & cpu_dev, "op1s %016llx%016llx\n", op1s.h, op1s.l);
-sim_debug (DBG_TRACEEXT, & cpu_dev, "op2s %016llx%016llx\n", op2s.h, op2s.l);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op1s %016l"PRIx64"%016l"PRIx64"\n", op1s.h, op1s.l);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op2s %016l"PRIx64"%016l"PRIx64"\n", op2s.h, op2s.l);
 #else
-sim_debug (DBG_TRACEEXT, & cpu_dev, "op1 %016lx%016lx\n", (uint64_t) (op1>>64), (uint64_t) op1);
-sim_debug (DBG_TRACEEXT, & cpu_dev, "op2 %016lx%016lx\n", (uint64_t) (op2>>64), (uint64_t) op2);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op1 %016"PRIx64"%016"PRIx64"\n", (uint64_t) (op1>>64), (uint64_t) op1);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op2 %016"PRIx64"%016"PRIx64"\n", (uint64_t) (op2>>64), (uint64_t) op2);
     int128 op1s =  SIGNEXT72_128 (op1 & MASK72);
     int128 op2s =  SIGNEXT72_128 (op2 & MASK72);
-sim_debug (DBG_TRACEEXT, & cpu_dev, "op1s %016lx%016lx\n", (uint64_t) (op1s>>64), (uint64_t) op1s);
-sim_debug (DBG_TRACEEXT, & cpu_dev, "op2s %016lx%016lx\n", (uint64_t) (op2s>>64), (uint64_t) op2s);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op1s %016"PRIx64"%016"PRIx64"\n", (uint64_t) (op1s>>64), (uint64_t) op1s);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op2s %016"PRIx64"%016"PRIx64"\n", (uint64_t) (op2s>>64), (uint64_t) op2s);
 #endif
 #ifdef NEED_128
     if (isgt_s128 (op1s, op2s))

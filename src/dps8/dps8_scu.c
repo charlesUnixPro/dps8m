@@ -1295,7 +1295,7 @@ static uint64 set_SCU_clock (uint scu_unit_idx)
     static uint64 last_UNIX_usecs = 0;
     if (UNIX_usecs < last_UNIX_usecs)
       {
-        sim_warn ("gettimeofday() went backwards %llu uS\n", 
+        sim_warn ("gettimeofday() went backwards %"PRIu64" uS\n", 
                   last_UNIX_usecs - UNIX_usecs);
       }
     last_UNIX_usecs = UNIX_usecs;

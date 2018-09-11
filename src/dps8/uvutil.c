@@ -7,6 +7,8 @@
 #include "libtelnet.h"
 #include "uvutil.h"
 
+#define USE_REQ_DATA
+
 static void accessTelnetReadCallback (uv_tcp_t * client,
                             ssize_t nread,
                             unsigned char * buf);

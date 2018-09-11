@@ -1061,7 +1061,9 @@ static void ev_poll_cb (uv_timer_t * UNUSED handle)
 
       }
     fnpProcessEvent (); 
+#ifndef __MINGW64__
     sk_process_event (); 
+#endif
     consoleProcess ();
     machine_room_process ();
 #ifdef IO_ASYNC_PAYLOAD_CHAN
@@ -2732,13 +2734,13 @@ leave:
 #ifdef HDBG
     hdbgPrint ();
 #endif
-    sim_msg ("\ncycles = %llu\n", cpu.cycleCnt);
-    sim_msg ("instructions  %15llu\n", cpu.instrCnt);
-    sim_msg ("lockCnt       %15llu\n", cpu.lockCnt);
-    sim_msg ("lockImmediate %15llu\n", cpu.lockImmediate);
-    sim_msg ("lockWait      %15llu\n", cpu.lockWait);
-    sim_msg ("lockWaitMax   %15llu\n", cpu.lockWaitMax);
-    sim_msg ("lockYield     %15llu\n", cpu.lockYield);
+    sim_msg ("\ncycles = %"PRIu64"\n", cpu.cycleCnt);
+    sim_msg ("instructions  %15"PRIu64"\n", cpu.instrCnt);
+    sim_msg ("lockCnt       %15"PRIu64"\n", cpu.lockCnt);
+    sim_msg ("lockImmediate %15"PRIu64"\n", cpu.lockImmediate);
+    sim_msg ("lockWait      %15"PRIu64"\n", cpu.lockWait);
+    sim_msg ("lockWaitMax   %15"PRIu64"\n", cpu.lockWaitMax);
+    sim_msg ("lockYield     %15"PRIu64"\n", cpu.lockYield);
 #if 0
     for (int i = 0; i < N_FAULTS; i ++)
       {

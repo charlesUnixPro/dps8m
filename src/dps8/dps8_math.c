@@ -1324,18 +1324,18 @@ void ufm (void)
     int128 t = SIGNEXT72_128(m2);
     uint128 ut = rshift_128 (cast_128 (t), 44);
     int128 m3 = multiply_s128 (SIGNEXT72_128(m1), cast_s128 (ut));
-sim_debug (DBG_TRACEEXT, & cpu_dev, "m3 %016llx%016llx\n", m3.h, m3.l);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "m3 %016"PRIx64"%016"PRIx64"\n", m3.h, m3.l);
 #else
     int128 m3 = (SIGNEXT72_128(m1) * (SIGNEXT72_128(m2) >> 44));
-sim_debug (DBG_TRACEEXT, & cpu_dev, "m3 %016lx%016lx\n", (uint64_t) (m3>>64), (uint64_t) m3);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "m3 %016"PRIx64"%016"PRIx64"\n", (uint64_t) (m3>>64), (uint64_t) m3);
 #endif
     // realign to 72bits
 #ifdef NEED_128
     word72 m3a = and_128 (rshift_128 (cast_128 (m3), 98u - 71u), MASK72);
-sim_debug (DBG_TRACEEXT, & cpu_dev, "m3a %016llx%016llx\n", m3a.h, m3a.l);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "m3a %016"PRIx64"%016"PRIx64"\n", m3a.h, m3a.l);
 #else
     word72 m3a = ((word72) m3 >> (98-71)) & MASK72;
-sim_debug (DBG_TRACEEXT, & cpu_dev, "m3a %016lx%016lx\n", (uint64_t) (m3a>>64), (uint64_t) m3a);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "m3a %016"PRIx64"%016"PRIx64"\n", (uint64_t) (m3a>>64), (uint64_t) m3a);
 #endif
 
     // A normalization is performed only in the case of both factor mantissas being 100...0 
@@ -3402,10 +3402,10 @@ sim_printf ("DVFa A %012"PRIo64" Q %012"PRIo64" Y %012"PRIo64"\n", cpu.rA, cpu.r
 #ifdef NEED_128
     uint128 zFrac = lshift_128 (construct_128 (0, cpu.rA & MASK35), 35);
     zFrac = or_128 (zFrac, construct_128 (0, (cpu.rQ >> 1) & MASK35));
-sim_debug (DBG_TRACEEXT, & cpu_dev, "zfrac %016llx %016llx\n", zFrac.h, zFrac.l);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "zfrac %016"PRIx64" %016"PRIx64"\n", zFrac.h, zFrac.l);
 #else
     uint128 zFrac = ((uint128) (cpu . rA & MASK35) << 35) | ((cpu . rQ >> 1) & MASK35);
-sim_debug (DBG_TRACEEXT, & cpu_dev, "zfrac %016llx %016llx\n", (uint64) (zFrac>>64), (uint64) zFrac);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "zfrac %016"PRIx64" %016"PRIx64"\n", (uint64) (zFrac>>64), (uint64) zFrac);
 #endif
     //zFrac <<= 1; -- Makes Multics unbootable.
 
@@ -3420,10 +3420,10 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "zfrac %016llx %016llx\n", (uint64) (zFrac>>
       }
 #ifdef NEED_128
     zFrac = and_128 (zFrac, MASK70);
-sim_debug (DBG_TRACEEXT, & cpu_dev, "zfrac %016llx %016llx\n", zFrac.h, zFrac.l);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "zfrac %016"PRIx64" %016"PRIx64"\n", zFrac.h, zFrac.l);
 #else
     zFrac &= MASK70;
-sim_debug (DBG_TRACEEXT, & cpu_dev, "zfrac %016llx %016llx\n", (uint64) (zFrac>>64), (uint64) zFrac);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "zfrac %016"PRIx64" %016"PRIx64"\n", (uint64) (zFrac>>64), (uint64) zFrac);
 #endif
 
     //char buf [128] = "";
@@ -3437,9 +3437,9 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "zfrac %016llx %016llx\n", (uint64) (zFrac>>
     // divisor goes in the low half
     uint128 dFrac = convert_to_word72 (0, cpu.CY & MASK35);
 #ifdef NEED_128
-sim_debug (DBG_TRACEEXT, & cpu_dev, "dfrac %016llx %016llx\n", dFrac.h, dFrac.l);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "dfrac %016"PRIx64" %016"PRIx64"\n", dFrac.h, dFrac.l);
 #else
-sim_debug (DBG_TRACEEXT, & cpu_dev, "dfrac %016llx %016llx\n", (uint64) (dFrac>>64), (uint64) dFrac);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "dfrac %016"PRIx64" %016"PRIx64"\n", (uint64) (dFrac>>64), (uint64) dFrac);
 #endif
     if (divisorNegative)
       {
@@ -3452,10 +3452,10 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "dfrac %016llx %016llx\n", (uint64) (dFrac>>
       }
 #ifdef NEED_128
     dFrac = and_128 (dFrac, construct_128 (0, MASK35));
-sim_debug (DBG_TRACEEXT, & cpu_dev, "dfrac %016llx %016llx\n", dFrac.h, dFrac.l);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "dfrac %016"PRIx64" %016"PRIx64"\n", dFrac.h, dFrac.l);
 #else
     dFrac &= MASK35;
-sim_debug (DBG_TRACEEXT, & cpu_dev, "dfrac %016llx %016llx\n", (uint64) (dFrac>>64), (uint64) dFrac);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "dfrac %016"PRIx64" %016"PRIx64"\n", (uint64) (dFrac>>64), (uint64) dFrac);
 #endif
 
     //char buf2 [128] = "";
@@ -3493,13 +3493,13 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "dfrac %016llx %016llx\n", (uint64) (dFrac>>
 #ifdef NEED_128
     uint128 remainder;
     uint128 quot = divide_128 (zFrac, dFrac, & remainder);
-sim_debug (DBG_TRACEEXT, & cpu_dev, "remainder %016llx %016llx\n", remainder.h, remainder.l);
-sim_debug (DBG_TRACEEXT, & cpu_dev, "quot %016llx %016llx\n", quot.h, quot.l);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "remainder %016"PRIx64" %016"PRIx64"\n", remainder.h, remainder.l);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "quot %016"PRIx64" %016"PRIx64"\n", quot.h, quot.l);
 #else
     uint128 quot = zFrac / dFrac;
     uint128 remainder = zFrac % dFrac;
-sim_debug (DBG_TRACEEXT, & cpu_dev, "remainder %016llx %016llx\n", (uint64) (remainder>>64), (uint64) remainder);
-sim_debug (DBG_TRACEEXT, & cpu_dev, "quot %016llx %016llx\n", (uint64) (quot>>64), (uint64) quot);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "remainder %016"PRIx64" %016"PRIx64"\n", (uint64) (remainder>>64), (uint64) remainder);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "quot %016"PRIx64" %016"PRIx64"\n", (uint64) (quot>>64), (uint64) quot);
 #endif
 
     // I am surmising that the "If | dividend | >= | divisor |" is an
