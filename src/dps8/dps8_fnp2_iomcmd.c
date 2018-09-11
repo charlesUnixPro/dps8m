@@ -722,6 +722,17 @@ static int wcd (struct decoded_t *decoded_p)
                   {
                     sim_debug (DBG_TRACE, & fnp_dev, "[%u]        alter_parameters dumpoutput\n", decoded_p->slot_no);
                     //sim_printf ("fnp dumpoutput\n");
+
+                    // interpreter.map355
+                    //
+                    // in1100    null                dmpout
+                    // ...
+                              // tze       in1107-*  end of chain - treat as normal dmpout
+                    // ...
+                    // in1107    aos       sndflg-*  make sure about sndout
+                    // ...
+                    // sndflg    bss       1         indicates whether to do "send output" on dmpout
+
                     // XXX ignored
                     //linep -> send_output = true;
                     linep -> send_output = SEND_OUTPUT_DELAY;
@@ -1288,6 +1299,20 @@ static int wtx (struct decoded_t *decoded_p)
 
     send_general_interrupt (decoded_p->iom_unit, decoded_p->chan_num, imwTerminatePic);
 
+    // hsla_man.map355
+    //
+    //          ttls      freout subroutine, frees output buffer
+    //          rem
+    //          rem       this subroutine is called when output from a buffer is
+    //          rem       finished. its job is to free the buffer (unless its
+    //          rem       bffhld flag is on), decrement t.ocnt, and issue a send_output
+    //          ...
+    //          szn       t.ocp,1   is there more output in the FNP already?
+    //          tnz       fre010-*  yes, don't ask for more yet
+    //          rem
+    //          ilq       sndout    get the "send_output" op-code
+    //          tsy       a.u001-*,*          (=denq) queue it up
+
 #if 0
     //decoded_p->fudp->MState.line[decoded_p->slot_no].send_output = true;
     // send is the number of characters sent; 9600 baud is 100 cps, and
@@ -1528,8 +1553,13 @@ static int interruptL66_FNP_to_CS (struct decoded_t *decoded_p)
                     //uint outputBufferThreshold = getbits36_18 (command_data0, 0);
                     //sim_printf ("  outputBufferThreshold %d\n", outputBufferThreshold);
 
+                    // dia_man.map355
+                    // dec020    null                terminal accepted
+                    //           szn       tibadr-*  is this line really configured?
+                    //           tze       dec100-*  if not, forget it
+                    //           ilq       sndout    queue "send output"
+
                     // Prime the pump
-                    //decoded_p->fudp->MState.line[decoded_p->slot_no].send_output = true;
                     decoded_p->fudp->MState.line[decoded_p->slot_no].send_output = SEND_OUTPUT_DELAY;
 // XXX XXX XXX XXX
 // For some reason the CS ack of accept_new_terminal is not being seen, causing the line to wedge.
