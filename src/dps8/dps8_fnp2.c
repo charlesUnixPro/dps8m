@@ -1347,9 +1347,7 @@ static void fnp_process_3270_event (void)
         if (stn_cnt >= IBM3270_STATIONS_MAX)
           {
             // No response to poll; send EOT, stop polling
-        
-            unsigned char EOT = 0x37;
-            send_3270_msg (ASSUME0, & EOT, 1, true);
+            linep->sendEOT = true;
             fnpuv3270Poll (false);
           }
       }
@@ -1607,6 +1605,13 @@ void fnpProcessEvent (void)
                 linep->sendLineStatus = false;
                 fnp_rcd_line_status ((uint)mbx, (int) fnp_unit_idx, lineno);
                 need_intr = true;
+              }
+
+            else if (linep->sendEOT)
+              {
+                linep->sendEOT = false;
+                unsigned char EOT = 0x37;
+                send_3270_msg (ASSUME0, & EOT, 1, true);
               }
 
             else

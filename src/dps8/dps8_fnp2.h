@@ -74,10 +74,7 @@ typedef struct t_MState
         t_bool tabecho;     // echos the appropriate number of spaces when a TAB is typed
         t_bool replay;
 
-// 30 polite expires 30 seconds after last character typed.
-#define POLITE_TIME 30
         t_bool polite;      // polite setting
-        uint polite_time;   // countdown timer in seconds.
 
         t_bool prefixnl;
         t_bool eight_bit_out;
@@ -109,30 +106,42 @@ typedef struct t_MState
         bool echnego_synced;
 
         uint sync_msg_size;
-        // Pending requests
-        bool line_break;
-#ifdef FNPDBG
-#define SEND_OUTPUT_DELAY 100
-#else
-#define SEND_OUTPUT_DELAY 2
-#endif
+
+        // Pending request timers
+
+        // 30 polite expires 30 seconds after last character typed.
+#       define POLITE_TIME 30
+        uint polite_time;   // countdown timer in seconds.
+
+#       ifdef FNPDBG
+#       define SEND_OUTPUT_DELAY 100
+#       else
+#       define SEND_OUTPUT_DELAY 2
+#       endif
         uint send_output;
-        bool accept_new_terminal;
-#ifdef DISC_DELAY
-        uint line_disconnected;
-#else
-        bool line_disconnected;
-#endif
-        bool ack_echnego_init;
-        bool ack_echnego_stop;
-        bool acu_dial_failure;
-        bool sendLineStatus;
-        bool wru_timeout;
+
         uint accept_input; // If non-zero, the number of centiseconds until
                           // an accept_input message should be sent; this is
                           // deal with 'reject_request' retries.
+#       ifdef DISC_DELAY
+        uint line_disconnected;
+#       endif
+
+
+        // Pending requests
+        bool acu_dial_failure;
+        bool accept_new_terminal;
+        bool ack_echnego_init;
+        bool ack_echnego_stop;
+#       ifndef DISC_DELAY
+        bool line_disconnected;
+#       endif
+        bool wru_timeout;
         // The 3270 controller always uses ACCEPT_INPUT 
         bool force_accept_input;
+        bool line_break;
+        bool sendLineStatus;
+        bool sendEOT;
 
         bool waitForMbxDone; // If set, the line has sent input to the CS, 
                              // but the CS has not completed the mbx transaction;
@@ -177,7 +186,6 @@ typedef struct t_MState
 
         word9 lineType;
         word36 lineStatus0, lineStatus1;
-        bool sendEOT;
       } line [MAX_LINES];
   } t_MState;
 
