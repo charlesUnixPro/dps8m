@@ -184,6 +184,7 @@ typedef struct t_MState
         uint frameLen;
 #endif
 
+        // 3270
         word9 lineType;
         word36 lineStatus0, lineStatus1;
       } line [MAX_LINES];
@@ -201,12 +202,16 @@ struct ibm3270ctlr_s
     uint lineno;
     // polling and selection addresses
 
+    int du3270_poll;
     unsigned char pollCtlrChar;
     unsigned char pollDevChar;
     unsigned char selCtlrChar;
     unsigned char selDevChar;
     bool sending_stn_in_buffer;
+    // The station being polled
     uint stn_no;
+    // How many stations polled in the current poll
+    uint stn_cnt;
     struct station_s
       {
         uv_tcp_t * client;
@@ -214,8 +219,7 @@ struct ibm3270ctlr_s
         bool hdr_sent;
         unsigned char * stn_in_buffer;
         uint stn_in_size; // Number of bytes in inBuffer
-        uint stn_in_used;
-        //uint stn_in_used; // Number of consumed bytes in buffer
+        uint stn_in_used; // Number of consumed bytes in buffer
       } stations [IBM3270_STATIONS_MAX];
     // Although this is nominally a per/station event, Multics will not
     // resume polling until after the write is complete, so only
@@ -252,7 +256,6 @@ typedef struct s_fnpData
     bool du_server_inited;
     uv_tcp_t du3270_server;
     bool du3270_server_inited;
-    int du3270_poll;
   } t_fnpData;
 
 extern t_fnpData fnpData;

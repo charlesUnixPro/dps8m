@@ -1312,10 +1312,10 @@ static void fnp_process_3270_event (void)
 
 // Polling events
 
-    if (! fnpData.du3270_poll)
+    if (! fnpData.ibm3270ctlr[ASSUME0].du3270_poll)
      return;
-    fnpData.du3270_poll --;
-    if (fnpData.du3270_poll)
+    fnpData.ibm3270ctlr[ASSUME0].du3270_poll --;
+    if (fnpData.ibm3270ctlr[ASSUME0].du3270_poll)
       return;
     struct ibm3270ctlr_s * ctlrp = & fnpData.ibm3270ctlr[ASSUME0];
 
@@ -1329,8 +1329,8 @@ static void fnp_process_3270_event (void)
     //linep->lineStatus1 = 0;
     if (ctlrp->pollDevChar == 127) // General poll
       {
-        uint stn_cnt;
-        for (stn_cnt = 0; stn_cnt < IBM3270_STATIONS_MAX; stn_cnt ++)
+        // stn_cnt initialized to 0 in fnpuv3270Poll
+        for (; ctlrp->stn_cnt < IBM3270_STATIONS_MAX; ctlrp->stn_cnt ++)
           {
             ctlrp->stn_no = (ctlrp->stn_no + 1) % IBM3270_STATIONS_MAX;
             struct station_s * stnp = & fnpData.ibm3270ctlr[ASSUME0].stations[ctlrp->stn_no];
@@ -1340,13 +1340,14 @@ static void fnp_process_3270_event (void)
               {
                 stnp->EORReceived = false;
                 ctlrp->sending_stn_in_buffer = true;
-                fnpuv3270Poll (false);
+                //fnpuv3270Poll (false);
+                
                 break;
               }
           }
-        if (stn_cnt >= IBM3270_STATIONS_MAX)
+        if (ctlrp->stn_cnt >= IBM3270_STATIONS_MAX)
           {
-            // No response to poll; send EOT, stop polling
+            // All stations polled
             linep->sendEOT = true;
             fnpuv3270Poll (false);
           }

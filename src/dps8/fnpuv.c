@@ -1351,7 +1351,11 @@ void fnpTUNProcessEvent (void)
 void fnpuv3270Poll (bool start)
   {
 // Called at 100Hz; to 1 second poll
-    fnpData.du3270_poll = start ? 100 : 0;
+// MCS will issue start polls at 1 second intervals, so let it worry about
+// timing
+    //fnpData.du3270_poll = start ? 100 : 0;
+    fnpData.ibm3270ctlr[ASSUME0].du3270_poll = start ? 1 : 0;
+    fnpData.ibm3270ctlr[ASSUME0].stn_cnt = 0;
   }
 
 //
