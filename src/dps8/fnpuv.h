@@ -32,7 +32,6 @@ typedef struct uvClientData_s uvClientData;
 
 void fnpuvInit (int telnet_port, char * telnet_address);
 void fnpuv3270Init (int telnet3270_port);
-void fnpuv3270Poll (bool start);
 void fnpuvProcessEvent (void);
 void fnpuv_start_write (uv_tcp_t * client, unsigned char * data, ssize_t len);
 void fnpuv_start_write_special (uv_tcp_t * client, unsigned char * data, ssize_t len);

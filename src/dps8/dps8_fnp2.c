@@ -1288,6 +1288,12 @@ sim_printf ("I think data starts %02hhx\r\n", linep->buffer[0]);
       }
   }
 
+void fnpuv3270Poll (bool start)
+  {
+    fnpData.ibm3270ctlr[ASSUME0].du3270_poll = start;
+    fnpData.ibm3270ctlr[ASSUME0].stn_no = 0;
+  }
+
 static void fnp_process_3270_event (void)
   {
     uint fnpno = fnpData.ibm3270ctlr[ASSUME0].fnpno;
@@ -1312,11 +1318,9 @@ static void fnp_process_3270_event (void)
 
 // Polling events
 
+    // Is polling happening?
     if (! fnpData.ibm3270ctlr[ASSUME0].du3270_poll)
      return;
-    fnpData.ibm3270ctlr[ASSUME0].du3270_poll --;
-    if (fnpData.ibm3270ctlr[ASSUME0].du3270_poll)
-      return;
     struct ibm3270ctlr_s * ctlrp = & fnpData.ibm3270ctlr[ASSUME0];
 
 #ifdef FNP2_DEBUG
@@ -1329,32 +1333,44 @@ static void fnp_process_3270_event (void)
     //linep->lineStatus1 = 0;
     if (ctlrp->pollDevChar == 127) // General poll
       {
-        // stn_cnt initialized to 0 in fnpuv3270Poll
-        for (; ctlrp->stn_cnt < IBM3270_STATIONS_MAX; ctlrp->stn_cnt ++)
+        // stn_no initialized to 0 in fnpuv3270Poll
+        for (; ctlrp->stn_no < IBM3270_STATIONS_MAX; ctlrp->stn_no ++)
           {
-            ctlrp->stn_no = (ctlrp->stn_no + 1) % IBM3270_STATIONS_MAX;
             struct station_s * stnp = & fnpData.ibm3270ctlr[ASSUME0].stations[ctlrp->stn_no];
+            // Is station connected
             if (! stnp->client)
               continue;
+
+            // Does the station need attention?
             if (stnp->EORReceived)
               {
+                // Flag that we are processing a station
                 stnp->EORReceived = false;
+                // Post an request to forward the data to CS.
+                // Although this is handled in the current polling
+                // loop, it may take several calls to complete,
+                // so it is handled as a event request rather
+                // then just calling it directly here.
                 ctlrp->sending_stn_in_buffer = true;
-                //fnpuv3270Poll (false);
-                
+                // Suspend polling until the forwarding request is done
                 break;
               }
-          }
-        if (ctlrp->stn_cnt >= IBM3270_STATIONS_MAX)
+          } // for each station
+
+        // Have we polled all of the stations?
+        if (ctlrp->stn_no >= IBM3270_STATIONS_MAX)
           {
             // All stations polled
+            // Post a request to tell CS that polling is finished
             linep->sendEOT = true;
+            // Suspend polling
             fnpuv3270Poll (false);
           }
       }
     else
       {
         // Specific poll
+        sim_warn ("3270 station poll request flubbed.\r\n");
 #ifdef FNP2_DEBUG
 sim_printf("Specific poll\r\n");
 #endif
@@ -1363,6 +1379,7 @@ sim_printf("Specific poll\r\n");
 
 bool is_polite (struct t_line * linep)
   {
+// XXX this could probably be only if !linep->polite_time
     return ! (linep->polite && // polite mode
               linep->nPos && // data in the input buffer
               (! linep->breakAll) && // line mode
@@ -1370,6 +1387,7 @@ bool is_polite (struct t_line * linep)
               linep->polite_time); // countdown timer running
 
   }
+
 //
 // Called @ 100Hz to process FNP background events
 //

@@ -202,7 +202,7 @@ struct ibm3270ctlr_s
     uint lineno;
     // polling and selection addresses
 
-    int du3270_poll;
+    bool du3270_poll;
     unsigned char pollCtlrChar;
     unsigned char pollDevChar;
     unsigned char selCtlrChar;
@@ -210,8 +210,6 @@ struct ibm3270ctlr_s
     bool sending_stn_in_buffer;
     // The station being polled
     uint stn_no;
-    // How many stations polled in the current poll
-    uint stn_cnt;
     struct station_s
       {
         uv_tcp_t * client;
@@ -377,3 +375,4 @@ void setTIMW (uint iom_unit_idx, uint chan, word24 mailboxAddress, int mbx);
 uint get_scu_unit_idx_iom (uint fnp_unit_idx, word24 addr, word24 * offset);
 #endif
 bool is_polite (struct t_line * linep);
+void fnpuv3270Poll (bool start);

@@ -329,6 +329,9 @@ void close_connection (uv_stream_t* stream)
             struct t_line * linep = & fnpData.fnpUnitData[p->fnpno].MState.line[p->lineno];
             if (linep->service  == service_3270)
              {
+               if (fnpData.ibm3270ctlr[ASSUME0].stations[p->stationNo].client)
+                 fnpData.ibm3270ctlr[ASSUME0].stations[p->stationNo].client = NULL;
+
                // On the 3270, the station closing does not close the controller
                sim_printf ("[FNP emulation: 3270 %d.%d DISCONNECT]\n", ASSUME0, p->stationNo);
              }
@@ -1347,16 +1350,6 @@ void fnpTUNProcessEvent (void)
       }
   }
 #endif
-
-void fnpuv3270Poll (bool start)
-  {
-// Called at 100Hz; to 1 second poll
-// MCS will issue start polls at 1 second intervals, so let it worry about
-// timing
-    //fnpData.du3270_poll = start ? 100 : 0;
-    fnpData.ibm3270ctlr[ASSUME0].du3270_poll = start ? 1 : 0;
-    fnpData.ibm3270ctlr[ASSUME0].stn_cnt = 0;
-  }
 
 //
 // Connection callback handler for dialup connections
