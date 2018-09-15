@@ -207,13 +207,18 @@ struct ibm3270ctlr_s
     unsigned char pollDevChar;
     unsigned char selCtlrChar;
     unsigned char selDevChar;
+    // During a poll, a station is sending data upstream
     bool sending_stn_in_buffer;
+    // During a pool, a station is disconnection;
+    bool sending_disconnect_status;
     // The station being polled
     uint stn_no;
     struct station_s
       {
         uv_tcp_t * client;
         bool EORReceived;
+        // They disconnected
+        bool disconnected;
         bool hdr_sent;
         unsigned char * stn_in_buffer;
         uint stn_in_size; // Number of bytes in inBuffer

@@ -60,7 +60,7 @@
 //  fnpProcessEvent() event loop calls fnp_process_3270_event().
 //    fnp_process_3270_event():
 //      if (fnpData.ibm3270ctlr[ASSUME0].sending_stn_in_buffer)
-//        send_stn_in_buffer ();
+//        send_3270_stn_in_buffer ();
 
 
 
@@ -1041,6 +1041,19 @@ void fnpRecvEOR (uv_tcp_t * client)
     fnpData.ibm3270ctlr[ASSUME0].stations[p->stationNo].hdr_sent = false;
   }
 
+// A 3270 device disconnected
+
+void fnp_3270_disconnectd (uv_tcp_t * client)
+  {
+    if (! client || ! client->data)
+      {
+        sim_warn ("fnp_3270_disconnectd bad client data\r\n");
+        return;
+      }
+    uvClientData * p = client->data;
+    fnpData.ibm3270ctlr[ASSUME0].stations[p->stationNo].disconnected = true;
+  }
+
 static void fnpProcessBuffer (struct t_line * linep)
   {
     // The connection could have closed when we were not looking
@@ -1188,10 +1201,81 @@ const unsigned char addr_map [ADDR_MAP_ENTRIES] =
     0xd8, 0xd9, 0x5a, 0x5b, 0x5c, 0x5d, 0x5e, 0x5f
   };
 
-static void send_stn_in_buffer (void)
+static void send_3270_disconnect_status (void)
+  {
+sim_printf ("send_3270_status\r\n");
+// timeout CE+DE+UC
+
+//  0  SOH
+//  1  %
+//  2  R
+//  3  STX
+//  4  poll address
+//  5  device address
+//  6  s/s 0
+//  7  s/s 1
+//  8  ETX
+
+// ss
+// byte  bit
+//   0    0   Dependent upon setting of bits 2-7. 
+//   0    1   Always 1
+//   0    2   Reserved
+//   0    3   Reserved
+//   0    4   DB  Device busy
+//   0    5   US  Unit specify
+//   0    6   DE  Device end
+//   0    7   Reserved
+
+//   1    0   Dependent upon setting of bits 2-7. 
+//   1    1   Always 1
+//   1    2   CR  Command reject
+//   1    3   IR  Interevntion required
+//   1    4   EC  Equipment check
+//   1    5   DC  Data check
+//   1    6   Reserved
+//   1    7   OC  Operation check
+
+    uint fnpno = fnpData.ibm3270ctlr[ASSUME0].fnpno;
+    uint lineno = fnpData.ibm3270ctlr[ASSUME0].lineno;
+    struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
+
+    // Idle until buffer availible
+    if (linep->accept_input)
+      return;
+    if (linep->input_reply_pending)
+      return;
+
+    struct ibm3270ctlr_s * ctlrp = & fnpData.ibm3270ctlr[ASSUME0];
+    //struct station_s * stnp = & fnpData.ibm3270ctlr[ASSUME0].stations[ctlrp->stn_no];
+
+#define STATUS_3270_LEN 9
+    if (linep->sync_msg_size < STATUS_3270_LEN)
+      {
+        sim_warn ("sync_msg_size too small; dropping status\r\n");
+        return;
+      }
+    unsigned char * bufp = linep->buffer;
+    * bufp ++  = 0x01; // SOH
+    * bufp ++  = 0x6c; // %
+    * bufp ++  = 0xd9; // %
+    * bufp ++  = 0x02; // STX
+    * bufp ++  = addr_map [ASSUME0]; // Controller address
+    * bufp ++  = addr_map [ctlrp->stn_no]; // Station address
+    * bufp ++  = 0x00; // s/s 0
+    * bufp ++  = 0x00; // s/s 1
+    * bufp ++  = 0xd9; // ETX
+
+    linep->input_break = 1;
+    linep->force_accept_input = true;
+    linep->accept_input = 1;
+    linep->nPos = STATUS_3270_LEN;
+  }
+
+static void send_3270_stn_in_buffer (void)
   {
 #ifdef FNP2_DEBUG
-sim_printf ("send_stn_in_buffer\r\n");
+sim_printf ("send_3270_stn_in_buffer\r\n");
 #endif
 
 //dcl  1 text_msg unal based (textp),                         /* Format of normal text start */
@@ -1304,7 +1388,16 @@ static void fnp_process_3270_event (void)
 
     if (fnpData.ibm3270ctlr[ASSUME0].sending_stn_in_buffer)
       {
-        send_stn_in_buffer ();
+        send_3270_stn_in_buffer ();
+        // sending_stn_in_buffer is cleared in send_3270_stn_in_buffer()
+        // as it may take several passes.
+        return;
+      }
+
+    if (fnpData.ibm3270ctlr[ASSUME0].sending_disconnect_status)
+      {
+        send_3270_disconnect_status ();
+        fnpData.ibm3270ctlr[ASSUME0].sending_disconnect_status = false;
         return;
       }
 
@@ -1337,6 +1430,16 @@ static void fnp_process_3270_event (void)
         for (; ctlrp->stn_no < IBM3270_STATIONS_MAX; ctlrp->stn_no ++)
           {
             struct station_s * stnp = & fnpData.ibm3270ctlr[ASSUME0].stations[ctlrp->stn_no];
+
+            // Did the station disconnect?
+            if (stnp->disconnected)
+              {
+                stnp->disconnected = false;
+                ctlrp->sending_disconnect_status = true;
+                // Suspend polling until status sent.
+                break;
+              }
+
             // Is station connected
             if (! stnp->client)
               continue;

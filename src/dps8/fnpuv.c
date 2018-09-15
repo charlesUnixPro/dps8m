@@ -331,6 +331,7 @@ void close_connection (uv_stream_t* stream)
              {
                if (fnpData.ibm3270ctlr[ASSUME0].stations[p->stationNo].client)
                  fnpData.ibm3270ctlr[ASSUME0].stations[p->stationNo].client = NULL;
+              fnpData.ibm3270ctlr[ASSUME0].stations[p->stationNo].disconnected = true;
 
                // On the 3270, the station closing does not close the controller
                sim_printf ("[FNP emulation: 3270 %d.%d DISCONNECT]\n", ASSUME0, p->stationNo);
