@@ -538,7 +538,6 @@ sim_printf ("fnpuv_3270_unassociated_start_write_actual\r\n");
 
 static void fnpuv_3270_start_write_actual (UNUSED uv_tcp_t * client, unsigned char * data, ssize_t datalen)
   {
-sim_printf ("fnpuv_3270_start_write_actual\r\n");
 #ifdef FNP2_DEBUG
 sim_printf ("fnpuv_3270_start_write_actual\r\n");
 #endif
