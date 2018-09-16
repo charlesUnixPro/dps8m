@@ -1203,7 +1203,6 @@ const unsigned char addr_map [ADDR_MAP_ENTRIES] =
 
 static void send_3270_disconnect_status (void)
   {
-sim_printf ("send_3270_status\r\n");
 // timeout CE+DE+UC
 
 //  0  SOH
@@ -1374,7 +1373,9 @@ sim_printf ("I think data starts %02hhx\r\n", linep->buffer[0]);
 
 void fnpuv3270Poll (bool start)
   {
-    fnpData.ibm3270ctlr[ASSUME0].du3270_poll = start;
+    // Delay one second
+    fnpData.ibm3270ctlr[ASSUME0].du3270_poll = start ? 100 : 0;
+    fnpData.ibm3270ctlr[ASSUME0].du3270_polling = false;
     fnpData.ibm3270ctlr[ASSUME0].stn_no = 0;
   }
 
@@ -1383,6 +1384,12 @@ static void fnp_process_3270_event (void)
     uint fnpno = fnpData.ibm3270ctlr[ASSUME0].fnpno;
     uint lineno = fnpData.ibm3270ctlr[ASSUME0].lineno;
     struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
+
+    // Decrement poll timer; poll when 0.
+    if (fnpData.ibm3270ctlr[ASSUME0].du3270_poll == 1)
+      fnpData.ibm3270ctlr[ASSUME0].du3270_polling = true;
+    if (fnpData.ibm3270ctlr[ASSUME0].du3270_poll)
+      fnpData.ibm3270ctlr[ASSUME0].du3270_poll --;
 
 // Non-polling events
 
@@ -1407,13 +1414,14 @@ static void fnp_process_3270_event (void)
         linep->lineStatus0 = 6llu << 18; // IBM3270_WRITE_COMPLETE
         linep->lineStatus1 = 0;
         linep->sendLineStatus = true;
+        return;
       }
 
 // Polling events
 
-    // Is polling happening?
-    if (! fnpData.ibm3270ctlr[ASSUME0].du3270_poll)
-     return;
+    if (! fnpData.ibm3270ctlr[ASSUME0].du3270_polling)
+      return;
+
     struct ibm3270ctlr_s * ctlrp = & fnpData.ibm3270ctlr[ASSUME0];
 
 #ifdef FNP2_DEBUG

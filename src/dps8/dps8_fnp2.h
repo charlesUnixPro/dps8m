@@ -202,7 +202,9 @@ struct ibm3270ctlr_s
     uint lineno;
     // polling and selection addresses
 
-    bool du3270_poll;
+    // Timer until poll start
+    uint du3270_poll;
+    bool du3270_polling;
     unsigned char pollCtlrChar;
     unsigned char pollDevChar;
     unsigned char selCtlrChar;
