@@ -53,5 +53,6 @@ void fnpTUNProcessEvent (void);
 void fnpuv_3270_readcb (uv_tcp_t * client,
                            ssize_t nread,
                            unsigned char * buf);
-void fnpuv_start_3270_write (uv_tcp_t * client, unsigned char * data, ssize_t datalen);
+void fnpuv_3270_start_write (uv_tcp_t * client, unsigned char * data, ssize_t datalen);
 void reset_line (struct t_line * linep);
+void fnp_telnet_negotiation_done (uv_tcp_t * client);

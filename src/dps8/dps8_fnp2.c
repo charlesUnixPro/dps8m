@@ -2508,8 +2508,8 @@ static void fnp3270Msg (uv_tcp_t * client, unsigned char * msg)
 //          29, 200, 133, 153, 131, 164, 147, 133 ??? 
     //unsigned char EW [] = {245, 66, 17, 64, 64 };
     unsigned char EW [] = {245, 0xc3, 17, 64, 64 };
-    fnpuv_start_3270_write (client, EW, sizeof (EW));
-    fnpuv_start_3270_write (client, buf, (ssize_t) l);
+    fnpuv_3270_start_write (client, EW, sizeof (EW));
+    fnpuv_3270_start_write (client, buf, (ssize_t) l);
     fnpuv_send_eor (client);
   }
 
@@ -2524,19 +2524,14 @@ void fnp3270ConnectPrompt (uv_tcp_t * client)
     uint lineno = fnpData.ibm3270ctlr[ASSUME0].lineno;
     //struct t_line * linep = & fnpData.fnpUnitData[fnpno].MState.line[lineno];
     uvClientData * p = client->data;
-    p->assoc = true;
+
     p->fnpno = fnpno;
     p->lineno = lineno;
-    //fnpData.fnpUnitData[fnpno].MState.line[lineno].line_client = client;
 
-#if 1
-    // Don't know ttype yet because Telnet negotiation won't
-    // start until evPoll runs.
     unsigned char buf [256];
     sprintf ((char *) buf, "DPS8/M 3270 connection to %c.%03d.%d ttype %s\n", fnpno+'a',lineno, p->stationNo, p->ttype);
     fnpData.ibm3270ctlr[ASSUME0].selDevChar = addr_map[p->stationNo];
     fnp3270Msg (client, buf);
-#endif
   }
 
 void processLineInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)

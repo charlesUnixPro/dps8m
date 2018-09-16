@@ -178,6 +178,7 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
               }
             uvClientData * p = (uvClientData *) client->data;
             p->ttype = strdup (event->ttype.name);
+            fnp_telnet_negotiation_done (client);
           }
           break;
 
@@ -219,15 +220,15 @@ void * ltnConnect3270 (uv_tcp_t * client)
       }
 
 // This behavior is copied from Hercules.
+    telnet_negotiate (p, TELNET_WILL, (unsigned char) TELNET_TELOPT_BINARY);
+    telnet_negotiate (p, TELNET_DO, (unsigned char) TELNET_TELOPT_BINARY);
+    telnet_negotiate (p, TELNET_WILL, (unsigned char) TELNET_TELOPT_EOR);
+    telnet_negotiate (p, TELNET_DO, (unsigned char) TELNET_TELOPT_EOR);
     telnet_negotiate (p, TELNET_DO, (unsigned char) TELNET_TELOPT_TTYPE);
     telnet_begin_sb (p, TELNET_TELOPT_TTYPE);
     const char ttype [1] = { 1 };
     telnet_send (p, ttype, 1);
     telnet_finish_sb (p);
-    telnet_negotiate (p, TELNET_WILL, (unsigned char) TELNET_TELOPT_BINARY);
-    telnet_negotiate (p, TELNET_DO, (unsigned char) TELNET_TELOPT_BINARY);
-    telnet_negotiate (p, TELNET_WILL, (unsigned char) TELNET_TELOPT_EOR);
-    telnet_negotiate (p, TELNET_DO, (unsigned char) TELNET_TELOPT_EOR);
 
     return p;
   }

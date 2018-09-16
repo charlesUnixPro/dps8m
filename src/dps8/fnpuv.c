@@ -493,13 +493,13 @@ static void fuv_write_cb (uv_write_t * req, int status)
   }
 
 //
-// fuv_write_3270_cb: libuv write complete callback
+// fuv_3270_write_cb: libuv write complete callback
 //
 //   Cleanup on error
 //   Free buffers
 //
 
-static void fuv_write_3270_cb (uv_write_t * req, int status)
+static void fuv_3270_write_cb (uv_write_t * req, int status)
   {
     fuv_write_cb (req, status);
     set_3270_write_complete ((uv_tcp_t *) req->handle);
@@ -507,10 +507,40 @@ static void fuv_write_3270_cb (uv_write_t * req, int status)
 
 // Create and start a write request
 
-static void fnpuv_start_write_3270_actual (UNUSED uv_tcp_t * client, unsigned char * data, ssize_t datalen)
+static void fnpuv_3270_unassociated_start_write_actual (uv_tcp_t * client, unsigned char * data, ssize_t datalen)
   {
 #ifdef FNP2_DEBUG
-sim_printf ("fnpuv_start_write_3270_actual\r\n");
+sim_printf ("fnpuv_3270_unassociated_start_write_actual\r\n");
+#endif
+
+    // Allocate write request
+
+    uv_write_t * req = (uv_write_t *) malloc (sizeof (uv_write_t));
+    // This makes sure that bufs*.base and bufsml*.base are NULL
+    memset (req, 0, sizeof (uv_write_t));
+    uv_buf_t buf = uv_buf_init ((char *) malloc ((unsigned long) datalen), (uint) datalen);
+//sim_printf ("allocated req %p data %p\n", req, buf.base);
+#ifdef USE_REQ_DATA
+    req->data = buf.base;
+#endif
+//sim_printf ("fnpuv_start_write_actual req %p buf.base %p\n", req, buf.base);
+    memcpy (buf.base, data, (unsigned long) datalen);
+    int ret = uv_write (req, (uv_stream_t *) client, & buf, 1, fuv_3270_write_cb);
+// There seems to be a race condition when Mulitcs signals a disconnect_line;
+// We close the socket, but Mulitcs is still writing its goodbye text trailing
+// NULs.
+// If the socket has been closed, write will return BADF; just ignore it.
+    if (ret < 0 && ret != -EBADF)
+      sim_printf ("[FNP emulation: uv_write returns %d]\n", ret);
+  }
+
+// Create and start a write request
+
+static void fnpuv_3270_start_write_actual (UNUSED uv_tcp_t * client, unsigned char * data, ssize_t datalen)
+  {
+sim_printf ("fnpuv_3270_start_write_actual\r\n");
+#ifdef FNP2_DEBUG
+sim_printf ("fnpuv_3270_start_write_actual\r\n");
 #endif
 #if 0
 sim_printf ("hex   :");
@@ -544,7 +574,7 @@ sim_printf ("\r\n");
         break;
     if (stn_no >= ADDR_MAP_ENTRIES)
       {
-        sim_printf ("fnpuv_start_write_3270_actual couldn't find selDevChar %02"PRIx8"\r\n", fnpData.ibm3270ctlr[ASSUME0].selDevChar);
+        sim_printf ("fnpuv_3270_start_write_actual couldn't find selDevChar %02"PRIx8"\r\n", fnpData.ibm3270ctlr[ASSUME0].selDevChar);
         return;
       }
     uv_tcp_t * stn_client = fnpData.ibm3270ctlr[ASSUME0].stations[stn_no].client;
@@ -564,7 +594,7 @@ sim_printf ("\r\n");
 #endif
 //sim_printf ("fnpuv_start_write_actual req %p buf.base %p\n", req, buf.base);
     memcpy (buf.base, data, (unsigned long) datalen);
-    int ret = uv_write (req, (uv_stream_t *) stn_client, & buf, 1, fuv_write_3270_cb);
+    int ret = uv_write (req, (uv_stream_t *) stn_client, & buf, 1, fuv_3270_write_cb);
 // There seems to be a race condition when Mulitcs signals a disconnect_line;
 // We close the socket, but Mulitcs is still writing its goodbye text trailing
 // NULs.
@@ -614,7 +644,7 @@ void fnpuv_start_write (uv_tcp_t * client, unsigned char * data, ssize_t datalen
     telnet_send (p->telnetp, (char *) data, (size_t) datalen);
   }
 
-void fnpuv_start_3270_write (uv_tcp_t * client, unsigned char * data, ssize_t datalen)
+void fnpuv_3270_start_write (uv_tcp_t * client, unsigned char * data, ssize_t datalen)
   {
     if (! client || uv_is_closing ((uv_handle_t *) client) || ! client->data)
       return;
@@ -622,7 +652,7 @@ void fnpuv_start_3270_write (uv_tcp_t * client, unsigned char * data, ssize_t da
     if (! p)
       return;
 #ifdef FNP2_DEBUG
-sim_printf ("fnpuv_start_3270_write\r\n");
+sim_printf ("fnpuv_3270_start_write\r\n");
 #endif
 #if 0
 sim_printf ("hex   :");
@@ -1374,30 +1404,11 @@ static void on_new_3270_connection (uv_stream_t * server, int status)
         return;
       }
 
-    // Search for an availible station
-    uint stn_no;
-    for (stn_no = 0; stn_no < IBM3270_STATIONS_MAX; stn_no ++)
-      {
-        if (fnpData.ibm3270ctlr[ASSUME0].stations[stn_no].client == NULL)
-          break;
-      }
-    if (stn_no >= IBM3270_STATIONS_MAX)
-      {
-        // No stations availible
-        uv_close ((uv_handle_t *) client, fuv_close_cb);
-        return;
-      }
-
     uint fnpno = fnpData.ibm3270ctlr[ASSUME0].fnpno;
     uint lineno = fnpData.ibm3270ctlr[ASSUME0].lineno;
     // Set the line client to NULL; the actual clients are in 'stations'
     fnpData.fnpUnitData[fnpno].MState.line[lineno].line_client = NULL;
 
-    fnpData.ibm3270ctlr[ASSUME0].stations[stn_no].client = client;
-
-    // Set up selection so the telnet negotiation can find the station.
-    fnpData.ibm3270ctlr[ASSUME0].selDevChar = addr_map[stn_no];
-    
     struct sockaddr name;
     int namelen = sizeof (name);
     int ret = uv_tcp_getpeername (client, & name, & namelen);
@@ -1419,14 +1430,14 @@ static void on_new_3270_connection (uv_stream_t * server, int status)
       }
     client->data = p;
     p->assoc = false;
-    p->fnpno = fnpno;
-    p->lineno = lineno;
+    //p->fnpno = fnpno;
+    //p->lineno = lineno;
     p->nPos = 0;
     p->ttype = NULL;
     p->read_cb = fnpuv_3270_readcb;
-    p->write_cb = fnpuv_start_3270_write;
-    p->write_actual_cb = fnpuv_start_write_3270_actual;
-    p->stationNo = stn_no;
+    p->write_cb = fnpuv_3270_start_write;
+    p->write_actual_cb = fnpuv_3270_unassociated_start_write_actual;
+    // This gets the terminal type
     p->telnetp = ltnConnect3270 (client);
 
     if (! p->telnetp)
@@ -1434,44 +1445,139 @@ static void on_new_3270_connection (uv_stream_t * server, int status)
         sim_warn ("ltnConnect3270 failed\n");
         return;
       }
+
+#if 0
+    int stn_no = -1;
+
+sim_printf ("seeing ttype %s\n", p->ttype);
+    // Did tn3270 send us a terminal type?
+    if (p->ttype)
+      {
+         // Looking for trailing "@number"
+         size_t l = strlen (p->ttype);
+         size_t i;
+         // Walk backwards over the number
+         for (i = l; i; i --)
+           {
+             char c = p->ttype[i-1];
+sim_printf ("looking at %lu '%c'\r\n", i-1, c);
+             if (c < '0' || c > '9')
+               break;
+           }
+        // If didn't walk off the front
+        // and at least one digit found
+        // and the non-digit is an @
+        if (i && i != l && p->ttype [i - 1] == '@')
+          {
+sim_printf ("found @\r\n");
+            int n = atoi (p->ttype + i) - 1;
+sim_printf ("n %d\r\n", n);
+            if (n >= 0 && n < IBM3270_STATIONS_MAX)
+              {
+                if (fnpData.ibm3270ctlr[ASSUME0].stations[n].client == NULL)
+                  {
+                    stn_no = n;
+sim_printf ("stn_no %d\n\r", stn_no);
+                  }
+              } // if n in range
+          } // if @
+      } // if (p->ttype)
+
+    if (stn_no < 0)
+      {
+        // Search for an availible station
+        for (stn_no = 0; stn_no < IBM3270_STATIONS_MAX; stn_no ++)
+          {
+            if (fnpData.ibm3270ctlr[ASSUME0].stations[stn_no].client == NULL)
+              break;
+          }
+        if (stn_no >= IBM3270_STATIONS_MAX)
+          {
+            // No stations availible
+            uv_close ((uv_handle_t *) client, fuv_close_cb);
+            return;
+          }
+      }
+
+    fnpData.ibm3270ctlr[ASSUME0].stations[stn_no].client = client;
+    // Set up selection so the telnet negotiation can find the station.
+    fnpData.ibm3270ctlr[ASSUME0].selDevChar = addr_map[stn_no];
+    p->stationNo = (uint) stn_no;
+    p->assoc = true;
+    p->write_actual_cb = fnpuv_3270_start_write_actual;
+#endif
+
     fnpuv_read_start (client);
+    //fnp3270ConnectPrompt (client);
+  }
+
+void fnp_telnet_negotiation_done (uv_tcp_t * client)
+  {
+    if (! client || uv_is_closing ((uv_handle_t *) client))
+      return;
+    if (! client->data)
+      {
+        sim_warn ("fnp_telnet_negotiation_done bad client data\r\n");
+        return;
+      }
+    uvClientData * p = (uvClientData *) client->data;
+    //uint fnpno = p -> fnpno;
+    //uint lineno = p -> lineno;
+
+    int stn_no = -1;
+
+    // Did tn3270 send us a terminal type?
+    if (p->ttype)
+      {
+         // Looking for trailing "@number"
+         size_t l = strlen (p->ttype);
+         size_t i;
+         // Walk backwards over the number
+         for (i = l; i; i --)
+           {
+             char c = p->ttype[i-1];
+             if (c < '0' || c > '9')
+               break;
+           }
+        // If didn't walk off the front
+        // and at least one digit found
+        // and the non-digit is an @
+        if (i && i != l && p->ttype [i - 1] == '@')
+          {
+            int n = atoi (p->ttype + i) - 1;
+            if (n >= 0 && n < IBM3270_STATIONS_MAX)
+              {
+                if (fnpData.ibm3270ctlr[ASSUME0].stations[n].client == NULL)
+                  {
+                    stn_no = n;
+                  }
+              } // if n in range
+          } // if @
+      } // if (p->ttype)
+
+    if (stn_no < 0)
+      {
+        // Search for an availible station
+        for (stn_no = 0; stn_no < IBM3270_STATIONS_MAX; stn_no ++)
+          {
+            if (fnpData.ibm3270ctlr[ASSUME0].stations[stn_no].client == NULL)
+              break;
+          }
+        if (stn_no >= IBM3270_STATIONS_MAX)
+          {
+            // No stations availible
+            uv_close ((uv_handle_t *) client, fuv_close_cb);
+            return;
+          }
+      }
+
+    fnpData.ibm3270ctlr[ASSUME0].stations[stn_no].client = client;
+    // Set up selection so the telnet negotiation can find the station.
+    fnpData.ibm3270ctlr[ASSUME0].selDevChar = addr_map[stn_no];
+    p->stationNo = (uint) stn_no;
+    p->assoc = true;
+    p->write_actual_cb = fnpuv_3270_start_write_actual;
     fnp3270ConnectPrompt (client);
-        //uvClientData * p = (uvClientData *) server->data;
-        //struct t_line * linep = & fnpData.fnpUnitData[p->fnpno].MState.line[p->lineno];
-        //linep->accept_new_terminal = true;
-        //linep->was_CR = false;
-        ////linep->listen = false;
-        //linep->inputBufferSize = 0;
-        //linep->ctrlStrIdx = 0;
-        //linep->breakAll = false;
-        //linep->handleQuit = false;
-        //linep->echoPlex = false;
-        //linep->crecho = false;
-        //linep->lfecho = false;
-        //linep->tabecho = false;
-        //linep->replay = false;
-        //linep->polite = false;
-        //linep->prefixnl = false;
-        //linep->eight_bit_out = false;
-        //linep->eight_bit_in = false;
-        //linep->odd_parity = false;
-        //linep->output_flow_control = false;
-        //linep->input_flow_control = false;
-        //linep->block_xfer_in_frame_sz = 0;
-        //linep->block_xfer_out_frame_sz = 0;
-        //memset (linep->delay_table, 0, sizeof (linep->delay_table));
-        //linep->inputSuspendLen = 0;
-        //memset (linep->inputSuspendStr, 0, sizeof (linep->inputSuspendStr));
-        //linep->inputResumeLen = 0;
-        //memset (linep->inputResumeStr, 0, sizeof (linep->inputResumeStr));
-        //linep->outputSuspendLen = 0;
-        //memset (linep->outputSuspendStr, 0, sizeof (linep->outputSuspendStr));
-        //linep->outputResumeLen = 0;
-        //memset (linep->outputResumeStr, 0, sizeof (linep->outputResumeStr));
-        //linep->frame_begin = 0;
-        //linep->frame_end = 0;
-        //memset (linep->echnego, 0, sizeof (linep->echnego));
-        //linep->line_break = false;
   }
 
 void fnpuv3270Init (int telnet3270_port)
