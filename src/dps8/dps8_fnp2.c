@@ -2528,8 +2528,29 @@ void fnp3270ConnectPrompt (uv_tcp_t * client)
     p->fnpno = fnpno;
     p->lineno = lineno;
 
-    unsigned char buf [256];
-    sprintf ((char *) buf, "DPS8/M 3270 connection to %c.%03d.%d ttype %s\n", fnpno+'a',lineno, p->stationNo, p->ttype);
+    unsigned char buf [24*80+1];
+    sprintf ((char *) buf, "DPS8/M 3270 connection to %c.%03d.%d (%s)                                             ",
+             fnpno+'a',lineno, p->stationNo, p->ttype);
+    // trim to 80 cols
+    buf [80] = '\0';
+    strcat ((char *) buf, "                                                                                ");
+    strcat ((char *) buf, "                                                                                ");
+    strcat ((char *) buf, "                                                                                ");
+    strcat ((char *) buf, "                                                                                ");
+    strcat ((char *) buf, "                                                                                ");
+    strcat ((char *) buf, "                                                                                ");
+    strcat ((char *) buf, "                                                                                ");
+    strcat ((char *) buf, "                                                                                ");
+    strcat ((char *) buf, "                  #     #                                                       ");
+    strcat ((char *) buf, "                  ##   ## #    # #      ##### #  ####   ####                    ");
+    strcat ((char *) buf, "                  # # # # #    # #        #   # #    # #                        ");
+    strcat ((char *) buf, "                  #  #  # #    # #        #   # #       ####                    ");
+    strcat ((char *) buf, "                  #     # #    # #        #   # #           #                   ");
+    strcat ((char *) buf, "                  #     # #    # #        #   # #    # #    #                   ");
+    strcat ((char *) buf, "                  #     #  ####  ######   #   #  ####   ####                    ");
+    strcat ((char *) buf, "                                                                                ");
+    strcat ((char *) buf, "                                                                                ");
+    strcat ((char *) buf, "Press ENTER to start login process                                              ");
     fnpData.ibm3270ctlr[ASSUME0].selDevChar = addr_map[p->stationNo];
     fnp3270Msg (client, buf);
   }
