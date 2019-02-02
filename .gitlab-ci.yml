@@ -1,3 +1,5 @@
+image: fedora
+
 rc11_build:
   script:
     - make
