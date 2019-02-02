@@ -2,5 +2,5 @@ image: fedora
 
 rc11_build:
   script:
-    - dnf -y install git automake libtool clang
+    - dnf -y install git automake libtool clang make
     - make
