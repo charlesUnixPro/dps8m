@@ -9,6 +9,6 @@ rc11_build:
     - ./configure
     - make
     - make install
-    cd ..
+    - cd ..
     - git checkout rc11
     - make
