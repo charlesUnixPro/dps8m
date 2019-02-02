@@ -641,6 +641,7 @@ sim_printf ("\n");
             uint hbuf [l];
             asciiToH ((char *) cardImage, hbuf, l);
 
+#if 0
             // 12 bits / char
             uint nbits = (uint) l * 12;
             // 36 bits / word
@@ -651,6 +652,7 @@ sim_printf ("\n");
                 sim_warn ("Whups. rdr tally %d > 27; truncating.\n", tally);
                 tally = 27;
               }
+#endif
 
             // Remember that Hollerith for blank is 0, this is really
             // filling the buffer with blanks.

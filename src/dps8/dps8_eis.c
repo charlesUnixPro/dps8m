@@ -536,8 +536,10 @@ static void EISWriteCache (EISaddr * p)
                    }
 #endif
               }
+#ifndef SPEED
 { long eisaddr_idx = EISADDR_IDX (p);
 sim_debug (DBG_TRACEEXT, & cpu_dev, "EIS %ld Write8 TRR %o TSR %05o\n", eisaddr_idx, cpu.TPR.TRR, cpu.TPR.TSR); }
+#endif
 #ifdef CWO
             for (uint i = 0; i < 8; i ++)
               if (p->wordDirty[i])
@@ -572,8 +574,10 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "EIS %ld Write8 TRR %o TSR %05o\n", eisaddr_
                      }
 #endif
               }
+#ifndef SPEED
 { long eisaddr_idx = EISADDR_IDX (p);
 sim_debug (DBG_TRACEEXT, & cpu_dev, "EIS %ld Write8 NO PR TRR %o TSR %05o\n", eisaddr_idx, cpu.TPR.TRR, cpu.TPR.TSR); }
+#endif
 #ifdef CWO
             for (uint i = 0; i < 8; i ++)
               if (p->wordDirty[i])
@@ -615,8 +619,10 @@ static void EISReadCache (EISaddr * p, word18 address)
         cpu.TPR.TRR = p -> RNR;
         cpu.TPR.TSR = p -> SNR;
 	cpu.cu.XSF = 0;
+#ifndef SPEED
 { long eisaddr_idx = EISADDR_IDX (p);
 sim_debug (DBG_TRACEEXT, & cpu_dev, "EIS %ld Read8 TRR %o TSR %05o\n", eisaddr_idx, cpu.TPR.TRR, cpu.TPR.TSR); }
+#endif
         Read8 (paragraphAddress, p -> cachedParagraph, true);
 
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
@@ -636,8 +642,10 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "EIS %ld Read8 TRR %o TSR %05o\n", eisaddr_i
 	cpu.cu.XSF = 0;
           //}
         
+#ifndef SPEED
 { long eisaddr_idx = EISADDR_IDX (p);
 sim_debug (DBG_TRACEEXT, & cpu_dev, "EIS %ld Read8 NO PR TRR %o TSR %05o\n", eisaddr_idx, cpu.TPR.TRR, cpu.TPR.TSR); }
+#endif
         Read8 (paragraphAddress, p -> cachedParagraph, false);
         if_sim_debug (DBG_TRACEEXT, & cpu_dev)
           {
@@ -705,8 +713,10 @@ if (eisaddr_idx < 0 || eisaddr_idx > 2) { sim_warn ("IDX1"); return }
     sim_debug (DBG_TRACEEXT, & cpu_dev, "EISReadIdx addr %06o n %u\n", cpu.du.Dk_PTR_W[eisaddr_idx], n);
     word18 addressN = (cpu.du.Dk_PTR_W[eisaddr_idx] + n) & AMASK;
 #else
+#ifndef SPEED
     long eisaddr_idx = EISADDR_IDX (p);
     sim_debug (DBG_TRACEEXT, & cpu_dev, "EISReadIdx %ld addr %06o n %u\n", eisaddr_idx, p->address, n);
+#endif
     word18 addressN = p -> address + n;
 #endif
     addressN &= AMASK;

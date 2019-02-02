@@ -1384,6 +1384,11 @@ Strtok(char *line, char *sep)
     if (line) { /* 1st invocation */
         p = line;
         state = NORMAL;
+    } else { /* not first */
+      if (! p) {
+        sim_warn ("Strtok called incorrectly\n");
+        return NULL;
+      }
     }
     
     q = p;

@@ -361,7 +361,7 @@ for (ip=ips; (ip != NULL) && (*ip != NULL); ++ip) {
         lai->ai_next = ai;
     lai = ai;
     }
-if (cname) {
+if (result && cname) {
     result->ai_canonname = (char *)calloc(1, strlen(cname)+1);
     if (NULL == result->ai_canonname) {
         s_freeaddrinfo(result);
@@ -902,19 +902,19 @@ if (newsock == INVALID_SOCKET) {                        /* socket error? */
 #ifdef IPV6_V6ONLY
 if (preferred->ai_family == AF_INET6) {
     int off = 0;
-    sta = setsockopt (newsock, IPPROTO_IPV6, IPV6_V6ONLY, (char *)&off, sizeof(off));
+    /*sta =*/ setsockopt (newsock, IPPROTO_IPV6, IPV6_V6ONLY, (char *)&off, sizeof(off));
     }
 #endif
 if (opt_flags & SIM_SOCK_OPT_REUSEADDR) {
     int on = 1;
 
-    sta = setsockopt (newsock, SOL_SOCKET, SO_REUSEADDR, (char *)&on, sizeof(on));
+    /*sta =*/ setsockopt (newsock, SOL_SOCKET, SO_REUSEADDR, (char *)&on, sizeof(on));
     }
 #if defined (SO_EXCLUSIVEADDRUSE)
 else {
     int on = 1;
 
-    sta = setsockopt (newsock, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (char *)&on, sizeof(on));
+    /*sta =*/ setsockopt (newsock, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (char *)&on, sizeof(on));
     }
 #endif
 sta = bind (newsock, preferred->ai_addr, preferred->ai_addrlen);

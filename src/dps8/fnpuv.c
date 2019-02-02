@@ -497,8 +497,9 @@ static void fuv_write_cb (uv_write_t * req, int status)
 
 static void fuv_write_3270_cb (uv_write_t * req, int status)
   {
+    uv_tcp_t * h = (uv_tcp_t *) req->handle;
     fuv_write_cb (req, status);
-    set_3270_write_complete ((uv_tcp_t *) req->handle);
+    set_3270_write_complete (h);
   }
 
 // Create and start a write request

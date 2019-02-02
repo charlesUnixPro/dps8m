@@ -2340,7 +2340,7 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
 
         // fetch_psdw
 
-        y1 = (2 * segno) % 1024;
+        //y1 = (2 * segno) % 1024;
     
         word36 SDWeven, SDWodd;
     
@@ -2438,7 +2438,7 @@ int dbgLookupAddress (word18 segno, word18 offset, word24 * finalAddress,
             return 5;
           }
 
-        y2 = offset % 1024;
+        //y2 = offset % 1024;
     
         * finalAddress = ((((word24)PTW1.ADDR & 0777760) << 6) + y2) & PAMASK;
       }

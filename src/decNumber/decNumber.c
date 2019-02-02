@@ -3869,7 +3869,7 @@ static decNumber * decAddOp(decNumber *res, const decNumber *lhs,
     if (ISZERO(lhs)) {
       Int adjust;                       // work
       Int lexp=lhs->exponent;           // save in case LHS==RES
-      bits=lhs->bits;                   // ..
+      //bits=lhs->bits;                   // ..
       residue=0;                        // clear accumulator
       decCopyFit(res, rhs, set, &residue, status); // copy (as needed)
       res->bits^=negate;                // flip if rhs was negated
@@ -3905,7 +3905,7 @@ static decNumber * decAddOp(decNumber *res, const decNumber *lhs,
     if (ISZERO(rhs)) {                  // [lhs is non-zero]
       Int adjust;                       // work
       Int rexp=rhs->exponent;           // save in case RHS==RES
-      bits=rhs->bits;                   // be clean
+      //bits=rhs->bits;                   // be clean
       residue=0;                        // clear accumulator
       decCopyFit(res, lhs, set, &residue, status); // copy (as needed)
       #if DECSUBSET
@@ -4637,7 +4637,7 @@ static decNumber * decDivideOp(decNumber *res,
           if (drop>0) {
             accunits=decShiftToLeast(accnext, accunits, drop);
             accdigits=decGetDigits(accnext, accunits);
-            accunits=D2U(accdigits);
+            //accunits=D2U(accdigits);
             // [exponent was adjusted in the loop]
             }
           } // neither odd nor 0
@@ -4763,7 +4763,7 @@ static decNumber * decDivideOp(decNumber *res,
                                     rhs->lsu, D2U(rhs->digits),
                                     expunits, accnext, -(Int)powers[exprem]);
             accdigits=decGetDigits(accnext, accunits); // count digits exactly
-            accunits=D2U(accdigits);    // and recalculate the units for copy
+            //accunits=D2U(accdigits);    // and recalculate the units for copy
             // [exponent is as for original remainder]
             bits^=DECNEG;               // flip the sign
             }

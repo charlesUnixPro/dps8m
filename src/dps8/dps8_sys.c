@@ -120,7 +120,7 @@ static pid_t dps8m_sid; // Session id
 // sim_load not supported
 t_stat sim_load (FILE *fileref, const char *cptr, const char *fnam, int flag)
   {
-    return SCP_UNK;
+    return SCPE_UNK;
   }
 #endif
 
@@ -2181,10 +2181,12 @@ char * lookup_address (word18 segno, word18 offset, char * * compname,
 #endif
 
     char * ret = lookup_system_book_address (segno, offset, compname, compoffset);
+#ifdef LOADER
 #ifndef SCUMEM
     if (ret)
       return ret;
     ret = lookupSegmentAddress (segno, offset, compname, compoffset);
+#endif
 #endif
     return ret;
   }
@@ -2291,13 +2293,11 @@ void list_source (char * compname, word18 offset, uint dflag)
                 // PL/I files have a line location table
                 //     "   LINE    LOC      LINE    LOC ...."
 
-                bool foundTable = false;
                 while (! feof (listing))
                   {
                     fgets (line, 1024, listing);
                     if (strncmp (line, "   LINE    LOC", 14) != 0)
                       continue;
-                    foundTable = true;
                     // Found the table
                     // Table lines look like
                     //     "     13 000705       275 000713  ...
@@ -2403,27 +2403,22 @@ void list_source (char * compname, word18 offset, uint dflag)
                       }
                     goto fileDone;
                   } // if table start
-                if (! foundTable)
+                // Can't find the LINE/LOC table; look for listing
+                rewind (listing);
+                while (! feof (listing))
                   {
-                    // Can't find the LINE/LOC table; look for listing
-                    rewind (listing);
-                    while (! feof (listing))
+                    fgets (line, 1024, listing);
+                    if (strncmp (line,
+                                 offset_str + 4,
+                                 offset_str_len - 4) == 0)
                       {
-                        fgets (line, 1024, listing);
-                        if (strncmp (line,
-                                     offset_str + 4,
-                                     offset_str_len - 4) == 0)
-                          {
-                            if (! dflag)
-                              sim_msg ("%s", line);
-                            else
-                              sim_debug (dflag, & cpu_dev, "%s", line);
-                            //break;
-                          }
-                        //if (strcmp (line, "\fLITERALS\n") == 0)
-                          //break;
+                        if (! dflag)
+                          sim_msg ("%s", line);
+                        else
+                          sim_debug (dflag, & cpu_dev, "%s", line);
+                        //break;
                       }
-                  } // if ! tableFound
+                  }
               } // if PL/I listing
                         
 fileDone:

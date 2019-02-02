@@ -1018,6 +1018,7 @@ int skc_iom_cmd (uint iom_unit_idx, uint chan)
 static void do_try_accept (uint unit_num)
   {
     struct sockaddr_in from;
+    memset (& from, 0, sizeof (from));
     socklen_t size = sizeof (from);
     int _errno = 0;
     int fd = accept (sk_data.unit_data[unit_num].accept_fd, (struct sockaddr *) & from, & size);
@@ -1043,6 +1044,7 @@ static void do_try_accept (uint unit_num)
     buffer[0] = ((word36) ((word36s) sk_data.unit_data[unit_num].accept_fd)) & MASK36; 
     buffer[1] = ((word36) ((word36s) fd)) & MASK36; 
     buffer[2] = ((word36) ((word36s) from.sin_family)) & MASK36; 
+    buffer[3] = 0;
     uint16_t port = ntohs (from.sin_port);
     putbits36_16 (& buffer[3], 0, port);
     uint32_t addr = ntohl (from.sin_addr.s_addr);
@@ -1087,6 +1089,8 @@ static void do_try_read (uint unit_num)
       {
          uint wordno = (uint) n / 4;
          uint charno = (uint) n % 4;
+         if (charno == 0)
+           buffer [5 + wordno] = 0;
          putbits36_9 (& buffer [5 + wordno], charno * 9, (word9) netdata [n]);
       }
 

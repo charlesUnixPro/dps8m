@@ -2086,7 +2086,7 @@ else if (*argv[0]) {                                    /* sim name arg? */
         }
     }
 
-stat = process_stdin_commands (SCPE_BARE_STATUS(stat), argv);
+/*stat =*/ process_stdin_commands (SCPE_BARE_STATUS(stat), argv);
 
 detach_all (0, TRUE);                                   /* close files */
 sim_set_deboff (0, NULL);                               /* close debug */
@@ -2238,6 +2238,10 @@ for (cmdp = cmd_table; cmdp && (cmdp->name != NULL); cmdp++) {
             max_cmdname_size = strlen(cmdp->name);
         }
     }
+if (!hlp_cmdp) {
+    fprintf (st, "No help availible\n");
+    return;
+    }
 fprintf (st, "Help is available for the following commands:\n\n    ");
 qsort (hlp_cmdp, cmd_cnt, sizeof(*hlp_cmdp), _cmd_name_compare);
 line_offset = 4;
@@ -2274,7 +2278,7 @@ CONST char *tptr;
 char *namebuf;
 char rangebuf[32];
 
-if (dptr->registers)
+if (dptr && dptr->registers)
     for (rptr = dptr->registers; rptr->name != NULL; rptr++) {
         if (rptr->flags & REG_HIDDEN)
             continue;
@@ -2622,7 +2626,7 @@ if (*cptr) {
                 UNIT *uptr;
                 t_stat r;
 
-                cptr = get_glyph (cptr, gbuf, 0);
+                /*cptr =*/ get_glyph (cptr, gbuf, 0);
                 dptr = find_unit (gbuf, &uptr);
                 if (dptr == NULL)
                     dptr = find_dev (gbuf);
@@ -3383,7 +3387,7 @@ t_value val;
 t_stat r;
 t_bool Not = FALSE;
 t_bool result;
-t_addr addr;
+t_addr addr = 0;
 t_stat reason;
 
 cptr = (CONST char *)get_sim_opt (CMD_OPT_SW|CMD_OPT_DFT, (CONST char *)cptr, &r);  
@@ -3469,7 +3473,10 @@ else {
     else {                                              /* not reg, check for memory */
         if (sim_dfdev && sim_vm_parse_addr)             /* get addr */
             addr = sim_vm_parse_addr (sim_dfdev, gbuf, &gptr);
-        else addr = (t_addr) strtotv (gbuf, &gptr, sim_dfdev->dradix);
+        else if (sim_dfdev)
+            addr = (t_addr) strtotv (gbuf, &gptr, sim_dfdev->dradix);
+        else
+            return SCPE_NXREG;
         if (gbuf == gptr)                               /* error? */
             return SCPE_NXREG;
         }
@@ -3703,7 +3710,7 @@ while (1) {
     if (*cptr != ':') continue;                         /* ignore non-labels */
     ++cptr;                                             /* skip : */
     while (sim_isspace (*cptr)) ++cptr;                 /* skip blanks */
-    cptr = get_glyph (cptr, gbuf, 0);                   /* get label glyph */
+    /*cptr =*/ get_glyph (cptr, gbuf, 0);                   /* get label glyph */
     if (0 == strcmp(gbuf, gbuf1)) {
         sim_brk_clract ();                              /* goto defangs current actions */
         sim_do_echo = saved_do_echo;                    /* restore echo mode */
@@ -5065,12 +5072,14 @@ if (c) {
     memcpy (DirName, WholeName, c-WholeName);
     DirName[c-WholeName] = '\0';
     }
-else
+else {
+    DirName[0] = '\0';
 #if defined (VMS)
     getcwd (WholeName, PATH_MAX, 0);
 #else
     getcwd (WholeName, PATH_MAX);
 #endif
+    }
 cptr = WholeName;
 #if defined (HAVE_GLOB)
 memset (&paths, 0, sizeof(paths));
@@ -7378,8 +7387,8 @@ if (prompt && (!initialized)) {
 
 #define S__STR_QUOTE(tok) #tok
 #define S__STR(tok) S__STR_QUOTE(tok)
-    handle = dlopen("libncurses." S__STR(HAVE_DLOPEN), RTLD_NOW|RTLD_GLOBAL);
-    handle = dlopen("libcurses." S__STR(HAVE_DLOPEN), RTLD_NOW|RTLD_GLOBAL);
+    /*handle =*/ dlopen("libncurses." S__STR(HAVE_DLOPEN), RTLD_NOW|RTLD_GLOBAL);
+    /*handle =*/ dlopen("libcurses." S__STR(HAVE_DLOPEN), RTLD_NOW|RTLD_GLOBAL);
     handle = dlopen("libreadline." S__STR(HAVE_DLOPEN), RTLD_NOW|RTLD_GLOBAL);
     if (!handle)
         handle = dlopen("libreadline." S__STR(HAVE_DLOPEN) ".6", RTLD_NOW|RTLD_GLOBAL);
@@ -10271,7 +10280,7 @@ char gbuf[CBUFSIZE];
 int32 cond;
 
 *stat = SCPE_ARG;
-cptr = get_glyph (cptr, gbuf, 0);
+/*cptr =*/ get_glyph (cptr, gbuf, 0);
 if (0 == memcmp("SCPE_", gbuf, 5))
     strcpy (gbuf, gbuf+5);   /* skip leading SCPE_ */
 for (cond=0; cond < (SCPE_MAX_ERR-SCPE_BASE); cond++)

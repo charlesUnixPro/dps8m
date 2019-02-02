@@ -538,21 +538,21 @@ void ufa (bool sub)
 #ifdef L68
     cpu.ou.cycle |= ou_GOE;   
 #endif
-    int shift_count = -1;
+    //int shift_count = -1;
     word1 allones = 1;
     word1 notallzeros = 0;
     //word1 last = 0;
     if (e1 == e2)
     {
-        shift_count = 0;
+        //shift_count = 0;
         e3 = e1;
     }
     else if (e1 < e2)
     {
 #ifdef HEX_MODE
-        shift_count = abs(e2 - e1) * (int) shift_amt;
+        int shift_count = abs(e2 - e1) * (int) shift_amt;
 #else
-        shift_count = abs(e2 - e1);
+        int shift_count = abs(e2 - e1);
 #endif
 #ifdef NEED_128
         bool sign = isnonzero_128 (and_128 (m1, SIGN72)); // mantissa negative?
@@ -601,9 +601,9 @@ void ufa (bool sub)
     {
         // e2 < e1;
 #ifdef HEX_MODE
-        shift_count = abs(e1 - e2) * (int) shift_amt;
+        int shift_count = abs(e1 - e2) * (int) shift_amt;
 #else
-        shift_count = abs(e1 - e2);
+        int shift_count = abs(e1 - e2);
 #endif
 #ifdef NEED_128
         bool sign = isnonzero_128 (and_128 (m2, SIGN72)); // mantissa negative?
@@ -1906,12 +1906,12 @@ void fcmp(void)
 #ifdef HEX_MODE
     uint shift_amt = isHex() ? 4 : 1;
 #endif
-    int shift_count = -1;
+    //int shift_count = -1;
     word1 notallzeros = 0;
     
     if (e1 == e2)
       {
-        shift_count = 0;
+        //shift_count = 0;
       }
     else if (e1 < e2)
       {
@@ -1919,9 +1919,9 @@ void fcmp(void)
         cpu.ou.cycle = ou_GOA;
 #endif
 #ifdef HEX_MODE
-        shift_count = abs(e2 - e1) * (int) shift_amt;
+        int shift_count = abs(e2 - e1) * (int) shift_amt;
 #else
-        shift_count = abs(e2 - e1);
+        int shift_count = abs(e2 - e1);
 #endif
         // mantissa negative?
 #ifdef NEED_128
@@ -1972,9 +1972,9 @@ void fcmp(void)
         cpu.ou.cycle = ou_GOA;
 #endif
 #ifdef HEX_MODE
-        shift_count = abs(e1 - e2) * (int) shift_amt;
+        int shift_count = abs(e1 - e2) * (int) shift_amt;
 #else
-        shift_count = abs(e1 - e2);
+        int shift_count = abs(e1 - e2);
 #endif
         // mantissa negative?
 #ifdef NEED_128
@@ -2087,12 +2087,12 @@ void fcmg ()
 #ifdef L68
     cpu.ou.cycle = ou_GOE;
 #endif
-    int shift_count = -1;
+    //int shift_count = -1;
     word1 notallzeros = 0;
     
     if (e1 == e2)
       {
-        shift_count = 0;
+        //shift_count = 0;
       }
     else if (e1 < e2)
       {
@@ -2100,9 +2100,9 @@ void fcmg ()
         cpu.ou.cycle = ou_GOA;
 #endif
 #ifdef HEX_MODE
-        shift_count = abs(e2 - e1) * (int) shift_amt;
+        int shift_count = abs(e2 - e1) * (int) shift_amt;
 #else
-        shift_count = abs(e2 - e1);
+        int shift_count = abs(e2 - e1);
 #endif
 #ifdef NEED_128
         bool s = isnonzero_128 (and_128 (m1, SIGN72));
@@ -2154,9 +2154,9 @@ void fcmg ()
         cpu.ou.cycle = ou_GOA;
 #endif
 #ifdef HEX_MODE
-        shift_count = abs(e1 - e2) * (int) shift_amt;
+        int shift_count = abs(e1 - e2) * (int) shift_amt;
 #else
-        shift_count = abs(e1 - e2);
+        int shift_count = abs(e1 - e2);
 #endif
 #ifdef NEED_128
         bool s = isnonzero_128 (and_128 (m2, SIGN72));
@@ -2397,12 +2397,12 @@ void dufa (bool subtract)
 #ifdef L68
     cpu.ou.cycle |= ou_GOE;
 #endif
-    int shift_count = -1;
+    //int shift_count = -1;
     word1 notallzeros = 0;
 
     if (e1 == e2)
       {
-        shift_count = 0;
+        //shift_count = 0;
         e3 = e1;
       }
     else if (e1 < e2)
@@ -2411,9 +2411,9 @@ void dufa (bool subtract)
         cpu.ou.cycle |= ou_GOA;
 #endif
 #ifdef HEX_MODE
-        shift_count = abs(e2 - e1) * (int) shift_amt;
+        int shift_count = abs(e2 - e1) * (int) shift_amt;
 #else
-        shift_count = abs(e2 - e1);
+        int shift_count = abs(e2 - e1);
 #endif
         // mantissa negative?
 #ifdef NEED_128
@@ -2465,9 +2465,9 @@ void dufa (bool subtract)
         cpu.ou.cycle |= ou_GOA;
 #endif
 #ifdef HEX_MODE
-        shift_count = abs(e1 - e2) * (int) shift_amt;
+        int shift_count = abs(e1 - e2) * (int) shift_amt;
 #else
-        shift_count = abs(e1 - e2);
+        int shift_count = abs(e1 - e2);
 #endif
 #ifdef NEED_128
         bool s = isnonzero_128 (and_128 (m2, SIGN72));
@@ -3844,21 +3844,21 @@ void dfcmp (void)
 
     //which exponent is smaller???
     
-    int shift_count = -1;
+    //int shift_count = -1;
     word1 notallzeros = 0;
     
 #ifdef NEED_128
     if (e1 == e2)
     {
-        shift_count = 0;
+        //shift_count = 0;
         //e3 = e1;
     }
     else if (e1 < e2)
     {
 #ifdef HEX_MODE
-        shift_count = abs(e2 - e1) * (int) shift_amt;
+        int shift_count = abs(e2 - e1) * (int) shift_amt;
 #else
-        shift_count = abs(e2 - e1);
+        int shift_count = abs(e2 - e1);
 #endif
         bool s = isnonzero_128 (and_128 (m1, SIGN72));   ///< mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
@@ -3883,9 +3883,9 @@ void dfcmp (void)
     {
         // e2 < e1;
 #ifdef HEX_MODE
-        shift_count = abs(e1 - e2) * (int) shift_amt;
+        int shift_count = abs(e1 - e2) * (int) shift_amt;
 #else
-        shift_count = abs(e1 - e2);
+        int shift_count = abs(e1 - e2);
 #endif
         bool s = isnonzero_128 (and_128 (m2, SIGN72));   ///< mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
@@ -3913,15 +3913,15 @@ void dfcmp (void)
 #else // NEED_128
     if (e1 == e2)
     {
-        shift_count = 0;
+        //shift_count = 0;
         //e3 = e1;
     }
     else if (e1 < e2)
     {
 #ifdef HEX_MODE
-        shift_count = abs(e2 - e1) * (int) shift_amt;
+        int shift_count = abs(e2 - e1) * (int) shift_amt;
 #else
-        shift_count = abs(e2 - e1);
+        int shift_count = abs(e2 - e1);
 #endif
         bool s = m1 & SIGN72;   ///< mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
@@ -3946,9 +3946,9 @@ void dfcmp (void)
     {
         // e2 < e1;
 #ifdef HEX_MODE
-        shift_count = abs(e1 - e2) * (int) shift_amt;
+        int shift_count = abs(e1 - e2) * (int) shift_amt;
 #else
-        shift_count = abs(e1 - e2);
+        int shift_count = abs(e1 - e2);
 #endif
         bool s = m2 & SIGN72;   ///< mantissa negative?
         for(int n = 0 ; n < shift_count ; n += 1)
@@ -4023,12 +4023,12 @@ void dfcmg (void)
 #ifdef L68
     cpu.ou.cycle = ou_GOE;
 #endif
-    int shift_count = -1;
+    //int shift_count = -1;
     word1 notallzeros = 0;
     
     if (e1 == e2)
       {
-        shift_count = 0;
+        //shift_count = 0;
         //e3 = e1;
       }
     else if (e1 < e2)
@@ -4037,9 +4037,9 @@ void dfcmg (void)
         cpu.ou.cycle = ou_GOA;
 #endif
 #ifdef HEX_MODE
-        shift_count = abs(e2 - e1) * (int) shift_amt;
+        int shift_count = abs(e2 - e1) * (int) shift_amt;
 #else
-        shift_count = abs(e2 - e1);
+        int shift_count = abs(e2 - e1);
 #endif
 #ifdef NEED_128
         bool s = isnonzero_128 (and_128 (m1, SIGN72));   ///< mantissa negative?
@@ -4083,9 +4083,9 @@ void dfcmg (void)
       {
         // e2 < e1;
 #ifdef HEX_MODE
-        shift_count = abs(e1 - e2) * (int) shift_amt;
+        int shift_count = abs(e1 - e2) * (int) shift_amt;
 #else
-        shift_count = abs(e1 - e2);
+        int shift_count = abs(e1 - e2);
 #endif
 #ifdef NEED_128
         bool s = isnonzero_128 (and_128 (m2, SIGN72));   ///< mantissa negative?

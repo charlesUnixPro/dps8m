@@ -40,9 +40,9 @@ $(warning ####)
 CFLAGS += -DTESTING
 endif
 
-#ifeq ($(LOADER),1)
+ifeq ($(LOADER),1)
 CFLAGS += -DLOADER
-#endif
+endif
 
 ifeq ($(OS),Windows_NT)
 CROSS=MINGW64
@@ -148,9 +148,9 @@ C_SRCS += ./dps8_fnp2_iomcmd.c
 C_SRCS += ./dps8_iefp.c
 C_SRCS += ./dps8_ins.c
 C_SRCS += ./dps8_iom.c
-#ifeq ($(LOADER),1)
+ifeq ($(LOADER),1)
 C_SRCS += ./dps8_loader.c
-#endif
+endif
 C_SRCS += ./dps8_math.c
 C_SRCS += ./dps8_math128.c
 C_SRCS += ./dps8_mt.c
@@ -205,9 +205,9 @@ H_SRCS += dps8_hw_consts.h
 H_SRCS += dps8_iefp.h
 H_SRCS += dps8_ins.h
 H_SRCS += dps8_iom.h
-#ifeq ($(LOADER),1)
+ifeq ($(LOADER),1)
 H_SRCS += dps8_loader.h
-#endif
+endif
 H_SRCS += dps8_math.h
 H_SRCS += dps8_math128.h
 #H_SRCS += dps8_mp.h

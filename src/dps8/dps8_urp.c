@@ -204,10 +204,12 @@ void urp_init (void)
 static int urp_cmd (uint iomUnitIdx, uint chan)
   {
     iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
+#ifndef SPEED
     uint ctlr_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
     uint devUnitIdx = cables->urp_to_urd[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
     UNIT * unitp = & urp_unit [devUnitIdx];
     int urp_unit_num = (int) URPUNIT_NUM (unitp);
+#endif
     //int iomUnitIdx = cables -> cablesFromIomToPun [urp_unit_num] . iomUnitIdx;
 
     sim_debug (DBG_TRACE, & urp_dev, "urp_cmd CHAN_CMD %o DEV_CODE %o DEV_CMD %o COUNT %o\n", p -> IDCW_CHAN_CMD, p -> IDCW_DEV_CODE, p -> IDCW_DEV_CMD, p -> IDCW_COUNT);
@@ -473,14 +475,18 @@ sim_printf ("\n");
         case 000: // CMD 00 Request status
           {
             p -> stati = 04000;
+#ifndef SPEED
             sim_debug (DBG_NOTIFY, & urp_dev, "Request status %d\n", urp_unit_num);
+#endif
           }
           break;
 
         case 006: // CMD 005 Initiate read data xfer (load_mpc.pl1)
           {
             p -> stati = 04000;
+#ifndef SPEED
             sim_debug (DBG_NOTIFY, & urp_dev, "Initiate read data xfer %d\n", urp_unit_num);
+#endif
 
             // Get the DDCW
 
@@ -522,7 +528,9 @@ sim_printf ("\n");
         case 031: // CMD 031 Set Diagnostic Mode (load_mpc.pl1)
           {
             p -> stati = 04000;
+#ifndef SPEED
             sim_debug (DBG_NOTIFY, & urp_dev, "Set Diagnostic Mode %d\n", urp_unit_num);
+#endif
 
             // Get the DDCW
 
@@ -562,7 +570,9 @@ sim_printf ("\n");
             p -> stati = 04000;
             p -> initiate = false;
             p -> isRead = false;
+#ifndef SPEED
             sim_debug (DBG_NOTIFY, & urp_dev, "Reset status %d\n", urp_unit_num);
+#endif
           }
           break;
 

@@ -1974,7 +1974,9 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
 // AL39 says that RCU does not restore CA, so words to SCU does not.
 // So we do it here, even if restart
             word3 n = GET_PRN(IWB_IRODD);  // get PRn
+#ifndef SPEED
             word15 offset = GET_OFFSET(IWB_IRODD);
+#endif
             CPTUR (cptUsePRn + n);
 
             sim_debug (DBG_APPENDING, &cpu_dev,
@@ -2002,11 +2004,13 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
 		else
 		  cpu.TPR.TRR = max3 (cpu.PAR[n].RNR, cpu.TPR.TRR, cpu.PPR.PRR);
 
+#ifndef SPEED
                 sim_debug (DBG_APPENDING, &cpu_dev,
                            "doPtrReg: n=%o offset=%05o TPR.CA=%06o "
                            "TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n",
                            n, offset, cpu.TPR.CA, cpu.TPR.TBR, 
                            cpu.TPR.TSR, cpu.TPR.TRR);
+#endif
 		//                cpu.cu.XSF = 1;
 		//sim_debug (DBG_TRACEEXT, & cpu_dev, "executeInstruction !restart !EIS sets XSF to %o\n", cpu.cu.XSF);
                 //set_went_appending ();

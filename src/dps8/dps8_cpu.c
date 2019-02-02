@@ -1736,7 +1736,7 @@ setCPU:;
       {
         case JMP_ENTRY:
         case JMP_REENTRY:
-            reason = 0;
+            //reason = 0;
             break;
         case JMP_SYNC_FAULT_RETURN:
             set_cpu_cycle (SYNC_FAULT_RTN_cycle);
@@ -1770,7 +1770,7 @@ setCPU:;
 
     do
       {
-        reason = 0;
+        //reason = 0;
 
 #if !defined(THREADZ) && !defined(LOCKLESS)
         // Process deferred events and breakpoints

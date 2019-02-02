@@ -1024,7 +1024,8 @@ DEVICE scu_dev =
     NULL,            /* description */
     NULL
   };
-
+ 
+#ifndef SPEED
 static void dump_intr_regs (char * ctx, uint scu_unit_idx)
   {
     scu_t * up = scu + scu_unit_idx;
@@ -1085,6 +1086,7 @@ static void dump_intr_regs (char * ctx, uint scu_unit_idx)
   }
 #endif
    }
+#endif
 
 void scu_unit_reset (int scu_unit_idx)
   {
@@ -1479,7 +1481,9 @@ t_stat scu_smic (uint scu_unit_idx, uint UNUSED cpu_unit_udx,
                    scu_unit_idx, pcells (scu_unit_idx, pcellb));
       }
 #endif
+#ifndef SPEED
     dump_intr_regs ("smic", scu_unit_idx);
+#endif
     deliver_interrupts (scu_unit_idx);
 #if defined(THREADZ) || defined(LOCKLESS)
     unlock_scu ();
@@ -1713,7 +1717,9 @@ t_stat scu_sscr (uint scu_unit_idx, UNUSED uint cpu_unit_udx,
                        "mask 0x%08x\n", 
                        scu_unit_idx, port_num, mask_num, 
                        scu [scu_unit_idx].exec_intr_mask [mask_num]);
+#ifndef SPEED
             dump_intr_regs ("sscr set mask", scu_unit_idx);
+#endif
             scu [scu_unit_idx].mask_enable [mask_num] = 1;
             sim_debug (DBG_INTR, & scu_dev,
                        "SCU%u SSCR2 exec_intr mask %c set to 0x%08x"
@@ -1747,7 +1753,9 @@ t_stat scu_sscr (uint scu_unit_idx, UNUSED uint cpu_unit_udx,
             sim_debug (DBG_INTR, & scu_dev, 
                        "SCU%u SSCR3  Set int. cells %s\n", 
                        scu_unit_idx, pcells (scu_unit_idx, pcellb));
+#ifndef SPEED
             dump_intr_regs ("sscr set interrupt cells", scu_unit_idx);
+#endif
             deliver_interrupts (scu_unit_idx);
 #if defined(THREADZ) || defined(LOCKLESS)
             unlock_scu ();
@@ -2308,7 +2316,9 @@ int scu_set_interrupt (uint scu_unit_idx, uint inum)
     lock_scu ();
 #endif
     scu [scu_unit_idx].cells [inum] = 1;
+#ifndef SPEED
     dump_intr_regs ("scu_set_interrupt", scu_unit_idx);
+#endif
     deliver_interrupts (scu_unit_idx);
 #if defined(THREADZ) || defined(LOCKLESS)
     unlock_scu ();
@@ -2343,7 +2353,9 @@ uint scu_get_highest_intr (uint scu_unit_idx)
                 (mask & (1u << (31 - inum))) != 0)
               {
                 scu [scu_unit_idx].cells [inum] = false;
+#ifndef SPEED
                 dump_intr_regs ("scu_get_highest_intr", scu_unit_idx);
+#endif
                 deliver_interrupts (scu_unit_idx);
 #if defined(THREADZ) || defined(LOCKLESS)
                 unlock_scu ();
@@ -2488,7 +2500,9 @@ gotit:;
     sim_debug (DBG_TRACE, & scu_dev,
                "RMCM returns %012"PRIo64" %012"PRIo64"\n", 
                * rega, * regq);
+#ifndef SPEED
     dump_intr_regs ("rmcm", scu_unit_idx);
+#endif
     return SCPE_OK;
   }
 
@@ -2567,7 +2581,9 @@ gotit:;
     scu [scu_unit_idx].port_enable [6] = (uint) getbits36_1 (regq, 34);
     scu [scu_unit_idx].port_enable [7] = (uint) getbits36_1 (regq, 35);
 
+#ifndef SPEED
     dump_intr_regs ("smcm", scu_unit_idx);
+#endif
     deliver_interrupts (scu_unit_idx);
 #if defined(THREADZ) || defined(LOCKLESS)
     unlock_scu ();

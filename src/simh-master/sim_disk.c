@@ -734,7 +734,7 @@ else { /* Unaligned and/or partial sector transfers */
                 sim_os_disk_rdsect (uptr, tlba, tbuf, NULL, sspsts);
                 break;
             default:
-                r = SCPE_NOFNC;
+                //r = SCPE_NOFNC;
                 break;
             }
     if ((tsects > sspsts) &&
@@ -751,7 +751,7 @@ else { /* Unaligned and/or partial sector transfers */
                                     NULL, sspsts);
                 break;
             default:
-                r = SCPE_NOFNC;
+                //r = SCPE_NOFNC;
                 break;
             }
     sim_buf_copy_swapped (tbuf + (lba & (sspsts - 1)) * ctx->sector_size,
@@ -1038,8 +1038,11 @@ switch (Retr->fm2_r_word0_bits.fm2_v_format)
     case 3:
         ScbLbn = Retr->fm2_r_map_bits3.fm2_l_lbn3;
         break;
+    default: // Illegal
+        ret_val = 0;
+        goto Return_Cleanup;
     }
-Retr = (ODS2_Retreval *)(((uint16 *)Retr)+Retr->fm2_r_word0_bits.fm2_v_format+1);
+//Retr = (ODS2_Retreval *)(((uint16 *)Retr)+Retr->fm2_r_word0_bits.fm2_v_format+1);
 if (sim_disk_rdsect (uptr, ScbLbn, (uint8 *)&Scb, NULL, 1))
     goto Return_Cleanup;
 CheckSum1 = ODS2Checksum (&Scb, 255);
@@ -1141,7 +1144,7 @@ if (sim_switches & SWMASK ('C')) {                      /* create vhd disk & cop
         t_lba lba;
         t_seccnt sectors_per_buffer = (t_seccnt)((1024*1024)/sector_size);
         t_lba total_sectors = (t_lba)((uptr->capac*capac_factor)/(sector_size/((dptr->flags & DEV_SECTORS) ? 512 : 1)));
-        t_seccnt sects = sectors_per_buffer;
+        t_seccnt sects /*= sectors_per_buffer*/;
 
         if (!copy_buf) {
             sim_vhd_disk_close(vhd);
@@ -1392,7 +1395,7 @@ if ((created) && (!copied)) {
         uint32 capac_factor = ((dptr->dwidth / dptr->aincr) == 16) ? 2 : 1; /* capacity units (word: 2, byte: 1) */
         t_seccnt sectors_per_buffer = (t_seccnt)((1024*1024)/sector_size);
         t_lba total_sectors = (t_lba)((uptr->capac*capac_factor)/(sector_size/((dptr->flags & DEV_SECTORS) ? 512 : 1)));
-        t_seccnt sects = sectors_per_buffer;
+        t_seccnt sects /*= sectors_per_buffer*/;
 
         if (!init_buf) {
             sim_disk_detach (uptr);                         /* report error now */
@@ -1431,7 +1434,7 @@ if (sim_switches & SWMASK ('K')) {
     uint32 capac_factor = ((dptr->dwidth / dptr->aincr) == 16) ? 2 : 1; /* capacity units (word: 2, byte: 1) */
     t_seccnt sectors_per_buffer = (t_seccnt)((1024*1024)/sector_size);
     t_lba total_sectors = (t_lba)((uptr->capac*capac_factor)/(sector_size/((dptr->flags & DEV_SECTORS) ? 512 : 1)));
-    t_seccnt sects = sectors_per_buffer;
+    t_seccnt sects /*= sectors_per_buffer*/;
     uint8 *verify_buf = (uint8*) malloc (1024*1024);
 
     if (!verify_buf) {
@@ -2993,6 +2996,7 @@ int Return = 0;
 VHD_Footer sHeader;
 struct stat statb;
 
+if(ModifiedTimeStamp)*ModifiedTimeStamp = 0;
 if (sFooter)
     memset(sFooter, '\0', sizeof(*sFooter));
 if (sDynamic)
@@ -3367,6 +3371,9 @@ static FILE *sim_vhd_disk_merge (const char *szVHDPath, char **ParentVHD)
                                      NULL,
                                      hVHD->ParentVHDPath,
                                      sizeof (hVHD->ParentVHDPath))))
+        goto Cleanup_Return;
+    // Fixes static analysis warning
+    if (!hVHD->BAT)
         goto Cleanup_Return;
     if (NtoHl (hVHD->Footer.DiskType) != VHD_DT_Differencing) {
         Status = EINVAL;
@@ -4128,7 +4135,7 @@ uint32 BlocksWritten = 0;
 uint32 SectorsInWrite;
 size_t BytesWritten = 0;
 
-if (!hVHD || !hVHD->File) {
+if (!hVHD || !hVHD->File ||!hVHD->BAT) {
     errno = EBADF;
     return SCPE_IOERR;
     }
@@ -4147,7 +4154,8 @@ if (NtoHl(hVHD->Footer.DiskType) == VHD_DT_Fixed) {
         return SCPE_IOERR;
         }
     if (sectswritten)
-        *sectswritten /= SectorSize;
+        //*sectswritten /= SectorSize;
+        *sectswritten = 0;
     return SCPE_OK;
     }
 /* We are now dealing with a Dynamically expanding or differencing disk */

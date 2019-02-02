@@ -2537,7 +2537,7 @@ while (*tptr) {
         sim_close_sock (sock);
         sim_os_ms_sleep (2);                                    /* let the close finish (required on some platforms) */
         strcpy (listen, port);
-        cptr = get_glyph (cptr, option, ';');
+        /*cptr =*/ get_glyph (cptr, option, ';');
         if (option[0]) {
             if (0 == MATCH_CMD (option, "NOTELNET"))
                 listennotelnet = TRUE;
@@ -4781,7 +4781,7 @@ static size_t tmxr_debug_buf_size = 0;
 
 static void tmxr_buf_debug_char (char value)
 {
-if (tmxr_debug_buf_used+2 > tmxr_debug_buf_size) {
+if (!tmxr_debug_buf || tmxr_debug_buf_used+2 > tmxr_debug_buf_size) {
     tmxr_debug_buf_size += 1024;
     tmxr_debug_buf = (char *)realloc (tmxr_debug_buf, tmxr_debug_buf_size);
     }

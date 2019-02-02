@@ -623,7 +623,9 @@ static void sendConsole (int conUnitIdx, word12 stati)
 #endif
     uint n_chars = (uint) (csp->tailp - csp->readp);
     uint n_words = (n_chars + 3) / 4;
-    word36 buf[n_words];
+    // scan-build flags zero length VLAs; the code is safe, but
+    // force at least one word to calm scan-build.
+    word36 buf[n_words ? n_words : 1];
     word36 * bufp = buf;
 
     while (tally && csp->readp < csp->tailp)

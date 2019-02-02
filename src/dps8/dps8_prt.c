@@ -605,31 +605,38 @@ sim_printf ("\n");
                 if (prt_state [prt_unit_num] . prtfile == -1)
                   openPrtFile (prt_unit_num, buffer, tally);
 
-                uint8 bytes [tally * 4];
-                for (uint i = 0; i < tally * 4; i ++)
+                uint tally4 = tally * 4;
+                uint8 bytes [tally4];
+                for (uint i = 0; i < tally4; i ++)
                   {
                     uint wordno = i / 4;
                     uint charno = i % 4;
                     bytes [i] = (uint8) (buffer [wordno] >> ((3 - charno) * 9)) & 0377;
                   }
 
-                for (uint i = 0; i < tally * 4; i ++)
+                for (uint i = 0; i < tally4; i ++)
                   {
                     uint8 ch = bytes [i];
                     if (ch == 037) // insert n spaces
                       {
                         const uint8 spaces [128] = "                                                                                                                                ";
                         i ++;
-                        uint8 n = bytes [i] & 0177;
-                        write (prt_state [prt_unit_num] . prtfile, spaces, n);
+                        if (i < tally4)
+                          {
+                            uint8 n = bytes [i] & 0177;
+                            write (prt_state [prt_unit_num] . prtfile, spaces, n);
+                          }
                       }
                     else if (ch == 013) // insert n new lines
                       {
                         const uint8 newlines [128] = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n";
                         i ++;
-                        uint8 n = bytes [i] & 0177;
-                        if (n)
-                          write (prt_state [prt_unit_num] . prtfile, newlines, n);
+                        if (i < tally4)
+                          {
+                            uint8 n = bytes [i] & 0177;
+                            if (n)
+                              write (prt_state [prt_unit_num] . prtfile, newlines, n);
+                          }
                         else
                           {
                             const uint cr = '\r';

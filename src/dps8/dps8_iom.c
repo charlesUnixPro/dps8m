@@ -3318,11 +3318,15 @@ void iom_interrupt (uint scu_unit_idx, uint iom_unit_idx)
     setIOMInterrupt (iom_unit_idx);
     iomDoneWait (iom_unit_idx);
 #else
+#ifdef SPEED
+    do_connect_chan (iom_unit_idx);
+#else
     int ret = do_connect_chan (iom_unit_idx);
 
     sim_debug (DBG_DEBUG, & iom_dev,
                "%s: IOM %c finished; do_connect_chan returned %d.\n",
                __func__, 'A' + iom_unit_idx, ret);
+#endif
 #endif
     // XXX do_connect_chan return value ignored
   }

@@ -251,7 +251,7 @@ int udp_create (const char * premote, int * pln)
     if (sock == -1)
       return -3;
 
-    rc = fcntl (sock, F_SETFL, fcntl (sock, F_GETFL, 0) | O_NONBLOCK);
+    /* rc = */ fcntl (sock, F_SETFL, fcntl (sock, F_GETFL, 0) | O_NONBLOCK);
     if (sock == -1)
       return -4;
 
