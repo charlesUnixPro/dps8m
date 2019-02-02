@@ -2,4 +2,5 @@ image: fedora
 
 rc11_build:
   script:
+    - yum install git automake libtool clang
     - make
