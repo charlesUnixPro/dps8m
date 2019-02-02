@@ -1,3 +1,14 @@
+image: fedora
+
 rc11_build:
   script:
+    - dnf -y install git automake libtool clang make
+    - git clone https://github.com/libuv/libuv.git
+    - cd libuv
+    - sh autogen.sh
+    - ./configure
+    - make
+    - make install
+    - cd ..
+    - git checkout rc11
     - make
