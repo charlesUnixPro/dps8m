@@ -111,7 +111,9 @@ struct telnet_t {
 	/* current subnegotiation telopt */
 	unsigned char sb_telopt;
 	/* length of RFC1143 queue */
-	unsigned char q_size;
+	unsigned int q_size;
+	/* number of entries in RFC1143 queue */
+	unsigned int q_cnt;
 };
 
 /* RFC1143 option negotiation state */
@@ -270,7 +272,7 @@ static INLINE int _check_telopt(telnet_t *telnet, unsigned char telopt,
 	if (telnet->telopts == 0)
 		return 0;
 
-	/* loop unti found or end marker (us and him both 0) */
+	/* loop until found or end marker (us and him both 0) */
 	for (i = 0; telnet->telopts[i].telopt != -1; ++i) {
 		if (telnet->telopts[i].telopt == telopt) {
 			if (us && telnet->telopts[i].us == TELNET_WILL)
@@ -293,7 +295,7 @@ static INLINE telnet_rfc1143_t _get_rfc1143(telnet_t *telnet,
 	int i;
 
 	/* search for entry */
-	for (i = 0; i != telnet->q_size; ++i) {
+	for (i = 0; i != telnet->q_cnt; ++i) {
 		if (telnet->q[i].telopt == telopt) {
 			return telnet->q[i];
 		}
@@ -312,7 +314,7 @@ static INLINE void _set_rfc1143(telnet_t *telnet, unsigned char telopt,
 	int i;
 
 	/* search for entry */
-	for (i = 0; i != telnet->q_size; ++i) {
+	for (i = 0; i != telnet->q_cnt; ++i) {
 		if (telnet->q[i].telopt == telopt) {
 			telnet->q[i].state = (unsigned char) Q_MAKE(us,him);
 			if (telopt != TELNET_TELOPT_BINARY)
@@ -333,17 +335,24 @@ static INLINE void _set_rfc1143(telnet_t *telnet, unsigned char telopt,
 	 * to the number of enabled options for most simple code, and it
 	 * allows for an acceptable number of reallocations for complex code.
 	 */
-	if ((qtmp = (telnet_rfc1143_t *)realloc(telnet->q,
-			sizeof(telnet_rfc1143_t) * (telnet->q_size + 4u))) == 0) {
-		_error(telnet, __LINE__, __func__, TELNET_ENOMEM, 0,
-				"realloc() failed: %s", strerror(errno));
-		return;
+#define QUANTUM 4
+    /* Did we reach the end of the table? */
+       if (i >= telnet->q_size) {
+               /* Expand the size */
+               if ((qtmp = (telnet_rfc1143_t *)realloc(telnet->q,                                     
+                       sizeof(telnet_rfc1143_t) * (telnet->q_size + QUANTUM))) == 0) {                
+                       _error(telnet, __LINE__, __func__, TELNET_ENOMEM, 0,                           
+                                       "realloc() failed: %s", strerror(errno));                      
+                       return;
+               }
+               memset(&qtmp[telnet->q_size], 0, sizeof(telnet_rfc1143_t) * QUANTUM);                  
+               telnet->q = qtmp;
+               telnet->q_size += QUANTUM;
 	}
-	memset(&qtmp[telnet->q_size], 0, sizeof(telnet_rfc1143_t) * 4);
-	telnet->q = qtmp;
-	telnet->q[telnet->q_size].telopt = telopt;
-	telnet->q[telnet->q_size].state = (unsigned char) Q_MAKE(us, him);
-	telnet->q_size += 4;
+       /* Add entry to end of table */
+       telnet->q[telnet->q_cnt].telopt = telopt;
+       telnet->q[telnet->q_cnt].state = Q_MAKE(us, him);                                              
+       telnet->q_cnt ++;
 }
 
 /* send negotiation bytes */
@@ -917,8 +926,9 @@ void telnet_free(telnet_t *telnet) {
 	/* free RFC1143 queue */
 	if (telnet->q) {
 		free(telnet->q);
-		telnet->q = 0;
+		telnet->q = NULL;
 		telnet->q_size = 0;
+		telnet->q_cnt = 0;
 	}
 
 	/* free the telnet structure itself */
