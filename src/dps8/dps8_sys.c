@@ -2275,7 +2275,7 @@ static void addChild (pid_t pid)
 #ifdef LAUNCH
 static t_stat launch (int32 UNUSED arg, const char * buf)
   {
-#ifndef __MINGW64__ || __OpenBSD__
+#if (! defined (__MINGW64__)) || (! defined (__OpenBSD__))
     wordexp_t p;
     int rc = wordexp (buf, & p, WRDE_SHOWERR | WRDE_UNDEF);
     if (rc)
