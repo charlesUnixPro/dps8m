@@ -351,7 +351,7 @@ static INLINE void _set_rfc1143(telnet_t *telnet, unsigned char telopt,
 	}
        /* Add entry to end of table */
        telnet->q[telnet->q_cnt].telopt = telopt;
-       telnet->q[telnet->q_cnt].state = Q_MAKE(us, him);                                              
+       telnet->q[telnet->q_cnt].state = (unsigned char) Q_MAKE(us, him);                                              
        telnet->q_cnt ++;
 }
 
