@@ -21,7 +21,9 @@
 
 #include <stdio.h>
 #ifndef __MINGW64__
+#ifndef __OpenBSD__
 #include <wordexp.h>
+#endif
 #include <signal.h>
 #endif
 #include <unistd.h>
@@ -116,7 +118,9 @@ static t_stat sbreak (int32 arg, const char * buf);
 static t_stat stackTrace (int32 arg, const char * buf);
 static t_stat listSourceAt (int32 arg, const char * buf);
 static t_stat doEXF (UNUSED int32 arg,  UNUSED const char * buf);
+#ifndef __OpenBSD__
 #define LAUNCH
+#endif
 #ifdef LAUNCH
 static t_stat launch (int32 arg, const char * buf);
 #endif
@@ -2271,7 +2275,7 @@ static void addChild (pid_t pid)
 #ifdef LAUNCH
 static t_stat launch (int32 UNUSED arg, const char * buf)
   {
-#ifndef __MINGW64__
+#if (! defined (__MINGW64__)) || (! defined (__OpenBSD__))
     wordexp_t p;
     int rc = wordexp (buf, & p, WRDE_SHOWERR | WRDE_UNDEF);
     if (rc)

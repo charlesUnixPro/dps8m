@@ -203,7 +203,7 @@
 #define USE_REQ_DATA
 
 // Making it up...
-#define DEFAULT_BACKLOG 16
+#define DEFAULT_BACKLOG 1024
 
 #ifdef TUN
 static int tun_alloc (char * dev)
@@ -352,10 +352,10 @@ static void fuv_read_cb (uv_stream_t* stream,
   {
     if (nread < 0)
       {
-        if (nread == UV_EOF)
-          {
+        //if (nread == UV_EOF)
+          //{
             close_connection (stream);
-          }
+          //}
       }
     else if (nread > 0)
       {
@@ -567,6 +567,7 @@ sim_printf ("[FNP emulation: dropping 2nd slave]\n");
         
         struct sockaddr name;
         int namelen = sizeof (name);
+	uv_tcp_nodelay(client,1);
         int ret = uv_tcp_getpeername (client, & name, & namelen);
         if (ret < 0)
           {
