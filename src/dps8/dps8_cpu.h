@@ -1842,6 +1842,7 @@ extern bool stall_point_active;
 uint set_cpu_idx (uint cpuNum);
 #if defined(THREADZ) || defined(LOCKLESS)
 extern __thread uint current_running_cpu_idx;
+extern bool bce_dis_called;
 #else
 #ifdef ROUND_ROBIN
 extern uint current_running_cpu_idx;
