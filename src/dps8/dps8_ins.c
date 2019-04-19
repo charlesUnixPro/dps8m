@@ -8720,6 +8720,7 @@ elapsedtime ();
                 longjmp (cpu.jmpMain, JMP_STOP);
               }
 
+#if 0
 #ifdef LOCKLESS
 // Changes to pxss.alm will move the address of the delete_me dis instuction
 // That dis has a distintive bit pattern; use the segment and IWB instead

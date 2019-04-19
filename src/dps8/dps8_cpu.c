@@ -1594,7 +1594,7 @@ t_stat sim_instr (void)
 // Check for all CPUs stopped
 
 // This doesn't work for multiple CPU Multics; only one processor does the
-// BCE dis; the other processors are doing the pxss 'dis 0776' dance; 
+// BCE dis; the other processors are doing the pxss 'dis 0777' dance; 
 
         uint n_running = 0;
         for (uint i = 0; i < cpu_dev.numunits; i ++)
