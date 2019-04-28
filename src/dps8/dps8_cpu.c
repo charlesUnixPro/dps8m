@@ -82,6 +82,9 @@ static uint64 luf_limits[] =
     32000*LOCKUP_KIPS/1000
   };
 
+struct stall_point_s stall_points [N_STALL_POINTS];
+bool stall_point_active = false;
+
 #ifdef PANEL
 static void panel_process_event (void);
 #endif
@@ -498,6 +501,74 @@ static t_stat cpu_set_kips (UNUSED UNIT * uptr, UNUSED int32 value,
     return SCPE_OK;
   }
 
+static t_stat cpu_show_stall (UNUSED FILE * st, UNUSED UNIT * uptr, 
+                             UNUSED int val, UNUSED const void * desc)
+  {
+    if (! stall_point_active)
+      {
+        sim_printf ("No stall points\n");
+        return SCPE_OK;
+      }
+
+    for (int i = 0; i < N_STALL_POINTS; i ++)
+      if (stall_points[i].segno || stall_points[i].offset)
+        {
+          sim_printf ("%2d %05o:%06o %6u\n", i, stall_points[i].segno, stall_points[i].offset, stall_points[i].time);
+        }
+    return SCPE_OK;
+  }
+
+// set cpu stall=n=s:o=t
+//   n stall point number
+//   s segment number (octal)
+//   o offset (octal)
+//   t time in microseconds (decimal)
+
+static t_stat cpu_set_stall (UNUSED UNIT * uptr, UNUSED int32 value,
+                             const char * cptr, UNUSED void * desc)
+  {
+    if (! cptr)
+      return SCPE_ARG;
+
+    long n, s, o, t;
+
+    char * end;
+    n = strtol (cptr, & end, 0);
+    if (* end != '=')
+      return SCPE_ARG;
+    if (n < 0 || n >= N_STALL_POINTS)
+      return SCPE_ARG;
+
+    s = strtol (end + 1, & end, 8);
+    if (* end != ':')
+      return SCPE_ARG;
+    if (s < 0 || s > MASK15)
+      return SCPE_ARG;
+
+    o = strtol (end + 1, & end, 8);
+    if (* end != '=')
+      return SCPE_ARG;
+    if (o < 0 || o > MASK18)
+      return SCPE_ARG;
+
+    t = strtol (end + 1, & end, 8);
+    if (* end != 0)
+      return SCPE_ARG;
+    if (t < 0 || t >= 1000000)
+      return SCPE_ARG;
+
+    stall_points[n].segno = (word15) s;
+    stall_points[n].offset = (word18) o;
+    stall_points[n].time = (unsigned int) t;
+    stall_point_active = false;
+
+    for (int i = 0; i < N_STALL_POINTS; i ++)
+      if (stall_points[n].segno && stall_points[n].offset)
+        stall_point_active = true;
+
+    return SCPE_OK;
+  }
+
 static char * cycle_str (cycles_e cycle)
   {
     switch (cycle)
@@ -758,6 +829,17 @@ static MTAB cpu_mod[] =
       "KIPS",                    // match string
       cpu_set_kips,              // validation routine
       cpu_show_kips,             // display routine
+      NULL,                      // value descriptor
+      NULL                       // help
+    },
+
+    {
+      MTAB_dev_value,            // mask
+      0,                         // match
+      "STALL",                   // print string
+      "STALL",                   // match string
+      cpu_set_stall,             // validation routine
+      cpu_show_stall,            // display routine
       NULL,                      // value descriptor
       NULL                       // help
     },
@@ -2064,6 +2146,21 @@ setCPU:;
 // A connect signal ($CON strobe) has been received from a system controller.
 // This event is to be distinguished from a Connect Input/Output Channel (cioc)
 // instruction encountered in the program sequence.
+
+#ifdef LOCKLESS
+                if (stall_point_active)
+                  {
+                    for (int i = 0; i < N_STALL_POINTS; i ++)
+                      if (stall_points[i].segno == cpu.PPR.PSR &&
+                          stall_points[i].offset == cpu.PPR.IC)
+                        {
+                          //sim_printf ("stall %2d %05o:%06o\n", i, stall_points[i].segno, stall_points[i].offset);
+                          //pthread_yield ();
+                          usleep(stall_points[i].time);
+                          break;
+                        }
+                  }
+#endif
 
                 // check BAR bound and raise store fault if above
                 // pft 04d 10070, ISOLTS-776 06ad
