@@ -510,6 +510,7 @@ static t_stat cpu_show_stall (UNUSED FILE * st, UNUSED UNIT * uptr,
         return SCPE_OK;
       }
 
+    sim_printf ("Stall points\n");
     for (int i = 0; i < N_STALL_POINTS; i ++)
       if (stall_points[i].segno || stall_points[i].offset)
         {
@@ -551,7 +552,7 @@ static t_stat cpu_set_stall (UNUSED UNIT * uptr, UNUSED int32 value,
     if (o < 0 || o > MASK18)
       return SCPE_ARG;
 
-    t = strtol (end + 1, & end, 8);
+    t = strtol (end + 1, & end, 0);
     if (* end != 0)
       return SCPE_ARG;
     if (t < 0 || t >= 1000000)
@@ -3217,8 +3218,10 @@ int32 core_read_lock (word24 addr, word36 *data, const char * ctx)
 #endif
     LOCK_CORE_WORD(addr);
     if (cpu.locked_addr != 0) {
-      sim_warn ("core_read_lock: locked %x addr %x\n", cpu.locked_addr, addr);
-      core_unlock_all();
+      sim_warn ("core_read_lock: locked %08o locked_addr %08o %c %05o:%06o\n",
+                addr, cpu.locked_addr, current_running_cpu_idx + 'A',
+                cpu.PPR.PSR, cpu.PPR.IC);
+      core_unlock_all ();
     }
     cpu.locked_addr = addr;
     word36 v;
@@ -3323,8 +3326,10 @@ int core_write_unlock (word24 addr, word36 data, const char * ctx)
 #endif
     if (cpu.locked_addr != addr)
       {
-       sim_warn ("core_write_unlock: locked %x addr %x\n", cpu.locked_addr, addr);
-       core_unlock_all();
+        sim_warn ("core_write_unlock: locked %08o locked_addr %08o %c %05o:%06o\n",
+                  addr, cpu.locked_addr, current_running_cpu_idx + 'A',
+                  cpu.PPR.PSR, cpu.PPR.IC);
+       core_unlock_all ();
       }
       
     STORE_REL_CORE_WORD(addr, data);
@@ -3335,7 +3340,9 @@ int core_write_unlock (word24 addr, word36 data, const char * ctx)
 int core_unlock_all ()
 {
   if (cpu.locked_addr != 0) {
-      sim_warn ("core_unlock_all: locked %x\n", cpu.locked_addr);
+      sim_warn ("core_unlock_all: locked %08o %c %05o:%06o\n",
+                cpu.locked_addr, current_running_cpu_idx + 'A',
+                cpu.PPR.PSR, cpu.PPR.IC);
       STORE_REL_CORE_WORD(cpu.locked_addr, M[cpu.locked_addr]);
       cpu.locked_addr = 0;
   }
@@ -3520,7 +3527,9 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
     word36 v;
     LOAD_ACQ_CORE_WORD(v, addr);
     if (v & MEM_LOCKED)
-      sim_warn ("core_read2: even addr %x was locked\n", addr);
+      sim_warn ("core_read2: even locked %08o locked_addr %08o %c %05o:%06o\n",
+                addr, cpu.locked_addr, current_running_cpu_idx + 'A',
+                cpu.PPR.PSR, cpu.PPR.IC);
     *even = v & DMASK;
     addr++;
 #else
@@ -3555,7 +3564,9 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
 #ifdef LOCKLESS
     LOAD_ACQ_CORE_WORD(v, addr);
     if (v & MEM_LOCKED)
-      sim_warn ("core_read2: odd addr %x was locked\n", addr);
+      sim_warn ("core_read2: odd locked %08o locked_addr %08o %c %05o:%06o\n",
+                addr, cpu.locked_addr, current_running_cpu_idx + 'A',
+                cpu.PPR.PSR, cpu.PPR.IC);
     *odd = v & DMASK;
 #else
     LOCK_MEM_RD;
