@@ -1804,6 +1804,15 @@ typedef struct
 #endif
     bool restart;
     uint restart_address;
+
+
+    // Caching some cabling data for interrupt handling.
+    // When a CPU calls get_highest_intr(), it needs to know
+    // what port on the SCU it is attached to. Because of port
+    // exapanders several CPUs can be attached to an SCU port,
+    // mapping from the CPU to the SCU is easier to query
+    uint scu_port[N_SCU_UNITS_MAX];
+
   } cpu_state_t;
 
 #ifdef M_SHARED

@@ -379,6 +379,8 @@ static t_stat cable_scu_to_cpu (int uncable, uint scu_unit_idx, uint scu_port_nu
 // XXX is this wrong? is is_exp supposed to be an accumulation of bits?
         scu[scu_unit_idx].ports[scu_port_num].is_exp = is_exp;
         scu[scu_unit_idx].ports[scu_port_num].dev_port[scu_subport_num] = (int) cpu_port_num;
+
+        cpus[cpu_unit_idx].scu_port[scu_unit_idx] = scu_port_num;
       }
     // Taking this out breaks the unit test segment loader.
     setup_scbank_map ();
