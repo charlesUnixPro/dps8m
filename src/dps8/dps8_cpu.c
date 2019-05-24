@@ -2276,8 +2276,9 @@ setCPU:;
                 // fall through
           case PSEUDO_FETCH_cycle:
 
-            cpu.lufCounter ++;
             tmp_priv_mode = is_priv_mode ();
+            if (! (luf_flag && tmp_priv_mode))
+              cpu.lufCounter ++;
 #if 1
             if (cpu.lufCounter > luf_limits[cpu.CMR.luf])
               {

@@ -106,4 +106,4 @@ void list_source (char * compname, word18 offset, uint dflag);
 t_stat brkbrk (int32 arg, const char * buf);
 void start_machine_room (void);
 void machine_room_process (void);
-
+extern int32 luf_flag;
