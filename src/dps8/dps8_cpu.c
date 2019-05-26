@@ -2148,20 +2148,6 @@ setCPU:;
 // This event is to be distinguished from a Connect Input/Output Channel (cioc)
 // instruction encountered in the program sequence.
 
-#ifdef LOCKLESS
-                if (stall_point_active)
-                  {
-                    for (int i = 0; i < N_STALL_POINTS; i ++)
-                      if (stall_points[i].segno == cpu.PPR.PSR &&
-                          stall_points[i].offset == cpu.PPR.IC)
-                        {
-                          //sim_printf ("stall %2d %05o:%06o\n", i, stall_points[i].segno, stall_points[i].offset);
-                          //pthread_yield ();
-                          usleep(stall_points[i].time);
-                          break;
-                        }
-                  }
-#endif
 
                 // check BAR bound and raise store fault if above
                 // pft 04d 10070, ISOLTS-776 06ad
@@ -2374,6 +2360,24 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
           case INTERRUPT_EXEC_cycle:
             {
               CPT (cpt1U, 22); // exec cycle
+
+#ifdef LOCKLESS
+                if (stall_point_active)
+                  {
+                    for (int i = 0; i < N_STALL_POINTS; i ++)
+                      if (stall_points[i].segno && stall_points[i].segno == cpu.PPR.PSR &&
+                          stall_points[i].offset && stall_points[i].offset == cpu.PPR.IC)
+                        {
+#ifdef CTRACE
+                          fprintf (stderr, "%10lu %s stall %d\n", seqno (), cpunstr[current_running_cpu_idx], i);
+#endif
+                          //sim_printf ("stall %2d %05o:%06o\n", i, stall_points[i].segno, stall_points[i].offset);
+                          //pthread_yield ();
+                          usleep(stall_points[i].time);
+                          break;
+                        }
+                  }
+#endif
 
               // The only time we are going to execute out of IRODD is
               // during RPD, at which time interrupts are automatically
