@@ -1388,7 +1388,14 @@ static void deliver_interrupts (uint scu_unit_idx)
               {
                 uint sn = 0;
                 if (scu[scu_unit_idx].ports[port].is_exp)
-                  sn = (uint) scu[scu_unit_idx].ports[port].xipmaskval;
+                  {
+                    sn = (uint) scu[scu_unit_idx].ports[port].xipmaskval;
+                    if (sn >= N_SCU_SUBPORTS)
+                      {
+                        sim_warn ("XIP mask not set; defaulting to subport 0\n");
+                        sn = 0;
+                      }
+                  }
                 if (! cables->scu_to_cpu[scu_unit_idx][port][sn].in_use)
                   {
                     sim_warn ("bad scu_unit_idx %u\n", scu_unit_idx);
@@ -2380,7 +2387,8 @@ void scu_init (void)
                 scu[u].ports[p].dev_port[s] = -1;
                 scu[u].ports[p].subport_enables[s] = false;
                 scu[u].ports[p].xipmask[s] = false;
-                scu[u].ports[p].xipmaskval = -1;
+                // Invalid value for detecting uninitialized XIP mask.
+                scu[u].ports[p].xipmaskval = N_SCU_SUBPORTS;
               }
             scu[u].ports[p].type = ADEV_NONE;
             scu[u].ports[p].is_exp = false;
