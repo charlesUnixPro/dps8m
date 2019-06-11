@@ -94,7 +94,7 @@ endif
 ifneq ($(CROSS),MINGW64)
 #ifeq ($(M_SHARED),1)
 CFLAGS += -DM_SHARED
-LDFLAGS += -lrt
+#LDFLAGS += -lrt
 #endif
 endif
 
