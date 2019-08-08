@@ -10,14 +10,14 @@ stages:
 #list job:
 #  stage: list
 #  only:
-#    - rc12
+#    - master
 #  script:
 #    - find / -name libwinpthread-1.dll
 
 build linux:
   stage: build_linux
   only:
-    - rc12
+    - master
   script:
     - make
   artifacts:
@@ -28,7 +28,7 @@ build linux:
 build mingw:
   stage: build_mingw
   only:
-    - rc12
+    - master
   script:
     - make CROSS=MINGW64
   artifacts:
@@ -40,7 +40,7 @@ build mingw:
 
 #test:
 #  only:
-#    - rc12
+#    - master
 #  script:
 #    - cd src/dps8; ./dps8 -v MR12.6e_install.ini
 #    - cd src/dps8; cp root.dsk.reloaded root.dsk
