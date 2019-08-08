@@ -1995,6 +1995,8 @@ sim_on_inherit = sim_switches & SWMASK ('O');           /* -o means inherit on s
 
 sim_init_sock ();                                       /* init socket capabilities */
 AIO_INIT;                                               /* init Asynch I/O */
+if (sim_dflt_dev == NULL)                               /* if no default */
+    sim_dflt_dev = sim_devices[0];
 if (sim_vm_init != NULL)                                /* call once only */
     (*sim_vm_init)();
 sim_finit ();                                           /* init fio package */
@@ -2033,8 +2035,6 @@ if (!sim_quiet) {
     printf ("\n");
     show_version (stdout, NULL, NULL, 0, NULL);
     }
-if (sim_dflt_dev == NULL)                               /* if no default */
-    sim_dflt_dev = sim_devices[0];
 if (*argv[0]) {                                         /* sim name arg? */
     char *np;                                           /* "path.ini" */
 
@@ -2681,7 +2681,7 @@ if (*cptr) {
                 }
             else {
                 if (((cmdp->action == &exdep_cmd) || (0 == strcmp(cmdp->name, "BOOT"))) &&
-                    sim_dflt_dev->help) {
+                    sim_dflt_dev && sim_dflt_dev->help) {
                         sim_dflt_dev->help (stdout, sim_dflt_dev, sim_dflt_dev->units, 0, cmdp->name);
                         if (sim_log)
                             sim_dflt_dev->help (sim_log, sim_dflt_dev, sim_dflt_dev->units, 0, cmdp->name);
@@ -3978,7 +3978,7 @@ else if ((gcmdp = find_ctab (set_glob_tab, gbuf))) {    /* global? */
     return gcmdp->action (gcmdp->arg, cptr);            /* do the rest */
     }
 else {
-    if (sim_dflt_dev->modifiers) {
+    if (sim_dflt_dev && sim_dflt_dev->modifiers) {
         if ((cvptr = strchr (gbuf, '=')))               /* = value? */
             *cvptr++ = 0;
         for (mptr = sim_dflt_dev->modifiers; mptr->mask != 0; mptr++) {
@@ -4246,7 +4246,7 @@ else if ((shptr = find_shtab (show_glob_tab, gbuf))) {  /* global? */
     return shptr->action (ofile, NULL, NULL, shptr->arg, cptr);
     }
 else {
-    if (sim_dflt_dev->modifiers) {
+    if (sim_dflt_dev && sim_dflt_dev->modifiers) {
         if ((cvptr = strchr (gbuf, '=')))               /* = value? */
             *cvptr++ = 0;
         for (mptr = sim_dflt_dev->modifiers; mptr->mask != 0; mptr++) {
@@ -4263,7 +4263,7 @@ else {
             }
         }
     if (!dptr) {
-        if ((shptr = find_shtab (show_dev_tab, gbuf)))  /* global match? */
+        if (sim_dflt_dev && (shptr = find_shtab (show_dev_tab, gbuf)))  /* global match? */
             return shptr->action (ofile, sim_dflt_dev, uptr, shptr->arg, cptr);
         else
             return SCPE_NXDEV;                          /* no match */
@@ -5183,7 +5183,7 @@ t_stat ssh_break (FILE *st, const char *cptr, int32 flg)
 char gbuf[CBUFSIZE], *aptr, abuf[4*CBUFSIZE];
 CONST char *tptr, *t1ptr;
 DEVICE *dptr = sim_dflt_dev;
-UNIT *uptr = dptr->units;
+UNIT *uptr = dptr ? dptr->units : NULL;
 t_stat r;
 t_addr lo, hi, max = uptr->capac - 1;
 int32 cnt;
@@ -6275,7 +6275,7 @@ if ((flag == RU_RUN) || (flag == RU_GO)) {              /* run or go */
     if (*cptr != 0) {                                   /* argument? */
         cptr = get_glyph (cptr, gbuf, 0);               /* get next glyph */
         if (MATCH_CMD (gbuf, "UNTIL") != 0) {
-            if (sim_vm_parse_addr)                      /* address parser? */
+            if (sim_dflt_dev && sim_vm_parse_addr)                      /* address parser? */
                 pcv = sim_vm_parse_addr (sim_dflt_dev, gbuf, &tptr);
             else pcv = strtotv (gbuf, &tptr, sim_PC->radix);/* parse PC */
             if ((tptr == gbuf) || (*tptr != 0) ||       /* error? */
@@ -6907,7 +6907,7 @@ else Fprintf (ofile, "%s:\t", rptr->name);
 if (!(flag & EX_E))
     return SCPE_OK;
 GET_RADIX (rdx, rptr->radix);
-if ((rptr->flags & REG_VMAD) && sim_vm_fprint_addr)
+if ((rptr->flags & REG_VMAD) && sim_vm_fprint_addr && sim_dflt_dev)
     sim_vm_fprint_addr (ofile, sim_dflt_dev, (t_addr) val);
 else if (!(rptr->flags & REG_VMFLAGS) ||
     (fprint_sym (ofile, (rptr->flags & REG_UFMASK) | rdx, &val,
@@ -7015,7 +7015,7 @@ if (flag & EX_I) {
     }
 mask = width_mask[rptr->width];
 GET_RADIX (rdx, rptr->radix);
-if ((rptr->flags & REG_VMAD) && sim_vm_parse_addr) {    /* address form? */
+if ((rptr->flags & REG_VMAD) && sim_vm_parse_addr && sim_dflt_dev) {    /* address form? */
     val = sim_vm_parse_addr (sim_dflt_dev, cptr, &tptr);
     if ((tptr == cptr) || (*tptr != 0) || (val > mask))
         return SCPE_ARG;
@@ -7299,6 +7299,8 @@ return reason;
 
 t_stat eval_cmd (int32 flg, CONST char *cptr)
 {
+if (!sim_dflt_dev)
+  return SCPE_ARG;
 DEVICE *dptr = sim_dflt_dev;
 int32 i, rdx, a, lim;
 t_stat r;
@@ -8248,6 +8250,8 @@ sim_staba.mask = (t_value *)realloc (sim_staba.mask, sim_emax * sizeof(*sim_stab
 memset (sim_staba.mask, 0, sim_emax * sizeof(*sim_staba.mask));
 sim_staba.comp = (t_value *)realloc (sim_staba.comp, sim_emax * sizeof(*sim_staba.comp));
 memset (sim_staba.comp, 0, sim_emax * sizeof(*sim_staba.comp));
+if (! sim_dflt_dev)
+  return NULL;
 sim_dfdev = sim_dflt_dev;
 sim_dfunit = sim_dfdev->units;
 sim_opt_out = 0;                                        /* no options yet */
@@ -9630,9 +9634,11 @@ char addr[65];
 char buf[32];
 
 msg[0] = '\0';
-if (sim_vm_sprint_addr)
+if (sim_dflt_dev) {
+  if (sim_vm_sprint_addr)
     sim_vm_sprint_addr (addr, sim_dflt_dev, (t_value)sim_brk_match_addr);
-else sprint_val (addr, (t_value)sim_brk_match_addr, sim_dflt_dev->aradix, sim_dflt_dev->awidth, PV_LEFT);
+  else sprint_val (addr, (t_value)sim_brk_match_addr, sim_dflt_dev->aradix, sim_dflt_dev->awidth, PV_LEFT);
+}
 if (sim_brk_type_desc) {
     BRKTYPTAB *brk = sim_brk_type_desc;
 
@@ -10583,7 +10589,7 @@ void _sim_debug (uint32 dbits, DEVICE* vdptr, const char* fmt, ...)
 #endif
 {
 DEVICE *dptr = (DEVICE *)vdptr;
-if (sim_deb && dptr && (dptr->dctrl & dbits)) {
+if (sim_deb && dptr && (dbits == 0 || (dptr->dctrl & dbits))) {
 
     char stackbuf[STACKBUFSIZE];
     int32 bufsize = sizeof(stackbuf);

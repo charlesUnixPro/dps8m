@@ -417,9 +417,9 @@ void do_text ()
 
     char buffer [8192];
     //char ASA;
-    char c;
+    int c;
     int black;
-    int i;
+    int i, ic;
 
     start_page ();
 
@@ -428,8 +428,9 @@ void do_text ()
         buffer [i] = ' ';
       }
 
-    while ((c = getchar ()) != EOF)
+    while ((ic = getchar ()) != EOF)
       {
+        c = ic;
         if (c == '\r') // print the buffer, do not advance
           {
             fprintf (stdout, "0 %f Td\n", GLOBAL_LEAD_SIZE);
@@ -446,7 +447,7 @@ void do_text ()
           }
         // add the character to the buffer
         if (i < 8190)
-          buffer [i ++] = c;
+          buffer [i ++] = (char) c;
         continue;
        
 printline:

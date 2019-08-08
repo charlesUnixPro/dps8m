@@ -1,14 +1,50 @@
-image: fedora
+#image: "registry.gitlab.com/dps8m/dps8m"
+image: "registry.gitlab.com/unused0/docker_images"
 
-rc11_build:
+stages:
+  - build_linux
+  - build_mingw
+
+#  - list
+#
+#list job:
+#  stage: list
+#  only:
+#    - rc12
+#  script:
+#    - find / -name libwinpthread-1.dll
+
+build linux:
+  stage: build_linux
+  only:
+    - rc12
   script:
-    - dnf -y install git automake libtool clang make
-    - git clone https://github.com/libuv/libuv.git
-    - cd libuv
-    - sh autogen.sh
-    - ./configure
     - make
-    - make install
-    - cd ..
-    - git checkout rc11
-    - make
+  artifacts:
+    paths:
+      - /builds/dps8m/dps8m/src/dps8/dps8
+      - /builds/dps8m/dps8m/src/utils/prt2pdf
+
+build mingw:
+  stage: build_mingw
+  only:
+    - rc12
+  script:
+    - make CROSS=MINGW64
+  artifacts:
+    paths:
+      - /builds/dps8m/dps8m/src/dps8/dps8.exe
+      - /builds/libuv-mingw/.libs/libuv-1.dll
+      - /usr/x86_64-w64-mingw32/sys-root/mingw/bin/libwinpthread-1.dll
+      - /builds/dps8m/dps8m/src/utils/prt2pdf.exe
+
+#test:
+#  only:
+#    - rc12
+#  script:
+#    - cd src/dps8; ./dps8 -v MR12.6e_install.ini
+#    - cd src/dps8; cp root.dsk.reloaded root.dsk
+#    - cd src/dps8; ./dps8 -v yoyodyne.ini
+#    - cd src/dps8; cp root.dsk yoyodyne.root.dsk
+#    - cd src/dps8; cp dska_01.dsk yoyodyne.dska_01.dsk
+
