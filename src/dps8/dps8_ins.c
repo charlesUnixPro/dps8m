@@ -8741,6 +8741,7 @@ elapsedtime ();
                 //stopCPUThread ();
               }
 #endif
+#endif
 #ifdef ROUND_ROBIN
           if (cpu.PPR.PSR == 034 && cpu.PPR.IC == 03535)
               {
