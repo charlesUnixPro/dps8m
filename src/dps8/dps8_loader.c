@@ -24,12 +24,16 @@
 #include "dps8.h"
 #include "dps8_sys.h"
 #include "dps8_faults.h"
+#include "dps8_scu.h"
+#include "dps8_iom.h"
+#include "dps8_cable.h"
 #include "dps8_cpu.h"
 #include "dps8_loader.h"
 #include "dps8_utils.h"
 
 #include "utlist.h" // for linked list ops
 
+#ifndef SCUMEM
 /* Master loader */
 #define FMT_O   1 // .oct
 #define FMT_S   2 // .sav
@@ -352,49 +356,56 @@ static void makeITS(int segno, int offset, int tag, word36 *Ypair)
     Ypair[1] = odd;
 }
 
-//static
-//_sdw0 *fetchSDW(int segno)
-//{
-//    int sdwAddr = DSBR.ADDR + (2 * segno);
-//    
-//    static _sdw0 SDW0;
-//    
-//    word36 SDWeven = M[sdwAddr + 0];
-//    word36 SDWodd  = M[sdwAddr + 1];
-//
-//    // even word
-//    SDW0.ADDR = (SDWeven >> 12) & 077777777;
-//    SDW0.R1 = (SDWeven >> 9) & 7;
-//    SDW0.R2 = (SDWeven >> 6) & 7;
-//    SDW0.R3 = (SDWeven >> 3) & 7;
-//    SDW0.F = TSTBIT(SDWeven, 2);
-//    SDW0.FC = SDWeven & 3;
-//    
-//    // odd word
-//    SDW0.BOUND = (SDWodd >> 21) & 037777;
-//    SDW0.R = TSTBIT(SDWodd, 20);
-//    SDW0.E = TSTBIT(SDWodd, 19);
-//    SDW0.W = TSTBIT(SDWodd, 18);
-//    SDW0.P = TSTBIT(SDWodd, 17);
-//    SDW0.U = TSTBIT(SDWodd, 16);
-//    SDW0.G = TSTBIT(SDWodd, 15);
-//    SDW0.C = TSTBIT(SDWodd, 14);
-//    SDW0.EB = SDWodd & 037777;
-//
-//    return &SDW0;
-//}
+// Assumes unpaged DSBR
 
+sdw0_s *fetchSDW (word15 segno)
+  {
+    word36 SDWeven, SDWodd;
+    
+    core_read2 ((cpu.DSBR.ADDR + 2u * segno) & PAMASK, & SDWeven, & SDWodd,
+                 __func__);
+    
+    // even word
+    
+    sdw0_s *SDW = & cpu._s;
+    memset (SDW, 0, sizeof (cpu._s));
+    
+    SDW->ADDR = (SDWeven >> 12) & 077777777;
+    SDW->R1 = (SDWeven >> 9) & 7;
+    SDW->R2 = (SDWeven >> 6) & 7;
+    SDW->R3 = (SDWeven >> 3) & 7;
+    SDW->DF = TSTBIT (SDWeven, 2);
+    SDW->FC = SDWeven & 3;
+    
+    // odd word
+    SDW->BOUND = (SDWodd >> 21) & 037777;
+    SDW->R = TSTBIT (SDWodd, 20);
+    SDW->E = TSTBIT (SDWodd, 19);
+    SDW->W = TSTBIT (SDWodd, 18);
+    SDW->P = TSTBIT (SDWodd, 17);
+    SDW->U = TSTBIT (SDWodd, 16);
+    SDW->G = TSTBIT (SDWodd, 15);
+    SDW->C = TSTBIT (SDWodd, 14);
+    SDW->EB = SDWodd & 037777;
+    
+    return SDW;
+  }
+#endif // ndef SCUMEM
+
+#ifndef SCUMEM
 int getAddress(int segno, int offset)
 {
     // XXX Do we need to 1st check SDWAM for segment entry?
     
     
     // get address of in-core segment descriptor word from DSBR
-    _sdw0 *s = fetchSDW ((word15) segno);
+    sdw0_s *s = fetchSDW ((word15) segno);
     
     return (s->ADDR + (word18) offset) & 0xffffff; // keep to 24-bits
 }
+#endif // !SCUMEM
 
+#ifndef SCUMEM
 /*
  * for a given 24-bit address see if it can be mapped to a segment + offset
  */
@@ -406,7 +417,7 @@ bool getSegmentAddressString(int addr, char *msg)
     {
         int segno = s->segno;       // get segment number from list of known "deferred" segments
         
-        _sdw0 *s0 = fetchSDW ((word15) segno);
+        sdw0_s *s0 = fetchSDW ((word15) segno);
         int startAddr = (int) s0->ADDR;   // get start address
         //if (addr >= startAddr && addr <= startAddr + (s0->BOUND << 4) - 1)
         if (addr >= startAddr && addr <= startAddr + s->size)
@@ -436,11 +447,11 @@ bool getSegmentAddressString(int addr, char *msg)
 //}
 
 //static
-//void writeSDW(int segno, _sdw0 *s0)
+//void writeSDW(int segno, sdw0_s *s0)
 //{
 //    int addr = DSBR.ADDR + (2 * segno);
 //    
-//    // write a _sdw to memory
+//    // write a sdw0_s to memory
 //    
 //    word36 even = 0, odd = 0;
 //    even = bitfieldInsert36(even, s0->ADDR, 12, 24);
@@ -548,7 +559,7 @@ static int loadDeferredSegment(segment *sg, int addr24)
         
     word18 segwords = (word18) sg->size;
     
-    memcpy(M + addr24, sg->M, (unsigned long) sg->size * sizeof(word36));
+    memcpy((void *) M + addr24, sg->M, (unsigned long) sg->size * sizeof(word36));
     
     cpu . DSBR.BND = 037777;  // temporary max bound ...
     
@@ -563,7 +574,7 @@ static int loadDeferredSegment(segment *sg, int addr24)
     // update in-code SDW to reflect segment info
     // Done in loadUnpagedSegment()
     
-//    _sdw0 *s0 = fetchSDW(segno);
+//    sdw0_s *s0 = fetchSDW(segno);
 //    
 //    s0->ADDR = addr24; // 24-bit absolute address
 //    
@@ -1113,7 +1124,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr,
             if (n == 2)
             {
                 if (currSegment && currSegment->M == NULL)
-                    currSegment->M = &M[maddr];
+                    currSegment->M = (word36 *) &M[maddr];
 
                 if (maddr > MEMSIZE)
                     return SCPE_NXM;
@@ -1142,7 +1153,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr,
             {
                 if (currSegment && currSegment->M == NULL)
                 {
-                    currSegment->M = &M[ldaddr];
+                    currSegment->M = (word36 *) &M[ldaddr];
                     currSegment->segno = segno;
                 }
                 if (maddr > MEMSIZE)
@@ -1221,7 +1232,7 @@ static t_stat load_simh (FILE *fileref, int32 segno, int32 ldaddr,
             word36 w2 = extr36 (bytes, 1);
 
             if (currSegment && currSegment->M == NULL)
-              currSegment->M = &M[maddr];
+              currSegment->M = (word36 *) &M[maddr];
 
             if (maddr > MEMSIZE)
               return SCPE_NXM;
@@ -1246,7 +1257,7 @@ static t_stat load_simh (FILE *fileref, int32 segno, int32 ldaddr,
             word36 w2 = extr36 (bytes, 1);
 
             if (currSegment && currSegment->M == NULL)
-              currSegment->M = &M[maddr];
+              currSegment->M = (word36 *) &M[maddr];
 
             if (maddr > MEMSIZE)
               return SCPE_NXM;
@@ -1281,9 +1292,9 @@ static t_stat load_simh (FILE *fileref, int32 segno, int32 ldaddr,
 /*!
  * Create sdw0. Create an in-core SDW ...
  */
-static _sdw0* createSDW0(word24 addr, word3 R1, word3 R2, word3 R3, word1 F, word3 FC, word14 BOUND, word1 R, word1 E, word1 W, word1 P, word1 U, word1 G, word1 C, word14 EB)
+static sdw0_s* createSDW0(word24 addr, word3 R1, word3 R2, word3 R3, word1 F, word3 FC, word14 BOUND, word1 R, word1 E, word1 W, word1 P, word1 U, word1 G, word1 C, word14 EB)
 {
-    static _sdw0 SDW0;
+    static sdw0_s SDW0;
     
     // even word
     SDW0.ADDR = addr & 077777777;
@@ -1307,7 +1318,7 @@ static _sdw0* createSDW0(word24 addr, word3 R1, word3 R2, word3 R3, word1 F, wor
     return &SDW0;
 }
 
-static void writeSDW0toYPair(_sdw0 *p, word36 *yPair)
+static void writeSDW0toYPair(sdw0_s *p, word36 *yPair)
 {
     word36 even, odd;
     
@@ -1355,7 +1366,7 @@ static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
     
     //sim_printf ("B:%d count:%d\n", BOUND, count);
     
-    _sdw0 *s = createSDW0(addr, R1, R2, R3, F, FC, BOUND, R, E, W, P, U, G, C, EB);
+    sdw0_s *s = createSDW0(addr, R1, R2, R3, F, FC, BOUND, R, E, W, P, U, G, C, EB);
     word36 yPair[2];
     writeSDW0toYPair(s, yPair);
     
@@ -1390,7 +1401,7 @@ char * lookupSegmentAddress (word18 segno, word18 offset, char * * compname, wor
 static t_stat sim_dump (FILE *fileref, UNUSED const char * cptr, UNUSED const char * fnam, 
                  UNUSED int flag)
 {
-    size_t rc = fwrite (M, sizeof (word36), MEMSIZE, fileref);
+    size_t rc = fwrite ((word36 *) M, sizeof (word36), MEMSIZE, fileref);
     if (rc != MEMSIZE)
     {
         sim_printf ("fwrite returned %ld; expected %d\n", (long) rc, MEMSIZE);
@@ -1398,10 +1409,13 @@ static t_stat sim_dump (FILE *fileref, UNUSED const char * cptr, UNUSED const ch
     }
     return SCPE_OK;
 }
-
+#endif // ndef SCUMEM
 // This is part of the simh interface
 t_stat sim_load (FILE *fileref, const char *cptr, const char *fnam, int flag)
 {
+#ifdef SCUMEM
+    return SCPE_ARG;
+#else
     if (! cptr)
       return SCPE_ARG;
     if (flag)
@@ -1571,7 +1585,316 @@ t_stat sim_load (FILE *fileref, const char *cptr, const char *fnam, int flag)
     
     sim_printf ("Can't determine load file format\n");
     return SCPE_FMT;
+#endif
 }
 
+static void printSDW0 (sdw0_s *SDW)
+  {
+    char buf [256];
+    sim_printf ("%s\n", str_SDW0 (buf, SDW));
+  }
+
+static char * strDSBR (char * buf)
+  {
+    sprintf (buf, "DSBR: ADDR=%06o BND=%05o U=%o STACK=%04o",
+             cpu.DSBR.ADDR, cpu.DSBR.BND, cpu.DSBR.U, cpu.DSBR.STACK);
+    return buf;
+  }
+
+static void printDSBR (void)
+  {
+    char buf [256];
+    sim_printf ("%s\n", strDSBR (buf));
+  }
+
+#ifndef SCUMEM
+static t_stat dpsCmd_DumpSegmentTable (void)
+  {
+    sim_printf ("*** Descriptor Segment Base Register (DSBR) ***\n");
+    printDSBR ();
+    if (cpu.DSBR.U)
+      {
+        sim_printf ("*** Descriptor Segment Table ***\n");
+        for (word15 segno = 0; 2 * segno < 16 * (cpu.DSBR.BND + 1); segno += 1)
+          {
+            sim_printf ("Seg %d - ", segno);
+            sdw0_s *s = fetchSDW (segno);
+            printSDW0 (s);
+          }
+      }
+    else
+     {
+        sim_printf ("*** Descriptor Segment Table (Paged) ***\n");
+        sim_printf ("Descriptor segment pages\n");
+        for (word15 segno = 0; 2 * segno < 16 * (cpu.DSBR.BND + 1);
+             segno += 512)
+          {
+            word24 y1 = (2u * segno) % 1024u;
+            word24 x1 = (2u * segno - y1) / 1024u;
+            word36 PTWx1;
+            core_read ((cpu.DSBR.ADDR + x1) & PAMASK, & PTWx1, __func__);
+
+            ptw0_s PTW1;
+            PTW1.ADDR = GETHI (PTWx1);
+            PTW1.U = TSTBIT (PTWx1, 9);
+            PTW1.M = TSTBIT (PTWx1, 6);
+            PTW1.DF = TSTBIT (PTWx1, 2);
+            PTW1.FC = PTWx1 & 3;
+           
+            //if (PTW1.DF == 0)
+            //    continue;
+            sim_printf ("%06o  Addr %06o U %o M %o F %o FC %o\n", 
+                        segno, PTW1.ADDR, PTW1.U, PTW1.M, PTW1.DF, PTW1.FC);
+            sim_printf ("    Target segment page table\n");
+            for (word15 tspt = 0; tspt < 512; tspt ++)
+              {
+                word36 SDWeven, SDWodd;
+                core_read2 (((PTW1.ADDR << 6) + tspt * 2u) & PAMASK,
+                             & SDWeven, & SDWodd, __func__);
+                sdw0_s SDW0;
+                // even word
+                SDW0.ADDR = (SDWeven >> 12) & PAMASK;
+                SDW0.R1 = (SDWeven >> 9) & 7;
+                SDW0.R2 = (SDWeven >> 6) & 7;
+                SDW0.R3 = (SDWeven >> 3) & 7;
+                SDW0.DF = TSTBIT (SDWeven, 2);
+                SDW0.FC = SDWeven & 3;
+
+                // odd word
+                SDW0.BOUND = (SDWodd >> 21) & 037777;
+                SDW0.R = TSTBIT (SDWodd, 20);
+                SDW0.E = TSTBIT (SDWodd, 19);
+                SDW0.W = TSTBIT (SDWodd, 18);
+                SDW0.P = TSTBIT (SDWodd, 17);
+                SDW0.U = TSTBIT (SDWodd, 16);
+                SDW0.G = TSTBIT (SDWodd, 15);
+                SDW0.C = TSTBIT (SDWodd, 14);
+                SDW0.EB = SDWodd & 037777;
+
+                //if (SDW0.DF == 0)
+                //    continue;
+                sim_printf ("    %06o Addr %06o %o,%o,%o F%o BOUND %06o "
+                            "%c%c%c%c%c\n",
+                            tspt, SDW0.ADDR, SDW0.R1, SDW0.R2, SDW0.R3,
+                            SDW0.DF, SDW0.BOUND, SDW0.R ? 'R' : '.',
+                            SDW0.E ? 'E' : '.', SDW0.W ? 'W' : '.',
+                            SDW0.P ? 'P' : '.', SDW0.U ? 'U' : '.');
+                if (SDW0.U == 0)
+                  {
+                    for (word18 offset = 0; offset < 16u * (SDW0.BOUND + 1u);
+                          offset += 1024u)
+                      {
+                        word24 y2 = offset % 1024;
+                        word24 x2 = (offset - y2) / 1024;
+
+                        // 10. Fetch the target segment PTW(x2) from
+                        //     SDW(segno).ADDR + x2.
+
+                        word36 PTWx2;
+                        core_read ((SDW0.ADDR + x2) & PAMASK, & PTWx2,
+                                    __func__);
+
+                        ptw0_s PTW_2;
+                        PTW_2.ADDR = GETHI (PTWx2);
+                        PTW_2.U = TSTBIT (PTWx2, 9);
+                        PTW_2.M = TSTBIT (PTWx2, 6);
+                        PTW_2.DF = TSTBIT (PTWx2, 2);
+                        PTW_2.FC = PTWx2 & 3;
+
+                         sim_printf ("        %06o  Addr %06o U %o M %o F %o "
+                                     "FC %o\n", 
+                                     offset, PTW_2.ADDR, PTW_2.U, PTW_2.M,
+                                     PTW_2.DF, PTW_2.FC);
+
+                      }
+                  }
+              }
+          }
+      }
+
+    return SCPE_OK;
+  }
+#endif
+
+//! custom command "dump"
+t_stat dpsCmd_Dump (UNUSED int32 arg, const char *buf)
+  {
+    char cmds [256][256];
+    memset (cmds, 0, sizeof (cmds));  // clear cmds buffer
+    
+    int nParams = sscanf (buf, "%s %s %s %s",
+                          cmds[0], cmds[1], cmds[2], cmds[3]);
+#ifndef SCUMEM
+    if (nParams == 2 &&
+        ! strcasecmp (cmds[0], "segment") &&
+        ! strcasecmp (cmds[1], "table"))
+        return dpsCmd_DumpSegmentTable ();
+#endif
+#ifdef WAM
+#ifdef L68
+    if (nParams == 1 && !strcasecmp (cmds[0], "sdwam"))
+        return dump_sdwam ();
+#endif
+#endif
+    
+    return SCPE_OK;
+  }
+
+/*
+ * initialize segment table according to the contents of DSBR ...
+ */
+
+static t_stat dpsCmd_InitUnpagedSegmentTable ()
+  {
+    if (cpu.DSBR.U == 0)
+      {
+        sim_printf  ("Cannot initialize unpaged segment table because "
+                     "DSBR.U says it is \"paged\"\n");
+        return SCPE_OK;    // need a better return value
+      }
+    
+    if (cpu.DSBR.ADDR == 0) // DSBR *probably* not initialized. Issue warning 
+                            // and ask....
+      {
+        if (! get_yn ("DSBR *probably* uninitialized (DSBR.ADDR == 0). "
+                      "Proceed anyway [N]?", FALSE))
+          {
+            return SCPE_OK;
+          }
+      }
+    
+    word15 segno = 0;
+    while (2 * segno < (16 * (cpu.DSBR.BND + 1)))
+      {
+        //generate target segment SDW for DSBR.ADDR + 2 * segno.
+        word24 a = cpu.DSBR.ADDR + 2u * segno;
+        
+        // just fill with 0's for now .....
+        core_write ((a + 0) & PAMASK, 0, __func__);
+        core_write ((a + 1) & PAMASK, 0, __func__);
+        
+        segno ++; // onto next segment SDW
+      }
+    
+    if ( !sim_quiet)
+      sim_printf ("zero-initialized segments 0 .. %d\n", segno - 1);
+    return SCPE_OK;
+  }
+
+#ifdef WAM
+static t_stat dpsCmd_InitSDWAM ()
+  {
+    for (uint i = 0; i < N_CPU_UNITS_MAX; i ++)
+      {
+        memset (cpus[i].SDWAM, 0, sizeof (cpu.SDWAM));
+      }
+    
+    if (! sim_quiet)
+      sim_printf ("zero-initialized SDWAM\n");
+    return SCPE_OK;
+  }
+#endif
+
+// custom command "init"
+
+t_stat dpsCmd_Init (UNUSED int32 arg, const char *buf)
+  {
+    char cmds [8][32];
+    memset (cmds, 0, sizeof (cmds));  // clear cmds buffer
+    
+    int nParams = sscanf (buf, "%s %s %s %s",
+                          cmds[0], cmds[1], cmds[2], cmds[3]);
+    if (nParams == 2 &&
+        ! strcasecmp (cmds[0], "segment") &&
+        ! strcasecmp (cmds[1], "table"))
+        return dpsCmd_InitUnpagedSegmentTable ();
+#ifdef WAM
+    if (nParams == 1 && !strcasecmp (cmds[0], "sdwam"))
+        return dpsCmd_InitSDWAM ();
+#endif
+    return SCPE_OK;
+  }
+
+// custom command "segment" - stuff to do with deferred segments
+
+t_stat dpsCmd_Segment (UNUSED int32  arg, const char *buf)
+  {
+#ifndef SCUMEM
+    char cmds [8][32];
+    memset (cmds, 0, sizeof (cmds));  // clear cmds buffer
+    
+    /*
+      cmds   0     1      2     3
+     segment ??? remove
+     segment ??? segref remove ????
+     segment ??? segdef remove ????
+     */
+    int nParams = sscanf (buf, "%s %s %s %s %s",
+                          cmds[0], cmds[1], cmds[2], cmds[3], cmds[4]);
+    if (nParams == 2 &&
+        ! strcasecmp (cmds[0], "remove"))
+        return removeSegment (cmds[1]);
+    if (nParams == 4 &&
+        ! strcasecmp (cmds[1], "segref") &&
+        ! strcasecmp (cmds[2], "remove"))
+        return removeSegref (cmds[0], cmds[3]);
+    if (nParams == 4 &&
+        ! strcasecmp (cmds[1], "segdef") &&
+        ! strcasecmp (cmds[2], "remove"))
+        return removeSegdef (cmds[0], cmds[3]);
+#endif
+    return SCPE_ARG;
+  }
+
+// custom command "segments" - stuff to do with deferred segments
+
+t_stat dpsCmd_Segments (UNUSED int32 arg, const char *buf)
+  {
+#ifndef SCUMEM
+    bool bVerbose = ! sim_quiet;
+
+    char cmds [8][32];
+    memset (cmds, 0, sizeof (cmds));  // clear cmds buffer
+    
+    /*
+     * segments resolve
+     * segments load deferred
+     * segments remove ???
+     */
+    int nParams = sscanf (buf, "%s %s %s %s",
+                          cmds[0], cmds[1], cmds[2], cmds[3]);
+    if (nParams == 1 &&
+        ! strcasecmp (cmds[0], "resolve"))
+        // resolve external reverences in deferred segments
+        return resolveLinks (bVerbose);
+   
+    if (nParams == 2 &&
+        ! strcasecmp (cmds[0], "load") &&
+        ! strcasecmp (cmds[1], "deferred"))
+        return loadDeferredSegments (bVerbose);    // load all deferred segments
+    
+    if (nParams == 2 &&
+        ! strcasecmp (cmds[0], "remove"))
+        return removeSegment (cmds[1]);
+
+    if (nParams == 2 &&
+        ! strcasecmp (cmds[0], "lot") &&
+        ! strcasecmp (cmds[1], "create"))
+        return createLOT (bVerbose);
+    if (nParams == 2 &&
+        ! strcasecmp (cmds[0], "lot") &&
+        ! strcasecmp (cmds[1], "snap"))
+        return snapLOT (bVerbose);
+
+    if (nParams == 3 &&
+        ! strcasecmp (cmds[0], "create") &&
+        ! strcasecmp (cmds[1], "stack"))
+      {
+        int _n = (int)strtoll (cmds[2], NULL, 8);
+        return createStack (_n, bVerbose);
+      }
+#endif
+    return SCPE_ARG;
+  }
 
 

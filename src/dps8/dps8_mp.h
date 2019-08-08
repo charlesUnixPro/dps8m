@@ -15,24 +15,23 @@
 
 typedef struct multipassStats
   {
-    struct _ppr PPR;
+    struct ppr_s PPR;
     word36 inst;
 
     word36 A, Q, E, X [8], IR, TR, RALR;
-    struct _par PAR [8];
-    //struct _bar BAR;
+    struct par_s PAR [8];
     word3 TRR;
     word15 TSR;
     word6 TBR;
     word18 CA;
 
-    struct _dsbr DSBR;
+    struct dsbr_s DSBR;
 
     _fault faultNumber;
     _fault_subtype subFault;
 
     uint intr_pair_addr;
-    cycles_t cycle;
+    cycles_e cycle;
 
     uint64 cycles;
 

@@ -2,6 +2,7 @@
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
  Copyright 2013-2016 by Charles Anthony
+ Copyright 2017 by Michal Tomek
 
  All rights reserved.
 
@@ -24,16 +25,18 @@
 #include "dps8.h"
 #include "dps8_sys.h"
 #include "dps8_faults.h"
+#include "dps8_scu.h"
+#include "dps8_iom.h"
+#include "dps8_cable.h"
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_ins.h"
 #include "dps8_utils.h"
-#ifdef HDBG
-#include "hdbg.h"
+#if defined(THREADZ) || defined(LOCKLESS)
+#include "threadz.h"
 #endif
-#ifndef QUIET_UNUSED
-static uint64 FR;
-#endif
+
+#define DBG_CTR cpu.cycleCnt
 
 /*
  FAULT RECOGNITION
@@ -333,6 +336,22 @@ bit-28 tp inhibit interrupts
 #include <time.h>
 void elapsedtime (void);
 #endif
+
+#ifndef NEED_128
+const _fault_subtype fst_zero = (_fault_subtype) {.bits=0};
+const _fault_subtype fst_acv9 = (_fault_subtype) {.fault_acv_subtype=ACV9};
+const _fault_subtype fst_acv15 = (_fault_subtype) {.fault_acv_subtype=ACV15};
+const _fault_subtype fst_ill_mod = (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD};
+const _fault_subtype fst_ill_proc = (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC};
+const _fault_subtype fst_ill_dig = (_fault_subtype) {.fault_ipr_subtype=FR_ILL_DIG};
+const _fault_subtype fst_ill_op = (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP};
+const _fault_subtype fst_str_oob = (_fault_subtype) {.fault_str_subtype=flt_str_oob};
+const _fault_subtype fst_str_nea = (_fault_subtype) {.fault_str_subtype=flt_str_nea};
+const _fault_subtype fst_str_ptr = (_fault_subtype) {.fault_str_subtype=flt_str_ill_ptr};
+const _fault_subtype fst_cmd_lprpn = (_fault_subtype) {.fault_cmd_subtype=flt_cmd_lprpn_bits};
+const _fault_subtype fst_cmd_ctl = (_fault_subtype) {.fault_cmd_subtype=flt_cmd_not_control};
+const _fault_subtype fst_onc_nem = (_fault_subtype) {.fault_onc_subtype=flt_onc_nem};
+#endif 
 // CANFAULT 
 void doFault (_fault faultNumber, _fault_subtype subFault, 
               const char * faultMsg)
@@ -349,11 +368,11 @@ else if (faultNumber == FAULT_ACV)
  sim_printf (" ACV %012llo PSR:IC %05o:%06o\r\n", subFault.bits, cpu.PPR.PSR, cpu.PPR.IC);
 }
 #endif
-//if (currentRunningCPUnum)
+//if (current_running_cpu_idx)
     //sim_printf ("Fault %d(0%0o), sub %ld(0%lo), dfc %c, '%s'\n", 
                //faultNumber, faultNumber, subFault, subFault, 
                //cpu . bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
-//if (currentRunningCPUnum)
+//if (current_running_cpu_idx)
     //sim_printf ("xde %d xdo %d\n", cpu.cu.xde, cpu.cu.xdo);
     sim_debug (DBG_FAULT, & cpu_dev, 
                "Fault %d(0%0o), sub %"PRIu64"(0%"PRIo64"), dfc %c, '%s'\n", 
@@ -387,7 +406,7 @@ else if (faultNumber == FAULT_ACV)
 
     cpu.faultNumber = faultNumber;
     cpu.subFault = subFault;
-    sys_stats.total_faults [faultNumber] ++;
+    cpu.faultCnt [faultNumber] ++;
 
     // "The occurrence of a fault or interrupt sets the cache-to-register mode bit to OFF." a:AL39/cmr1
     CPTUR (cptUseCMR);
@@ -447,7 +466,7 @@ else if (faultNumber == FAULT_ACV)
               cpu . faultRegister [0] |= FR_CON_D;
               break;
             default:
-              sim_warn ("FAULT_CON can't map port %o\n", subFault.fault_con_subtype);
+              sim_warn ("FAULT_CON can't map port %lo\n", (long unsigned) subFault.fault_con_subtype);
               break;
           }
       }
@@ -478,7 +497,7 @@ else if (faultNumber == FAULT_ACV)
     cpu . cu . ONC2 = 0;
     cpu . cu . IA = 0;
     cpu . cu . IACHN = 0;
-    cpu . cu . CNCHN = 0;
+    cpu . cu . CNCHN = (faultNumber == FAULT_CON) ? subFault.fault_con_subtype & MASK3 : 0;
 
     // Set control unit 'fault occured during instruction fetch' flag
     cpu . cu . FIF = cpu . cycle == FETCH_cycle ? 1 : 0;
@@ -495,9 +514,13 @@ else if (faultNumber == FAULT_ACV)
 // only time an EIS instruction could be executing is during EXEC_cycle.
 // I am also assuming that only multi-word EIS instructions are of interest.
 // Testing faultNumber fixes ISOLTS 890-04a
+    // fixes 890-04a and 791 / 792
     SC_I_MIF (cpu.cycle == EXEC_cycle &&
-        cpu.currentInstruction.info->ndes > 0);
-    sim_debug (DBG_TRACE, & cpu_dev, "MIF %o\n", TST_I_MIF);
+	      (cpu.currentInstruction.info->ndes > 0 ||
+	       (faultNumber == FAULT_IPR && (subFault.fault_ipr_subtype & FR_ILL_OP) &&
+		cpu.currentInstruction.opcodeX &&
+		(cpu.currentInstruction.opcode & 0410) == 0)));
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "MIF %o\n", TST_I_MIF);
 #if 0
 sim_debug (DBG_FAULT, & cpu_dev, "cycle %u ndes %u fn %u v %u\n", cpu.cycle, cpu.currentInstruction.info->ndes, faultNumber, (cpu . cycle == EXEC_cycle && cpu . currentInstruction . info -> ndes > 0) || faultNumber == FAULT_IPR);
     SC_I_MIF (cpu . cycle == EXEC_cycle &&
@@ -508,7 +531,7 @@ sim_debug (DBG_FAULT, & cpu_dev, "cycle %u ndes %u fn %u v %u\n", cpu.cycle, cpu
 #endif
 
 #ifdef ISOLTS
-//if (currentRunningCPUnum && faultNumber == FAULT_LUF) hdbgPrint ();
+//if (current_running_cpu_idx && faultNumber == FAULT_LUF) hdbgPrint ();
 #endif
     if (faultNumber == FAULT_ACV)
       {
@@ -623,15 +646,17 @@ sim_debug (DBG_FAULT, & cpu_dev, "cycle %u ndes %u fn %u v %u\n", cpu.cycle, cpu
 
     // If already in a FAULT CYCLE then signal trouble fault
 
-    if (cpu.cycle == FAULT_EXEC_cycle ||
-        cpu.cycle == FAULT_EXEC2_cycle)
+    if (cpu.cycle == FAULT_EXEC_cycle)
       {
+        sim_debug (DBG_CYCLE, & cpu_dev, "Changing fault number to Trouble fault\n");
+
         cpu.faultNumber = FAULT_TRB;
         cpu.cu.FI_ADDR = FAULT_TRB;
         cpu.subFault.bits = 0; // XXX ???
         // XXX Does the CU or FR need fixing? ticket #36
         if (cpu . bTroubleFaultCycle)
           {
+#if !defined(THREADZ) && !defined(LOCKLESS)
 #ifndef PANEL
 #ifndef ROUND_ROBIN
             if ((! sample_interrupts ()) &&
@@ -639,11 +664,12 @@ sim_debug (DBG_FAULT, & cpu_dev, "cycle %u ndes %u fn %u v %u\n", cpu.cycle, cpu
                                      // break this logic
               {
                 sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", cpu . PPR.IC);
-                sim_printf("\nsimCycles = %"PRId64"\n", sim_timell ());
-                sim_printf("\ncpuCycles = %"PRId64"\n", sys_stats . total_cycles);
+                sim_printf("\nCycles = %"PRId64"\n", cpu.cycleCnt);
+                sim_printf("\nInstructions = %"PRId64"\n", cpu.instrCnt);
                 //stop_reason = STOP_FLT_CASCADE;
                 longjmp (cpu.jmpMain, JMP_STOP);
               }
+#endif
 #endif
 #endif
           }
@@ -661,7 +687,7 @@ sim_debug (DBG_FAULT, & cpu_dev, "cycle %u ndes %u fn %u v %u\n", cpu.cycle, cpu
     // If doInstruction faults, the instruction cycle counter doesn't get 
     // bumped.
     if (cpu . cycle == EXEC_cycle)
-      sys_stats . total_cycles += 1; // bump cycle counter
+      cpu.instrCnt ++;
 
     cpu . cycle = FAULT_cycle;
     sim_debug (DBG_CYCLE, & cpu_dev, "Setting cycle to FAULT_cycle\n");
@@ -674,7 +700,6 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
     sim_debug (DBG_FAULT, & cpu_dev, 
                "Floating fault %d '%s'\n", 
                fault_number, fault_msg);
-//IF1 sim_printf ("Floating fault %d '%s'\n", fault_number, fault_msg);
 #ifndef SPEED
     if_sim_debug (DBG_FAULT, & cpu_dev)
       traceInstruction (DBG_FAULT);
@@ -749,7 +774,7 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
 #if 1
     SC_I_MIF (cpu.cycle == EXEC_cycle &&
         cpu.currentInstruction.info->ndes > 0);
-    sim_debug (DBG_TRACE, & cpu_dev, "MIF %o\n", TST_I_MIF);
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "MIF %o\n", TST_I_MIF);
 #endif
 
     // History registers
@@ -763,8 +788,7 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
         cpu.MR.ihr = 0;
       }
 
-    if (cpu.cycle == FAULT_EXEC_cycle ||
-        cpu.cycle == FAULT_EXEC2_cycle)
+    if (cpu.cycle == FAULT_EXEC_cycle)
       {
         cpu.faultNumber = FAULT_TRB;
         cpu.cu.FI_ADDR = FAULT_TRB;
@@ -772,6 +796,7 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
         // XXX Does the CU or FR need fixing? ticket #36
         if (cpu.bTroubleFaultCycle)
           {
+#if !defined(THREADZ) && !defined(LOCKLESS)
 #ifndef PANEL
 #ifndef ROUND_ROBIN
             if ((! sample_interrupts ()) &&
@@ -779,11 +804,12 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
                                      // break this logic
               {
                 sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", cpu.PPR.IC);
-                sim_printf("\nsimCycles = %"PRId64"\n", sim_timell ());
-                sim_printf("\ncpuCycles = %"PRId64"\n", sys_stats.total_cycles);
+                sim_printf("\nCycles = %"PRId64"\n", cpu.cycleCnt);
+                sim_printf("\nInstructions = %"PRId64"\n", cpu.instrCnt);
                 //stop_reason = STOP_FLT_CASCADE;
                 longjmp (cpu.jmpMain, JMP_STOP);
               }
+#endif
 #endif
 #endif
           }
@@ -800,7 +826,7 @@ void do_FFV_fault (uint fault_number, const char * fault_msg)
     // If doInstruction faults, the instruction cycle counter doesn't get 
     // bumped.
     if (cpu . cycle == EXEC_cycle)
-      sys_stats.total_cycles += 1; // bump cycle counter
+      cpu.instrCnt ++;
 
     cpu.is_FFV = true;
     cpu.cycle = FAULT_cycle;
@@ -848,16 +874,11 @@ void setG7fault (uint cpuNo, _fault faultNo, _fault_subtype subFault)
   {
     sim_debug (DBG_FAULT, & cpu_dev, "setG7fault CPU %d fault %d (%o) sub %"PRId64" %"PRIo64"\n", 
                cpuNo, faultNo, faultNo, subFault.bits, subFault.bits);
-#ifdef ROUND_ROBIN
-    uint save = setCPUnum (cpuNo);
-    cpu.g7FaultsPreset |= (1u << faultNo);
+    cpus[cpuNo].g7FaultsPreset |= (1u << faultNo);
     //cpu.g7SubFaultsPreset [faultNo] = subFault;
-    cpu.g7SubFaults [faultNo] = subFault;
-    setCPUnum (save);
-#else
-    cpu.g7FaultsPreset |= (1u << faultNo);
-    //cpu.g7SubFaultsPreset [faultNo] = subFault;
-    cpu.g7SubFaults [faultNo] = subFault;
+    cpus[cpuNo].g7SubFaults [faultNo] = subFault;
+#if defined(THREADZ) || defined(LOCKLESS)
+    wakeCPU(cpuNo);
 #endif
   }
 
@@ -876,26 +897,37 @@ void clearTROFault (void)
     cpu . g7Faults &= ~(1u << FAULT_TRO);
   }
 
-void doG7Fault (void)
+void doG7Fault (bool allowTR)
   {
-    // sim_printf ("doG7fault %08o [%"PRId64"]\n", cpu . g7Faults, sim_timell ());
+    // sim_printf ("doG7fault %08o [%"PRId64"]\n", cpu . g7Faults, cpu.cycleCnt);
     // if (cpu . g7Faults)
       // {
         // sim_debug (DBG_FAULT, & cpu_dev, "doG7Fault %08o\n", cpu . g7Faults);
       // }
-     if (cpu . g7Faults & (1u << FAULT_TRO))
-       {
-         cpu . g7Faults &= ~(1u << FAULT_TRO);
-
-         doFault (FAULT_TRO, (_fault_subtype) {.bits=0}, "Timer runout"); 
-       }
-
+    // According AL39,  Table 7-1. List of Faults, priority of connect is 25
+    // and priority of Timer runout is 26, lower number means higher priority
+#if defined(THREADZ) || defined(LOCKLESS)
+    lock_scu ();
+#endif
      if (cpu.g7Faults & (1u << FAULT_CON))
        {
          cpu.g7Faults &= ~(1u << FAULT_CON);
 
-         cpu.cu.CNCHN = cpu.g7SubFaults[FAULT_CON].fault_con_subtype & MASK3;
+#if defined(THREADZ) || defined(LOCKLESS)
+	 unlock_scu ();
+#endif
          doFault (FAULT_CON, cpu.g7SubFaults [FAULT_CON], "Connect"); 
+       }
+
+     if (allowTR && cpu . g7Faults & (1u << FAULT_TRO))
+       {
+         cpu . g7Faults &= ~(1u << FAULT_TRO);
+
+         //sim_printf("timer runout %12o\n",cpu.PPR.IC);
+#if defined(THREADZ) || defined(LOCKLESS)
+         unlock_scu ();
+#endif
+	 doFault (FAULT_TRO, fst_zero, "Timer runout"); 
        }
 
      // Strictly speaking EXF isn't a G7 fault, put if we treat is as one,
@@ -905,37 +937,58 @@ void doG7Fault (void)
        {
          cpu . g7Faults &= ~(1u << FAULT_EXF);
 
-         doFault (FAULT_EXF, (_fault_subtype) {.bits=0}, "Execute fault");
+#if defined(THREADZ) || defined(LOCKLESS)
+	 unlock_scu ();
+#endif
+	 doFault (FAULT_EXF, fst_zero, "Execute fault");
        }
 
 #ifdef L68
      if (cpu.FFV_faults & 1u)  // FFV + 2 OC TRAP
        {
          cpu.FFV_faults &= ~1u;
+#if defined(THREADZ) || defined(LOCKLESS)
+	 unlock_scu ();
+#endif
          do_FFV_fault (1, "OC TRAP");
        }
      if (cpu.FFV_faults & 2u)  // FFV + 4 CU HISTORY OVERFLOW TRAP
        {
          cpu.FFV_faults &= ~2u;
+#if defined(THREADZ) || defined(LOCKLESS)
+	 unlock_scu ();
+#endif
          do_FFV_fault (2, "CU HIST OVF TRAP");
        }
      if (cpu.FFV_faults & 4u)  // FFV + 6 ADR TRAP
        {
          cpu.FFV_faults &= ~4u;
+#if defined(THREADZ) || defined(LOCKLESS)
+	 unlock_scu ();
+#endif
          do_FFV_fault (3, "ADR TRAP");
        }
+#endif
+#if defined(THREADZ) || defined(LOCKLESS)
+     unlock_scu ();
 #endif
      doFault (FAULT_TRB, (_fault_subtype) {.bits=cpu.g7Faults}, "Dazed and confused in doG7Fault");
   }
 
 void advanceG7Faults (void)
   {
+#if defined(THREADZ) || defined(LOCKLESS)
+    lock_scu ();
+#endif
     cpu.g7Faults |= cpu.g7FaultsPreset;
     cpu.g7FaultsPreset = 0;
     //memcpy (cpu.g7SubFaults, cpu.g7SubFaultsPreset, sizeof (cpu.g7SubFaults));
 #ifdef L68
     cpu.FFV_faults |= cpu.FFV_faults_preset;
     cpu.FFV_faults_preset = 0;
+#endif
+#if defined(THREADZ) || defined(LOCKLESS)
+    unlock_scu ();
 #endif
   }
 

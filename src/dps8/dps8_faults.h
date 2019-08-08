@@ -11,6 +11,7 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
+#ifndef QUIET_UNUSED
 struct _fault_register {
     // even word
     bool    ILL_OP;     // IPR fault. An illegal operation code has been detected.
@@ -59,7 +60,9 @@ struct _fault_register {
     bool    PAR_SDWAM;  // A parity error has been detected in the SDWAM.
     bool    PAR_PTWAM;  // A parity error has been detected in the PTWAM.
 };
+#endif
 
+#ifndef QUIET_UNUSED
 struct dps8faults
 {
     int         fault_number;
@@ -68,9 +71,9 @@ struct dps8faults
     const char *fault_name;
     int         fault_priority;
     int         fault_group;
-    bool        fault_pending;        // when true fault is pending and waiting to be processed
 };
 typedef struct dps8faults dps8faults;
+#endif
 
 extern char * faultNames [N_FAULTS];
 void check_events (void);
@@ -79,8 +82,38 @@ void emCallReportFault (void);
 
 void cu_safe_restore (void);
 
-void doG7Fault(void) NO_RETURN;
+void doG7Fault(bool allowTR) NO_RETURN;
 
+#ifdef NEED_128
+#define fst_zero (_fault_subtype) {.bits=0}
+#define fst_acv9 (_fault_subtype) {.fault_acv_subtype=ACV9}
+#define fst_acv15 (_fault_subtype) {.fault_acv_subtype=ACV15}
+#define fst_ill_mod (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}
+#define fst_ill_proc (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}
+#define fst_ill_dig (_fault_subtype) {.fault_ipr_subtype=FR_ILL_DIG}
+#define fst_ill_op (_fault_subtype) {.fault_ipr_subtype=FR_ILL_OP}
+#define fst_str_oob (_fault_subtype) {.fault_str_subtype=flt_str_oob}
+#define fst_str_nea (_fault_subtype) {.fault_str_subtype=flt_str_nea}
+#define fst_str_ptr (_fault_subtype) {.fault_str_subtype=flt_str_ill_ptr}
+#define fst_cmd_lprpn (_fault_subtype) {.fault_cmd_subtype=flt_cmd_lprpn_bits}
+#define fst_cmd_ctl (_fault_subtype) {.fault_cmd_subtype=flt_cmd_not_control}
+#define fst_onc_nem (_fault_subtype) {.fault_onc_subtype=flt_onc_nem}
+#else
+extern const _fault_subtype fst_zero;
+extern const _fault_subtype fst_acv9;
+extern const _fault_subtype fst_acv15;
+extern const _fault_subtype fst_ill_mod;
+extern const _fault_subtype fst_ill_proc;
+extern const _fault_subtype fst_ill_dig;
+extern const _fault_subtype fst_ill_op;
+extern const _fault_subtype fst_str_oob;
+extern const _fault_subtype fst_str_nea;
+extern const _fault_subtype fst_str_ptr;
+extern const _fault_subtype fst_cmd_lprpn;
+extern const _fault_subtype fst_cmd_ctl;
+extern const _fault_subtype fst_onc_nem;
+#endif
+ 
 void doFault (_fault faultNumber, _fault_subtype faultSubtype, 
               const char * faultMsg) NO_RETURN;
 void dlyDoFault (_fault faultNumber, _fault_subtype subFault, 
@@ -88,7 +121,7 @@ void dlyDoFault (_fault faultNumber, _fault_subtype subFault,
 bool bG7PendingNoTRO (void);
 bool bG7Pending (void);
 void setG7fault (uint cpuNo, _fault faultNo, _fault_subtype subFault);
-void doG7Fault (void);
+//void doG7Fault (void);
 void clearTROFault (void);
 void advanceG7Faults (void);
 #ifdef L68

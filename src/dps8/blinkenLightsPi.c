@@ -15,6 +15,59 @@
 // This code is targeted for a AdaFruit 2441 3.5" PiTFT+ 480x320 display
 //
 
+// Setup
+//
+//  as root:
+// 
+// apt-get update -y
+// apt-get upgrade -y
+// rpi-update
+// reboot
+// wget https://raw.githubusercontent.com/notro/rpi-source/master/rpi-source -O /usr/bin/rpi-source && sudo chmod +x /usr/bin/rpi-source && /usr/bin/rpi-source -q --tag-update
+// apt-get install bc
+// rpi-source
+// apt-get install libncurses5-dev
+// 
+// cd /root/linux
+// vi drivers/staging/fbtft/fb_ili9340.c
+// ; change to
+// ;  #define WIDTH           320
+// ;  #define HEIGHT          480
+// make prepare
+// make SUBDIRS=drivers/staging/fbtft/ modules
+// make SUBDIRS=drivers/staging/fbtft/ modules_install
+// depmod
+// 
+// /etc/modules-load.d/fbtft.conf:
+// 
+//     fbtft_device
+//     
+// 
+// /etc/modprobe.d/fbtft.conf
+// 
+//     options fbtft_device name=pitft txbuflen=32768
+//
+// The following step my be needed before the modprobe: Run "raspi-config"; select "5 Interfacing options", "P4 SPI", "Yes" in response to "Would you like the SPI interface to be enabled? "
+// 
+// reboot.
+// 
+// Not loaded on reboot....
+// 
+// sudo modprobe fbtft_device
+// 
+// [   43.109336] fbtft_device: module is from the staging directory, the quality is unknown, you have been warned.
+// [   43.110709] spidev spi0.0: spidev spi0.0 500kHz 8 bits mode=0x00
+// [   43.110731] spidev spi0.1: spidev spi0.1 500kHz 8 bits mode=0x00
+// [   43.110772] bcm2708_fb soc:fb: soc:fb id=-1 pdata? no
+// [   43.110824] spidev spi0.0: Deleting spi0.0
+// [   43.111783] fbtft_device: GPIOS used by 'pitft':
+// [   43.111810] fbtft_device: 'dc' = GPIO25
+// [   43.111844] spidev spi0.1: spidev spi0.1 500kHz 8 bits mode=0x00
+// [   43.111866] spi spi0.0: fb_ili9340 spi0.0 32000kHz 8 bits mode=0x00
+// [   43.141003] fb_ili9340: module is from the staging directory, the quality is unknown, you have been warned.
+// [   43.358297] graphics fb1: fb_ili9340 frame buffer, 320x480, 300 KiB video memory, 4 KiB DMA buffer memory, fps=20, spi0.0 at 32 MHz
+// 
+
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -747,7 +800,7 @@ typedef unsigned short int pxl;
 
 // 'global' variables to store screen info
 static pxl *fbp = 0;
-static int bytes_per_pixel = 2;
+static unsigned int bytes_per_pixel = 2;
 struct fb_var_screeninfo vinfo;
 struct fb_fix_screeninfo finfo;
 static pxl bg_col = 0;
@@ -755,16 +808,16 @@ static pxl fg_col = 0xffff;
 
 // 'plot' a pixel in given color
 
-void put_pixel (int x, int y, pxl c)
+void put_pixel (unsigned int x, unsigned int y, pxl c)
   {
     // calculate the pixel's byte offset inside the buffer
-    unsigned int pix_offset = x + y * finfo.line_length/bytes_per_pixel;
+    unsigned int pix_offset = (unsigned int) (x + y * finfo.line_length/bytes_per_pixel);
     *(fbp + pix_offset) = c;
   }
 
-void fill_rect (int x, int y, int w, int h, pxl c)
+void fill_rect (unsigned int x, unsigned int y, unsigned int w, unsigned int h, pxl c)
   {
-    int cx, cy;
+    unsigned int cx, cy;
     for (cy = 0; cy < h; cy ++)
       {
         for (cx = 0; cx < w; cx ++)
@@ -778,7 +831,7 @@ static pxl grey = 0x8410;
 
 // Draw a text string on the display
 
-static void draw (int textX, int textY, char *arg)
+static void draw (unsigned int textX, unsigned int textY, char *arg)
   {
 
     // Convert from text row/col to pixel coordinates.
@@ -787,10 +840,10 @@ static void draw (int textX, int textY, char *arg)
 
     char * text = arg;
 
-    int i, l, x, y;
+    unsigned int i, l, x, y;
 
     // loop through all characters in the text string
-    l = strlen (text);
+    l = (unsigned int) strlen (text);
     for (i = 0; i < l; i ++)
       {
         char ch = text [i];
@@ -858,7 +911,7 @@ cpu_state_t * cpun;
 
 
 static char buf [128];
-static void draw_n (int n, word36 v, int col, int row)
+static void draw_n (int n, word36 v, unsigned int col, unsigned int row)
   {
     char * p = buf;
     for (int i = n - 1; i >= 0; i --)
@@ -887,7 +940,7 @@ int main (int argc, char * argv [])
         long p = strtol (argv [1], & end, 0);
         if (* end == 0)
           {
-            sid = p;
+            sid = (pid_t) p;
             argv [1] [0] = 0;
           }
       }
@@ -901,7 +954,7 @@ int main (int argc, char * argv [])
         long p = strtol (argv [2], & end, 0);
         if (* end == 0)
           {
-            cpunum = p;
+            cpunum = (int) p;
             argv [1] [0] = 0;
           }
       }
@@ -928,7 +981,7 @@ int main (int argc, char * argv [])
 // Open the framebuffer
 
     int fbfd = 0;
-    long int screensize = 0;
+    size_t screensize = 0;
 
     fbfd = open("/dev/fb1", O_RDWR);
     if (! fbfd)
@@ -976,7 +1029,7 @@ int main (int argc, char * argv [])
     // Write the labels
 
 //                 "0123456789012345678901234567890123456789"
-    int l = 0;
+    unsigned int l = 0;
     draw (0, l ++, "PRR ___ P _ PSR _______________");
     draw (0, l ++, "TRR ___ TSR _______________ TBR ______");
     draw (0, l ++, "IC  __________________");
@@ -1054,8 +1107,8 @@ int main (int argc, char * argv [])
             draw_n (15, cpun -> PAR [i] . SNR,     2, l); 
             draw_n ( 3, cpun -> PAR [i] . RNR,    18, l); 
             l ++;
-            draw_n ( 2, cpun -> PAR [i] . CHAR,    2, l);
-            draw_n ( 4, cpun -> PAR [i] . BITNO ,  5, l);
+            draw_n ( 2, cpun -> PAR [i] . AR_CHAR,    2, l);
+            draw_n ( 4, cpun -> PAR [i] . AR_BITNO ,  5, l);
             draw_n (18, cpun -> PAR [i] . WORDNO, 10, l);
             l ++;
           }
@@ -1067,7 +1120,7 @@ int main (int argc, char * argv [])
         l ++;
         draw_n ( 5, cpun -> faultNumber, 4, l);
         l ++;
-        draw_n (36, cpun -> subFault, 4, l);
+        draw_n (36, cpun -> subFault.bits, 4, l);
 
         usleep (10000);
       }

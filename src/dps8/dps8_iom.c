@@ -16,7 +16,7 @@
 //
 
 /**
- * \file dps8_mt.c
+ * \file dps8_iom.c
  * \project dps8
  * \date 9/17/12
  * \copyright Copyright (c) 2012 Harry Reed. All rights reserved.
@@ -73,7 +73,7 @@
 //
 //   Using the cable tables, doPayloadChannel determines the handler and
 //   unit_idx for that channel number and calls 
-//     iom_unit [channel_number] . iomCmd (unit_idx, DCW)
+//     iom_unit[channel_number].iom_cmd (unit_idx, DCW)
 //   It then walks the channel DCW list, passing DCWs to the handler. 
 //
 
@@ -195,180 +195,59 @@
 //   
 // bound_tolts_/mtdsim_.pl1
 //
-//    idcw.chan_cmd = "40"b3;			/* otherwise set special cont. cmd */
+//    idcw.chan_cmd = "40"b3;           /* otherwise set special cont. cmd */
 //
 // bound_io_tools/exercise_disk.pl1
 //
-//   idcw.chan_cmd = INHIB_AUTO_RETRY;		/* inhibit mpc auto retries */
+//   idcw.chan_cmd = INHIB_AUTO_RETRY; /* inhibit mpc auto retries */
 //   dcl     INHIB_AUTO_RETRY       bit (6) int static init ("010001"b);  // 021
 //
 // poll_mpc.pl1:
 //  /* Build dcw list to get statistics from EURC MPC */
-//  idcw.chan_cmd = "41"b3;			/* Indicate special controller command */
+//  idcw.chan_cmd = "41"b3;            /* Indicate special controller command */
 //  /* Build dcw list to get configuration and statistics from DAU MSP */
 //  idcw.chan_cmd = "30"b3;                           /* Want list in dev# order */
 //
 // tape_ioi_io.pl1:
-//   idcw.chan_cmd = "03"b3;			/* data security erase */
-//   dcw.chan_cmd = "30"b3;			/* use normal values, auto-retry */
+//   idcw.chan_cmd = "03"b3;          /* data security erase */
+//   dcw.chan_cmd = "30"b3;           /* use normal values, auto-retry */
 
 
 #include "dps8.h"
 #include "dps8_sys.h"
 #include "dps8_faults.h"
-#include "dps8_cpu.h"
-#include "dps8_utils.h"
+#include "dps8_scu.h"
 #include "dps8_iom.h"
 #include "dps8_cable.h"
-#include "dps8_scu.h"
+#include "dps8_cpu.h"
+#include "dps8_console.h"
+#include "dps8_fnp2.h"
+#include "dps8_utils.h"
+#if defined(THREADZ) || defined(LOCKLESS)
+#include "threadz.h"
+#endif
 
-#define ASSUME_CPU_0 0
+#define DBG_CTR 1
+
+// Nomenclature
+//
+//  IDX index   refers to emulator unit
+//  NUM         refers to the number that the unit is configured as ("IOMA,
+//              IOMB,..."). Encoded in the low to bits of configSwMultiplexBaseAddress
 
 // Default
 #define N_IOM_UNITS 1
 
-#define IOM_UNIT_NUM(uptr) ((uptr) - iomUnit)
+#define IOM_UNIT_IDX(uptr) ((uptr) - iom_unit)
 
-static inline void iom_core_read (word24 addr, word36 *data, UNUSED const char * ctx)
-  {
-    * data = M [addr] & DMASK;
-  }
-
-static inline void iom_core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
-  {
-    * even = M [addr ++] & DMASK;
-    * odd =  M [addr]    & DMASK;
-  }
-
-static inline void iom_core_write (word24 addr, word36 data, UNUSED const char * ctx)
-  {
-    M [addr] = data & DMASK;
-  }
-
-static inline void iom_core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
-  {
-    M [addr ++] = even;
-    M [addr] =    odd;
-  }
-
-static t_stat iom_action (UNIT *up);
-
-static UNIT iomUnit [N_IOM_UNITS_MAX] =
-  {
-    { UDATA (iom_action, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (iom_action, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (iom_action, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL },
-    { UDATA (iom_action, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL }
-  };
-
-static t_stat iomShowMbx (FILE * st, UNIT * uptr, int val, const void * desc);
-static t_stat iomShowConfig (FILE *st, UNIT *uptr, int val, const void *desc);
-static t_stat iomSetConfig (UNIT * uptr, int value, const char * cptr, void * desc);
-static t_stat iomShowUnits (FILE *st, UNIT *uptr, int val, const void *desc);
-static t_stat iomSetUnits (UNIT * uptr, int value, const char * cptr, void * desc);
-static t_stat iomReset (DEVICE * dptr);
-static t_stat iomBoot (int unitNum, DEVICE * dptr);
-
-
-static MTAB iomMod [] =
-  {
-    {
-       MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_NC, /* mask */
-      0,            /* match */
-      "MBX",        /* print string */
-      NULL,         /* match string */
-      NULL,         /* validation routine */
-      iomShowMbx, /* display routine */
-      NULL,          /* value descriptor */
-      NULL   // help string
-    },
-    {
-      MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_VALR, /* mask */
-      0,            /* match */
-      "CONFIG",     /* print string */
-      "CONFIG",         /* match string */
-      iomSetConfig,         /* validation routine */
-      iomShowConfig, /* display routine */
-      NULL,          /* value descriptor */
-      NULL   // help string
-    },
-    {
-      MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
-      0,            /* match */
-      "NUNITS",     /* print string */
-      "NUNITS",         /* match string */
-      iomSetUnits, /* validation routine */
-      iomShowUnits, /* display routine */
-      "Number of IOM units in the system", /* value descriptor */
-      NULL   // help string
-    },
-    {
-      0, 0, NULL, NULL, 0, 0, NULL, NULL
-    }
-  };
-
-static DEBTAB iomDT [] =
-  {
-    { "NOTIFY", DBG_NOTIFY, NULL },
-    { "INFO", DBG_INFO, NULL },
-    { "ERR", DBG_ERR, NULL },
-    { "WARN", DBG_WARN, NULL },
-    { "DEBUG", DBG_DEBUG, NULL },
-    { "TRACE", DBG_TRACE, NULL },
-    { "ALL", DBG_ALL, NULL }, // don't move as it messes up DBG message
-    { NULL, 0, NULL }
-  };
-
-DEVICE iom_dev =
-  {
-    "IOM",       /* name */
-    iomUnit,     /* units */
-    NULL,        /* registers */
-    iomMod,      /* modifiers */
-    N_IOM_UNITS, /* #units */
-    10,          /* address radix */
-    8,           /* address width */
-    1,           /* address increment */
-    8,           /* data radix */
-    8,           /* data width */
-    NULL,        /* examine routine */
-    NULL,        /* deposit routine */
-    iomReset,    /* reset routine */
-    iomBoot,     /* boot routine */
-    NULL,        /* attach routine */
-    NULL,        /* detach routine */
-    NULL,        /* context */
-    DEV_DEBUG,   /* flags */
-    0,           /* debug control flags */
-    iomDT,       /* debug flag names */
-    NULL,        /* memory size change */
-    NULL,        /* logical name */
-    NULL,        // help
-    NULL,        // attach help
-    NULL,        // help context
-    NULL,        // description
-    NULL
-  };
-
-static t_stat bootSvc (UNIT * unitp);
-static UNIT bootChannelUnit [N_IOM_UNITS_MAX] =
-  {
-    { UDATA (& bootSvc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    { UDATA (& bootSvc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    { UDATA (& bootSvc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
-    { UDATA (& bootSvc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL}
-  };
-
-static UNIT termIntrChannelUnits [N_IOM_UNITS_MAX] [MAX_CHANNELS];
-
+#define IOM_SYSTEM_FAULT_CHAN 1U
 #define IOM_CONNECT_CHAN 2U
 #define IOM_SPECIAL_STATUS_CHAN 6U
 
-iomChanData_t iomChanData [N_IOM_UNITS_MAX] [MAX_CHANNELS];
+iom_chan_data_t iom_chan_data[N_IOM_UNITS_MAX][MAX_CHANNELS];
 
 
-
-typedef enum iomStat_t
+typedef enum iom_status_t
   {
     iomStatNormal = 0,
     iomStatLPWTRO = 1,
@@ -378,19 +257,25 @@ typedef enum iomStat_t
     iomStatIDCWRestricted = 5,
     iomStatCPDiscrepancy = 6,
     iomStatParityErr = 7
-  } iomStat_t;
+  } iom_status_t;
 
 
-enum configSwOs_t
+enum config_sw_OS_t
   {
     CONFIG_SW_STD_GCOS, 
     CONFIG_SW_EXT_GCOS,
     CONFIG_SW_MULTICS  // "Paged"
   };
     
+enum config_sw_model_t
+  {
+    CONFIG_SW_MODEL_IOM, 
+    CONFIG_SW_MODEL_IMU 
+  };
+
 
 // Boot device: CARD/TAPE;
-enum configSwBlCT_t { CONFIG_SW_BLCT_CARD, CONFIG_SW_BLCT_TAPE };
+enum config_sw_bootlood_device_e { CONFIG_SW_BLCT_CARD, CONFIG_SW_BLCT_TAPE };
 
 
 
@@ -402,15 +287,27 @@ typedef struct
     // Interrupt multiplex base address: 12 toggles
     word12 configSwIomBaseAddress;
             
+
     // Mailbox base aka IOM base address: 9 toggles
     // Note: The IOM number is encoded in the lower two bits
+
+    // AM81, pg 60 shows an image of a Level 68 IOM configuration panel
+    // The switches are arranged and labeled
+    //
+    //  12   13   14   15   16   17   18   --   --  --  IOM
+    //                                                  NUMBER
+    //   X    X    X    X    X    X    X                X     X
+    //
+
     word9 configSwMultiplexBaseAddress;
             
+    enum config_sw_model_t config_sw_model; // IOM or IMY
+
     // OS: Three position switch: GCOS, EXT GCOS, Multics
-    enum configSwOs_t configSwOS; // = CONFIG_SW_MULTICS;
+    enum config_sw_OS_t config_sw_OS; // = CONFIG_SW_MULTICS;
 
     // Bootload device: Toggle switch CARD/TAPE
-    enum configSwBlCT_t configSwBootloadCardTape; // = CONFIG_SW_BLCT_TAPE; 
+    enum config_sw_bootlood_device_e configSwBootloadCardTape; // = CONFIG_SW_BLCT_TAPE; 
 
     // Bootload tape IOM channel: 6 toggles
     word6 configSwBootloadMagtapeChan; // = 0; 
@@ -430,31 +327,31 @@ typedef struct
     // 8 Ports: CPU/IOM connectivity
     // Port configuration: 3 toggles/port 
     // Which SCU number is this port attached to 
-    uint configSwPortAddress [N_IOM_PORTS]; // = { 0, 1, 2, 3, 4, 5, 6, 7 }; 
+    uint configSwPortAddress[N_IOM_PORTS]; // = { 0, 1, 2, 3, 4, 5, 6, 7 }; 
 
     // Port interlace: 1 toggle/port
-    uint configSwPortInterface [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    uint configSwPortInterface[N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
     // Port enable: 1 toggle/port
-    uint configSwPortEnable [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    uint configSwPortEnable[N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
     // Port system initialize enable: 1 toggle/port // XXX What is this
-    uint configSwPortSysinitEnable [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    uint configSwPortSysinitEnable[N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
     // Port half-size: 1 toggle/port // XXX what is this
-    uint configSwPortHalfsize [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 }; 
+    uint configSwPortHalfsize[N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 }; 
     // Port store size: 1 8 pos. rotary/port
-    uint configSwPortStoresize [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    uint configSwPortStoresize[N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
     // other switches:
     //   alarm disable
     //   test/normal
-    iomStat_t iomStatus;
+    iom_status_t iomStatus;
 
-    uint invokingScuUnitNum; // the unit number of the SCU that did the connect.
-  } iomUnitData_t;
+    uint invokingScuUnitIdx; // the unit number of the SCU that did the connect.
+  } iom_unit_data_t;
 
-static iomUnitData_t iomUnitData [N_IOM_UNITS_MAX];
+static iom_unit_data_t iom_unit_data[N_IOM_UNITS_MAX];
 
 typedef enum iomSysFaults_t
   {
@@ -487,7 +384,7 @@ typedef enum iomSysFaults_t
     iomPTWFlagFault = 015,  // PTW-Flag-Fault: Page Present flag zero, or
                             // Write Control Bit 0, or Housekeeping bit set,
     // = 016,               // ILL-LPW-STD LPW had bit 20 on in GCOS mode
-    // = 017,               // NO-PRT-SEL No port selected during attempt
+    iomNoPortFault = 017,   // NO-PRT-SEL No port selected during attempt
                             // to access memory.
   } iomSysFaults_t;
 
@@ -508,126 +405,1094 @@ typedef enum iomFaultServiceRequest
     iomFsrDPDirStore = (7 << 2) | 1
   } iomFaultServiceRequest;
 
-/* From AN70-1 May84
- *  ... The IOM determines an interrupt
- * number. (The interrupt number is a five bit value, from 0 to 31.
- * The high order bits are the interrupt level.
- *
- * 0 - system fault
- * 1 - terminate
- * 2 - marker
- * 3 - special
- *
- * The low order three bits determines the IOM and IOM channel 
- * group.
- *
- * 0 - IOM 0 channels 32-63
- * 1 - IOM 1 channels 32-63
- * 2 - IOM 2 channels 32-63
- * 3 - IOM 3 channels 32-63
- * 4 - IOM 0 channels 0-31
- * 5 - IOM 1 channels 0-31
- * 6 - IOM 2 channels 0-31
- * 7 - IOM 3 channels 0-31
- *
- *   3  3     3   3   3
- *   1  2     3   4   5
- *  ---------------------
- *  | pic | group | iom |
- *  -----------------------------
- *       2       1     2
- */
+#ifdef IO_THREADZ
+__thread uint this_iom_idx;
+__thread uint this_chan_num;
+#endif
 
-enum iomImwPics
+#ifdef SCUMEM
+void iom_core_read (uint iom_unit_idx, word24 addr, word36 *data, UNUSED const char * ctx)
   {
-    imwSystemFaultPic = 0,
-    imwTerminatePic = 1,
-    imwMarkerPic = 2,
-    imwSpecialPic = 3
+    word24 offset;
+    int scuUnitNum = query_IOM_SCU_bank_map (iom_unit_idx, addr, & offset);
+    uint scu_unit_idx = cables->iom_to_scu[iom_unit_idx][scuUnitNum].scu_unit_idx;
+#ifdef THREADZ
+#ifdef lockread
+    lock_mem_rd ();
+#endif
+#endif
+    *data = scu[scu_unit_idx].M[offset] & DMASK;
+#ifdef THREADZ
+#ifdef lockread
+    unlock_mem ();
+#endif
+#endif
+  }
+
+void iom_core_read2 (uint iom_unit_idx, word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
+  {
+    word24 offset;
+    int scuUnitNum = query_IOM_SCU_bank_map (iom_unit_idx, addr & PAEVEN, & offset);
+    uint scu_unit_idx = cables->iom_to_scu[iom_unit_idx][scuUnitNum].scu_unit_idx;
+#ifdef THREADZ
+#ifdef lockread
+    lock_mem_rd ();
+#endif
+#endif
+    * even = scu[scu_unit_idx].M[offset ++] & DMASK;
+    * odd  = scu[scu_unit_idx].M[offset   ] & DMASK;
+#ifdef THREADZ
+#ifdef lockread
+      unlock_mem ();
+#endif
+#endif
+  }
+
+void iom_core_write (uint iom_unit_idx, word24 addr, word36 data, UNUSED const char * ctx)
+  {
+    word24 offset;
+    int scuUnitNum = query_IOM_SCU_bank_map (iom_unit_idx, addr, & offset);
+    uint scu_unit_idx = cables->iom_to_scu[iom_unit_idx][scuUnitNum].scu_unit_idx;
+#ifdef THREADZ
+#ifdef lockread
+    lock_mem_wr ();
+#endif
+#endif
+    scu[scu_unit_idx].M[offset] = data & DMASK;
+#ifdef THREADZ
+#ifdef lockread
+    unlock_mem ();
+#endif
+#endif
+  }
+
+void iom_core_write2 (uint iom_unit_idx, word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
+  {
+    word24 offset;
+    int scuUnitNum = query_IOM_SCU_bank_map (iom_unit_idx, addr & PAEVEN, & offset);
+    uint scu_unit_idx = cables->iom_to_scu[iom_unit_idx][scuUnitNum].scu_unit_idx;
+#ifdef THREADZ
+#ifdef lockread
+    lock_mem_wr ();
+#endif
+#endif
+    scu[scu_unit_idx].M[offset ++] = even & DMASK;
+    scu[scu_unit_idx].M[offset   ] = odd & DMASK;
+#ifdef THREADZ
+#ifdef lockread
+      unlock_mem ();
+#endif
+#endif
+  }
+
+#else // SCUMEM
+
+void iom_core_read (UNUSED uint iom_unit_idx, word24 addr, word36 *data, UNUSED const char * ctx)
+  {
+#ifdef THREADZ
+#ifdef lockread
+    lock_mem_rd ();
+#endif
+#endif
+#ifdef LOCKLESS
+    word36 v;
+    LOAD_ACQ_CORE_WORD(v, addr);
+    * data = v & DMASK;
+#else
+    * data = M[addr] & DMASK;
+#endif
+#ifdef THREADZ
+#ifdef lockread
+    unlock_mem ();
+#endif
+#endif
+  }
+
+void iom_core_read2 (UNUSED uint iom_unit_idx, word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
+  {
+#ifdef THREADZ
+#ifdef lockread
+    lock_mem_rd ();
+#endif
+#endif
+#ifdef LOCKLESS
+    word36 v;
+    LOAD_ACQ_CORE_WORD(v, addr);
+    * even = v & DMASK;
+    addr++;
+    LOAD_ACQ_CORE_WORD(v, addr);
+    * odd = v & DMASK;
+#else
+    * even = M[addr ++] & DMASK;
+    * odd =  M[addr]    & DMASK;
+#endif
+#ifdef THREADZ
+#ifdef lockread
+    unlock_mem ();
+#endif
+#endif
+  }
+
+void iom_core_write (UNUSED uint iom_unit_idx, word24 addr, word36 data, UNUSED const char * ctx)
+  {
+#ifdef THREADZ
+#ifdef lockread
+    lock_mem_wr ();
+#endif
+#endif
+#ifdef LOCKLESS
+    LOCK_CORE_WORD(addr);
+    STORE_REL_CORE_WORD(addr, data);
+#else
+    M[addr] = data & DMASK;
+#endif
+#ifdef THREADZ
+#ifdef lockread
+    unlock_mem ();
+#endif
+#endif
+  }
+
+void iom_core_write2 (UNUSED uint iom_unit_idx, word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
+  {
+#ifdef THREADZ
+#ifdef lockread
+    lock_mem_wr ();
+#endif
+#endif
+#ifdef LOCKLESS
+    LOCK_CORE_WORD(addr);
+    STORE_REL_CORE_WORD(addr, even);
+    addr++;
+    LOCK_CORE_WORD(addr);
+    STORE_REL_CORE_WORD(addr, odd);
+#else
+    M[addr ++] = even;
+    M[addr] =    odd;
+#endif
+#ifdef THREADZ
+#ifdef lockread
+    unlock_mem ();
+#endif
+#endif
+  }
+#endif
+
+
+void iom_core_read_lock (UNUSED uint iom_unit_idx, word24 addr, word36 *data, UNUSED const char * ctx)
+  {
+#ifdef LOCKLESS
+    LOCK_CORE_WORD(addr);
+    word36 v;
+    LOAD_ACQ_CORE_WORD(v, addr);
+    * data = v & DMASK;
+#else
+    * data = M[addr] & DMASK;
+#endif
+  }
+
+void iom_core_write_unlock (UNUSED uint iom_unit_idx, word24 addr, word36 data, UNUSED const char * ctx)
+  {
+#ifdef LOCKLESS
+    STORE_REL_CORE_WORD(addr, data);
+#else
+    M[addr] = data & DMASK;
+#endif
+  }
+
+static t_stat iom_action (UNIT *up)
+  {
+    // Recover the stash parameters
+    uint scu_unit_idx = (uint) (up -> u3);
+    uint iom_unit_idx = (uint) (up -> u4);
+    iom_interrupt (scu_unit_idx, iom_unit_idx);
+    return SCPE_OK;
+  }
+
+static UNIT iom_unit[N_IOM_UNITS_MAX] =
+  {
+    [0 ... N_IOM_UNITS_MAX - 1] =
+      {
+        UDATA (iom_action, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL
+      }
   };
 
-static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics pic);
+static t_stat iom_show_mbx (UNUSED FILE * st, 
+                            UNUSED UNIT * uptr, UNUSED int val, 
+                            UNUSED const void * desc)
+  {
+    return SCPE_OK;
+  }
 
+
+static t_stat iom_show_units (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)
+  {
+    sim_printf ("Number of IOM units in system is %d\n", iom_dev.numunits);
+    return SCPE_OK;
+  }
+
+static t_stat iom_set_units (UNUSED UNIT * uptr, UNUSED int value, const char * cptr, UNUSED void * desc)
+  {
+    if (! cptr)
+      return SCPE_ARG;
+    int n = atoi (cptr);
+    if (n < 1 || n > N_IOM_UNITS_MAX)
+      return SCPE_ARG;
+    if (n > 2)
+      sim_printf ("Warning: Multics supports 2 IOMs maximum\n");
+    iom_dev.numunits = (unsigned) n;
+    return SCPE_OK;
+  }
+
+static t_stat iom_show_config (UNUSED FILE * st, UNIT * uptr, UNUSED int val, 
+                             UNUSED const void * desc)
+  {
+    uint iom_unit_idx = (uint) IOM_UNIT_IDX (uptr);
+    if (iom_unit_idx >= iom_dev.numunits)
+      {
+        sim_printf ("error: invalid unit number %u\n", iom_unit_idx);
+        return SCPE_ARG;
+      }
+
+    sim_printf ("IOM unit number %u\n", iom_unit_idx);
+    iom_unit_data_t * p = iom_unit_data + iom_unit_idx;
+
+    char * os = "<out of range>";
+    switch (p -> config_sw_OS)
+      {
+        case CONFIG_SW_STD_GCOS:
+          os = "Standard GCOS";
+          break;
+        case CONFIG_SW_EXT_GCOS:
+          os = "Extended GCOS";
+          break;
+        case CONFIG_SW_MULTICS:
+          os = "Multics";
+          break;
+      }
+    char * blct = "<out of range>";
+    switch (p -> configSwBootloadCardTape)
+      {
+        case CONFIG_SW_BLCT_CARD:
+          blct = "CARD";
+          break;
+        case CONFIG_SW_BLCT_TAPE:
+          blct = "TAPE";
+          break;
+      }
+
+    sim_printf ("Allowed Operating System: %s\n", os);
+    sim_printf ("IOM Base Address:         %03o(8)\n", p -> configSwIomBaseAddress);
+    sim_printf ("Multiplex Base Address:   %04o(8)\n", p -> configSwMultiplexBaseAddress);
+    sim_printf ("Bootload Card/Tape:       %s\n", blct);
+    sim_printf ("Bootload Tape Channel:    %02o(8)\n", p -> configSwBootloadMagtapeChan);
+    sim_printf ("Bootload Card Channel:    %02o(8)\n", p -> configSwBootloadCardrdrChan);
+    sim_printf ("Bootload Port:            %02o(8)\n", p -> configSwBootloadPort);
+    sim_printf ("Port Address:            ");
+    int i;
+    for (i = 0; i < N_IOM_PORTS; i ++)
+      sim_printf (" %03o", p -> configSwPortAddress[i]);
+    sim_printf ("\n");
+    sim_printf ("Port Interlace:          ");
+    for (i = 0; i < N_IOM_PORTS; i ++)
+      sim_printf (" %3o", p -> configSwPortInterface[i]);
+    sim_printf ("\n");
+    sim_printf ("Port Enable:             ");
+    for (i = 0; i < N_IOM_PORTS; i ++)
+      sim_printf (" %3o", p -> configSwPortEnable[i]);
+    sim_printf ("\n");
+    sim_printf ("Port Sysinit Enable:     ");
+    for (i = 0; i < N_IOM_PORTS; i ++)
+      sim_printf (" %3o", p -> configSwPortSysinitEnable[i]);
+    sim_printf ("\n");
+    sim_printf ("Port Halfsize:           ");
+    for (i = 0; i < N_IOM_PORTS; i ++)
+      sim_printf (" %3o", p -> configSwPortHalfsize[i]);
+    sim_printf ("\n");
+    sim_printf ("Port Storesize:           ");
+    for (i = 0; i < N_IOM_PORTS; i ++)
+      sim_printf (" %3o", p -> configSwPortStoresize[i]);
+    sim_printf ("\n");
+    
+    return SCPE_OK;
+  }
+
+//
+// set iom0 config=<blah> [;<blah>]
+//
+//    blah = iom_base=n
+//           multiplex_base=n
+//           os=gcos | gcosext | multics
+//           boot=card | tape
+//           tapechan=n
+//           cardchan=n
+//           scuport=n
+//           port=n   // set port number for below commands
+//             addr=n
+//             interlace=n
+//             enable=n
+//             initenable=n
+//             halfsize=n
+//             storesize=n
+//          bootskip=n // Hack: forward skip n records after reading boot record
+
+static config_value_list_t cfg_model_list[] =
+  {
+    { "iom", CONFIG_SW_MODEL_IOM },
+    { "imu", CONFIG_SW_MODEL_IMU }
+  };
+
+static config_value_list_t cfg_os_list[] =
+  {
+    { "gcos", CONFIG_SW_STD_GCOS },
+    { "gcosext", CONFIG_SW_EXT_GCOS },
+    { "multics", CONFIG_SW_MULTICS },
+    { NULL, 0 }
+  };
+
+static config_value_list_t cfg_boot_list[] =
+  {
+    { "card", CONFIG_SW_BLCT_CARD },
+    { "tape", CONFIG_SW_BLCT_TAPE },
+    { NULL, 0 }
+  };
+
+static config_value_list_t cfg_base_list[] =
+  {
+    { "multics", 014 },
+    { "multics1", 014 }, // boot iom
+    { "multics2", 020 },
+    { "multics3", 024 },
+    { "multics4", 030 },
+    { NULL, 0 }
+  };
+
+static config_value_list_t cfg_size_list[] =
+  {
+    { "32", 0 },
+    { "64", 1 },
+    { "128", 2 },
+    { "256", 3 },
+    { "512", 4 },
+    { "1024", 5 },
+    { "2048", 6 },
+    { "4096", 7 },
+    { "32K", 0 },
+    { "64K", 1 },
+    { "128K", 2 },
+    { "256K", 3 },
+    { "512K", 4 },
+    { "1024K", 5 },
+    { "2048K", 6 },
+    { "4096K", 7 },
+    { "1M", 5 },
+    { "2M", 6 },
+    { "4M", 7 },
+    { NULL, 0 }
+  };
+
+static config_list_t iom_config_list[] =
+  {
+    { "model", 1, 0, cfg_model_list },
+    { "os", 1, 0, cfg_os_list },
+    { "boot", 1, 0, cfg_boot_list },
+    { "iom_base", 0, 07777, cfg_base_list },
+    { "multiplex_base", 0, 0777, NULL },
+    { "tapechan", 0, 077, NULL },
+    { "cardchan", 0, 077, NULL },
+    { "scuport", 0, 07, NULL },
+    { "port", 0, N_IOM_PORTS - 1, NULL },
+    { "addr", 0, 7, NULL },
+    { "interlace", 0, 1, NULL },
+    { "enable", 0, 1, NULL },
+    { "initenable", 0, 1, NULL },
+    { "halfsize", 0, 1, NULL },
+    { "store_size", 0, 7, cfg_size_list },
+
+    { NULL, 0, 0, NULL }
+  };
+
+static t_stat iom_set_config (UNIT * uptr, UNUSED int value, const char * cptr, UNUSED void * desc)
+  {
+    uint iom_unit_idx = (uint) IOM_UNIT_IDX (uptr);
+    if (iom_unit_idx >= iom_dev.numunits)
+      {
+        sim_printf ("error: %s: invalid unit number %d\n", __func__, iom_unit_idx);
+        return SCPE_ARG;
+      }
+
+    iom_unit_data_t * p = iom_unit_data + iom_unit_idx;
+
+    static uint port_num = 0;
+
+    config_state_t cfg_state = { NULL, NULL };
+
+    for (;;)
+      {
+        int64_t v;
+        int rc = cfg_parse (__func__, cptr, iom_config_list, & cfg_state, & v);
+
+        if (rc == -1) // done
+          break;
+
+        if (rc == -2) // error
+          {
+            cfg_parse_done (& cfg_state);
+            continue;
+          }
+        const char * name = iom_config_list[rc].name;
+
+        if (strcmp (name, "model") == 0)
+          {
+            p -> config_sw_model = (enum config_sw_model_t) v;
+            continue;
+          }
+
+        if (strcmp (name, "os") == 0)
+          {
+            p -> config_sw_OS = (enum config_sw_OS_t) v;
+            continue;
+          }
+
+        if (strcmp (name, "boot") == 0)
+          {
+            p -> configSwBootloadCardTape = (enum config_sw_bootlood_device_e) v;
+            continue;
+          }
+
+        if (strcmp (name, "iom_base") == 0)
+          {
+            p -> configSwIomBaseAddress = (word12) v;
+            continue;
+          }
+
+        if (strcmp (name, "multiplex_base") == 0)
+          {
+            // The IOM number is in the low 2 bits
+            // The address is in the high 7 bits which are mapped
+            // to bits 12 to 18 of a 24 bit addrss
+            //
+//  0  1  2  3  4  5  6  7  8
+//  x  x  x  x  x  x  x  y  y
+//
+//  Address
+//  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 29 20 21 22 23 24
+//  0  0  0  0  0  0  0  0  0  0  0  0  x  x  x  x  x  x  x  0  0  0  0  0  0
+//
+// IOM number
+//
+//  0  1
+//  y  y
+
+            p -> configSwMultiplexBaseAddress = (word9) v;
+            continue;
+          }
+
+        if (strcmp (name, "tapechan") == 0)
+          {
+            p -> configSwBootloadMagtapeChan = (word6) v;
+            continue;
+          }
+
+        if (strcmp (name, "cardchan") == 0)
+          {
+            p -> configSwBootloadCardrdrChan = (word6) v;
+            continue;
+          }
+
+        if (strcmp (name, "scuport") == 0)
+          {
+            p -> configSwBootloadPort = (word3) v;
+            continue;
+          }
+
+        if (strcmp (name, "port") == 0)
+          {
+            port_num = (uint) v;
+            continue;
+          }
+
+        if (strcmp (name, "addr") == 0)
+          {
+            p -> configSwPortAddress[port_num] = (uint) v;
+            continue;
+          }
+
+        if (strcmp (name, "interlace") == 0)
+          {
+            p -> configSwPortInterface[port_num] = (uint) v;
+            continue;
+          }
+
+        if (strcmp (name, "enable") == 0)
+          {
+            p -> configSwPortEnable[port_num] = (uint) v;
+            continue;
+          }
+
+        if (strcmp (name, "initenable") == 0)
+          {
+            p -> configSwPortSysinitEnable[port_num] = (uint) v;
+            continue;
+          }
+
+        if (strcmp (name, "halfsize") == 0)
+          {
+            p -> configSwPortHalfsize[port_num] = (uint) v;
+            continue;
+          }
+
+        if (strcmp (name, "store_size") == 0)
+          {
+            p -> configSwPortStoresize[port_num] = (uint) v;
+            continue;
+          }
+
+        sim_printf ("error: %s: invalid cfg_parse rc <%d>\n", __func__, rc);
+        cfg_parse_done (& cfg_state);
+        return SCPE_ARG; 
+      } // process statements
+    cfg_parse_done (& cfg_state);
+    return SCPE_OK;
+  }
+
+static t_stat iom_reset_unit (UNIT * uptr, UNUSED int32 value, UNUSED const char * cptr, 
+                       UNUSED void * desc)
+  {
+    uint iom_unit_idx = (uint) (uptr - iom_unit);
+    iom_unit_reset_idx (iom_unit_idx);
+    return SCPE_OK;
+  }
+
+
+static MTAB iom_mod[] =
+  {
+    {
+       MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_NC, /* mask */
+      0,            /* match */
+      "MBX",        /* print string */
+      NULL,         /* match string */
+      NULL,         /* validation routine */
+      iom_show_mbx, /* display routine */
+      NULL,          /* value descriptor */
+      NULL   // help string
+    },
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_VALR, /* mask */
+      0,            /* match */
+      "CONFIG",     /* print string */
+      "CONFIG",         /* match string */
+      iom_set_config,         /* validation routine */
+      iom_show_config, /* display routine */
+      NULL,          /* value descriptor */
+      NULL   // help string
+    },
+    {
+      MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_VALR, /* mask */
+      0,            /* match */
+      (char *) "RESET",     /* print string */
+      (char *) "RESET",         /* match string */
+      iom_reset_unit, /* validation routine */
+      NULL, /* display routine */
+      (char *) "reset IOM unit", /* value descriptor */
+      NULL /* help */
+    },
+    {
+      MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
+      0,            /* match */
+      "NUNITS",     /* print string */
+      "NUNITS",         /* match string */
+      iom_set_units, /* validation routine */
+      iom_show_units, /* display routine */
+      "Number of IOM units in the system", /* value descriptor */
+      NULL   // help string
+    },
+    {
+      0, 0, NULL, NULL, 0, 0, NULL, NULL
+    }
+  };
+
+static DEBTAB iom_dt[] =
+  {
+    { "NOTIFY", DBG_NOTIFY, NULL },
+    { "INFO", DBG_INFO, NULL },
+    { "ERR", DBG_ERR, NULL },
+    { "WARN", DBG_WARN, NULL },
+    { "DEBUG", DBG_DEBUG, NULL },
+    { "TRACE", DBG_TRACE, NULL },
+    { "ALL", DBG_ALL, NULL }, // don't move as it messes up DBG message
+    { NULL, 0, NULL }
+  };
+
+//
+// iom_unit_reset_idx ()
+//
+//  Reset -- Reset to initial state -- clear all device flags and cancel any
+//  any outstanding timing operations. Used by SIMH's RESET, RUN, and BOOT
+//  commands
+//
+//  Note that all reset ()s run after once-only init ().
+//
+//
+
+t_stat iom_unit_reset_idx (UNUSED uint iom_unit_idx)
+  {
+#ifdef SCUMEM
+    setupIOMScbankMap (iom_unit_idx);
+#endif
+    return SCPE_OK;
+  }
+
+static t_stat iom_reset (UNUSED DEVICE * dptr)
+  {
+    sim_debug (DBG_INFO, & iom_dev, "%s: running.\n", __func__);
+
+    for (uint iom_unit_idx = 0; iom_unit_idx < iom_dev.numunits; iom_unit_idx ++)
+      {
+        iom_unit_reset_idx (iom_unit_idx);
+      }
+    return SCPE_OK;
+  }
+
+static t_stat boot_svc (UNIT * unitp);
+static UNIT boot_channel_unit[N_IOM_UNITS_MAX] =
+  {
+    [0 ... N_IOM_UNITS_MAX - 1] =
+      {
+        UDATA (& boot_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL
+      }
+  };
+
+/*
+ * init_memory_iom ()
+ *
+ * Load a few words into memory.   Simulates pressing the BOOTLOAD button
+ * on an IOM or equivalent.
+ *
+ * All values are from bootload_tape_label.alm.  See the comments at the
+ * top of that file.  See also doc #43A239854.
+ *
+ * NOTE: The values used here are for an IOM, not an IOX.
+ * See init_memory_iox () below.
+ *
+ */
+
+static void init_memory_iom (uint iom_unit_idx)
+  {
+#ifdef SCUMEM
+    word36 * M = iom_lookup_address (iom_unit_idx, 0);
+    if (! M)
+      sim_fatal ("%s can't find memory\n", __func__);
+#endif
+    // The presence of a 0 in the top six bits of word 0 denote an IOM boot
+    // from an IOX boot
+    
+    // " The channel number ("Chan#") is set by the switches on the IOM to be
+    // " the channel for the tape subsystem holding the bootload tape. The
+    // " drive number for the bootload tape is set by switches on the tape
+    // " MPC itself.
+    
+    sim_debug (DBG_INFO, & iom_dev,
+      "%s: Performing load of eleven words from IOM %c bootchannel to memory.\n",
+      __func__, 'A' + iom_unit_idx);
+
+    word12 base = iom_unit_data[iom_unit_idx].configSwIomBaseAddress;
+
+    // bootload_io.alm insists that pi_base match
+    // template_slt_$iom_mailbox_absloc
+
+    //uint pi_base = iom_unit_data[iom_unit_idx].configSwMultiplexBaseAddress & ~3;
+    word36 pi_base = (((word36) iom_unit_data[iom_unit_idx].configSwMultiplexBaseAddress)  << 3) |
+                     (((word36) (iom_unit_data[iom_unit_idx].configSwIomBaseAddress & 07700U)) << 6) ;
+    word3 iom_num = ((word36) iom_unit_data[iom_unit_idx].configSwMultiplexBaseAddress) & 3; 
+    word36 cmd = 5;       // 6 bits; 05 for tape, 01 for cards
+    word36 dev = 0;            // 6 bits: drive number
+    
+    // is-IMU flag
+    word36 imu = iom_unit_data[iom_unit_idx].config_sw_model == CONFIG_SW_MODEL_IMU ? 1 : 0;       // 1 bit
+    
+    // Description of the bootload channel from 43A239854
+    //    Legend
+    //    BB - Bootload channel #
+    //    C - Cmd (1 or 5)
+    //    N - IOM #
+    //    P - Port #
+    //    XXXX00 - Base Addr -- 01400
+    //    XXYYYY0 Program Interrupt Base
+    
+    enum config_sw_bootlood_device_e bootdev = iom_unit_data[iom_unit_idx].configSwBootloadCardTape;
+
+    word6 bootchan;
+    if (bootdev == CONFIG_SW_BLCT_CARD)
+      bootchan = iom_unit_data[iom_unit_idx].configSwBootloadCardrdrChan;
+    else // CONFIG_SW_BLCT_TAPE
+      bootchan = iom_unit_data[iom_unit_idx].configSwBootloadMagtapeChan;
+
+
+    // 1
+
+    word36 dis0 = 0616200;
+
+    // system fault vector; DIS 0 instruction (imu bit not mentioned by 
+    // 43A239854)
+
+    M[010 + 2 * iom_num] = (imu << 34) | dis0;
+    sim_debug (DBG_INFO, & iom_dev, "M[%08o] <= %012"PRIo64"\n",
+      010 + 2 * iom_num, (imu << 34) | dis0);
+
+    // Zero other 1/2 of y-pair to avoid msgs re reading uninitialized
+    // memory (if we have that turned on)
+
+    M[010 + 2 * iom_num + 1] = 0;
+    sim_debug (DBG_INFO, & iom_dev, "M[%08o] <= %012o\n",
+      010 + 2 * iom_num + 1, 0);
+    
+
+    // 2
+
+    // terminate interrupt vector (overwritten by bootload)
+
+    M[030 + 2 * iom_num] = dis0;
+    sim_debug (DBG_INFO, & iom_dev, "M[%08o] <= %012"PRIo64"\n",
+      030 + 2 * iom_num, dis0);
+
+
+    // 3
+
+    // XXX CAC: Clang -Wsign-conversion claims 'base<<6' is int
+    word24 base_addr = (word24) base << 6; // 01400
+    
+    // tally word for sys fault status
+    M[base_addr + 7] = ((word36) base_addr << 18) | 02000002;
+    sim_debug (DBG_INFO, & iom_dev, "M[%08o] <= %012"PRIo64"\n",
+       base_addr + 7, ((word36) base_addr << 18) | 02000002);
+
+
+    // 4
+
+
+    // ??? Fault channel DCW
+    // bootload_tape_label.alm says 04000, 43A239854 says 040000.  Since 
+    // 43A239854 says "no change", 40000 is correct; 4000 would be a 
+    // large tally
+
+    // Connect channel LPW; points to PCW at 000000
+    M[base_addr + 010] = 040000;
+    sim_debug (DBG_INFO, & iom_dev, "M[%08o] <= %012o\n",
+      base_addr + 010, 040000);
+
+    // 5
+
+    word24 mbx = base_addr + 4u * bootchan;
+
+    // Boot device LPW; points to IDCW at 000003
+
+    M[mbx] = 03020003;
+    sim_debug (DBG_INFO, & iom_dev, "M[%08o] <= %012o\n",
+      mbx, 03020003);
+
+
+    // 6
+
+    // Second IDCW: IOTD to loc 30 (startup fault vector)
+
+    M[4] = 030 << 18;
+    sim_debug (DBG_INFO, & iom_dev, "M[%08o] <= %012o\n",
+      4, 030 << 18);
+    
+
+    // 7
+
+    // Default SCW points at unused first mailbox.
+    // T&D tape overwrites this before the first status is saved, though.
+    // CAC: But the status is never saved, only a $CON occurs, never
+    // a status service
+
+    // SCW
+
+    M[mbx + 2] = ((word36)base_addr << 18);
+    sim_debug (DBG_INFO, & iom_dev, "M[%08o] <= %012"PRIo64"\n",
+      mbx + 2, ((word36)base_addr << 18));
+    
+
+    // 8
+
+    // 1st word of bootload channel PCW
+
+    M[0] = 0720201;
+    sim_debug (DBG_INFO, & iom_dev, "M[%08o] <= %012o\n",
+      0, 0720201);
+    
+
+    // 9
+
+    // "SCU port" 
+    word3 port = iom_unit_data[iom_unit_idx].configSwBootloadPort; // 3 bits;
+    
+    // Why does bootload_tape_label.alm claim that a port number belongs in 
+    // the low bits of the 2nd word of the PCW?  The lower 27 bits of the 
+    // odd word of a PCW should be all zero.
+
+    //[CAC] Later, bootload_tape_label.alm does:
+    //
+    //     cioc    bootload_info+1 " port # stuck in PCW
+    //     lda     0,x5            " check for status
+    //
+    // So this is a bootloader kludge to pass the bootload SCU number
+    // 
+
+    //[CAC] From Rev01.AN70.archive:
+    //  In BOS compatibility mode, the BOS BOOT command simulates the IOM,
+    //  leaving the same information.  However, it also leaves a config deck
+    //  and flagbox (although bce has its own flagbox) in the usual locations.
+    //  This allows Bootload Multics to return to BOS if there is a BOS to
+    //  return to.  The presence of BOS is indicated by the tape drive number
+    //  being non-zero in the idcw in the "IOM" provided information.  (This is
+    //  normally zero until firmware is loaded into the bootload tape MPC.)
+
+    // 2nd word of PCW pair
+
+    M[1] = ((word36) (bootchan) << 27) | port;
+    sim_debug (DBG_INFO, & iom_dev, "M[%08o] <= %012"PRIo64"\n",
+      1, ((word36) (bootchan) << 27) | port);
+    
+
+    // 10
+
+    // following verified correct; instr 362 will not yield 1572 with a 
+    // different shift
+
+   // word after PCW (used by program)
+
+    M[2] = ((word36) base_addr << 18) | (pi_base) | iom_num;
+    sim_debug (DBG_INFO, & iom_dev, "M[%08o] <= %012"PRIo64"\n",
+      2,  ((word36) base_addr << 18) | (pi_base) | iom_num);
+    
+
+    // 11
+
+    // IDCW for read binary
+
+    M[3] = (cmd << 30) | (dev << 24) | 0700000;
+    sim_debug (DBG_INFO, & iom_dev, "M[%08o] <= %012"PRIo64"\n",
+      3, (cmd << 30) | (dev << 24) | 0700000);
+    
+  }
+
+static t_stat boot_svc (UNIT * unitp)
+  {
+    uint iom_unit_idx = (uint) (unitp - boot_channel_unit);
+    // the docs say press sysinit, then boot; simh doesn't have an
+    // explicit "sysinit", so we ill treat  "reset iom" as sysinit.
+    // The docs don't say what the behavior is is you dont press sysinit
+    // first so we wont worry about it.
+
+    sim_debug (DBG_DEBUG, & iom_dev, "%s: starting on IOM %c\n",
+      __func__, 'A' + iom_unit_idx);
+
+    // This is needed to reset the interrupt mask registers; Multics tampers
+    // with runtime values, and mucks up rebooting on multi-CPU systems.
+    //scu_reset (NULL);
+    for (int port_num = 0; port_num < N_SCU_PORTS; port_num ++)
+      {
+        if (! cables->iom_to_scu[iom_unit_idx][port_num].in_use)
+          continue;
+        uint scu_unit_idx = cables->iom_to_scu[iom_unit_idx][port_num].scu_unit_idx;
+        scu_unit_reset ((int) scu_unit_idx);
+      }
+
+    // initialize memory with boot program
+    init_memory_iom (iom_unit_idx);
+
+    // Start the remote console listener
+    startRemoteConsole ();
+
+    // Start the machine room listener
+    start_machine_room  ();
+
+    // Start the FNP dialup listener
+    startFNPListener ();
+
+    // simulate $CON
+// XXX XXX XXX
+// Making the assumption that low memory is connected to port 0, ..., high to 3
+    if (! cables->iom_to_scu[iom_unit_idx][0].in_use)
+      {
+        sim_warn ("boot iom can't find a SCU\n");
+        return SCPE_ARG;
+      }
+    uint scu_unit_idx = cables->iom_to_scu[iom_unit_idx][0].scu_unit_idx;
+    iom_interrupt (scu_unit_idx, iom_unit_idx);
+
+    sim_debug (DBG_DEBUG, &iom_dev, "%s finished\n", __func__);
+
+    // returning OK from the simh BOOT command causes simh to start the CPU
+    return SCPE_OK;
+  }
+
+static t_stat iom_boot (int unitNum, UNUSED DEVICE * dptr)
+  {
+    if (unitNum < 0 || unitNum >= (int) iom_dev.numunits)
+      {
+        sim_printf ("%s: Invalid unit number %d\n", __func__, unitNum);
+        return SCPE_ARG;
+      }
+    uint iom_unit_idx = (uint) unitNum;
+#if 0
+    boot_svc (& boot_channel_unit[1]);
+    
+#else
+    //sim_activate (& boot_channel_unit[iom_unit_idx], sys_opts.iom_times.boot_time );
+#if defined(THREADZ) || defined(LOCKLESS)
+    sim_activate (& boot_channel_unit[iom_unit_idx], 1);
+#else
+    sim_activate (& boot_channel_unit[iom_unit_idx], 1000);
+#endif
+    // returning OK from the simh BOOT command causes simh to start the CPU
+#endif
+    return SCPE_OK;
+  }
+
+DEVICE iom_dev =
+  {
+    "IOM",       /* name */
+    iom_unit,     /* units */
+    NULL,        /* registers */
+    iom_mod,      /* modifiers */
+    N_IOM_UNITS, /* #units */
+    10,          /* address radix */
+    8,           /* address width */
+    1,           /* address increment */
+    8,           /* data radix */
+    8,           /* data width */
+    NULL,        /* examine routine */
+    NULL,        /* deposit routine */
+    iom_reset,    /* reset routine */
+    iom_boot,     /* boot routine */
+    NULL,        /* attach routine */
+    NULL,        /* detach routine */
+    NULL,        /* context */
+    DEV_DEBUG,   /* flags */
+    0,           /* debug control flags */
+    iom_dt,       /* debug flag names */
+    NULL,        /* memory size change */
+    NULL,        /* logical name */
+    NULL,        // help
+    NULL,        // attach help
+    NULL,        // help context
+    NULL,        // description
+    NULL
+  };
+
+#ifdef SCUMEM
 // Map memory to port
 // -1 -- no mapping
-static int iomScbankMap [N_IOM_UNITS_MAX] [N_SCBANKS];
+// iomScbankMap is indexed by IDX because the data are
+// based on the configuration switches associated with
+// the physical IOM
 
-static void setupIOMScbankMap (void)
+typedef struct
+  {
+    int portNum;
+    word24 base;
+  } map_t;
+
+static map_t  iomScbankMap[N_IOM_UNITS_MAX][N_SCBANKS];
+
+static void setupIOMScbankMap (uint iom_unit_idx)
   {
     sim_debug (DBG_DEBUG, & cpu_dev,
       "%s: setupIOMScbankMap: SCBANK %d N_SCBANKS %d MEM_SIZE_MAX %d\n", 
       __func__, SCBANK, N_SCBANKS, MEM_SIZE_MAX);
 
-    for (uint iomUnitIdx = 0; iomUnitIdx < iom_dev . numunits; iomUnitIdx ++)
-      {
-        // Initalize to unmapped
-        for (int pg = 0; pg < (int) N_SCBANKS; pg ++)
-          iomScbankMap [iomUnitIdx] [pg] = -1;
+    // Initalize to unmapped
+    for (int pg = 0; pg < (int) N_SCBANKS; pg ++)
+      iomScbankMap[iom_unit_idx][pg].portNum = -1;
     
-        iomUnitData_t * p = iomUnitData + iomUnitIdx;
-        // For each port (which is connected to a SCU
-        for (int port_num = 0; port_num < N_IOM_PORTS; port_num ++)
-          {
-            if (! p -> configSwPortEnable [port_num])
-              continue;
-            // Calculate the amount of memory in the SCU in words
-            uint store_size = p -> configSwPortStoresize [port_num];
+    iom_unit_data_t * p = iom_unit_data + iom_unit_idx;
+    // For each port (which is connected to a SCU
+    for (int port_num = 0; port_num < N_IOM_PORTS; port_num ++)
+      {
+        if (! p -> configSwPortEnable[port_num])
+          continue;
+        // Calculate the amount of memory in the SCU in words
+        uint store_size = p -> configSwPortStoresize[port_num];
 #ifdef DPS8M
-            uint store_table [8] = 
-              { 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304 };
+        uint store_table[8] = 
+          { 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304 };
 #endif
 #ifdef L68
-            uint store_table [8] = 
-              { 32768, 65536, 4194304, 131072, 524288, 1048576, 2097152, 262144 };
+        uint store_table[8] = 
+          { 32768, 65536, 4194304, 131072, 524288, 1048576, 2097152, 262144 };
 #endif
-            //uint sz = 1 << (store_size + 16);
-            uint sz = store_table [store_size];
-    
-            // Calculate the base address of the memory in words
-            uint assignment = p -> configSwPortAddress [port_num];
-            //uint assignment = cpu.switches.assignment [port_num];
-            uint base = assignment * sz;
-    
-            // Now convert to SCBANKs
-            sz = sz / SCBANK;
-            base = base / SCBANK;
-    
-            sim_debug (DBG_DEBUG, & cpu_dev,
-              "%s: unit:%u port:%d ss:%u as:%u sz:%u ba:%u\n",
-              __func__, iomUnitIdx, port_num, store_size, assignment, sz, 
-              base);
-    
-            for (uint pg = 0; pg < sz; pg ++)
+        //uint sz = 1 << (store_size + 16);
+        uint sz = store_table[store_size];
+ 
+        // Calculate the base address of the memory in words
+        uint assignment = p -> configSwPortAddress[port_num];
+        //uint assignment = cpu.switches.assignment[port_num];
+        uint base = assignment * sz;
+ 
+        // Now convert to SCBANKs
+        sz = sz / SCBANK;
+        uint scbase = base / SCBANK;
+ 
+        sim_debug (DBG_DEBUG, & cpu_dev,
+          "%s: unit:%u port:%d ss:%u as:%u sz:%u ba:%u\n",
+          __func__, iom_unit_idx, port_num, store_size, assignment, sz, 
+          scbase);
+ 
+        for (uint pg = 0; pg < sz; pg ++)
+          {
+            uint scpg = scbase + pg;
+            if (/*scpg >= 0 && */ scpg < N_SCBANKS)
               {
-                uint scpg = base + pg;
-                if (/*scpg >= 0 && */ scpg < N_SCBANKS)
-                  iomScbankMap [iomUnitIdx] [scpg] = port_num;
+                iomScbankMap[iom_unit_idx][scpg].base = base;
+                iomScbankMap[iom_unit_idx][scpg].portNum = port_num;
               }
           }
       }
-    for (uint iomUnitIdx = 0; iomUnitIdx < iom_dev . numunits; iomUnitIdx ++)
-        for (int pg = 0; pg < (int) N_SCBANKS; pg ++)
-          sim_debug (DBG_DEBUG, & cpu_dev, "%s: %d:%d\n", 
-            __func__, pg, iomScbankMap [iomUnitIdx] [pg]);
+#if 0
+    for (int pg = 0; pg < (int) N_SCBANKS; pg ++)
+      sim_debug (DBG_DEBUG, & cpu_dev, "%s: %d:%d\n", 
+        __func__, pg, iomScbankMap[iom_unit_idx][pg].portNum);
+#endif
   }
 
-#if 0   
-static int queryIomScbankMap (uint iomUnitIdx, word24 addr)
+int query_IOM_SCU_bank_map (uint iom_unit_idx, word24 addr, word24 * offset)
   {
     uint scpg = addr / SCBANK;
     if (scpg < N_SCBANKS)
-      return iomScbankMap [iomUnitIdx] [scpg];
+      {
+        * offset = addr-iomScbankMap[iom_unit_idx][scpg].base;
+        return iomScbankMap[iom_unit_idx][scpg].portNum;
+      }
     return -1;
+  }
+
+static word36 * iom_lookup_address (uint iom_unit_idx, word24 addr)
+  {
+    word24 offset;
+    int port = query_IOM_SCU_bank_map (iom_unit_idx, addr, & offset);
+    if (port < 0)
+      {
+        sim_printf ("IOM %d mem fail %08o\n", iom_unit_idx, addr); 
+        return NULL;
+      }
+    uint scu_unit_idx = cables->iom_to_scu[iom_unit_idx][port].scu_unit_idx;
+    return & scu[scu_unit_idx].M[offset];
   }
 #endif
 
-static uint mbxLoc (uint iomUnitIdx, uint chan)
+static uint mbxLoc (uint iom_unit_idx, uint chan)
   {
-    word12 base = iomUnitData [iomUnitIdx] . configSwIomBaseAddress;
+// IDX is correct here as computation is based on physical unit 
+// configuration switches
+    word12 base = iom_unit_data[iom_unit_idx].configSwIomBaseAddress;
     word24 base_addr = ((word24) base) << 6; // 01400
     word24 mbx = base_addr + 4 * chan;
     sim_debug (DBG_DEBUG, & iom_dev, "%s: IOM %c, chan %d is %012o\n",
-      __func__, 'A' + iomUnitIdx, chan, mbx);
+      __func__, 'A' + iom_unit_idx, chan, mbx);
     return mbx;
   }
 
@@ -710,11 +1575,15 @@ static uint mbxLoc (uint iomUnitIdx, uint chan)
 // represent the next absoulute address (bits 6-23) of data prior to
 // the application of the Page Table Word"
 
-static int status_service (uint iomUnitIdx, uint chan, bool marker)
+static int status_service (uint iom_unit_idx, uint chan, bool marker)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
     // See page 33 and AN87 for format of y-pair of status info
     
+#ifdef THREADZ
+    lock_mem_wr ();
+#endif
+
     // BUG: much of the following is not tracked
     
     word36 word1, word2;
@@ -728,7 +1597,8 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
     putbits36_1 (& word1, 16, p -> initiate ? 1 : 0);
     putbits36_1 (& word1, 17, 0); // software abort bit
     putbits36_3 (& word1, 18, (word3) p -> chanStatus);
-    putbits36_3 (& word1, 21, (word3) iomUnitData [iomUnitIdx] . iomStatus);
+    //putbits36_3 (& word1, 21, iom_unit_data[iom_unit_idx].iomStatus);
+    putbits36_3 (& word1, 21, 0);
 #if 0
     // BUG: Unimplemented status bits:
     putbits36_6 (& word1, 24, chan_status.addr_ext);
@@ -750,12 +1620,12 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
     // T&D tape does *not* expect us to cache original SCW, it expects us to
     // use the SCW loaded from tape.
     
-    uint chanloc = mbxLoc (iomUnitIdx, chan);
-    word24 scwAddr = chanloc + 2;
+    uint chanloc = mbxLoc (iom_unit_idx, chan);
+    word24 scwAddr = chanloc + IOM_MBX_SCW;
     word36 scw;
-    iom_core_read (scwAddr, & scw, __func__);
+    iom_core_read_lock (iom_unit_idx, scwAddr, & scw, __func__);
     sim_debug (DBG_DEBUG, & iom_dev,
-               "SCW chan %02o %012"PRIo64"\n", chan, scw);
+               "SCW chan %d %012"PRIo64"\n", chan, scw);
     word18 addr = getbits36_18 (scw, 0);   // absolute
     uint lq = getbits36_2 (scw, 18);
     uint tally = getbits36_12 (scw, 24);
@@ -778,7 +1648,7 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
         lq = 0;
       }
 //sim_printf ("status %d %08o %012"PRIo64" %012"PRIo64"\n", chan, addr, word1, word2);
-    iom_core_write2 (addr, word1, word2, __func__);
+    iom_core_write2 (iom_unit_idx, addr, word1, word2, __func__);
 
     if (tally > 0 || (tally == 0 && lq != 0))
       {
@@ -832,14 +1702,18 @@ static int status_service (uint iomUnitIdx, uint chan, bool marker)
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s:                at: %06o\n",
                    __func__, scwAddr);
-        iom_core_write (scwAddr, scw, __func__);
       }
+
+    iom_core_write_unlock (iom_unit_idx, scwAddr, scw, __func__);
+#ifdef THREADZ
+    unlock_mem ();
+#endif
 
     // BUG: update SCW in core
     return 0;
   }
 
-static word24 UNUSED buildAUXPTWaddress (uint iomUnitIdx, int chan)
+static word24 UNUSED build_AUXPTW_address (uint iom_unit_idx, int chan)
   {
 
 //    0      5 6            16 17  18              21  22  23
@@ -850,14 +1724,14 @@ static word24 UNUSED buildAUXPTWaddress (uint iomUnitIdx, int chan)
 //                         -----------------------------------
 // XXX Assuming 16 and 17 are or'ed. Pg B4 doesn't specify
 
-    word12 IOMBaseAddress = iomUnitData [iomUnitIdx] . configSwIomBaseAddress;
+    word12 IOMBaseAddress = iom_unit_data[iom_unit_idx].configSwIomBaseAddress;
     word24 addr = (((word24) IOMBaseAddress) & MASK12) << 6;
     addr |= ((uint) chan & MASK6) << 2;
     addr |= 03;
     return addr;
   }
 
-static word24 buildDDSPTWaddress (word18 PCW_PAGE_TABLE_PTR, word8 pageNumber)
+static word24 build_DDSPTW_address (word18 PCW_PAGE_TABLE_PTR, word8 pageNumber)
   {
 //    0      5 6        15  16  17  18                       23
 //   ----------------------------------------------------------
@@ -867,23 +1741,27 @@ static word24 buildDDSPTWaddress (word18 PCW_PAGE_TABLE_PTR, word8 pageNumber)
 //                        -------------------------------------
 //                        |  Direct chan addr 6-13            |
 //                        -------------------------------------
-
+    if (PCW_PAGE_TABLE_PTR & 3)
+      sim_warn ("%s: pcw_ptp %#o page_no  %#o\n", __func__, PCW_PAGE_TABLE_PTR, pageNumber);
     word24 addr = (((word24) PCW_PAGE_TABLE_PTR) & MASK18) << 6;
-    addr += pageNumber;
+    addr |= pageNumber;
     return addr;
   }
 
 // Fetch Direct Data Service Page Table Word
 
-static void fetchDDSPTW (uint iomUnitIdx, int chan, word18 addr)
+static void fetch_DDSPTW (uint iom_unit_idx, int chan, word18 addr)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    word24 pgte = buildDDSPTWaddress (p -> PCW_PAGE_TABLE_PTR, 
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
+    word24 pgte = build_DDSPTW_address (p -> PCW_PAGE_TABLE_PTR, 
                                       (addr >> 10) & MASK8);
-    iom_core_read (pgte, & p -> PTW_DCW, __func__);
+    iom_core_read (iom_unit_idx, pgte, (word36 *) & p -> PTW_DCW, __func__);
+    if ((p -> PTW_DCW & 0740000777747) != 04llu)
+      sim_warn ("%s: chan %d addr %#o ptw %012"PRIo64"\n",
+                __func__, chan, addr, p -> PTW_DCW);
   }
 
-static word24 buildIDSPTWaddress (word18 PCW_PAGE_TABLE_PTR, word1 seg, word8 pageNumber)
+static word24 build_IDSPTW_address (word18 PCW_PAGE_TABLE_PTR, word1 seg, word8 pageNumber)
   {
 //    0      5 6        15  16  17  18                       23
 //   ----------------------------------------------------------
@@ -903,24 +1781,25 @@ static word24 buildIDSPTWaddress (word18 PCW_PAGE_TABLE_PTR, word1 seg, word8 pa
     word24 addr = (((word24) PCW_PAGE_TABLE_PTR) & MASK18) << 6;
     addr += (((word24) seg) & 01) << 8;
     addr += pageNumber;
-//sim_printf ("    %06o %o %03o %08o\n", PCW_PAGE_TABLE_PTR, seg, pageNumber, addr);
     return addr;
   }
 
 // Fetch Indirect Data Service Page Table Word
 
-static void fetchIDSPTW (uint iomUnitIdx, int chan, word18 addr)
+static void fetch_IDSPTW (uint iom_unit_idx, int chan, word18 addr)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    word24 pgte = buildIDSPTWaddress (p -> PCW_PAGE_TABLE_PTR, 
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
+    word24 pgte = build_IDSPTW_address (p -> PCW_PAGE_TABLE_PTR, 
                                       p -> SEG, 
                                       (addr >> 10) & MASK8);
-    iom_core_read (pgte, & p -> PTW_DCW, __func__);
-//sim_printf ("       %08o %012"PRIo64"\n", pgte, p -> PTW_DCW);
+    iom_core_read (iom_unit_idx, pgte, (word36 *) & p -> PTW_DCW, __func__);
+    if ((p -> PTW_DCW & 0740000777747) != 04llu)
+      sim_warn ("%s: chan %d addr %#o ptw %012"PRIo64"\n",
+                __func__, chan, addr, p -> PTW_DCW);
   }
 
 
-static word24 buildLPWPTWaddress (word18 PCW_PAGE_TABLE_PTR, word1 seg, word8 pageNumber)
+static word24 build_LPWPTW_address (word18 PCW_PAGE_TABLE_PTR, word1 seg, word8 pageNumber)
   {
 
 //    0      5 6        15  16  17  18                       23
@@ -944,54 +1823,65 @@ static word24 buildLPWPTWaddress (word18 PCW_PAGE_TABLE_PTR, word1 seg, word8 pa
     return addr;
   }
 
-static void fetchLPWPTW (uint iomUnitIdx, uint chan)
+static void fetch_LPWPTW (uint iom_unit_idx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    word24 addr = buildLPWPTWaddress (p -> PCW_PAGE_TABLE_PTR, 
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
+    word24 addr = build_LPWPTW_address (p -> PCW_PAGE_TABLE_PTR, 
                                       p -> SEG,
-                                      (p -> LPW_DCW_PTR >> 10) & MASK6);
-    iom_core_read (addr, & p -> PTW_LPW, __func__);
+                                      (p -> LPW_DCW_PTR >> 10) & MASK8);
+    iom_core_read (iom_unit_idx, addr, (word36 *) & p -> PTW_LPW, __func__);
+    if ((p -> PTW_LPW & 0740000777747) != 04llu)
+      sim_warn ("%s: chan %d addr %#o ptw %012"PRIo64"\n",
+                __func__, chan, addr, p -> PTW_LPW);
   }
 
 // 'write' means periperal write; i.e. the peripheral is writing to core after
 // reading media.
 
-void iomDirectDataService (uint iomUnitIdx, uint chan, word36 * data,
-                           bool write)
+void iom_direct_data_service (uint iom_unit_idx, uint chan, word24 daddr, word36 * data,
+                           iom_direct_data_service_op op)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    uint daddr = p -> DDCW_ADDR;
-    switch (p -> chanMode)
+#ifdef THREADZ
+    // Force mailbox and dma data to be up-to-date 
+    fence ();
+#endif
+    // The direct data service consists of one core storage cycle (Read Clear, Read
+    // Restore or Clear Write, Double or Single Precision) using an absolute
+    // 24-bit address supplied by the channel. This service is used by
+    // "peripherals" capable of providing addresses from an external source,
+    // such as the 355 Direct Interface Adapter.
+
+    // The PCW received for the channel contains a Page Table Pointer
+    // which is used as an absolute address pointing to the Page Table which
+    // has been set up by software for the Direct Channel. All addresses
+    // for the Direct Channel will be accessed using this Page Table if paging
+    // has been requested in the PCW.
+
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
+
+    if (p -> masked)
+      return;
+
+    if (p -> PCW_63_PTP && p -> PCW_64_PGE)
       {
-        // DCW EXT
-        case cm1e:
-        case cm2e:
-        case cm1:
-          daddr |= (uint) p -> ADDR_EXT << 18;
-          break;
-
-        case cm2:
-        case cm3b:
-          {
-sim_warn ("iomDirectDataService DCW paged\n");
-          }
-          break;
-
-        case cm3a:
-        case cm4:
-        case cm5:
-          {
-//sim_printf ("iomDirectDataService DCW segmented\n");
-            fetchDDSPTW (iomUnitIdx, (int) chan, daddr);
-            daddr = ((uint) getbits36_14 (p -> PTW_DCW, 4) << 10) | (daddr & MASK8);
-          }
-          break;
+        fetch_DDSPTW (iom_unit_idx, (int) chan, daddr);
+        daddr = ((uint) getbits36_14 (p -> PTW_DCW, 4) << 10) | (daddr & MASK10);
       }
 
-    if (write)
-      iom_core_write (daddr, * data, __func__);
-    else
-      iom_core_read (daddr, data, __func__);
+    if (op == direct_store)
+      iom_core_write (iom_unit_idx, daddr, * data, __func__);
+    else if (op == direct_load)
+      iom_core_read (iom_unit_idx, daddr, data, __func__);
+    else if (op == direct_read_clear)
+      {
+        iom_core_read_lock (iom_unit_idx, daddr, data, __func__);
+        iom_core_write_unlock (iom_unit_idx, daddr, 0, __func__);
+      }
+#ifdef THREADZ
+    // Force mailbox and dma data to be up-to-date 
+    fence ();
+#endif
+
   }
 
 // 'tally' is the transfer size request by Multics.
@@ -999,10 +1889,19 @@ sim_warn ("iomDirectDataService DCW paged\n");
 // For read, '*cnt' will be set to the number of words transfered.
 // Caller responsibility to allocate 'data' large enough to accommodate
 // 'tally' words.
-void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
+void iom_indirect_data_service (uint iom_unit_idx, uint chan, word36 * data,
                              uint * cnt, bool write)
-{
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+  {
+#ifdef THREADZ
+    // Force mailbox and dma data to be up-to-date 
+    fence ();
+#endif
+
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
+
+    if (p -> masked)
+      return;
+
     uint tally = p -> DDCW_TALLY;
     uint daddr = p -> DDCW_ADDR;
     if (tally == 0)
@@ -1022,24 +1921,24 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
             if (c == 0)
               break; // read buffer exhausted; returns w/tallyResidue != 0
    
-            if (p -> PCW_63_PTP)
+            if (p -> PCW_63_PTP && p -> PCW_64_PGE)
               {
-                fetchIDSPTW (iomUnitIdx, (int) chan, daddr);
+                fetch_IDSPTW (iom_unit_idx, (int) chan, daddr);
                 word24 addr = ((word24) (getbits36_14 (p -> PTW_DCW, 4) << 10)) | (daddr & MASK10);
-                iom_core_write (addr, * data, __func__);
+                iom_core_write (iom_unit_idx, addr, * data, __func__);
 //sim_printf (" %o %08o %08o %012"PRIo64" %012"PRIo64"\n", p -> SEG, daddr, addr, * data, p -> PTW_DCW);
               }
             else
               {
                 if (daddr > MASK18) // 256K overflow
                   {
-                    sim_warn ("iomIndirectDataService 256K ovf\n"); // XXX
+                    sim_warn ("%s 256K ovf\n", __func__); // XXX
                     daddr &= MASK18;
                   }
 // If PTP is not set, we are in cm1e or cm2e. Both are 'EXT DCW', so
 // we can elide the mode check here.
                 uint daddr2 = daddr | (uint) p -> ADDR_EXT << 18;
-                iom_core_write (daddr2, * data, __func__);
+                iom_core_write (iom_unit_idx, daddr2, * data, __func__);
               }
             daddr ++;
             data ++;
@@ -1052,24 +1951,24 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
         uint c = 0;
         while (p -> tallyResidue)
           {
-// XXX assuming DCW_ABS
-            if (daddr > MASK18) // 256K overflow
+            if (p -> PCW_63_PTP  && p -> PCW_64_PGE)
               {
-                sim_warn ("iomIndirectDataService 256K ovf\n"); // XXX
-                daddr &= MASK18;
-              }
-            if (p -> PCW_63_PTP)
-              {
-                fetchIDSPTW (iomUnitIdx, (int) chan, daddr);
+                fetch_IDSPTW (iom_unit_idx, (int) chan, daddr);
                 word24 addr = ((word24) (getbits36_14 (p -> PTW_DCW, 4) << 10)) | (daddr & MASK10);
-                iom_core_read (addr, data, __func__);
+                iom_core_read (iom_unit_idx, addr, data, __func__);
               }
             else
               {
+// XXX assuming DCW_ABS
+                if (daddr > MASK18) // 256K overflow
+                  {
+                    sim_warn ("%s 256K ovf\n", __func__); // XXX
+                    daddr &= MASK18;
+                  }
 // If PTP is not set, we are in cm1e or cm2e. Both are 'EXT DCW', so
 // we can elide the mode check here.
                 uint daddr2 = daddr | (uint) p -> ADDR_EXT << 18;
-                iom_core_read (daddr2, data, __func__);
+                iom_core_read (iom_unit_idx, daddr2, data, __func__);
               }
             daddr ++;
             p -> tallyResidue --;
@@ -1078,14 +1977,18 @@ void iomIndirectDataService (uint iomUnitIdx, uint chan, word36 * data,
           }
         * cnt = c;
       }
-}
+#ifdef THREADZ
+    // Force mailbox and dma data to be up-to-date 
+    fence ();
+#endif
 
-static void updateChanMode (uint iomUnitIdx, uint chan, bool tdcw)
+  } 
+
+static void update_chan_mode (uint iom_unit_idx, uint chan, bool tdcw)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
     if (chan == IOM_CONNECT_CHAN)
       {
-//sim_printf ("chan %d to cm1\n", chan);
         p -> chanMode = cm1;
         return;
       }
@@ -1097,12 +2000,10 @@ static void updateChanMode (uint iomUnitIdx, uint chan, bool tdcw)
     
             if (p -> LPW_20_AE == 0)
               {
-//sim_printf ("chan %d to cm1e\n", chan);
                     p -> chanMode = cm1e;  // AE 0
               } 
             else
               {
-//sim_printf ("chan %d to cm2e\n", chan);
                     p -> chanMode = cm2e;  // AE 1
               } 
                
@@ -1114,12 +2015,10 @@ static void updateChanMode (uint iomUnitIdx, uint chan, bool tdcw)
     
                 if (p -> LPW_23_REL == 0)
                   {
-//sim_printf ("chan %d to cm1\n", chan);
                     p -> chanMode = cm1;  // AE 0, REL 0
                   }
                 else
                   {
-//sim_printf ("chan %d to cm3a\n", chan);
                     p -> chanMode = cm3a;  // AE 0, REL 1
                   }
     
@@ -1129,12 +2028,10 @@ static void updateChanMode (uint iomUnitIdx, uint chan, bool tdcw)
     
                 if (p -> LPW_23_REL == 0)
                   {
-//sim_printf ("chan %d to cm3b\n", chan);
                     p -> chanMode = cm3b;  // AE 1, REL 0
                   }
                 else
                   {
-//sim_printf ("chan %d to cm4\n", chan);
                     p -> chanMode = cm4;  // AE 1, REL 1
                   }
     
@@ -1206,24 +2103,41 @@ static void updateChanMode (uint iomUnitIdx, uint chan, bool tdcw)
       } // tdcw
   }
 
-static void writeLPW (uint iomUnitIdx, uint chan)
+static void write_LPW (uint iom_unit_idx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
 
-    uint chanLoc = mbxLoc (iomUnitIdx, chan);
-    iom_core_write (chanLoc, p -> LPW, __func__);
+    uint chanLoc = mbxLoc (iom_unit_idx, chan);
+    iom_core_write (iom_unit_idx, chanLoc + IOM_MBX_LPW, p -> LPW, __func__);
+    sim_debug (DBG_DEBUG, & iom_dev,
+               "%s: chan %d lpw %012"PRIo64"\n",
+               __func__, chan, p -> LPW);
     if (chan != IOM_CONNECT_CHAN)
-      iom_core_write (chanLoc + 1, p -> LPWX, __func__);
+      {
+        iom_core_write (iom_unit_idx, chanLoc + IOM_MBX_LPWX, p -> LPWX, __func__);
+        sim_debug (DBG_DEBUG, & iom_dev,
+                   "%s: chan %d lpwx %012"PRIo64"\n",
+                   __func__, chan, p -> LPWX);
+      }
+#ifdef THREADZ
+    // Force mailbox and dma data to be up-to-date 
+    fence ();
+#endif
+
   }
 
-static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
+static void fetch_and_parse_LPW (uint iom_unit_idx, uint chan)
   {
-    //uint chanloc = mbxLoc (iomUnitIdx, chan);
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
 
-    uint chanLoc = mbxLoc (iomUnitIdx, chan);
+    uint chanLoc = mbxLoc (iom_unit_idx, chan);
 
-    iom_core_read (chanLoc, & p -> LPW, __func__);
+#ifdef THREADZ
+    // Force mailbox and dma data to be up-to-date 
+    fence ();
+#endif
+
+    iom_core_read (iom_unit_idx, chanLoc + IOM_MBX_LPW, (word36 *) & p -> LPW, __func__);
     sim_debug (DBG_DEBUG, & iom_dev, "lpw %012"PRIo64"\n", p -> LPW);
 
     p -> LPW_DCW_PTR = getbits36_18 (p -> LPW,  0);
@@ -1235,6 +2149,10 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
     p -> LPW_23_REL =  getbits36_1 (p -> LPW, 23);
     p -> LPW_TALLY =   getbits36_12 (p -> LPW, 24);
 
+    sim_debug (DBG_DEBUG, & iom_dev,
+               "%s: chan %d res %d 18_rel %d ae %d nc %d tal %d 23rel %d dcw %#o tally %#o\n",
+               __func__, chan, p -> LPW_18_RES, p -> LPW_19_REL, p -> LPW_20_AE,
+               p -> LPW_21_NC, p -> LPW_22_TAL, p -> LPW_23_REL, p -> LPW_DCW_PTR, p -> LPW_TALLY);
 
     if (chan == IOM_CONNECT_CHAN)
       {
@@ -1244,11 +2162,14 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
       }
     else
       {
-        iom_core_read (chanLoc + 1, & p -> LPWX, __func__);
+        iom_core_read (iom_unit_idx, chanLoc + IOM_MBX_LPWX, (word36 *) & p -> LPWX, __func__);
         p -> LPWX_BOUND = getbits36_18 (p -> LPWX, 0);
         p -> LPWX_SIZE = getbits36_18 (p -> LPWX, 18);
+        sim_debug (DBG_DEBUG, & iom_dev,
+                   "%s: chan %d bound %#o size %#o\n",
+                   __func__, chan, p -> LPWX_BOUND, p -> LPWX_SIZE);
       }   
-    updateChanMode (iomUnitIdx, chan, false);
+    update_chan_mode (iom_unit_idx, chan, false);
 
 #if 0
 // Analyzer
@@ -1276,15 +2197,16 @@ static void fetchAndParseLPW (uint iomUnitIdx, uint chan)
 #endif
   }
 
-static void unpackDCW (uint iomUnitIdx, uint chan)
+static void unpack_DCW (uint iom_unit_idx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
     p -> DCW_18_20_CP =      getbits36_3 (p -> DCW, 18);
 
     if (p -> DCW_18_20_CP == 07) // IDCW
       { 
         p -> IDCW_DEV_CMD =      getbits36_6 (p -> DCW,  0);
         p -> IDCW_DEV_CODE =     getbits36_6 (p -> DCW,  6);
+        p -> IDCW_AE =           getbits36_6 (p -> DCW,  12);
         if (p -> LPW_23_REL)
           p -> IDCW_EC = 0;
         else
@@ -1311,50 +2233,66 @@ static void unpackDCW (uint iomUnitIdx, uint chan)
       }
   }
 
-static void packDCW (uint iomUnitIdx, uint chan)
+static void pack_DCW (uint iom_unit_idx, uint chan)
   {
     // DCW_18_20_CP is the only field ever changed.
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    putbits36_3 (& p -> DCW, 18, p -> DCW_18_20_CP);
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
+    putbits36_3 ((word36 *) & p -> DCW, 18, p -> DCW_18_20_CP);
   }
 
-static void packLPW (uint iomUnitIdx, uint chan)
+static void pack_LPW (uint iom_unit_idx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    putbits36_18 (& p-> LPW,  0, p -> LPW_DCW_PTR);
-    putbits36_1 (& p-> LPW, 18, p -> LPW_18_RES);
-    putbits36_1 (& p-> LPW, 19, p -> LPW_19_REL);
-    putbits36_1 (& p-> LPW, 20, p -> LPW_20_AE);
-    putbits36_1 (& p-> LPW, 21, p -> LPW_21_NC);
-    putbits36_1 (& p-> LPW, 22, p -> LPW_22_TAL);
-    putbits36_1 (& p-> LPW, 23, p -> LPW_23_REL);
-    putbits36_12 (& p-> LPW, 24, p -> LPW_TALLY);
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
+    putbits36_18 ((word36 *) & p-> LPW,  0, p -> LPW_DCW_PTR);
+    putbits36_1 ((word36 *) & p-> LPW, 18, p -> LPW_18_RES);
+    putbits36_1 ((word36 *) & p-> LPW, 19, p -> LPW_19_REL);
+    putbits36_1 ((word36 *) & p-> LPW, 20, p -> LPW_20_AE);
+    putbits36_1 ((word36 *) & p-> LPW, 21, p -> LPW_21_NC);
+    putbits36_1 ((word36 *) & p-> LPW, 22, p -> LPW_22_TAL);
+    putbits36_1 ((word36 *) & p-> LPW, 23, p -> LPW_23_REL);
+    putbits36_12 ((word36 *) & p-> LPW, 24, p -> LPW_TALLY);
+
+    putbits36_18 ((word36 *) & p-> LPWX, 0, p -> LPWX_BOUND);
+    putbits36_18 ((word36 *) & p-> LPWX, 18, p -> LPWX_SIZE);
   }
 
-static void fetchAndParsePCW (uint iomUnitIdx, uint chan)
+static void fetch_and_parse_PCW (uint iom_unit_idx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    iom_core_read2 (p -> LPW_DCW_PTR, & p -> PCW0, & p -> PCW1, __func__);
-//sim_printf ("%012"PRIo64" %012"PRIo64"\n", p -> PCW0, p ->  PCW1);
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
+#ifdef THREADZ
+    // Force mailbox and dma data to be up-to-date 
+    fence ();
+#endif
+
+    iom_core_read2 (iom_unit_idx, p -> LPW_DCW_PTR, (word36 *) & p -> PCW0, (word36 *) & p -> PCW1, __func__);
     p -> PCW_CHAN = getbits36_6 (p -> PCW1, 3);
     p -> PCW_AE = getbits36_6 (p -> PCW0, 12);
     p -> PCW_21_MSK = getbits36_1 (p -> PCW0, 21);
     p -> PCW_PAGE_TABLE_PTR = getbits36_18 (p -> PCW1, 9);
     p -> PCW_63_PTP = getbits36_1 (p -> PCW1, 27);
     p -> PCW_64_PGE = getbits36_1 (p -> PCW1, 28);
-//sim_printf ("PCW_64_PGE %u\n", p -> PCW_64_PGE);
-//sim_printf ("%d %p\n", chan, p);
     p -> PCW_65_AUX = getbits36_1 (p -> PCW1, 29);
     if (p -> PCW_65_AUX)
       sim_warn ("PCW_65_AUX\n");
+    sim_debug (DBG_DEBUG, & iom_dev,
+               "%s: chan %d pcw0 %012"PRIo64"\n",
+               __func__, p -> PCW_CHAN, (p -> PCW0) & 0777700037777);
     p -> DCW = p -> PCW0;
-    unpackDCW (iomUnitIdx, chan);
+    unpack_DCW (iom_unit_idx, chan);
 
+    sim_debug (DBG_DEBUG, & iom_dev,
+               "%s: chan %d pcw0: dev_cmd %#o dev_code %#o ae %#o ec %d control %#o chan_cmd %#o data %#o\n",
+               __func__, p -> PCW_CHAN, p -> IDCW_DEV_CMD, p -> IDCW_DEV_CODE, p -> IDCW_AE,
+               p -> IDCW_EC, p -> IDCW_CONTROL, p -> IDCW_CHAN_CMD, p -> IDCW_COUNT);
+    sim_debug (DBG_DEBUG, & iom_dev,
+               "%s: chan %d pcw1: ae %d ptp %d pge %d ptp %#o\n",
+               __func__, p -> PCW_CHAN, p -> PCW_AE, p -> PCW_63_PTP,
+               p -> PCW_64_PGE, p -> PCW_PAGE_TABLE_PTR);
   }
  
-static void fetchAndParseDCW (uint iomUnitIdx, uint chan, UNUSED bool read_only)
+static void fetch_and_parse_DCW (uint iom_unit_idx, uint chan, UNUSED bool read_only)
   {
-    iomChanData_t * p =  & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p =  & iom_chan_data[iom_unit_idx][chan];
 
     word24 addr = p -> LPW_DCW_PTR & MASK18;
 
@@ -1373,35 +2311,42 @@ static void fetchAndParseDCW (uint iomUnitIdx, uint chan, UNUSED bool read_only)
           break;
         default:
           {
-sim_err ("unhandled fetchAndParseDCW\n");
+sim_warn ("unhandled fetch_and_parse_DCW\n");
           }
           //break;
       }
 
-    iom_core_read (addr, & p -> DCW, __func__);
+    iom_core_read (iom_unit_idx, addr, (word36 *) & p -> DCW, __func__);
 #endif
+#ifdef THREADZ
+    // Force mailbox and dma data to be up-to-date 
+    fence ();
+#endif
+
     switch (p -> chanMode)
       {
         // LPW ABS
         case cm1:
         case cm1e:
           {
-            iom_core_read (addr, & p -> DCW, __func__);
+            iom_core_read (iom_unit_idx, addr, (word36 *) & p -> DCW, __func__);
           }
           break;
 
         // LPW EXT
         case cm2e:
           {
-            addr |= ((word24) p -> LPWX_BOUND << 18);
-            iom_core_read (addr, & p -> DCW, __func__);
+// LPXW_BOUND is mod 2; ie. val is * 2
+            //addr |= ((word24) p -> LPWX_BOUND << 18);
+            addr += ((word24) p -> LPWX_BOUND << 1);
+            iom_core_read (iom_unit_idx, addr, (word36 *) & p -> DCW, __func__);
           }
           break;
 
         case cm2:
         case cm3b:
           {
-            sim_warn ("fetchAndParseDCW LPW paged\n");
+            sim_warn ("fetch_and_parse_DCW LPW paged\n");
           }
           break;
 
@@ -1409,32 +2354,113 @@ sim_err ("unhandled fetchAndParseDCW\n");
         case cm4:
         case cm5:
           {
-//sim_printf ("fetchAndParseDCW LPW segmented\n");
-//sim_printf ("DCW is seg; addr = %o lbnd = %o size = %o\n",
-//                    p -> LPW_DCW_PTR,
-//                    p -> LPWX_BOUND,
-//                    p -> LPWX_SIZE);
-//sim_printf ("ptPtr %o\n", p -> PCW_PAGE_TABLE_PTR);
-            fetchLPWPTW (iomUnitIdx, chan);
-//sim_printf ("PTW %012"PRIo64"\n", p -> PTW_LPW);
+            fetch_LPWPTW (iom_unit_idx, chan);
             // Calculate effective address
             // PTW 4-17 || LPW 8-17
             word24 addr_ = ((word24) (getbits36_14 (p -> PTW_LPW, 4) << 10)) | ((p -> LPW_DCW_PTR) & MASK10);
-//sim_printf ("addr now %08o\n", addr_);
-            iom_core_read (addr_, & p -> DCW, __func__);
-//sim_printf ("dcw now %012"PRIo64"\n", p -> DCW);
+            iom_core_read (iom_unit_idx, addr_, (word36 *) & p -> DCW, __func__);
           }
           break;
       }
-    unpackDCW (iomUnitIdx, chan);
+    sim_debug (DBG_DEBUG, & iom_dev,
+               "%s: chan %d dcw %012"PRIo64"\n",
+               __func__, chan, p -> DCW);
+    unpack_DCW (iom_unit_idx, chan);
+
+    if (p -> DCW_18_20_CP == 07)
+      sim_debug (DBG_DEBUG, & iom_dev,
+                 "%s: chan %d idcw: dev_cmd %#o dev_code %#o ae %#o ec %d control %#o chan_cmd %#o data %#o\n",
+                 __func__, p -> PCW_CHAN, p -> IDCW_DEV_CMD, p -> IDCW_DEV_CODE, p -> IDCW_AE,
+                 p -> IDCW_EC, p -> IDCW_CONTROL, p -> IDCW_CHAN_CMD, p -> IDCW_COUNT);
+    else
+      if (p -> DDCW_22_23_TYPE == 02)
+        sim_debug (DBG_DEBUG, & iom_dev,
+                   "%s: chan %d tdcw: address %#o seg %d pdta %d pdcw/ec %d res %d rel %d\n",
+                   __func__, p -> PCW_CHAN, p -> TDCW_DATA_ADDRESS, p -> TDCW_31_SEG,
+                   p -> TDCW_32_PDTA, p -> TDCW_33_PDCW, p -> TDCW_34_RES, p -> TDCW_35_REL);
+      else
+        sim_debug (DBG_DEBUG, & iom_dev,
+                   "%s: chan %d ddcw: address %#o char_pos %#o type %#o tally %#o\n",
+                   __func__, p -> PCW_CHAN, p -> DDCW_ADDR, p -> DCW_18_20_CP,
+                   p -> DDCW_22_23_TYPE, p -> DDCW_TALLY);
   }
 
-static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
+/*
+ * send_general_interrupt ()
+ *
+ * Send an interrupt from the IOM to the CPU.
+ *
+ */
+
+int send_general_interrupt (uint iom_unit_idx, uint chan, enum iomImwPics pic)
+  {
+
+#ifdef IO_FENCE
+    fence ();
+#endif
+#ifdef THREADZ
+    lock_mem_wr ();
+#endif
+
+    uint imw_addr;
+    uint chan_group = chan < 32 ? 1 : 0;
+    uint chan_in_group = chan & 037;
+
+    uint iomUnitNum =
+      iom_unit_data[iom_unit_idx].configSwMultiplexBaseAddress & 3u;
+    uint interrupt_num = iomUnitNum | (chan_group << 2) | ((uint) pic << 3);
+    // Section 3.2.7 defines the upper bits of the IMW address as
+    // being defined by the mailbox base address switches and the
+    // multiplex base address switches.
+    // However, AN-70 reports that the IMW starts at 01200.  If AN-70 is
+    // correct, the bits defined by the mailbox base address switches would
+    // have to always be zero.  We'll go with AN-70.  This is equivalent to
+    // using bit value 0010100 for the bits defined by the multiplex base
+    // address switches and zeros for the bits defined by the mailbox base
+    // address switches.
+    //imw_addr += 01200;  // all remaining bits
+    uint pi_base = iom_unit_data[iom_unit_idx].configSwMultiplexBaseAddress & ~3u;
+    imw_addr = (pi_base << 3) | interrupt_num;
+
+    sim_debug (DBG_NOTIFY, & iom_dev, 
+               "%s: IOM %c, channel %d (%#o), level %d; "
+               "Interrupt %d (%#o).\n", 
+               __func__, 'A' + iom_unit_idx, chan, chan, pic, interrupt_num, 
+               interrupt_num);
+    word36 imw;
+    iom_core_read_lock (iom_unit_idx, imw_addr, &imw, __func__);
+    // The 5 least significant bits of the channel determine a bit to be
+    // turned on.
+    sim_debug (DBG_DEBUG, & iom_dev, 
+               "%s: IMW at %#o was %012"PRIo64"; setting bit %d\n", 
+               __func__, imw_addr, imw, chan_in_group);
+    putbits36_1 (& imw, chan_in_group, 1);
+    sim_debug (DBG_INFO, & iom_dev, 
+               "%s: IMW at %#o now %012"PRIo64"\n", __func__, imw_addr, imw);
+    iom_core_write_unlock (iom_unit_idx, imw_addr, imw, __func__);
+    
+#ifdef THREADZ
+    unlock_mem ();
+#endif
+
+#ifdef THREADZ
+    // Force mailbox and dma data to be up-to-date 
+    fence ();
+#endif
+
+    return scu_set_interrupt (iom_unit_data[iom_unit_idx].invokingScuUnitIdx, interrupt_num);
+  }
+
+static void iom_fault (uint iom_unit_idx, uint chan, UNUSED const char * who,
                       iomFaultServiceRequest req,
                       iomSysFaults_t signal)
   {
-//sim_printf ("iomFault %s\n", who);
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+#ifdef THREADZ
+    lock_mem_wr ();
+#endif
+    sim_warn ("iom_fault %s\n", who);
+
+    // iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
     // TODO:
     // For a system fault:
     // Store the indicated fault into a system fault word (3.2.6) in
@@ -1459,33 +2485,47 @@ static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
     // This code only handles system faults
     //
 
+    sim_debug (DBG_DEBUG, & iom_dev, 
+               "%s: chan %d %s req %#o signal %#o\n",
+               __func__, chan, who, req, signal);
+
     word36 faultWord = 0;
     putbits36_9 (& faultWord, 9, (word9) chan);
     putbits36_5 (& faultWord, 18, (word5) req);
     // IAC, bits 26..29
     putbits36_6 (& faultWord, 30, (word6) signal);
 
-    uint mbx = mbxLoc (iomUnitIdx, chan);
+    uint chanloc = mbxLoc (iom_unit_idx, IOM_SYSTEM_FAULT_CHAN);
 
-    fetchAndParseDCW (iomUnitIdx, chan, false);
-    if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
+    word36 lpw;
+    iom_core_read (iom_unit_idx, chanloc + IOM_MBX_LPW, & lpw, __func__);
+
+    word36 scw;
+    iom_core_read (iom_unit_idx, chanloc + IOM_MBX_SCW, & scw, __func__);
+
+    word36 dcw;
+    iom_core_read_lock (iom_unit_idx, chanloc + IOM_MBX_DCW, & dcw, __func__);
+
+    sim_debug (DBG_DEBUG, & iom_dev,
+               "%s: lpw %012"PRIo64" scw %012"PRIo64" dcw %012"PRIo64"\n",
+               __func__, lpw, scw, dcw);
+
+    iom_core_write (iom_unit_idx, (dcw >> 18) & MASK18, faultWord, __func__);
+
+    uint tally = dcw & MASK12;
+    if (tally > 1)
       {
-        sim_warn ("%s: expected a DDCW; fail\n", __func__);
-        return;
+        dcw -= 01llu;  // tally --
+        dcw += 01000000llu; // addr ++
       }
-    // No address extension or paging nonsense for channels 0-7. 
-    uint addr = p -> DDCW_ADDR;
-    iom_core_write (addr, faultWord, __func__);
+    else
+      dcw = scw; // reset to beginning of queue
+    iom_core_write_unlock (iom_unit_idx, chanloc + IOM_MBX_DCW, dcw, __func__);
 
-    send_general_interrupt (iomUnitIdx, 1, imwSystemFaultPic);
-
-    word36 ddcw;
-    iom_core_read (mbx, & ddcw, __func__);
-    // incr addr
-    putbits36_18 (& ddcw, 0, (getbits36_18 (ddcw, 0) + 1u) & MASK18);
-    // decr tally
-    putbits36_12 (& ddcw, 24, (getbits36_12 (ddcw, 24) - 1u) & MASK12);
-    iom_core_write (mbx, ddcw, __func__);
+    send_general_interrupt (iom_unit_idx, IOM_SYSTEM_FAULT_CHAN, imwSystemFaultPic);
+#ifdef THREADZ
+    unlock_mem ();
+#endif
   }
 
 // 0 ok
@@ -1493,10 +2533,10 @@ static void iomFault (uint iomUnitIdx, uint chan, UNUSED const char * who,
 // There is a path through the code where no DCW is sent (IDCW && LPW_18_RES)
 // Does the -1 return cover that?
 
-int iomListService (uint iomUnitIdx, uint chan,
+int iom_list_service (uint iom_unit_idx, uint chan,
                            bool * ptro, bool * sendp, bool * uffp)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
 
 // initialize
 
@@ -1515,7 +2555,7 @@ int iomListService (uint iomUnitIdx, uint chan,
       {
         // PULL LPW AND LPW EXT. FROM CORE MAILBOX
 
-        fetchAndParseLPW (iomUnitIdx, chan);
+        fetch_and_parse_LPW (iom_unit_idx, chan);
         p -> wasTDCW = false;
         p -> SEG = 0; // pat. FIG. 2, step 44
       }
@@ -1530,7 +2570,7 @@ int iomListService (uint iomUnitIdx, uint chan,
 
         if (p -> LPW_21_NC == 0 && p -> LPW_22_TAL == 0)
               {
-                iomFault (iomUnitIdx, IOM_CONNECT_CHAN, __func__,
+                iom_fault (iom_unit_idx, IOM_CONNECT_CHAN, __func__,
                           p -> lsFirst ? iomFsrFirstList : iomFsrList, 
                           iomIllTalCChnFlt);
                 return -1;
@@ -1543,7 +2583,7 @@ int iomListService (uint iomUnitIdx, uint chan,
 
             if (p -> LPW_TALLY == 0)
               {
-                iomFault (iomUnitIdx, IOM_CONNECT_CHAN, __func__,
+                iom_fault (iom_unit_idx, IOM_CONNECT_CHAN, __func__,
                           p -> lsFirst ? iomFsrFirstList : iomFsrList, 
                           iomIllTalCChnFlt);
                 return -1;
@@ -1557,7 +2597,7 @@ int iomListService (uint iomUnitIdx, uint chan,
                     (((word36) p -> LPW_DCW_PTR) + ((word36) p -> LPW_TALLY)) >
                     01000000llu)
                   {
-                    iomFault (iomUnitIdx, IOM_CONNECT_CHAN, __func__,
+                    iom_fault (iom_unit_idx, IOM_CONNECT_CHAN, __func__,
                               p -> lsFirst ? iomFsrFirstList : iomFsrList, 
                               iom256KFlt);
                     return -1;
@@ -1573,12 +2613,12 @@ int iomListService (uint iomUnitIdx, uint chan,
 
 // B
 
-        fetchAndParsePCW (iomUnitIdx, chan); // fills in DCW*
+        fetch_and_parse_PCW (iom_unit_idx, chan); // fills in DCW*
 
         // PCW 18-20 == 111?
         if (p -> DCW_18_20_CP != 07u)
           {
-            iomFault (iomUnitIdx, IOM_CONNECT_CHAN, __func__,
+            iom_fault (iom_unit_idx, IOM_CONNECT_CHAN, __func__,
                       p -> lsFirst ? iomFsrFirstList : iomFsrList, 
                       iomNotPCWFlt);
             return -1;
@@ -1615,7 +2655,7 @@ int iomListService (uint iomUnitIdx, uint chan,
             (((word36) p -> LPW_DCW_PTR) + ((word36) p -> LPW_TALLY)) >
             01000000llu)
           {
-            iomFault (iomUnitIdx, IOM_CONNECT_CHAN, __func__,
+            iom_fault (iom_unit_idx, IOM_CONNECT_CHAN, __func__,
                       p -> lsFirst ? iomFsrFirstList : iomFsrList, 
                       iom256KFlt);
             return -1;
@@ -1639,7 +2679,7 @@ A:;
                 (((word36) p -> LPW_DCW_PTR) + ((word36) p -> LPW_TALLY)) >
                 01000000llu)
               {
-                iomFault (iomUnitIdx, IOM_CONNECT_CHAN, __func__,
+                iom_fault (iom_unit_idx, IOM_CONNECT_CHAN, __func__,
                           p -> lsFirst ? iomFsrFirstList : iomFsrList, 
                           iom256KFlt);
                 return -1;
@@ -1647,10 +2687,10 @@ A:;
           }
       }
 
-    // LPW 20? -- LPW_20 checked by fetchAndParseDCW
+    // LPW 20? -- LPW_20 checked by fetch_and_parse_DCW
 
     // PULL DCW FROM CORE
-    fetchAndParseDCW (iomUnitIdx, chan, false);
+    fetch_and_parse_DCW (iom_unit_idx, chan, false);
 
 // C
 
@@ -1673,15 +2713,19 @@ A:;
             // p -> DCW = p -> DCW;
             send = true;
           }
+        p -> LPWX_SIZE = p -> LPW_DCW_PTR;
         goto D;
       }
 
 // Not IDCW
 
+    if (p -> lsFirst)
+      p -> LPWX_SIZE = p -> LPW_DCW_PTR;
+
 // pg B16: "If the IOM is paged [yes] and PCW bit 64 is off, LPW bit 23
 //          is ignored by the hardware. If bit 64 is set, LPW bit 23 causes
 //          the data to become segmented."
-// Handled in fetchAndParseLPW
+// Handled in fetch_and_parse_LPW
 
     // LPW 23 REL?
 
@@ -1770,13 +2814,13 @@ A:;
         if (p -> TDCW_31_SEG)
           sim_warn ("TDCW_31_SEG\n");
 
-        updateChanMode (iomUnitIdx, chan, true);
+        update_chan_mode (iom_unit_idx, chan, true);
 
 
         // Decrement tally
         p -> LPW_TALLY = (p -> LPW_TALLY - 1u) & MASK12;
 
-        packLPW (iomUnitIdx, chan);
+        pack_LPW (iom_unit_idx, chan);
 
         // AC CHANGE ERROR? (LPW 18 == 1 && DCW 33 == 1)
 
@@ -1815,14 +2859,14 @@ A:;
     //     goto uffSet;
     //   }
 
-    // USER FAULT FLAT SET?
+    // USER FAULT FLAG SET?
 
     if (uff)
       {
 uffSet:;
         // PUT 7 into DCW 18-20
         p -> DCW_18_20_CP = 07u;
-        packDCW (iomUnitIdx, chan);
+        pack_DCW (iom_unit_idx, chan);
       }
 
     // WRITE DCW IN [SCRATCH PAD] MAILBOX
@@ -1847,10 +2891,13 @@ D:;
 
     if (p -> LPW_21_NC == 0) // UPDATE
      {
-        // UPDATE LPW ADDRESS & TALLY
-        p -> LPW_DCW_PTR = (p -> LPW_DCW_PTR + 1u) & MASK18;       
-        p -> LPW_TALLY = (p -> LPW_TALLY - 1u) & MASK12;       
-        packLPW (iomUnitIdx, chan);
+       // UPDATE LPW ADDRESS & TALLY
+       if (isConnChan)
+         p -> LPW_DCW_PTR = (p -> LPW_DCW_PTR + 2u) & MASK18;
+       else
+         p -> LPW_DCW_PTR = (p -> LPW_DCW_PTR + 1u) & MASK18;
+       p -> LPW_TALLY = (p -> LPW_TALLY - 1u) & MASK12;
+       pack_LPW (iom_unit_idx, chan);
      }
 
     // IDCW OR FIRST LIST
@@ -1860,7 +2907,7 @@ D:;
         // scratch pad
         // p -> lpw = p -> lpw
         // core
-        writeLPW (iomUnitIdx, chan);
+        write_LPW (iom_unit_idx, chan);
       }
     else
       {
@@ -1871,7 +2918,7 @@ D:;
             // scratch pad
             // p -> lpw = p -> lpw
             // core
-            writeLPW (iomUnitIdx, chan);
+            write_LPW (iom_unit_idx, chan);
           }
       }
 
@@ -1884,7 +2931,7 @@ D:;
 
 // 0 ok
 // -1 uff
-static int doPayloadChan (uint iomUnitIdx, uint chan)
+static int do_payload_chan (uint iom_unit_idx, uint chan)
   {
 // A dubious assumption being made is that the device code will always
 // be in bits 6-12 of the DCw. Normally, the controller would
@@ -1903,42 +2950,39 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
 //  listService sets ptro, indicating that no more DCWs are availible. or
 //     control is 0, indicating last IDCW
 
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][chan];
 
+    p -> chanMode = cm1;
+    p -> LPW_18_RES = 0;
+    p -> LPW_20_AE = 0;
+    p -> LPW_23_REL = 0;
 
-// Copy the PCW from the connect channel
+    unpack_DCW (iom_unit_idx, chan);
 
-    {
-      iomChanData_t * q = & iomChanData [iomUnitIdx] [IOM_CONNECT_CHAN];
-      p -> PCW0 =               q -> PCW0;
-      p -> PCW1 =               q -> PCW1;
-      p -> PCW_CHAN =           q -> PCW_CHAN;
-      p -> PCW_AE =             q -> PCW_AE;
-      p -> PCW_PAGE_TABLE_PTR = q -> PCW_PAGE_TABLE_PTR;
-      p -> PCW_63_PTP =         q -> PCW_63_PTP;
-      p -> PCW_64_PGE =         q -> PCW_64_PGE;
-      p -> PCW_65_AUX =         q -> PCW_65_AUX;
-      p -> PCW_21_MSK =         q -> PCW_21_MSK;
-    }
+    p->isPCW = true;
 
-    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
-                      devices [chan] [p -> IDCW_DEV_CODE];
     p->masked = !!p->PCW_21_MSK;
+    struct iom_to_ctlr_s * d = & cables->iom_to_ctlr[iom_unit_idx][chan];
 
 // A device command of 051 in the PCW is only meaningful to the operator console;
 // all other channels should ignore it. We use (somewhat bogusly) a chanType of
 // chanTypeCPI to indicate the operator console.
-    if (d -> ctype != chanTypeCPI && p -> IDCW_DEV_CMD == 051)
-      return 0;
+    if (d->chan_type != chan_type_CPI && p -> IDCW_DEV_CMD == 051)
+      {
+        p->stati = 04501;
+        p->chanStatus = chanStatIncorrectDCW;
+        send_terminate_interrupt (iom_unit_idx, chan);
+        return 0;
+      }
 
-    if (! d -> iomCmd)
+    if (! d->iom_cmd)
       {
 #if 0
         // XXX: no device connected; what's the appropriate fault code (s) ?
         sim_debug (DBG_WARN, & iom_dev,
                    "%s: No device connected to channel %#o (%d)\n",
                    __func__, chan, chan);
-        iomFault (iomUnitIdx, chan, __func__, 0, 0);
+        iom_fault (iom_unit_idx, chan, __func__, 0, 0);
 #else
         p -> stati = 06000; // t, power off/missing
 #endif
@@ -1966,10 +3010,10 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
 //sim_printf ("chan %d (%o) control %d\n", chan, chan, p -> IDCW_CONTROL);
 // Send the PCW's DCW
     //sim_printf ("PCW chan %d (%o) control %d\n", chan, chan, p -> IDCW_CONTROL);
-    int rc = d -> iomCmd (iomUnitIdx, chan);
+    int rc = d->iom_cmd (iom_unit_idx, chan);
 
 //
-// iomCmd returns:
+// iom_cmd returns:
 //
 //  0: ok
 //  1; ignored cmd, drop connect.
@@ -1977,32 +3021,33 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
 //  3; command pending, don't sent terminate interrupt
 // -1: error
 
-    if (rc == 1) // handler ignored command; used to be used for 051, now unused.
+    switch (rc)
       {
+      case IOM_CMD_IGNORED:
+        // handler ignored command; used to be used for 051, now unused.
         sim_debug (DBG_DEBUG, & iom_dev, "handler ignored cmd\n");
         return 0;
-      }
 
-    if (rc == 2) // handler doesn't want the dcw list
-      {
+      case IOM_CMD_NO_DCW:
+        // handler doesn't want the dcw list
         sim_debug (DBG_DEBUG, & iom_dev, "handler don't want no stinking dcws\n");
         goto done;
-      }
 
-    if (rc == 3) // handler still processing command, don't set
-                 // terminate intrrupt.
-      {
+      case IOM_CMD_PENDING:
+        // handler still processing command, don't set
+        // terminate interrupt.
         sim_debug (DBG_DEBUG, & iom_dev, "handler processing cmd\n");
         return 0;
-      }
 
-    if (rc)
-      {
-// 04501 : COMMAND REJECTED, invalid command
+      case IOM_CMD_OK:
+        break;
+
+      default:
+        // 04501 : COMMAND REJECTED, invalid command
         p -> stati = 04501;
         p -> dev_code = getbits36_6 (p -> DCW, 6);
         p -> chanStatus = chanStatInvalidInstrPCW;
-        sim_warn ("doPayloadChan handler error\n");
+        //sim_warn ("do_payload_chan handler error\n");
         goto done;
       }
 
@@ -2025,22 +3070,24 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
       }
     bool ptro, send, uff;
 
+    p->isPCW = false;
+
     do
       {
-        int rc2 = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+        int rc2 = iom_list_service (iom_unit_idx, chan, & ptro, & send, & uff);
         if (rc2 < 0)
           {
 // XXX set status flags
-            sim_warn ("doPayloadChan list service failed\n");
+            sim_warn ("do_payload_chan list service failed\n");
             return -1;
           }
         if (uff)
           {
-            sim_warn ("doPayloadChan ignoring uff\n"); // XXX
+            sim_warn ("do_payload_chan ignoring uff\n"); // XXX
           }
         if (! send)
           {
-            sim_warn ("doPayloadChan nothing to send\n");
+            sim_warn ("do_payload_chan nothing to send\n");
             return 1;
           }
 
@@ -2050,7 +3097,7 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
             p -> stati = 04501;
             p -> dev_code = getbits36_6 (p -> DCW, 6);
             p -> chanStatus = chanStatInvalidInstrPCW;
-            sim_warn ("doPayloadChan expected IDCW %d (%o)\n", chan, chan);
+            sim_warn ("do_payload_chan expected IDCW %d (%o), cmd was %d. %oo\n", chan, chan, p->IDCW_DEV_CMD, p->IDCW_DEV_CMD);
             goto done;
           }
 
@@ -2071,17 +3118,17 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
 
 // The device code is per IDCW; look up the device for this IDCW
 
-        d = & cables -> cablesFromIomToDev [iomUnitIdx] .  devices [chan] [p -> IDCW_DEV_CODE];
-        if (! d -> iomCmd)
+        d = & cables->iom_to_ctlr[iom_unit_idx][chan];
+        if (! d->iom_cmd)
           {
             p -> stati = 06000; // t, power off/missing
             goto done;
           }
 // Send the DCW list's DCW
 
-        rc2 = d -> iomCmd (iomUnitIdx, chan);
+        rc2 = d->iom_cmd (iom_unit_idx, chan);
 
-        if (rc2 == 3) // handler still processing command, don't set
+        if (rc2 == IOM_CMD_PENDING) // handler still processing command, don't set
                      // terminate intrrupt.
           {
             sim_debug (DBG_DEBUG, & iom_dev, "handler processing cmd\n");
@@ -2093,12 +3140,12 @@ static int doPayloadChan (uint iomUnitIdx, uint chan)
       } while (! ptro);
  
 done:;
-    send_terminate_interrupt (iomUnitIdx, chan);
+    send_terminate_interrupt (iom_unit_idx, chan);
 
     return 0;
   }
 
-// doConnectChan ()
+// do_connect_chan ()
 //
 // Process the "connect channel".  This is what the IOM does when it
 // receives a $CON signal.
@@ -2109,7 +3156,7 @@ done:;
 // resulting PCW control words.
 //
 
-static int doConnectChan (uint iomUnitIdx)
+static int do_connect_chan (uint iom_unit_idx)
   {
     // ... the connect channel obtains a list service from the IOM Central.
     // During this service the IOM Central will do a double precision read
@@ -2118,18 +3165,18 @@ static int doConnectChan (uint iomUnitIdx)
     // If the IOM Central does not indicate a PTRO during the list service,
     // the connect channel obtains anther list service.
     //
-    // The connect channel does interrupt or store status.
+    // The connect channel does not interrupt or store status.
     //
     // The DCW and SCW mailboxes for the connect channel are not used by
     // the IOM.
-
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [IOM_CONNECT_CHAN];
+int loops = 0;
+    iom_chan_data_t * p = & iom_chan_data[iom_unit_idx][IOM_CONNECT_CHAN];
     p -> lsFirst = true;
     bool ptro, send, uff;
     do
       {
         // Fetch the next PCW
-        int rc = iomListService (iomUnitIdx, IOM_CONNECT_CHAN, & ptro, & send, & uff);
+        int rc = iom_list_service (iom_unit_idx, IOM_CONNECT_CHAN, & ptro, & send, & uff);
         if (rc < 0)
           {
             sim_warn ("connect channel connect failed\n");
@@ -2146,83 +3193,50 @@ static int doConnectChan (uint iomUnitIdx)
         else
           {
             // Copy the PCW's DCW to the payload channel
-            iomChanData_t * q = & iomChanData [iomUnitIdx] [p -> PCW_CHAN];
-            q -> DCW = p -> DCW;
-            unpackDCW (iomUnitIdx, p -> PCW_CHAN);
-            doPayloadChan (iomUnitIdx, p -> PCW_CHAN);
+loops ++;
+            iom_chan_data_t * q = & iom_chan_data[iom_unit_idx][p -> PCW_CHAN];
+
+            q -> PCW0 =               q -> PCW0;
+            q -> PCW1 =               p -> PCW1;
+            q -> PCW_CHAN =           p -> PCW_CHAN;
+            q -> PCW_AE =             p -> PCW_AE;
+            q -> PCW_PAGE_TABLE_PTR = p -> PCW_PAGE_TABLE_PTR;
+            q -> PCW_63_PTP =         p -> PCW_63_PTP;
+            q -> PCW_64_PGE =         p -> PCW_64_PGE;
+            q -> PCW_65_AUX =         p -> PCW_65_AUX;
+            q -> PCW_21_MSK =         p -> PCW_21_MSK;
+
+            q -> DCW =                p -> DCW;
+
+            q -> masked = p -> PCW_21_MSK;
+            if (q -> masked)
+              {
+                if (q -> in_use)
+                  sim_warn ("%s: chan %d masked while in use\n", __func__, p -> PCW_CHAN);
+                q -> in_use = false;
+                q -> start  = false;
+              }
+            else
+              {
+                if (q -> in_use)
+                  sim_warn ("%s: chan %d connect while in use\n", __func__, p -> PCW_CHAN);
+                q -> in_use = true;
+                q -> start  = true;
+#ifdef IO_THREADZ
+                setChnConnect (iom_unit_idx, p -> PCW_CHAN);
+#else
+#if !defined(IO_ASYNC_PAYLOAD_CHAN) && !defined(IO_ASYNC_PAYLOAD_CHAN_THREAD)
+                do_payload_chan (iom_unit_idx, p -> PCW_CHAN);
+#endif
+#ifdef IO_ASYNC_PAYLOAD_CHAN_THREAD
+                pthread_cond_signal (& iomCond);
+#endif
+#endif
+              }
           }
       } while (! ptro);
+if (loops > 1) sim_printf ("%d loops\r\n", loops);
     return 0; // XXX
-  }
-
-/*
- * send_general_interrupt ()
- *
- * Send an interrupt from the IOM to the CPU.
- *
- */
-
-static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics pic)
-  {
-
-    uint imw_addr;
-    uint chan_group = chan < 32 ? 1 : 0;
-    uint chan_in_group = chan & 037;
-    uint interrupt_num = iomUnitIdx | (chan_group << 2) | ((uint) pic << 3);
-    // Section 3.2.7 defines the upper bits of the IMW address as
-    // being defined by the mailbox base address switches and the
-    // multiplex base address switches.
-    // However, AN-70 reports that the IMW starts at 01200.  If AN-70 is
-    // correct, the bits defined by the mailbox base address switches would
-    // have to always be zero.  We'll go with AN-70.  This is equivalent to
-    // using bit value 0010100 for the bits defined by the multiplex base
-    // address switches and zeros for the bits defined by the mailbox base
-    // address switches.
-    //imw_addr += 01200;  // all remaining bits
-    uint pi_base = iomUnitData [iomUnitIdx] . configSwMultiplexBaseAddress & ~3u;
-    imw_addr = (pi_base << 3) | interrupt_num;
-
-    sim_debug (DBG_NOTIFY, & iom_dev, 
-               "%s: IOM %c, channel %d (%#o), level %d; "
-               "Interrupt %d (%#o).\n", 
-               __func__, 'A' + iomUnitIdx, chan, chan, pic, interrupt_num, 
-               interrupt_num);
-    word36 imw;
-    iom_core_read (imw_addr, &imw, __func__);
-    // The 5 least significant bits of the channel determine a bit to be
-    // turned on.
-    sim_debug (DBG_DEBUG, & iom_dev, 
-               "%s: IMW at %#o was %012"PRIo64"; setting bit %d\n", 
-               __func__, imw_addr, imw, chan_in_group);
-    putbits36_1 (& imw, chan_in_group, 1);
-    sim_debug (DBG_INFO, & iom_dev, 
-               "%s: IMW at %#o now %012"PRIo64"\n", __func__, imw_addr, imw);
-    (void) iom_core_write (imw_addr, imw, __func__);
-    
-// XXX this should call scu_svc
-
-// XXX shouldn't it interrupt the SCU that invoked the connect?
-#if 1
-    return scu_set_interrupt (iomUnitData [iomUnitIdx] . invokingScuUnitNum, interrupt_num);
-#else
-    uint base = iomUnitData [iomUnitIdx] . configSwIomBaseAddress;
-    uint base_addr = base << 6; // 01400
-    // XXX this is wrong; I believe that the SCU unit number should be
-    // calculated from the Port Configuration Address Assignment switches
-    // For now, however, the same information is in the CPU config. switches, so
-    // this should result in the same values.
-
-    int cpu_port_num = queryIomScbankMap (iomUnitIdx, base_addr);
-    int scuUnitNum;
-    if (cpu_port_num >= 0)
-      scuUnitNum = query_scu_unit_num (ASSUME_CPU_0, cpu_port_num);
-    else
-      scuUnitNum = 0;
-    // XXX Print warning
-    if (scuUnitNum < 0)
-      scuUnitNum = 0;
-    return scu_set_interrupt ((uint)scuUnitNum, interrupt_num);
-#endif
   }
 
 /*
@@ -2235,11 +3249,13 @@ static int send_general_interrupt (uint iomUnitIdx, uint chan, enum iomImwPics p
  * of three.
  */
 
-int send_marker_interrupt (uint iomUnitIdx, int chan)
-{
-    status_service (iomUnitIdx, (uint) chan, true);
-    return send_general_interrupt (iomUnitIdx, (uint) chan, imwMarkerPic);
-}
+int send_marker_interrupt (uint iom_unit_idx, int chan)
+  {
+    if (iom_chan_data [iom_unit_idx] [chan] . masked)
+      return(0);
+    status_service (iom_unit_idx, (uint) chan, true);
+    return send_general_interrupt (iom_unit_idx, (uint) chan, imwMarkerPic);
+  }
 
 /*
  * send_special_interrupt ()
@@ -2248,10 +3264,20 @@ int send_marker_interrupt (uint iomUnitIdx, int chan)
  *
  */
 
-int send_special_interrupt (uint iomUnitIdx, uint chan, uint devCode, 
+int send_special_interrupt (uint iom_unit_idx, uint chan, uint devCode, 
                             word8 status0, word8 status1)
   {
-    uint chanloc = mbxLoc (iomUnitIdx, IOM_SPECIAL_STATUS_CHAN);
+    uint chanloc = mbxLoc (iom_unit_idx, IOM_SPECIAL_STATUS_CHAN);
+
+    if (iom_chan_data [iom_unit_idx] [chan] . masked)
+      return(0);
+    
+#ifdef THREADZ
+    lock_mem_wr ();
+#endif
+#ifdef LOCKLESS
+    lock_iom();
+#endif
 
 // Multics uses an 12(8) word circular queue, managed by clever manipulation
 // of the LPW and DCW.
@@ -2259,17 +3285,27 @@ int send_special_interrupt (uint iomUnitIdx, uint chan, uint devCode,
 // we will just assume that everything is set up the way we expect,
 // and update the circular queue.
     word36 lpw;
-    iom_core_read (chanloc + 0, & lpw, __func__);
+    iom_core_read (iom_unit_idx, chanloc + IOM_MBX_LPW, & lpw, __func__);
+
+    word36 scw;
+    iom_core_read (iom_unit_idx, chanloc + IOM_MBX_SCW, & scw, __func__);
 
     word36 dcw;
-    iom_core_read (chanloc + 3, & dcw, __func__);
+    iom_core_read_lock (iom_unit_idx, chanloc + IOM_MBX_DCW, & dcw, __func__);
+
+    sim_debug (DBG_DEBUG, & iom_dev,
+               "%s: channel %d (%#o), devCode %#o, status0 %#o, status1 %#o\n",
+               __func__, chan, chan, devCode, status0, status1);
+    sim_debug (DBG_DEBUG, & iom_dev,
+               "%s: lpw %012"PRIo64" scw %012"PRIo64" dcw %012"PRIo64"\n",
+               __func__, lpw, scw, dcw);
 
     word36 status = 0400000000000;   
     status |= (((word36) chan) & MASK6) << 27;
     status |= (((word36) devCode) & MASK8) << 18;
     status |= (((word36) status0) & MASK8) <<  9;
     status |= (((word36) status1) & MASK8) <<  0;
-    iom_core_write ((dcw >> 18) & MASK18, status, __func__);
+    iom_core_write (iom_unit_idx, (dcw >> 18) & MASK18, status, __func__);
 
     uint tally = dcw & MASK12;
     if (tally > 1)
@@ -2278,10 +3314,17 @@ int send_special_interrupt (uint iomUnitIdx, uint chan, uint devCode,
         dcw += 01000000llu; // addr ++
       }
     else
-      dcw = 001320010012llu; // reset to beginning of queue
-    iom_core_write (chanloc + 3, dcw, __func__);
+      dcw = scw; // reset to beginning of queue
+    iom_core_write_unlock (iom_unit_idx, chanloc + IOM_MBX_DCW, dcw, __func__);
 
-    send_general_interrupt (iomUnitIdx, IOM_SPECIAL_STATUS_CHAN, imwSpecialPic);
+#ifdef THREADZ
+    unlock_mem ();
+#endif
+#ifdef LOCKLESS
+    unlock_iom();
+#endif
+
+    send_general_interrupt (iom_unit_idx, IOM_SPECIAL_STATUS_CHAN, imwSpecialPic);
     return 0;
   }
 
@@ -2294,77 +3337,90 @@ int send_special_interrupt (uint iomUnitIdx, uint chan, uint devCode,
  *
  */
 
-static t_stat termIntrSvc (UNIT * unitp)
+int send_terminate_interrupt (uint iom_unit_idx, uint chan)
   {
-    uint iomUnitIdx = (uint) unitp -> u3;
-    uint chan = (uint) unitp -> u4;
-    status_service (iomUnitIdx, chan, false);
-    send_general_interrupt (iomUnitIdx, chan, imwTerminatePic);
-    return SCPE_OK;
-  }
-
-int send_terminate_interrupt (uint iomUnitIdx, uint chan)
-  {
-    status_service (iomUnitIdx, chan, false);
-    send_general_interrupt (iomUnitIdx, chan, imwTerminatePic);
+    if (iom_chan_data [iom_unit_idx] [chan] . masked)
+      return 0;
+    status_service (iom_unit_idx, chan, false);
+    if (iom_chan_data [iom_unit_idx] [chan] . in_use == false)
+      sim_warn ("%s: chan %d not in use\n", __func__, chan);
+    iom_chan_data [iom_unit_idx] [chan] . in_use = false;
+    send_general_interrupt (iom_unit_idx, chan, imwTerminatePic);
     return 0;
   }
 
-void iom_interrupt (uint scuUnitNum, uint iomUnitIdx)
+void iom_interrupt (uint scu_unit_idx, uint iom_unit_idx)
   {
-    sim_debug (DBG_DEBUG, & iom_dev, "%s: IOM %c starting.\n",
-               __func__, 'A' + iomUnitIdx);
+    sim_debug (DBG_DEBUG, & iom_dev,
+               "%s: IOM %c starting. [%"PRId64"] %05o:%08o\n",
+               __func__, 'A' + iom_unit_idx,
+               cpu.cycleCnt, cpu.PPR.PSR, cpu.PPR.IC);
 
-    iomUnitData [iomUnitIdx] . invokingScuUnitNum = scuUnitNum;
+    iom_unit_data[iom_unit_idx].invokingScuUnitIdx = scu_unit_idx;
 
-    int ret = doConnectChan (iomUnitIdx);
+#ifdef IO_THREADZ
+    setIOMInterrupt (iom_unit_idx);
+    iomDoneWait (iom_unit_idx);
+#else
+    int ret = do_connect_chan (iom_unit_idx);
 
     sim_debug (DBG_DEBUG, & iom_dev,
-               "%s: IOM %c finished; doConnectChan returned %d.\n",
-               __func__, 'A' + iomUnitIdx, ret);
-    // XXX doConnectChan return value ignored
+               "%s: IOM %c finished; do_connect_chan returned %d.\n",
+               __func__, 'A' + iom_unit_idx, ret);
+#endif
+    // XXX do_connect_chan return value ignored
   }
  
+#ifdef IO_THREADZ
+void * chan_thread_main (void * arg)
+  {     
+    uint myid = (uint) * (int *) arg;
+    this_iom_idx = (uint) myid / MAX_CHANNELS;
+    this_chan_num = (uint) myid % MAX_CHANNELS;
+          
+// Set CPU context to allow sim_debug to work
 
-//
-// iomReset ()
-//
-//  Reset -- Reset to initial state -- clear all device flags and cancel any
-//  any outstanding timing operations. Used by SIMH's RESET, RUN, and BOOT
-//  commands
-//
-//  Note that all reset ()s run after once-only init ().
-//
-//
+    set_cpu_idx (0);
 
-static t_stat iomReset (UNUSED DEVICE * dptr)
-  {
-    sim_debug (DBG_INFO, & iom_dev, "%s: running.\n", __func__);
+    sim_printf("IOM %c Channel %u thread created\n", this_iom_idx + 'a', this_chan_num);
 
-    for (uint iomUnitIdx = 0; iomUnitIdx < iom_dev . numunits; iomUnitIdx ++)
+    setSignals ();
+    while (1)
       {
-        for (uint chan = 0; chan < MAX_CHANNELS; ++ chan)
-          {
-            for (uint dev_code = 0; dev_code < N_DEV_CODES; dev_code ++)
-              {
-                DEVICE * devp = cables -> cablesFromIomToDev [iomUnitIdx] . devices [chan] [dev_code] . dev;
-                if (devp)
-                  {
-                    if (devp -> units == NULL)
-                      {
-                        sim_warn ("%s: Device on IOM %c channel %d dev_code %d does not have any units.\n",
-                          __func__,  'A' + iomUnitIdx, chan, dev_code);
-                      }
-                  }
-              }
-          }
+//sim_printf("IOM %c Channel %u thread waiting\n", this_iom_idx + 'a', this_chan_num);
+        chnConnectWait ();
+//sim_printf("IOM %c Channel %u thread running\n", this_iom_idx + 'a', this_chan_num);
+        do_payload_chan (this_iom_idx, this_chan_num);
+        chnConnectDone ();
       }
-    
-
-    setupIOMScbankMap ();
-
-    return SCPE_OK;
   }
+
+void * iom_thread_main (void * arg)
+  {     
+    int myid = * (int *) arg;
+    this_iom_idx = (uint) myid;
+          
+// Set CPU context to allow sim_debug to work
+
+    set_cpu_idx (0);
+
+    sim_printf("IOM %c thread created\n", 'a' + myid);
+
+    setSignals ();
+    while (1)
+      {
+//sim_printf("IOM %c thread waiting\n", 'a' + myid);
+        iomInterruptWait ();
+//sim_printf("IOM %c thread running\n", 'a' + myid);
+        int ret = do_connect_chan (this_iom_idx);
+
+        sim_debug (DBG_DEBUG, & iom_dev,
+                   "%s: IOM %c finished; do_connect_chan returned %d.\n",
+                   __func__, 'A' + myid, ret);
+        iomInterruptDone ();
+      }
+  }
+#endif
 
 /*
  * iom_init ()
@@ -2375,584 +3431,42 @@ static t_stat iomReset (UNUSED DEVICE * dptr)
 void iom_init (void)
   {
     sim_debug (DBG_INFO, & iom_dev, "%s: running.\n", __func__);
-
-    for (int i = 0; i < N_IOM_UNITS_MAX; i ++)
-      for (int c = 0; c < MAX_CHANNELS; c ++)
-        {
-          memset (& termIntrChannelUnits [i] [c], 0, sizeof (UNIT));
-          termIntrChannelUnits [i] [c] . action = termIntrSvc;
-          termIntrChannelUnits [i] [c] . u3 = i;
-          termIntrChannelUnits [i] [c] . u4 = c;
-        }
   }
 
-/*
- * initMemoryIOM ()
- *
- * Load a few words into memory.   Simulates pressing the BOOTLOAD button
- * on an IOM or equivalent.
- *
- * All values are from bootload_tape_label.alm.  See the comments at the
- * top of that file.  See also doc #43A239854.
- *
- * NOTE: The values used here are for an IOM, not an IOX.
- * See init_memory_iox () below.
- *
- */
-
-static void initMemoryIOM (uint iomUnitIdx)
+t_stat boot2 (UNUSED int32 arg, UNUSED const char * buf)
   {
-    // The presence of a 0 in the top six bits of word 0 denote an IOM boot
-    // from an IOX boot
-    
-    // " The channel number ("Chan#") is set by the switches on the IOM to be
-    // " the channel for the tape subsystem holding the bootload tape. The
-    // " drive number for the bootload tape is set by switches on the tape
-    // " MPC itself.
-    
-    sim_debug (DBG_INFO, & iom_dev,
-      "%s: Performing load of eleven words from IOM %c bootchannel to memory.\n",
-      __func__, 'A' + iomUnitIdx);
-
-    word12 base = iomUnitData [iomUnitIdx] . configSwIomBaseAddress;
-
-    // bootload_io.alm insists that pi_base match
-    // template_slt_$iom_mailbox_absloc
-
-    //uint pi_base = iomUnitData [iomUnitIdx] . configSwMultiplexBaseAddress & ~3;
-    word36 pi_base = (((word36) iomUnitData [iomUnitIdx] . configSwMultiplexBaseAddress)  << 3) |
-                     (((word36) (iomUnitData [iomUnitIdx] . configSwIomBaseAddress & 07700U)) << 6) ;
-    word3 iom_num = ((word36) iomUnitData [iomUnitIdx] . configSwMultiplexBaseAddress) & 3; 
-    word36 cmd = 5;       // 6 bits; 05 for tape, 01 for cards
-    word36 dev = 0;            // 6 bits: drive number
-    
-    // Maybe an is-IMU flag; IMU is later version of IOM
-    word36 imu = 0;       // 1 bit
-    
-    // Description of the bootload channel from 43A239854
-    //    Legend
-    //    BB - Bootload channel #
-    //    C - Cmd (1 or 5)
-    //    N - IOM #
-    //    P - Port #
-    //    XXXX00 - Base Addr -- 01400
-    //    XXYYYY0 Program Interrupt Base
-    
-    enum configSwBlCT_t bootdev = iomUnitData [iomUnitIdx] . configSwBootloadCardTape;
-
-    word6 bootchan;
-    if (bootdev == CONFIG_SW_BLCT_CARD)
-      bootchan = iomUnitData [iomUnitIdx] . configSwBootloadCardrdrChan;
-    else // CONFIG_SW_BLCT_TAPE
-      bootchan = iomUnitData [iomUnitIdx] . configSwBootloadMagtapeChan;
-
-
-    // 1
-
-    word36 dis0 = 0616200;
-
-    // system fault vector; DIS 0 instruction (imu bit not mentioned by 
-    // 43A239854)
-
-    M [010 + 2 * iom_num] = (imu << 34) | dis0;
-    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012"PRIo64"\n",
-      010 + 2 * iom_num, (imu << 34) | dis0);
-
-    // Zero other 1/2 of y-pair to avoid msgs re reading uninitialized
-    // memory (if we have that turned on)
-
-    M [010 + 2 * iom_num + 1] = 0;
-    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012o\n",
-      010 + 2 * iom_num + 1, 0);
-    
-
-    // 2
-
-    // terminate interrupt vector (overwritten by bootload)
-
-    M [030 + 2 * iom_num] = dis0;
-    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012"PRIo64"\n",
-      030 + 2 * iom_num, dis0);
-
-
-    // 3
-
-    // XXX CAC: Clang -Wsign-conversion claims 'base<<6' is int
-    word24 base_addr = (word24) base << 6; // 01400
-    
-    // tally word for sys fault status
-    M [base_addr + 7] = ((word36) base_addr << 18) | 02000002;
-    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012"PRIo64"\n",
-       base_addr + 7, ((word36) base_addr << 18) | 02000002);
-
-
-    // 4
-
-
-    // ??? Fault channel DCW
-    // bootload_tape_label.alm says 04000, 43A239854 says 040000.  Since 
-    // 43A239854 says "no change", 40000 is correct; 4000 would be a 
-    // large tally
-
-    // Connect channel LPW; points to PCW at 000000
-    M [base_addr + 010] = 040000;
-    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012o\n",
-      base_addr + 010, 040000);
-
-    // 5
-
-    word24 mbx = base_addr + 4u * bootchan;
-
-    // Boot device LPW; points to IDCW at 000003
-
-    M [mbx] = 03020003;
-    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012o\n",
-      mbx, 03020003);
-
-
-    // 6
-
-    // Second IDCW: IOTD to loc 30 (startup fault vector)
-
-    M [4] = 030 << 18;
-    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012o\n",
-      4, 030 << 18);
-    
-
-    // 7
-
-    // Default SCW points at unused first mailbox.
-    // T&D tape overwrites this before the first status is saved, though.
-    // CAC: But the status is never saved, only a $CON occurs, never
-    // a status service
-
-    // SCW
-
-    M [mbx + 2] = ((word36)base_addr << 18);
-    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012"PRIo64"\n",
-      mbx + 2, ((word36)base_addr << 18));
-    
-
-    // 8
-
-    // 1st word of bootload channel PCW
-
-    M [0] = 0720201;
-    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012o\n",
-      0, 0720201);
-    
-
-    // 9
-
-    // "SCU port" 
-    word3 port = iomUnitData [iomUnitIdx] . configSwBootloadPort; // 3 bits;
-    
-    // Why does bootload_tape_label.alm claim that a port number belongs in 
-    // the low bits of the 2nd word of the PCW?  The lower 27 bits of the 
-    // odd word of a PCW should be all zero.
-
-    // [CAC] Later, bootload_tape_label.alm does:
-    //
-    //     cioc    bootload_info+1 " port # stuck in PCW
-    //     lda     0,x5            " check for status
-    //
-    // So this is a bootloader kludge to pass the bootload SCU number
-    // 
-
-    // [CAC] From Rev01.AN70.archive:
-    //  In BOS compatibility mode, the BOS BOOT command simulates the IOM,
-    //  leaving the same information.  However, it also leaves a config deck
-    //  and flagbox (although bce has its own flagbox) in the usual locations.
-    //  This allows Bootload Multics to return to BOS if there is a BOS to
-    //  return to.  The presence of BOS is indicated by the tape drive number
-    //  being non-zero in the idcw in the "IOM" provided information.  (This is
-    //  normally zero until firmware is loaded into the bootload tape MPC.)
-
-    // 2nd word of PCW pair
-
-    M [1] = ((word36) (bootchan) << 27) | port;
-    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012"PRIo64"\n",
-      1, ((word36) (bootchan) << 27) | port);
-    
-
-    // 10
-
-    // following verified correct; instr 362 will not yield 1572 with a 
-    // different shift
-
-   // word after PCW (used by program)
-
-    M [2] = ((word36) base_addr << 18) | (pi_base) | iom_num;
-    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012"PRIo64"\n",
-      2,  ((word36) base_addr << 18) | (pi_base) | iom_num);
-    
-
-    // 11
-
-    // IDCW for read binary
-
-    M [3] = (cmd << 30) | (dev << 24) | 0700000;
-    sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012"PRIo64"\n",
-      3, (cmd << 30) | (dev << 24) | 0700000);
-    
-  }
-
-static t_stat bootSvc (UNIT * unitp)
-  {
-    uint iomUnitIdx = (uint) (unitp - bootChannelUnit);
-    // the docs say press sysinit, then boot; simh doesn't have an
-    // explicit "sysinit", so we ill treat  "reset iom" as sysinit.
-    // The docs don't say what the behavior is is you dont press sysinit
-    // first so we wont worry about it.
-
-    sim_debug (DBG_DEBUG, & iom_dev, "%s: starting on IOM %c\n",
-      __func__, 'A' + iomUnitIdx);
-
-    // initialize memory with boot program
-    initMemoryIOM (iomUnitIdx);
-
-    // This is needed to reset the interrupt mask registers; Multics tampers
-    // with runtime values, and mucks up rebooting on multi-CPU systems.
-    scu_reset (NULL);
-
-    // simulate $CON
-    iom_interrupt (0 /*ASSUME0*/, iomUnitIdx);
-
-    sim_debug (DBG_DEBUG, &iom_dev, "%s finished\n", __func__);
-
-    // returning OK from the simh BOOT command causes simh to start the CPU
+#ifdef ROUND_ROBIN
+    uint cpuUnitIdx = 1U;
+    uint save = set_cpu_idx ((uint) cpuUnitIdx);
+if (cpuUnitIdx && ! cpu.isRunning)
+ sim_printf ("starting CPU %c early\n", cpuUnitIdx + 'A');
+    cpu.isRunning = true;
+                    set_cpu_idx (save);
+    //boot_svc (& boot_channel_unit[1]);
+    iom_boot ((int) cpuUnitIdx, & iom_dev);
+#endif
     return SCPE_OK;
   }
 
 #ifdef PANEL
-void doBoot (void)
+void do_boot (void)
   {
-    bootSvc (& bootChannelUnit [0]);
+    boot_svc (& boot_channel_unit[0]);
   }
 #endif
 
-static t_stat iomBoot (int unitNum, UNUSED DEVICE * dptr)
+#if defined(IO_ASYNC_PAYLOAD_CHAN) || defined(IO_ASYNC_PAYLOAD_CHAN_THREAD)
+void iomProcess (void)
   {
-    if (unitNum < 0 || unitNum >= (int) iom_dev . numunits)
-      {
-        sim_printf ("iomBoot: Invalid unit number %d\n", unitNum);
-        return SCPE_ARG;
-      }
-    uint iomUnitIdx = (uint) unitNum;
-#if 0
-    // initialize memory with boot program
-    initMemoryIOM ((uint)iomUnitIdx);
-
-    // simulate $CON
-    iom_interrupt (0 /*ASSUME0*/, iomUnitIdx);
-
-#else
-    sim_activate (& bootChannelUnit [iomUnitIdx], sys_opts . iom_times . boot_time );
-    // returning OK from the simh BOOT command causes simh to start the CPU
+    for (uint i = 0; i < N_IOM_UNITS_MAX; i++)
+      for (uint j = 0; j < MAX_CHANNELS; j++)
+        {
+          iom_chan_data_t * p = &iom_chan_data [i] [j];
+          if (p -> start)
+            {
+              p -> start = false;
+              do_payload_chan (i, j);
+            }
+        }
+  }
 #endif
-    return SCPE_OK;
-  }
-
-static t_stat iomShowMbx (UNUSED FILE * st, 
-                            UNUSED UNIT * uptr, UNUSED int val, 
-                            UNUSED const void * desc)
-  {
-    return SCPE_OK;
-  }
-
-
-static t_stat iomShowUnits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)
-  {
-    sim_printf ("Number of IOM units in system is %d\n", iom_dev . numunits);
-    return SCPE_OK;
-  }
-
-static t_stat iomSetUnits (UNUSED UNIT * uptr, UNUSED int value, const char * cptr, UNUSED void * desc)
-  {
-    if (! cptr)
-      return SCPE_ARG;
-    int n = atoi (cptr);
-    if (n < 1 || n > N_IOM_UNITS_MAX)
-      return SCPE_ARG;
-    if (n > 2)
-      sim_printf ("Warning: Multics supports 2 IOMs maximum\n");
-    iom_dev . numunits = (unsigned) n;
-    return SCPE_OK;
-  }
-
-static t_stat iomShowConfig (UNUSED FILE * st, UNIT * uptr, UNUSED int val, 
-                             UNUSED const void * desc)
-  {
-    uint iomUnitIdx = (uint) IOM_UNIT_NUM (uptr);
-    if (iomUnitIdx >= iom_dev . numunits)
-      {
-        sim_printf ("error: invalid unit number %u\n", iomUnitIdx);
-        return SCPE_ARG;
-      }
-
-    sim_printf ("IOM unit number %u\n", iomUnitIdx);
-    iomUnitData_t * p = iomUnitData + iomUnitIdx;
-
-    char * os = "<out of range>";
-    switch (p -> configSwOS)
-      {
-        case CONFIG_SW_STD_GCOS:
-          os = "Standard GCOS";
-          break;
-        case CONFIG_SW_EXT_GCOS:
-          os = "Extended GCOS";
-          break;
-        case CONFIG_SW_MULTICS:
-          os = "Multics";
-          break;
-      }
-    char * blct = "<out of range>";
-    switch (p -> configSwBootloadCardTape)
-      {
-        case CONFIG_SW_BLCT_CARD:
-          blct = "CARD";
-          break;
-        case CONFIG_SW_BLCT_TAPE:
-          blct = "TAPE";
-          break;
-      }
-
-    sim_printf ("Allowed Operating System: %s\n", os);
-    sim_printf ("IOM Base Address:         %03o(8)\n", p -> configSwIomBaseAddress);
-    sim_printf ("Multiplex Base Address:   %04o(8)\n", p -> configSwMultiplexBaseAddress);
-    sim_printf ("Bootload Card/Tape:       %s\n", blct);
-    sim_printf ("Bootload Tape Channel:    %02o(8)\n", p -> configSwBootloadMagtapeChan);
-    sim_printf ("Bootload Card Channel:    %02o(8)\n", p -> configSwBootloadCardrdrChan);
-    sim_printf ("Bootload Port:            %02o(8)\n", p -> configSwBootloadPort);
-    sim_printf ("Port Address:            ");
-    int i;
-    for (i = 0; i < N_IOM_PORTS; i ++)
-      sim_printf (" %03o", p -> configSwPortAddress [i]);
-    sim_printf ("\n");
-    sim_printf ("Port Interlace:          ");
-    for (i = 0; i < N_IOM_PORTS; i ++)
-      sim_printf (" %3o", p -> configSwPortInterface [i]);
-    sim_printf ("\n");
-    sim_printf ("Port Enable:             ");
-    for (i = 0; i < N_IOM_PORTS; i ++)
-      sim_printf (" %3o", p -> configSwPortEnable [i]);
-    sim_printf ("\n");
-    sim_printf ("Port Sysinit Enable:     ");
-    for (i = 0; i < N_IOM_PORTS; i ++)
-      sim_printf (" %3o", p -> configSwPortSysinitEnable [i]);
-    sim_printf ("\n");
-    sim_printf ("Port Halfsize:           ");
-    for (i = 0; i < N_IOM_PORTS; i ++)
-      sim_printf (" %3o", p -> configSwPortHalfsize [i]);
-    sim_printf ("\n");
-    sim_printf ("Port Storesize:           ");
-    for (i = 0; i < N_IOM_PORTS; i ++)
-      sim_printf (" %3o", p -> configSwPortStoresize [i]);
-    sim_printf ("\n");
-    
-    return SCPE_OK;
-  }
-
-//
-// set iom0 config=<blah> [;<blah>]
-//
-//    blah = iom_base=n
-//           multiplex_base=n
-//           os=gcos | gcosext | multics
-//           boot=card | tape
-//           tapechan=n
-//           cardchan=n
-//           scuport=n
-//           port=n   // set port number for below commands
-//             addr=n
-//             interlace=n
-//             enable=n
-//             initenable=n
-//             halfsize=n
-//             storesize=n
-//          bootskip=n // Hack: forward skip n records after reading boot record
-
-static config_value_list_t cfg_os_list [] =
-  {
-    { "gcos", CONFIG_SW_STD_GCOS },
-    { "gcosext", CONFIG_SW_EXT_GCOS },
-    { "multics", CONFIG_SW_MULTICS },
-    { NULL, 0 }
-  };
-
-static config_value_list_t cfg_boot_list [] =
-  {
-    { "card", CONFIG_SW_BLCT_CARD },
-    { "tape", CONFIG_SW_BLCT_TAPE },
-    { NULL, 0 }
-  };
-
-static config_value_list_t cfg_base_list [] =
-  {
-    { "multics", 014 },
-    { "multics1", 014 }, // boot iom
-    { "multics2", 020 },
-    { "multics3", 024 },
-    { "multics4", 030 },
-    { NULL, 0 }
-  };
-
-static config_value_list_t cfg_size_list [] =
-  {
-    { "32", 0 },
-    { "64", 1 },
-    { "128", 2 },
-    { "256", 3 },
-    { "512", 4 },
-    { "1024", 5 },
-    { "2048", 6 },
-    { "4096", 7 },
-    { "32K", 0 },
-    { "64K", 1 },
-    { "128K", 2 },
-    { "256K", 3 },
-    { "512K", 4 },
-    { "1024K", 5 },
-    { "2048K", 6 },
-    { "4096K", 7 },
-    { "1M", 5 },
-    { "2M", 6 },
-    { "4M", 7 },
-    { NULL, 0 }
-  };
-
-static config_list_t iom_config_list [] =
-  {
-    /*  0 */ { "os", 1, 0, cfg_os_list },
-    /*  1 */ { "boot", 1, 0, cfg_boot_list },
-    /*  2 */ { "iom_base", 0, 07777, cfg_base_list },
-    /*  3 */ { "multiplex_base", 0, 0777, NULL },
-    /*  4 */ { "tapechan", 0, 077, NULL },
-    /*  5 */ { "cardchan", 0, 077, NULL },
-    /*  6 */ { "scuport", 0, 07, NULL },
-    /*  7 */ { "port", 0, N_IOM_PORTS - 1, NULL },
-    /*  8 */ { "addr", 0, 7, NULL },
-    /*  9 */ { "interlace", 0, 1, NULL },
-    /* 10 */ { "enable", 0, 1, NULL },
-    /* 11 */ { "initenable", 0, 1, NULL },
-    /* 12 */ { "halfsize", 0, 1, NULL },
-    /* 13 */ { "store_size", 0, 7, cfg_size_list },
-
-    { NULL, 0, 0, NULL }
-  };
-
-static t_stat iomSetConfig (UNIT * uptr, UNUSED int value, const char * cptr, UNUSED void * desc)
-  {
-    uint iomUnitIdx = (uint) IOM_UNIT_NUM (uptr);
-    if (iomUnitIdx >= iom_dev . numunits)
-      {
-        sim_printf ("error: iomSetConfig: invalid unit number %d\n", iomUnitIdx);
-        return SCPE_ARG;
-      }
-
-    iomUnitData_t * p = iomUnitData + iomUnitIdx;
-
-    static uint port_num = 0;
-
-    config_state_t cfg_state = { NULL, NULL };
-
-    for (;;)
-      {
-        int64_t v;
-        int rc = cfgparse ("iomSetConfig", cptr, iom_config_list, & cfg_state, & v);
-        switch (rc)
-          {
-            case -2: // error
-              cfgparse_done (& cfg_state);
-              return SCPE_ARG; 
-
-            case -1: // done
-              break;
-
-            case 0: // OS
-              p -> configSwOS = (enum configSwOs_t) v;
-              break;
-
-            case 1: // BOOT
-              p -> configSwBootloadCardTape = (enum configSwBlCT_t) v;
-              break;
-
-            case 2: // IOM_BASE
-              p -> configSwIomBaseAddress = (word12) v;
-              break;
-
-            case 3: // MULTIPLEX_BASE
-              p -> configSwMultiplexBaseAddress = (word9) v;
-              break;
-
-            case 4: // TAPECHAN
-              p -> configSwBootloadMagtapeChan = (word6) v;
-              break;
-
-            case 5: // CARDCHAN
-              p -> configSwBootloadCardrdrChan = (word6) v;
-              break;
-
-            case 6: // SCUPORT
-              p -> configSwBootloadPort = (word3) v;
-              break;
-
-            case 7: // PORT
-              port_num = (uint) v;
-              break;
-
-#if 0
-                // all of the remaining assume a valid value in port_num
-                if (/* port_num < 0 || */ port_num > 7)
-                  {
-                    sim_printf ("error: iomSetConfig: cached PORT value out of range: %d\n", port_num);
-                    break;
-                  } 
-#endif
-            case 8: // ADDR
-              p -> configSwPortAddress [port_num] = (uint) v;
-              break;
-
-            case 9: // INTERLACE
-              p -> configSwPortInterface [port_num] = (uint) v;
-              break;
-
-            case 10: // ENABLE
-              p -> configSwPortEnable [port_num] = (uint) v;
-              break;
-
-            case 11: // INITENABLE
-              p -> configSwPortSysinitEnable [port_num] = (uint) v;
-              break;
-
-            case 12: // HALFSIZE
-              p -> configSwPortHalfsize [port_num] = (uint) v;
-              break;
-
-            case 13: // STORE_SIZE
-              p -> configSwPortStoresize [port_num] = (uint) v;
-              break;
-
-            default:
-              sim_printf ("error: iomSetConfig: invalid cfgparse rc <%d>\n", rc);
-              cfgparse_done (& cfg_state);
-              return SCPE_ARG; 
-          } // switch
-        if (rc < 0)
-          break;
-      } // process statements
-    cfgparse_done (& cfg_state);
-    return SCPE_OK;
-  }
-
-// Used by scu_cioc() to schedule connects
-
-static t_stat iom_action (UNIT *up)
-  {
-    // Recover the stash parameters
-    uint scuUnitNum = (uint) (up -> u3);
-    uint iomUnitIdx = (uint) (up -> u4);
-//sim_printf ("int %u %u\n", scuUnitNum, iomUnitIdx);
-    iom_interrupt (scuUnitNum, iomUnitIdx);
-    return SCPE_OK;
-  }

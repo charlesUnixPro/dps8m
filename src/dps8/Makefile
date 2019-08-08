@@ -16,8 +16,9 @@
 #  TESTING=1    Enables sim_debug and additional runtime checks
 #
 
+all :
+
 SIMHx = ../simh-master
-#SIMHx = ../simhv40-beta
 
 INSTALL_ROOT ?= /usr/local/
 INSTALL_BIN ?= $(INSTALL_ROOT)/bin
@@ -39,19 +40,33 @@ $(warning ####)
 CFLAGS += -DTESTING
 endif
 
+#ifeq ($(LOADER),1)
+CFLAGS += -DLOADER
+#endif
+
 ifeq ($(OS),Windows_NT)
 CROSS=MINGW64
+endif
+
+ifeq ($(THREADZ),1)
+CFLAGS += -pthread -DTHREADZ
+LDFLAGS += -pthread
+LIBS += -lpthread
+endif
+
+ifeq ($(LOCKLESS),1)
+#CFLAGS += -pthread -DLOCKLESS -DWAM
+CFLAGS += -pthread -DLOCKLESS 
+LDFLAGS += -pthread
+LIBS += -lpthread
 endif
 
 ifndef LIBUV
 LIBUV = -luv
 endif
 
-FNP2=1
-ifdef FNP2
-CFLAGS += -DFNP2
+# FNP2 support
 LIBS += $(LIBUV)
-endif
 
 ifeq ($(CROSS),MINGW64)
 CFLAGS += -DCROSS_MINGW64 -Wno-misleading-indentation -I../../../libuv/include
@@ -71,6 +86,18 @@ else
 CFLAGS += -Wall -Wno-conversion -Wsign-conversion
 endif
 
+ifneq ($(M32),)
+CFLAGS += -DNEED_128 -Wno-format-zero-length -Wno-sign-conversion
+endif
+
+# The system_state code relies on M_SHARED.
+ifneq ($(CROSS),MINGW64)
+#ifeq ($(M_SHARED),1)
+CFLAGS += -DM_SHARED
+LDFLAGS += -lrt
+#endif
+endif
+
 # Configuration switches
 
 ifeq ($(CROSS),MINGW64)
@@ -87,7 +114,7 @@ ifeq ($(OS),Windows_NT)
 else
   OSTYPE = $(shell uname -s)
   ifeq ($(OSTYPE),FreeBSD)
-    LIBS += -lm
+    LIBS += -lm -pthread
   endif
   ifeq ($(OSTYPE),Linux)
     ifeq ($(CROSS),MINGW64)
@@ -110,9 +137,7 @@ C_SRCS  = ./dps8_absi.c
 endif
 C_SRCS += ./dps8_addrmods.c 
 C_SRCS += ./dps8_append.c
-C_SRCS += ./dps8_bar.c
 C_SRCS += ./dps8_cable.c
-#C_SRCS += ./dps8_clk.c
 C_SRCS += ./dps8_console.c
 C_SRCS += ./dps8_cpu.c
 C_SRCS += ./dps8_crdpun.c
@@ -121,46 +146,47 @@ C_SRCS += ./dps8_decimal.c
 C_SRCS += ./dps8_disk.c
 C_SRCS += ./dps8_eis.c
 C_SRCS += ./dps8_faults.c
-ifdef FNP2
 C_SRCS += ./dps8_fnp2.c
-else
-C_SRCS += ./dps8_fnp.c
-endif
+C_SRCS += ./dps8_fnp2_iomcmd.c
 C_SRCS += ./dps8_iefp.c
 C_SRCS += ./dps8_ins.c
 C_SRCS += ./dps8_iom.c
+#ifeq ($(LOADER),1)
 C_SRCS += ./dps8_loader.c
+#endif
 C_SRCS += ./dps8_math.c
 C_SRCS += ./dps8_math128.c
 C_SRCS += ./dps8_mt.c
 C_SRCS += ./dps8_opcodetable.c
 C_SRCS += ./dps8_prt.c
 C_SRCS += ./dps8_scu.c
+C_SRCS += ./dps8_simh.c
+ifneq ($(CROSS),MINGW64)
+C_SRCS += ./dps8_socket_dev.c
+endif
 C_SRCS += ./dps8_sys.c
 C_SRCS += ./dps8_urp.c
 C_SRCS += ./dps8_utils.c
-ifdef FNP2
 C_SRCS += ./fnpuv.c
 C_SRCS += ./fnptelnet.c
 C_SRCS += libtelnet.c
-else
-C_SRCS += ./fnp_1.c
-C_SRCS += ./fnp_2.c
-C_SRCS += ./fnp.c
-C_SRCS += ./fnp_cmds.c
-#C_SRCS += ./fnp_ipc.c
-C_SRCS += ./fnp_mux.c
-#C_SRCS += ./fnpp.c
-C_SRCS += ./fnp_udplib.c
-C_SRCS += ./fnp_utils.c
-endif
 C_SRCS += ./hdbg.c
-ifeq ($(M_SHARED),1)
+# The system_state code relies on M_SHARED.
+ifneq ($(CROSS),MINGW64)
+#ifeq ($(M_SHARED),1)
 C_SRCS += ./shm.c
+#endif
 endif
 ifneq ($(CROSS),MINGW64)
 C_SRCS += ./udplib.c
 endif
+ifeq ($(THREADZ),1)
+C_SRCS += ./threadz.c
+endif
+ifeq ($(LOCKLESS),1)
+C_SRCS += ./threadz.c
+endif
+C_SRCS += ./uvutil.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
@@ -169,9 +195,7 @@ H_SRCS  = dps8_absi.h
 endif
 H_SRCS += dps8_addrmods.h
 H_SRCS += dps8_append.h
-H_SRCS += dps8_bar.h
 H_SRCS += dps8_cable.h
-H_SRCS += dps8_clk.h
 H_SRCS += dps8_console.h
 H_SRCS += dps8_cpu.h
 H_SRCS += dps8_crdpun.h
@@ -181,58 +205,55 @@ H_SRCS += dps8_disk.h
 H_SRCS += dps8_eis.h
 H_SRCS += dps8_em_consts.h
 H_SRCS += dps8_faults.h
-ifdef FNP2
 H_SRCS += dps8_fnp2.h
+H_SRCS += dps8_fnp2_iomcmd.h
 H_SRCS += libtelnet.h
-else
-H_SRCS += dps8_fnp.h
-endif
 H_SRCS += dps8.h
 H_SRCS += dps8_hw_consts.h
 H_SRCS += dps8_iefp.h
 H_SRCS += dps8_ins.h
 H_SRCS += dps8_iom.h
+#ifeq ($(LOADER),1)
 H_SRCS += dps8_loader.h
+#endif
 H_SRCS += dps8_math.h
+H_SRCS += dps8_math128.h
 #H_SRCS += dps8_mp.h
 H_SRCS += dps8_mt.h
 H_SRCS += dps8_opcodetable.h
 H_SRCS += dps8_prt.h
+H_SRCS += dps8_socket_dev.h
 H_SRCS += dps8_scu.h
 H_SRCS += dps8_simh.h
+H_SRCS += dps8_state.h
 H_SRCS += dps8_sys.h
 H_SRCS += dps8_urp.h
 H_SRCS += dps8_utils.h
-ifdef FNP2
 H_SRCS += fnpuv.h
 H_SRCS += fnptelnet.h
-else
-H_SRCS += fnp_1.h
-H_SRCS += fnp_2.h
-H_SRCS += fnp_cmds.h
-H_SRCS += fnp_defs.h
-H_SRCS += fnp.h
-H_SRCS += fnp_mux.h
-#H_SRCS += fnpp.h
-H_SRCS += fnp_rev.h
-H_SRCS += fnp_udplib.h
-H_SRCS += fnp_utils.h
-endif
 H_SRCS += h316_imp.h
 H_SRCS += hdbg.h
-ifeq ($(M_SHARED),1)
+# The system_state code relies on M_SHARED.
+#ifeq ($(M_SHARED),1)
 H_SRCS += shm.h
-endif
+#endif
 ifneq ($(CROSS),MINGW64)
 H_SRCS += udplib.h
 endif
 H_SRCS += utarray.h
 H_SRCS += uthash.h
 H_SRCS += utlist.h
+ifeq ($(THREADZ),1)
+H_SRCS += ./threadz.h
+endif
+ifeq ($(LOCKLESS),1)
+H_SRCS += ./threadz.h
+endif
+H_SRCS += ./uvutil.h
 
 
 
-all: utils $(TAGS) locallibs_then_dps8 
+all: utils $(TAGS) locallibs_then_dps8
 
 #fnpx : fnpx.c fnp_udplib.o
 #	$(CC) fnpx.c -o fnpx fnp_udplib.o
@@ -269,14 +290,23 @@ blinkenLightsCurses : blinkenLightsCurses.c shm.o
 
 dps8$(EXE) : $(OBJS) $(LOCALOBJS) $(LOCALLIBS) 
 	@echo LD dps8$(EXE)
-	@$(LD)  -o dps8$(EXE) $(OBJS) $(LDFLAGS) $(LOCALOBJS) $(LOCALLIBS) $(LIBS)
+	@$(LD)  -o dps8$(EXE) $(LDFLAGS) $(OBJS) $(LOCALOBJS) $(LOCALLIBS) $(LIBS)
 
 .PHONY: FORCE
 
 ifeq (,$(wildcard ../../.git))
+# not git
+ifeq (,$(wildcard dps8.sha1.txt~))
+# not git, not kit
+dps8.sha1.txt : 
+	echo '#define COMMIT_ID "unknown"' > dps8.sha1.txt
+else
+# kit
 dps8.sha1.txt : 
 	cp dps8.sha1.txt~ dps8.sha1.txt
+endif
 else
+# git
 dps8.sha1.txt : FORCE
 	@echo '#define COMMIT_ID "unknown"' > dps8.sha1.txt~
 	@-git rev-parse HEAD > /dev/null 2>&1 && git rev-parse HEAD | awk '{print "#define COMMIT_ID \""$$1"\""}' > dps8.sha1.txt~
@@ -290,6 +320,7 @@ dps8.sha1.txt : FORCE
 	    mv dps8.sha1.txt~ dps8.sha1.txt ; echo 'Generated dps8.sha1.txt' ; \
 	fi
 endif
+
 
 slte.inc : system_book_12_3.ascii
 	./buildSLTE.sh
@@ -351,7 +382,6 @@ tapes: 88534.tap 88631.tap 88632.tap 88633.tap 88634.tap 88635.tap 88636.tap 990
 
 clean:
 	@echo CLEAN
-	#(cd ../simhv40-beta; $(MAKE) clean)
 	@$(MAKE) -C $(SIMHx) -f Makefile clean
 	#(cd ../decNumber; $(MAKE) clean)
 	@$(MAKE) -C ../decNumber clean
@@ -367,6 +397,11 @@ clean_dps8:
 dps8_sys.o : dps8.sha1.txt
 dps8_sys.d : dps8.sha1.txt
 
+dps8_socket_dev.c: errnos.h
+errnos.h:
+	echo '#include <errno.h>' > dump.c
+	$(CC) -E -dD dump.c | awk '/^#define E/ { printf "{\"%s\",%s},\n", $$2, $$2 }' > errnos.h
+	rm -f dump.c
 
 %.d: %.c
 	@set -e; rm -f $@; \

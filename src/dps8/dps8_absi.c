@@ -1,6 +1,6 @@
 /*
  Copyright (c) 2007-2013 Michael Mondy
- Copyright 2015-2016 by Charles Anthony
+ Copyright 2015-2018 by Charles Anthony
 
  All rights reserved.
 
@@ -23,20 +23,22 @@
 #include "dps8_iom.h"
 #include "dps8_absi.h"
 #include "dps8_sys.h"
-#include "dps8_utils.h"
 #include "dps8_faults.h"
-#include "dps8_cpu.h"
+#include "dps8_scu.h"
 #include "dps8_cable.h"
+#include "dps8_cpu.h"
+#include "dps8_utils.h"
 
 #include "udplib.h"
 
-#define N_ABSI_UNITS 1 // default
+#define DBG_CTR 1
 
-static t_stat absi_reset (DEVICE * dptr);
-static t_stat absi_show_nunits (FILE *st, UNIT *uptr, int val, const void *desc);
-static t_stat absi_set_nunits (UNIT * uptr, int32 value, const char * cptr, void * desc);
-static t_stat absiAttach (UNIT *uptr, const char *cptr);
-static t_stat absiDetach (UNIT *uptr);
+static struct absi_state
+  {
+    int link;
+  } absi_state [N_ABSI_UNITS_MAX];
+
+#define N_ABSI_UNITS 1 // default
 
 #define UNIT_FLAGS ( UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | \
                      UNIT_IDLE )
@@ -58,6 +60,25 @@ static DEBTAB absi_dt[] =
     { NULL, 0, NULL }
   };
 
+static t_stat absi_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr,
+                                UNUSED int val, UNUSED const void * desc)
+  {
+    sim_printf ("Number of ABSIunits in system is %d\n", absi_dev.numunits);
+    return SCPE_OK;
+  }
+
+static t_stat absi_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, 
+                               const char * cptr, UNUSED void * desc)
+  {
+    if (! cptr)
+      return SCPE_ARG;
+    int n = atoi (cptr);
+    if (n < 1 || n > N_ABSI_UNITS_MAX)
+      return SCPE_ARG;
+    absi_dev.numunits = (uint32) n;
+    return SCPE_OK;
+  }
+
 #define UNIT_WATCH UNIT_V_UF
 
 static MTAB absi_mod[] =
@@ -77,6 +98,70 @@ static MTAB absi_mod[] =
 
     { 0, 0, NULL, NULL, 0, 0, NULL, NULL }
   };
+
+static t_stat absi_reset (UNUSED DEVICE * dptr)
+  {
+    //absiResetRX (0);
+    //absiResetTX (0);
+    return SCPE_OK;
+  }
+
+static t_stat absiAttach (UNIT * uptr, const char * cptr)
+  {
+    if (! cptr)
+      return SCPE_ARG;
+    int unitno = (int) (uptr - absi_unit);
+
+    //    ATTACH HIn llll:w.x.y.z:rrrr - connect via UDP to a remote simh host
+
+    t_stat ret;
+    char * pfn;
+    //uint16 imp = 0; // we only support a single attachment to a single IMP
+
+    // If we're already attached, then detach ...
+    if ((uptr->flags & UNIT_ATT) != 0)
+      detach_unit (uptr);
+
+    // Make a copy of the "file name" argument.  udp_create() actually modifies
+    // the string buffer we give it, so we make a copy now so we'll have
+    // something to display in the "SHOW HIn ..." command.
+    pfn = (char *) calloc (CBUFSIZE, sizeof (char));
+    if (pfn == NULL)
+      return SCPE_MEM;
+    strncpy (pfn, cptr, CBUFSIZE);
+
+    // Create the UDP connection.
+    ret = udp_create (cptr, & absi_state[unitno].link);
+    if (ret != SCPE_OK)
+      {
+        free (pfn);
+        return ret;
+      }
+
+    uptr->flags |= UNIT_ATT;
+    uptr->filename = pfn;
+    return SCPE_OK;
+  }
+
+// Detach (connect) ...
+static t_stat absiDetach (UNIT * uptr)
+  {
+    int unitno = (int) (uptr - absi_unit);
+    t_stat ret;
+    if ((uptr->flags & UNIT_ATT) == 0)
+      return SCPE_OK;
+    if (absi_state[unitno].link == NOLINK)
+      return SCPE_OK;
+
+    ret = udp_release (absi_state[unitno].link);
+    if (ret != SCPE_OK)
+      return ret;
+    absi_state[unitno].link = NOLINK;
+    uptr->flags &= ~ (unsigned int) UNIT_ATT;
+    free (uptr->filename);
+    uptr->filename = NULL;
+    return SCPE_OK;
+  }
 
 
 DEVICE absi_dev = {
@@ -109,11 +194,6 @@ DEVICE absi_dev = {
     NULL
 };
 
-static struct absi_state
-  {
-    int link;
-  } absi_state[N_ABSI_UNITS_MAX];
-
 /*
  * absi_init()
  *
@@ -128,24 +208,11 @@ void absi_init (void)
       absi_state[i].link = NOLINK;
   }
 
-static t_stat absi_reset (UNUSED DEVICE * dptr)
-  {
-    //absiResetRX (0);
-    //absiResetTX (0);
-    return SCPE_OK;
-  }
-
 static int absi_cmd (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = &iomChanData[iomUnitIdx][chan];
-    //struct device * d = &cables->cablesFromIomToDev[iomUnitIdx].
-    //                  devices[chan][p->IDCW_DEV_CODE];
-    //uint devUnitIdx = d->devUnitIdx;
-    //UNIT * unitp = &absi_unit[devUnitIdx];
-    //int absi_unit_num = ABSIUNIT_NUM (unitp);
-
-sim_printf ("absi_cmd CHAN_CMD %o DEV_CODE %o DEV_CMD %o COUNT %o\n", 
-p->IDCW_CHAN_CMD, p->IDCW_DEV_CODE, p->IDCW_DEV_CMD, p->IDCW_COUNT);
+    iom_chan_data_t * p = &iom_chan_data[iomUnitIdx][chan];
+// sim_printf ("absi_cmd CHAN_CMD %o DEV_CODE %o DEV_CMD %o COUNT %o\n", 
+//p->IDCW_CHAN_CMD, p->IDCW_DEV_CODE, p->IDCW_DEV_CMD, p->IDCW_COUNT);
     sim_debug (DBG_TRACE, & absi_dev, 
                "absi_cmd CHAN_CMD %o DEV_CODE %o DEV_CMD %o COUNT %o\n", 
                p->IDCW_CHAN_CMD, p->IDCW_DEV_CODE, p->IDCW_DEV_CMD, 
@@ -198,11 +265,12 @@ sim_printf ("absi host switch up\n");
 
         default:
           {
-            sim_warn ("absi daze %o\n", p->IDCW_DEV_CMD);
+            if (p->IDCW_DEV_CMD != 051) // ignore bootload console probe
+              sim_warn ("absi daze %o\n", p->IDCW_DEV_CMD);
             p->stati = 04501; // cmd reject, invalid opcode
             p->chanStatus = chanStatIncorrectDCW;
           }
-          break;
+          return IOM_CMD_ERROR;
       }
 
     if (p->IDCW_CONTROL == 3) // marker bit set
@@ -212,8 +280,8 @@ sim_printf ("absi marker\n");
       }
 
     if (p->IDCW_CHAN_CMD == 0)
-      return 2; // don't do DCW list
-    return 0;
+      return IOM_CMD_NO_DCW; // don't do DCW list
+    return IOM_CMD_OK;
   }
 
 // 1 ignored command
@@ -221,7 +289,7 @@ sim_printf ("absi marker\n");
 // -1 problem
 int absi_iom_cmd (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData[iomUnitIdx][chan];
+    iom_chan_data_t * p = & iom_chan_data[iomUnitIdx][chan];
 // Is it an IDCW?
 
     if (p->DCW_18_20_CP == 7)
@@ -229,10 +297,10 @@ int absi_iom_cmd (uint iomUnitIdx, uint chan)
         return absi_cmd (iomUnitIdx, chan);
       }
     sim_printf ("%s expected IDCW\n", __func__);
-    return -1;
+    return IOM_CMD_ERROR;
   }
 
-void absiProcessEvent (void)
+void absi_process_event (void)
   {
 #define psz 17000
     uint16_t pkt[psz];
@@ -269,80 +337,6 @@ void absiProcessEvent (void)
               }
           }
       }
-  }
-
-static t_stat absi_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)
-  {
-    sim_printf ("Number of ABSIunits in system is %d\n", absi_dev.numunits);
-    return SCPE_OK;
-  }
-
-static t_stat absi_set_nunits (UNUSED UNIT * uptr, UNUSED int32 value, const char * cptr, UNUSED void * desc)
-  {
-    if (! cptr)
-      return SCPE_ARG;
-    int n = atoi (cptr);
-    if (n < 1 || n > N_ABSI_UNITS_MAX)
-      return SCPE_ARG;
-    absi_dev.numunits = (uint32) n;
-    return SCPE_OK;
-  }
-
-t_stat absiAttach (UNIT * uptr, const char * cptr)
-  {
-    if (! cptr)
-      return SCPE_ARG;
-    int unitno = (int) (uptr - absi_unit);
-
-    //    ATTACH HIn llll:w.x.y.z:rrrr - connect via UDP to a remote simh host
-
-    t_stat ret;
-    char * pfn;
-    //uint16 imp = 0; // we only support a single attachment to a single IMP
-
-    // If we're already attached, then detach ...
-    if ((uptr->flags & UNIT_ATT) != 0)
-      detach_unit (uptr);
-
-    // Make a copy of the "file name" argument.  udp_create() actually modifies
-    // the string buffer we give it, so we make a copy now so we'll have
-    // something to display in the "SHOW HIn ..." command.
-    pfn = (char *) calloc (CBUFSIZE, sizeof (char));
-    if (pfn == NULL)
-      return SCPE_MEM;
-    strncpy (pfn, cptr, CBUFSIZE);
-
-    // Create the UDP connection.
-    ret = udp_create (cptr, & absi_state[unitno].link);
-    if (ret != SCPE_OK)
-      {
-        free (pfn);
-        return ret;
-      }
-
-    uptr->flags |= UNIT_ATT;
-    uptr->filename = pfn;
-    return SCPE_OK;
-  }
-
-// Detach (connect) ...
-t_stat absiDetach (UNIT * uptr)
-  {
-    int unitno = (int) (uptr - absi_unit);
-    t_stat ret;
-    if ((uptr->flags & UNIT_ATT) == 0)
-      return SCPE_OK;
-    if (absi_state[unitno].link == NOLINK)
-      return SCPE_OK;
-
-    ret = udp_release (absi_state[unitno].link);
-    if (ret != SCPE_OK)
-      return ret;
-    absi_state[unitno].link = NOLINK;
-    uptr->flags &= ~ (unsigned int) UNIT_ATT;
-    free (uptr->filename);
-    uptr->filename = NULL;
-    return SCPE_OK;
   }
 
 

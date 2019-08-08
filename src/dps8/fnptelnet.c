@@ -9,15 +9,18 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
-// XXX remember ot call telnet_free on disconnect
+// XXX remember to call telnet_free on disconnect
 #include <stdio.h>
 
 #include "dps8.h"
 #include "dps8_sys.h"
-#include "dps8_utils.h"
 #include "dps8_faults.h"
+#include "dps8_scu.h"
+#include "dps8_iom.h"
+#include "dps8_cable.h"
 #include "dps8_cpu.h"
 #include "dps8_fnp2.h"
+#include "dps8_utils.h"
 #include "fnpuv.h"
 #include "fnptelnet.h"
 
@@ -34,6 +37,13 @@ static const telnet_telopt_t my_telopts[] = {
     { -1, 0, 0 }
   };
 
+static const telnet_telopt_t my_3270telopts[] = {
+    { TELNET_TELOPT_TTYPE,     TELNET_WILL, TELNET_DO },
+    { TELNET_TELOPT_BINARY,    TELNET_WILL, TELNET_DO   },
+    { TELNET_TELOPT_EOR,       TELNET_WILL, TELNET_DO   },
+    { -1, 0, 0 }
+  };
+
 
 static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *user_data)
   {
@@ -42,22 +52,27 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
       {
         case TELNET_EV_DATA:
           {
+            if (! client || ! client->data)
+              {
+                sim_warn ("evHandler TELNET_EV_DATA bad client data\r\n");
+                return;
+              }
             uvClientData * p = (uvClientData *) client->data;
-            if (p -> assoc)
-              {
-                fnpuv_associated_readcb (client, (ssize_t) event->data.size, (unsigned char *)event->data.buffer);
-              }
-            else
-              {
-                fnpuv_unassociated_readcb (client, (ssize_t) event->data.size, (unsigned char *)event->data.buffer);
-              }
+            (* p->read_cb) (client, (ssize_t) event->data.size, (unsigned char *)event->data.buffer);
           }
           break;
 
         case TELNET_EV_SEND:
           {
             //sim_printf ("evHandler: send %zu <%s>\n", event->data.size, event->data.buffer);
-            fnpuv_start_write_actual (client, (char *) event->data.buffer, (ssize_t) event->data.size);
+            //fnpuv_start_write_actual (client, (char *) event->data.buffer, (ssize_t) event->data.size);
+            if (! client || ! client->data)
+              {
+                sim_warn ("evHandler TELNET_EV_SEND bad client data\r\n");
+                return;
+              }
+            uvClientData * p = client->data;
+            (* p->write_actual_cb) (client, (unsigned char *) event->data.buffer, (ssize_t) event->data.size);
           }
           break;
 
@@ -75,6 +90,12 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
               {
                 // DO Suppress Echo
               }
+            else if (event->neg.telopt == TELNET_TELOPT_EOR)
+              {
+//sim_printf ("EOR rcvd\n");
+                //fnpuv_recv_eor (client);
+                // DO EOR
+              }
             else
               {
                 sim_printf ("evHandler DO %d\n", event->neg.telopt);
@@ -90,7 +111,22 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
 
         case TELNET_EV_WILL:
           {
-            sim_printf ("evHandler WILL %d\n", event->neg.telopt);
+            if (event->neg.telopt == TELNET_TELOPT_BINARY)
+              {
+                // WILL BINARY
+              }
+            else if (event->neg.telopt == TELNET_TELOPT_TTYPE)
+              {
+                // WILL TTYPE
+              }
+            else if (event->neg.telopt == TELNET_TELOPT_EOR)
+              {
+                // WILL EOR
+              }
+            else
+              {
+                sim_printf ("evHandler WILL %d\n", event->neg.telopt);
+              }
           }
           break;
 
@@ -108,20 +144,46 @@ static void evHandler (UNUSED telnet_t *telnet, telnet_event_t *event, void *use
 
         case TELNET_EV_IAC:
           {
-            if (event->iac.cmd == 243 || // BRK
-                event->iac.cmd == 244) // IP
+            if (event->iac.cmd == TELNET_BREAK ||
+                event->iac.cmd == TELNET_IP)
               {
-                //sim_printf ("BRK\n");
+                if (! client || ! client->data)
+                  {
+                    sim_warn ("evHandler TELNET_EV_IAC bad client data\r\n");
+                    return;
+                  }
                 uvClientData * p = (uvClientData *) client->data;
                 if (p -> assoc)
                   {
                     fnpuv_associated_brk (client);
                   }
                 else
-                  sim_warn ("liblnet dropping unassociated BRK\n");
+                  sim_warn ("libtelnet dropping unassociated BRK\n");
+              }
+            else if (event->iac.cmd == TELNET_EOR)
+              {
+                fnpuv_recv_eor (client);
               }
             else
-              sim_warn ("liblnet unhandle IAC event %d\n", event->iac.cmd);
+              sim_warn ("libtelnet unhandled IAC event %d\n", event->iac.cmd);
+          }
+          break;
+
+        case TELNET_EV_TTYPE:
+          {
+            if (! client || ! client->data)
+              {
+                sim_warn ("evHandler TELNET_EV_IAC bad client data\r\n");
+                return;
+              }
+            uvClientData * p = (uvClientData *) client->data;
+            p->ttype = strdup (event->ttype.name);
+          }
+          break;
+
+        case TELNET_EV_SUBNEGOTIATION:
+          {
+            // 
           }
           break;
 
@@ -148,6 +210,33 @@ void * ltnConnect (uv_tcp_t * client)
     return p;
   }
 
+void * ltnConnect3270 (uv_tcp_t * client)
+  {
+    void * p = (void *) telnet_init (my_3270telopts, evHandler, 0, client);
+    if (! p)
+      {
+        sim_warn ("telnet_init failed\n");
+      }
+
+// This behavior is copied from Hercules.
+    telnet_negotiate (p, TELNET_DO, (unsigned char) TELNET_TELOPT_TTYPE);
+    telnet_begin_sb (p, TELNET_TELOPT_TTYPE);
+    const char ttype [1] = { 1 };
+    telnet_send (p, ttype, 1);
+    telnet_finish_sb (p);
+    telnet_negotiate (p, TELNET_WILL, (unsigned char) TELNET_TELOPT_BINARY);
+    telnet_negotiate (p, TELNET_DO, (unsigned char) TELNET_TELOPT_BINARY);
+    telnet_negotiate (p, TELNET_WILL, (unsigned char) TELNET_TELOPT_EOR);
+    telnet_negotiate (p, TELNET_DO, (unsigned char) TELNET_TELOPT_EOR);
+
+    return p;
+  }
+
+void ltnEOR (telnet_t * tclient)
+  {
+    telnet_iac (tclient, TELNET_EOR);
+  }
+
 void ltnRaw (telnet_t * UNUSED tclient)
   {
     //telnet_negotiate (tclient, TELNET_WILL, TELNET_TELOPT_SGA);
@@ -170,11 +259,14 @@ void fnpTelnetInit (void)
             fnpUnitData[fnpno].MState.line[lineno].telnetp = telnet_init (my_telopts, evHandler, 0, NULL);
             if (! fnpUnitData[fnpno].MState.line[lineno].telnetp)
               {
-                sim_err ("telnet_init failed\n");
+                sim_fatal ("telnet_init failed\n");
               }
           }
       }
 #endif
   }
 
+void fnp3270Init (void)
+  {
+  }
 

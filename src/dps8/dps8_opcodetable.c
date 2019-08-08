@@ -21,19 +21,10 @@
 #include "dps8.h"
 #include "dps8_opcodetable.h"
 
-/*
- * struct opCode {
- * const char *mne;///< mnemonic
- * int32 flags;    ///< various and sundry flags
- * int32 mods;     ///< disallowed addr mods
- * int32 ndes;     ///< number of operand descriptor words for instruction (mw EIS)
- * };
-
- */
-
 #define _EIS_ NO_TAG | NO_XED | NO_RPT | IGN_B29
 
-struct opCode NonEISopcodes[01000] = {
+struct opcode_s opcodes10[02000] = {
+// NonEIS
     /* 000 */
     {NULL, 0, 0, 0, 0},
     {"mme", NO_RPT, 0, 0, 0},
@@ -332,21 +323,21 @@ struct opCode NonEISopcodes[01000] = {
     {"ufa", READ_OPERAND, NO_CSS, 0, ru_AQ},
     {NULL, 0, 0, 0, 0},
     {"dufa", READ_YPAIR, NO_DDCSS, 0, ru_AQ},
-    {"sxl0", RMW | NO_RPT | NO_RPL, NO_DDCSS, 0, ru_X0},
-    {"sxl1", RMW | NO_RPL, NO_DDCSS, 0, ru_X1},
-    {"sxl2", RMW | NO_RPL, NO_DDCSS, 0, ru_X2},
-    {"sxl3", RMW | NO_RPL, NO_DDCSS, 0, ru_X3},
-    {"sxl4", RMW | NO_RPL, NO_DDCSS, 0, ru_X4},
-    {"sxl5", RMW | NO_RPL, NO_DDCSS, 0, ru_X5},
-    {"sxl6", RMW | NO_RPL, NO_DDCSS, 0, ru_X6},
-    {"sxl7", RMW | NO_RPL, NO_DDCSS, 0, ru_X7},
+    {"sxl0", STORE_OPERAND | NO_RPT | NO_RPL, NO_DDCSS, 0, ru_X0},
+    {"sxl1", STORE_OPERAND | NO_RPL, NO_DDCSS, 0, ru_X1},
+    {"sxl2", STORE_OPERAND | NO_RPL, NO_DDCSS, 0, ru_X2},
+    {"sxl3", STORE_OPERAND | NO_RPL, NO_DDCSS, 0, ru_X3},
+    {"sxl4", STORE_OPERAND | NO_RPL, NO_DDCSS, 0, ru_X4},
+    {"sxl5", STORE_OPERAND | NO_RPL, NO_DDCSS, 0, ru_X5},
+    {"sxl6", STORE_OPERAND | NO_RPL, NO_DDCSS, 0, ru_X6},
+    {"sxl7", STORE_OPERAND | NO_RPL, NO_DDCSS, 0, ru_X7},
     {"stz", STORE_OPERAND | NO_RPL, NO_DUDL, 0, ru_none},
     {"smic", PREPARE_CA | PRIV_INS, NO_DDCSS, 0, 0},
     {"scpr", STORE_YPAIR | NO_TAG | PRIV_INS | NO_RPT, 0, 0, 0},
     {NULL, 0, 0, 0, 0},
     {"stt", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, 0},
     {"fst", STORE_OPERAND | NO_RPL, NO_DDCSS, 0, ru_A},
-    {"ste", RMW | NO_RPL, NO_DDCSS, 0, ru_none},
+    {"ste", STORE_OPERAND | NO_RPL, NO_DDCSS, 0, ru_none},
     {"dfst", STORE_YPAIR | NO_RPL, NO_DDCSS, 0, ru_AQ},
     {NULL, 0, 0, 0, 0},
     {"fmp", READ_OPERAND, NO_CSS, 0, ru_AQ},
@@ -406,9 +397,9 @@ struct opCode NonEISopcodes[01000] = {
     {"sprp5", STORE_OPERAND | NO_BAR | NO_RPT, NO_DDCSS, 0, 0},
     {"sprp6", STORE_OPERAND | NO_BAR | NO_RPT, NO_DDCSS, 0, 0},
     {"sprp7", STORE_OPERAND | NO_BAR | NO_RPT, NO_DDCSS, 0, 0},
-    {"sbar", RMW | NO_RPT, NO_DDCSS, 0, 0},
-    {"stba", RMW | NO_TAG | NO_RPT, 0, 0, ru_A},
-    {"stbq", RMW | NO_TAG | NO_RPT, 0, 0, ru_Q},
+    {"sbar", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, 0},
+    {"stba", STORE_OPERAND | NO_TAG | NO_RPT, 0, 0, ru_A},
+    {"stbq", STORE_OPERAND | NO_TAG | NO_RPT, 0, 0, ru_Q},
     {"smcm", PREPARE_CA | PRIV_INS | NO_RPL, NO_DDCSS, 0, 0},
     {"stc1", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, 0},
     {NULL, 0, 0, 0, 0},
@@ -439,7 +430,7 @@ struct opCode NonEISopcodes[01000] = {
     {"tpl", TRANSFER_INS | NO_RPT, NO_DDCSS, 0, ru_none},
     {NULL, 0, 0, 0, 0},
     {"ttf", TRANSFER_INS | NO_RPT, NO_DDCSS, 0, ru_none},
-    {"rtcd", TRANSFER_INS | NO_RPT | NO_BAR, NO_DDCSS, 0, 0},
+    {"rtcd", NO_RPT | NO_BAR, NO_DDCSS, 0, 0},
     {NULL, 0, 0, 0, 0},
     {NULL, 0, 0, 0, 0},
     {"rcu", READ_YBLOCK8 | PRIV_INS | NO_RPT, NO_DDCSS, 0, 0},
@@ -455,7 +446,7 @@ struct opCode NonEISopcodes[01000] = {
     {"eax5", PREPARE_CA | NO_RPL, NO_DUDL, 0, ru_X5},
     {"eax6", PREPARE_CA | NO_RPL, NO_DUDL, 0, ru_X6},
     {"eax7", PREPARE_CA | NO_RPL, NO_DUDL, 0, ru_X7},
-    {"ret", TRANSFER_INS | NO_RPT, NO_DDCSS, 0, 0},
+    {"ret", NO_RPT, NO_DDCSS, 0, 0},
     {NULL, 0, 0, 0, 0},
     {NULL, 0, 0, 0, 0},
     {"rccl", PREPARE_CA | NO_BAR | NO_RPT, NO_DDCSS, 0, 0},
@@ -508,7 +499,7 @@ struct opCode NonEISopcodes[01000] = {
     {"tra", TRANSFER_INS | NO_RPT, NO_DDCSS, 0, 0},
     {NULL, 0, 0, 0, 0},
     {NULL, 0, 0, 0, 0},
-    // CALL6 must fetch the destination instruction to force doAppendCycle
+    // CALL6 must fetch the destination instruction to force do_append_cycle
     // to do all of the ring checks and processing.
     //{"call6", PREPARE_CA | TRANSFER_INS | CALL6_INS | NO_RPT, NO_DDCSS, 0},
     {"call6", TRANSFER_INS | CALL6_INS | NO_RPT, NO_DDCSS, 0, 0},
@@ -532,19 +523,19 @@ struct opCode NonEISopcodes[01000] = {
     {"als", PREPARE_CA | NO_RPL, NO_DDCSS, 0, ru_A},
     {"qls", PREPARE_CA | NO_RPL, NO_DDCSS, 0, ru_Q},
     {"lls", PREPARE_CA | NO_RPL, NO_DDCSS, 0, ru_AQ},
-    {"stx0", RMW | NO_RPT | NO_RPL, NO_DDCSS, 0, ru_X0},
-    {"stx1", RMW | NO_RPL, NO_DDCSS, 0, ru_X1},
-    {"stx2", RMW | NO_RPL, NO_DDCSS, 0, ru_X2},
-    {"stx3", RMW | NO_RPL, NO_DDCSS, 0, ru_X3},
-    {"stx4", RMW | NO_RPL, NO_DDCSS, 0, ru_X4},
-    {"stx5", RMW | NO_RPL, NO_DDCSS, 0, ru_X5},
-    {"stx6", RMW | NO_RPL, NO_DDCSS, 0, ru_X6},
-    {"stx7", RMW | NO_RPL, NO_DDCSS, 0, ru_X7},
-    {"stc2", RMW | NO_RPT, NO_DDCSS, 0, 0},
-    {"stca", RMW | NO_TAG | NO_RPT, 0, 0, ru_A},
-    {"stcq", RMW | NO_TAG | NO_RPT, 0, 0, ru_Q},
+    {"stx0", STORE_OPERAND | NO_RPT | NO_RPL, NO_DDCSS, 0, ru_X0},
+    {"stx1", STORE_OPERAND | NO_RPL, NO_DDCSS, 0, ru_X1},
+    {"stx2", STORE_OPERAND | NO_RPL, NO_DDCSS, 0, ru_X2},
+    {"stx3", STORE_OPERAND | NO_RPL, NO_DDCSS, 0, ru_X3},
+    {"stx4", STORE_OPERAND | NO_RPL, NO_DDCSS, 0, ru_X4},
+    {"stx5", STORE_OPERAND | NO_RPL, NO_DDCSS, 0, ru_X5},
+    {"stx6", STORE_OPERAND | NO_RPL, NO_DDCSS, 0, ru_X6},
+    {"stx7", STORE_OPERAND | NO_RPL, NO_DDCSS, 0, ru_X7},
+    {"stc2", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, 0},
+    {"stca", STORE_OPERAND | NO_TAG | NO_RPT, 0, 0, ru_A},
+    {"stcq", STORE_OPERAND | NO_TAG | NO_RPT, 0, 0, ru_Q},
     {"sreg", STORE_YBLOCK8 | NO_RPT, NO_DDCSS, 0, MASK10},
-    {"sti", RMW | NO_RPT, NO_DDCSS, 0, 0},
+    {"sti", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, 0},
     {"sta", STORE_OPERAND | NO_RPL, NO_DUDL, 0, ru_A},
     {"stq", STORE_OPERAND | NO_RPL, NO_DUDL, 0, ru_Q},
     {"staq", STORE_YPAIR | NO_RPL, NO_DDCSS, 0, ru_AQ},
@@ -563,11 +554,8 @@ struct opCode NonEISopcodes[01000] = {
     {"gtb", PREPARE_CA | NO_RPL, 0, 0, ru_A},
     {"alr", PREPARE_CA | NO_RPL, NO_DDCSS, 0, ru_A},
     {"qlr", PREPARE_CA | NO_RPL, NO_DDCSS, 0, ru_Q},
-    {"llr", PREPARE_CA | NO_RPL, NO_DDCSS, 0, ru_AQ}
-
-};
-
-struct opCode EISopcodes[01000] = {
+    {"llr", PREPARE_CA | NO_RPL, NO_DDCSS, 0, ru_AQ},
+// EIS
      /* 000 - 017 */ 
     {NULL, 0, 0, 0, 0},
     {NULL, 0, 0, 0, 0},
@@ -1055,14 +1043,14 @@ struct opCode EISopcodes[01000] = {
     {NULL, 0, 0, 0, 0},
     {NULL, 0, 0, 0, 0},
      /* 640 - 657 */ 
-    {"arn0", RMW | NO_RPT, NO_DDCSS, 0, is_DU},
-    {"arn1", RMW | NO_RPT, NO_DDCSS, 0, is_DU},
-    {"arn2", RMW | NO_RPT, NO_DDCSS, 0, is_DU},
-    {"arn3", RMW | NO_RPT, NO_DDCSS, 0, is_DU},
-    {"arn4", RMW | NO_RPT, NO_DDCSS, 0, is_DU},
-    {"arn5", RMW | NO_RPT, NO_DDCSS, 0, is_DU},
-    {"arn6", RMW | NO_RPT, NO_DDCSS, 0, is_DU},
-    {"arn7", RMW | NO_RPT, NO_DDCSS, 0, is_DU},
+    {"arn0", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, is_DU},
+    {"arn1", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, is_DU},
+    {"arn2", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, is_DU},
+    {"arn3", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, is_DU},
+    {"arn4", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, is_DU},
+    {"arn5", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, is_DU},
+    {"arn6", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, is_DU},
+    {"arn7", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, is_DU},
     {"spbp4", STORE_YPAIR | NO_BAR | NO_RPT, NO_DDCSS, 0, 0},
     {"spri5", STORE_YPAIR | NO_BAR | NO_RPT, NO_DDCSS, 0, 0},
     {"spbp6", STORE_YPAIR | NO_BAR | NO_RPT, NO_DDCSS, 0, 0},
@@ -1123,14 +1111,14 @@ struct opCode EISopcodes[01000] = {
     {NULL, 0, 0, 0, 0},
     {NULL, 0, 0, 0, 0},
      /* 740 - 757 */ 
-    {"sar0", RMW | NO_RPT, NO_DDCSS, 0, is_DU},
-    {"sar1", RMW | NO_RPT, NO_DDCSS, 0, is_DU},
-    {"sar2", RMW | NO_RPT, NO_DDCSS, 0, is_DU},
-    {"sar3", RMW | NO_RPT, NO_DDCSS, 0, is_DU},
-    {"sar4", RMW | NO_RPT, NO_DDCSS, 0, is_DU},
-    {"sar5", RMW | NO_RPT, NO_DDCSS, 0, is_DU},
-    {"sar6", RMW | NO_RPT, NO_DDCSS, 0, is_DU},
-    {"sar7", RMW | NO_RPT, NO_DDCSS, 0, is_DU},
+    {"sar0", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, is_DU},
+    {"sar1", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, is_DU},
+    {"sar2", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, is_DU},
+    {"sar3", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, is_DU},
+    {"sar4", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, is_DU},
+    {"sar5", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, is_DU},
+    {"sar6", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, is_DU},
+    {"sar7", STORE_OPERAND | NO_RPT, NO_DDCSS, 0, is_DU},
     {NULL, 0, 0, 0, 0},
     {NULL, 0, 0, 0, 0},
     {NULL, 0, 0, 0, 0},
@@ -1542,8 +1530,9 @@ char *opcodes2text[1024] = {
 #endif
 
 #ifdef PANEL
-word8 insGrp [01000] =
+word8 insGrp [02000] =
   {
+// nonEIS
        GRP_UNKN,  GRP_MISC,  GRP_MISC,  GRP_UNKN,  GRP_MISC,  GRP_PSC,   GRP_UNKN,  GRP_MISC,  // 000-007
        GRP_UNKN,  GRP_MISC,  GRP_MISC,  GRP_MISC,  GRP_UNKN,  GRP_PCS,   GRP_UNKN,  GRP_UNKN,  // 010-017
        GRP_FXA,   GRP_FXA,   GRP_FXA,   GRP_FXA,   GRP_FXA,   GRP_FXA,   GRP_FXA,   GRP_FXA,   // 020-027
@@ -1608,9 +1597,7 @@ word8 insGrp [01000] =
        GRP_FXDMS, GRP_FXDMS, GRP_FXDMS, GRP_FXDMS, GRP_FXDMS, GRP_FXDMS, GRP_FXDMS, GRP_FXDMS, // 750-757
        GRP_PRDML, GRP_PRDML, GRP_PRDML, GRP_PRDML, GRP_PRDML, GRP_PRDML, GRP_PRDML, GRP_PRDML, // 760-767
        GRP_UNKN,  GRP_FXDMR, GRP_FXDMR, GRP_FXDMR, GRP_MISC,  GRP_FXDMR, GRP_FXDMR, GRP_FXDMR, // 770-777
-  };
-word8 eisGrp [01000] =
-  {
+// EIS
        GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  // 000-007
        GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  // 010-017
        GRP_EANM,  GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  GRP_ENM,   GRP_UNKN,  GRP_UNKN,  GRP_UNKN,  // 020-027

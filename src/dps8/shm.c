@@ -28,61 +28,21 @@
 //#include "dps8_utils.h"
 #include "shm.h"
 
-#define MAX_SEGS 256
-static int nsegs = 0;
-static char * seglist [MAX_SEGS];
-
-static void cleanup (void)
-  {
-    //printf ("cleanup\n");
-    for (int i = 0; i < nsegs; i ++)
-      {
-        //printf ("  unlink %s\n", seglist [i]);
-        shm_unlink (seglist [i]);
-      }
-  }
-
-static void addseg (char * name)
-  {
-    if (nsegs >= MAX_SEGS)
-      return;
-    seglist [nsegs ++] = strdup (name);
-    if (nsegs == 1)
-     atexit (cleanup);
-  }
-
-void * create_shm (char * key, pid_t system_pid, size_t size)
+void * create_shm (char * key, size_t size)
   {
     void * p;
     char buf [256];
-#ifndef USE_SID
-    system_pid = 0;
-#endif
-    sprintf (buf, "/dps8m.%u.%s", system_pid, key);
-    shm_unlink (buf);
-    int fd = shm_open (buf, O_CREAT | O_RDWR | O_EXCL, S_IRUSR | S_IWUSR);
+    sprintf (buf, "dps8m.%s", key);
+    int fd = open (buf, O_RDWR | O_CREAT, 0600);
     if (fd == -1)
       {
-#if 1
-        //sim_printf ("create_shm shm_open fail %d\n", errno);
+        printf ("create_shm open fail %d\r\n", errno);
         return NULL;
-#else
-        // It already exists; assume that there was an emulator crash,
-        // and just open it
-//printf ("create_shm EXCL shm_open fail %d\n", errno);
-        fd = shm_open (buf, O_RDWR, S_IRUSR | S_IWUSR);
-        if (fd == -1)
-          {
-            close (fd);
-            //printf ("open_shm shm_open fail %d\n", errno);
-            return NULL;
-          }
-#endif
       }
 
     if (ftruncate (fd, (off_t) size) == -1)
       {
-        //sim_printf ("create_shm  ftruncate  fail %d\n", errno);
+        printf ("create_shm  ftruncate  fail %d\r\n", errno);
         return NULL;
       }
 
@@ -90,44 +50,21 @@ void * create_shm (char * key, pid_t system_pid, size_t size)
 
     if (p == MAP_FAILED)
       {
-        //sim_printf ("create_shm mmap  fail %d\n", errno);
+        printf ("create_shm mmap  fail %d\r\n", errno);
         return NULL;
       }
-    addseg (buf);
-
     return p;
   }
 
-void * open_shm (char * key, pid_t system_pid, size_t size)
+void * open_shm (char * key, size_t size)
   {
     void * p;
     char buf [256];
-#ifndef USE_SID
-    system_pid = 0;
-#endif
-    sprintf (buf, "/dps8m.%u.%s", system_pid, key);
-    // Try to create it; it sucessful, then something is wrong, it should
-    // already exist
-    int fd = shm_open (buf, O_CREAT | O_RDWR | O_EXCL, S_IRUSR | S_IWUSR);
-    if (fd != -1)
-      {
-        close (fd);
-        shm_unlink (buf);
-        //printf ("open_shm shm_open fail %d\n", errno);
-        return NULL;
-      }
-
-    fd = shm_open (buf, O_RDWR, S_IRUSR | S_IWUSR);
+    sprintf (buf, "dps8m.%s", key);
+    int fd = open (buf, O_RDWR, 0600);
     if (fd == -1)
       {
-        //printf ("open_shm shm_open fail %d\n", errno);
-        return NULL;
-      }
-
-    if (ftruncate (fd, (off_t) size) == -1)
-      {
-        //printf ("open_shm ftruncate  fail %d\n", errno);
-        close (fd);
+        printf ("open_shm open fail %d\r\n", errno);
         return NULL;
       }
 
@@ -135,9 +72,8 @@ void * open_shm (char * key, pid_t system_pid, size_t size)
     if (p == MAP_FAILED)
       {
         close (fd);
-        //printf ("open_shm mmap  fail %d\n", errno);
+        printf ("open_shm mmap  fail %d\r\n", errno);
         return NULL;
       }
-    //addseg (buf);
     return p;
   }

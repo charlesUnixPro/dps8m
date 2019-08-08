@@ -29,6 +29,9 @@
 #include "dps8.h"
 #include "dps8_sys.h"
 #include "dps8_faults.h"
+#include "dps8_scu.h"
+#include "dps8_iom.h"
+#include "dps8_cable.h"
 #include "dps8_cpu.h"
 #include "dps8_decimal.h"
 #include "dps8_eis.h"
@@ -133,7 +136,7 @@ decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale, decNu
             decNumberZero(dn);
             //return NULL;
             // XXX check subfault
-            doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "decBCD9ToNumber underflow");
+            doFault (FAULT_IPR, fst_ill_proc, "decBCD9ToNumber underflow");
         }
     }
     else  // -ve scale; +ve exponent
@@ -145,7 +148,7 @@ decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale, decNu
             decNumberZero(dn);
             //return NULL;
             // XXX check subfault
-            doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_PROC}, "decBCD9ToNumber overflow");
+            doFault (FAULT_IPR, fst_ill_proc, "decBCD9ToNumber overflow");
         }
     }
     if (digits==0)
@@ -159,7 +162,7 @@ decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale, decNu
         // got a digit, in nib
         //if (nib>9) {decNumberZero(dn); return NULL;}    // bad digit
         if (nib > 9)
-          doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_DIG}, "decBCD9ToNumber ill digit");
+          doFault (FAULT_IPR, fst_ill_dig, "decBCD9ToNumber ill digit");
         
         if (cut==0)
           *up=(Unit)nib;
@@ -288,9 +291,8 @@ static uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const de
 
 
 
-static unsigned char *getBCD(decNumber *a)
+static unsigned char *getBCD(uint8_t bcd [256], decNumber *a)
 {
-    static uint8_t bcd[256];
     memset(bcd, 0, sizeof(bcd));
     int scale;
     
@@ -299,8 +301,6 @@ static unsigned char *getBCD(decNumber *a)
         bcd[i] += '0';
     
     return (unsigned char *) bcd;
-    
-    
 }
 
 
@@ -315,6 +315,7 @@ static const char *CTN[] = {"CTN9", "CTN4"};
 
 char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf, bool R, bool *OVR, bool *TRUNC)
 {
+    uint8_t bcd [256];
 #if 1
    /*
      * this is for mp3d ISOLTS error (and perhaps others)
@@ -432,7 +433,7 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
     sim_debug (DBG_TRACEEXT, & cpu_dev,
                "\nformatDecimal: adjLen=%d SF=%d S=%s TN=%s\n", adjLen, sf, CS[s], CTN[tn]);
     sim_debug (DBG_TRACEEXT, & cpu_dev,
-               "formatDecimal: %s  r->digits=%d  r->exponent=%d\n", getBCD(r), r->digits, r->exponent);
+               "formatDecimal: %s  r->digits=%d  r->exponent=%d\n", getBCD (bcd, r), r->digits, r->exponent);
     
     if (adjLen < 1)
     {
@@ -475,10 +476,10 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
         {
             decNumberFromInt32(&_sf, sf);
             sim_debug (DBG_TRACEEXT, & cpu_dev,
-                       "formatDecimal(s != CSFL a): %s r->digits=%d r->exponent=%d\n", getBCD(r), r->digits, r->exponent);
+                       "formatDecimal(s != CSFL a): %s r->digits=%d r->exponent=%d\n", getBCD (bcd, r), r->digits, r->exponent);
             r2 = decNumberRescale(&_r2, r, &_sf, set);
             sim_debug (DBG_TRACEEXT, & cpu_dev,
-                       "formatDecimal(s != CSFL b): %s r2->digits=%d r2->exponent=%d\n", getBCD(r2), r2->digits, r2->exponent);
+                       "formatDecimal(s != CSFL b): %s r2->digits=%d r2->exponent=%d\n", getBCD (bcd, r2), r2->digits, r2->exponent);
         }
         else
             //*r2 = *r;
@@ -715,7 +716,7 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
 } 
 #endif
 
-char *formatDecimal(decContext *set, decNumber *r, int nout, int s, int sf, bool R, bool *OVR, bool *TRUNC)
+char *formatDecimal (uint8_t * out, decContext *set, decNumber *r, int nout, int s, int sf, bool R, bool *OVR, bool *TRUNC)
 {
     decNumber _sf;
     decNumber _r2;
@@ -796,7 +797,6 @@ char *formatDecimal(decContext *set, decNumber *r, int nout, int s, int sf, bool
 
     // write out the digits
     // note that even CSFL is aligned right - ISOLTS-810 05d
-    static uint8_t out[256];
     uint8_t tmp[256];
     //int scale;
     //decBCDFromNumber(out, nout, &scale, r);

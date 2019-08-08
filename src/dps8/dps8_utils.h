@@ -1,7 +1,7 @@
 /*
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
- Copyright 2013-2016 by Charles Anthony
+ Copyright 2013-2018 by Charles Anthony
 
  All rights reserved.
 
@@ -11,36 +11,36 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
-// Interface for cfgparse
+// Interface for cfg_parse
 
-typedef struct config_value_list
+typedef struct config_value_list_s
   {
     const char * value_name;
     int64_t value;
   } config_value_list_t;
 
-typedef struct config_list
+typedef struct config_list_s
   {
     const char * name; // opt name
     int64_t min, max; // value limits
     config_value_list_t * value_list;
   } config_list_t;
 
-typedef struct config_state
+typedef struct config_state_s
   {
     char * copy;
     char * statement_save;
   } config_state_t;
 
-int cfgparse (const char * tag, const char * cptr, config_list_t * clist, config_state_t * state, int64_t * result);
-void cfgparse_done (config_state_t * state);
+int cfg_parse (const char * tag, const char * cptr, config_list_t * clist, config_state_t * state, int64_t * result);
+void cfg_parse_done (config_state_t * state);
 
-struct opCode *getIWBInfo(DCDstruct *i);
-char * dumpFlags(word18 flags);
-char *disAssemble(word36 instruction);
-char *getModString(word6 tag);
-word72 convertToWord72(word36 even, word36 odd);
-void convertToWord36(word72 src, word36 *even, word36 *odd);
+struct opcode_s * get_iwb_info (DCDstruct *i);
+char * dump_flags(char * buffer, word18 flags);
+char *disassemble(char * result, word36 instruction);
+char *get_mod_string(char * msg, word6 tag);
+word72 convert_to_word72 (word36 even, word36 odd);
+void convert_to_word36 (word72 src, word36 *even, word36 *odd);
 
 word36 compl36(word36 op1, word18 *flags, bool * ovf);
 word18 compl18(word18 op1, word18 *flags, bool * ovf);
@@ -48,9 +48,6 @@ word18 compl18(word18 op1, word18 *flags, bool * ovf);
 void copyBytes(int posn, word36 src, word36 *dst);
 void copyChars(int posn, word36 src, word36 *dst);
 
-#ifndef QUIET_UNUSED
-word9 getByte(int posn, word36 src);
-#endif
 void putByte(word36 *dst, word9 data, int posn);
 void putChar(word36 *dst, word6 data, int posn);
 
@@ -66,20 +63,6 @@ char *stripquotes(char *s);
 char *trim(char *s);
 char *ltrim(char *s);
 char *rtrim(char *s);
-
-//word36 bitfieldInsert36(word36 a, word36 b, int c, int d);
-//word72 bitfieldInsert72(word72 a, word72 b, int c, int d);
-//word36 bitfieldExtract36(word36 a, int b, int c);
-//word72 bitfieldExtract72(word72 a, int b, int c);
-
-//int bitfieldInsert(int a, int b, int c, int d);
-//int bitfieldExtract(int a, int b, int c);
-char *bin2text(uint64 word, int n);
-void sim_printf( const char * format, ... )    // not really simh, by my impl
-#ifdef __GNUC__
-  __attribute__ ((format (printf, 1, 2)))
-#endif
-;
 
 //
 // getbitsNN/setbitsNN/putbitsNN
@@ -112,6 +95,7 @@ void sim_printf( const char * format, ... )    // not really simh, by my impl
 //           putbits (& data, 0, 18, 1) --> set the high 18 bits to '1'.
 //
 
+#if 0
 static inline word72 getbits72 (word72 x, uint i, uint n)
   {
     // bit 71 is right end, bit zero is 72nd from the right
@@ -124,6 +108,7 @@ static inline word72 getbits72 (word72 x, uint i, uint n)
      else
       return (x >> (unsigned) shift) & ~ (~0U << n);
   }
+#endif
 
 static inline word36 getbits36(word36 x, uint i, uint n) {
     // bit 35 is right end, bit zero is 36th from the right
@@ -789,11 +774,31 @@ static inline void putbits72 (word72 * x, uint p, uint n, word72 val)
         sim_printf ("putbits72: bad args (pos=%d,n=%d)\n", p, n);
         return;
       }
+#ifdef NEED_128
+// n low bits on
+    uint64_t lowmask = 0;
+    uint64_t highmask = 0;
+    if (n >= 64)
+      {
+        lowmask = MASK64;
+        highmask = ~ ((~(uint64_t)0) << n);
+        highmask &= 0377U;
+      }
+    else
+      {
+        lowmask = ~ ((~(uint64_t)0) << n);
+      }
+    word72 mask = construct_128 (highmask, lowmask);
+    mask = lshift_128 (mask, (uint) shift);
+    word72 notmask = complement_128 (mask);
+    * x = or_128 (and_128 (* x, notmask), and_128 (lshift_128 (val, 72 - p - n), mask));
+#else
     word72 mask = ~ ((~(word72)0) << n);  // n low bits on
     mask <<= (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
     // caller may provide val that is too big, e.g., a word with all bits
     // set to one, so we mask val
     * x = (* x & ~mask) | ((val & MASKBITS72 (n)) << (72 - p - n));
+#endif
     return;
   }
 
@@ -851,45 +856,12 @@ static inline void clrmask (word36 * v, word36 mask)
 
 char * strdupesc (const char * str);
 word36 extr36 (uint8 * bits, uint woffset);
-#ifndef QUIET_UNUSED
-word9 extr9 (uint8 * bits, uint coffset);
-word18 extr18 (uint8 * bits, uint coffset);
-uint64 extr (void * bits, int offset, int nbits);
-#endif
-uint8 getbit (void * bits, int offset);
 void put36 (word36 val, uint8 * bits, uint woffset);
 int extractASCII36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 *wordp);
 int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, uint64 *wordp);
 int insertASCII36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 word);
 int insertWord36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 word);
-void print_int128 (__int128_t n, char * p);
-uint64 sim_timell (void);
-void sim_puts (char * str);
-#if 0
-void sim_err (const char * format, ...) NO_RETURN
-#ifdef __GNUC__
-  __attribute__ ((format (printf, 1, 2)))
-#endif
-;
-#endif
-void sim_printl (const char * format, ...)
-#ifdef __GNUC__
-  __attribute__ ((format (printf, 1, 2)))
-#endif
-;
-#if 0
-void sim_warn (const char * format, ...)
-#ifdef __GNUC__
-  __attribute__ ((format (printf, 1, 2)))
-#endif
-;
-#endif
-void sim_printl (const char * format, ...)
-#ifdef __GNUC__
-  __attribute__ ((format (printf, 1, 2)))
-#endif
-;
-
+void print_int128 (int128 n, char * p);
 word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf);
 word36 Sub36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf);
 word18 Add18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf);
@@ -897,6 +869,9 @@ word18 Sub18b (word18 op1, word18 op2, word1 carryin, word18 flagsToSet, word18 
 word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf);
 word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf);
 
-#ifdef EISTESTJIG
-t_stat eisTest (UNUSED int32 arg, char *buf);
+void timespec_diff(struct timespec *start, struct timespec *stop,
+                   struct timespec *result);
+
+#if defined(THREADZ) || defined(LOCKLESS)
+void currentTR (word27 * trunits, bool * ovf);
 #endif

@@ -1,7 +1,7 @@
 /*
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
- Copyright 2013-2016 by Charles Anthony
+ Copyright 2013-2018 by Charles Anthony
  Copyright 2015 by Eric Swenson
 
  All rights reserved.
@@ -12,25 +12,20 @@
  at https://sourceforge.net/p/dps8m/code/ci/master/tree/LICENSE
  */
 
+#include "hdbg.h"
+
 // simh only explicitly supports a single cpu
 
 #define N_CPU_UNITS 1 // Default
 
 // JMP_ENTRY must be 0, which is the return value of the setjmp initial
 // entry
-#define JMP_ENTRY       0
-#define JMP_REENTRY     1
-#define JMP_RETRY       2   // retry instruction
-#define JMP_NEXT        3   // goto next sequential instruction
-#define JMP_TRA         4   // treat return as if it were a TRA instruction 
-                            // with PPR . IC already set to where to jump to
-#define JMP_STOP        5   // treat return as if it were an attempt to 
-                            // unravel the stack and gracefully exit out of 
-                            // sim_instr
-#define JMP_INTR        6   // Interrupt detected during processing
-#define JMP_SYNC_FAULT_RETURN 7
-#define JMP_REFETCH 8
-#define JMP_RESTART 9
+#define JMP_ENTRY             0
+#define JMP_REENTRY           1
+#define JMP_STOP              2
+#define JMP_SYNC_FAULT_RETURN 3
+#define JMP_REFETCH           4
+#define JMP_RESTART           5
 
 
 // The CPU supports 3 addressing modes
@@ -41,11 +36,7 @@ typedef enum
   {
     ABSOLUTE_mode,
     APPEND_mode,
-#if 0
-    BAR_mode,
-    APPEND_BAR_mode,
-#endif
-  } addr_modes_t;
+  } addr_modes_e;
 
 
 // The control unit of the CPU is always in one of several states. We
@@ -57,26 +48,24 @@ typedef enum
     FAULT_cycle,
     EXEC_cycle,
     FAULT_EXEC_cycle,
-    FAULT_EXEC2_cycle,
     INTERRUPT_cycle,
     INTERRUPT_EXEC_cycle,
-    INTERRUPT_EXEC2_cycle,
     FETCH_cycle,
+    PSEUDO_FETCH_cycle,
     SYNC_FAULT_RTN_cycle,
-    // CA FETCH OPSTORE, DIVIDE_EXEC
-  } cycles_t;
+  } cycles_e;
 
-struct _tpr
+struct tpr_s
   {
     word3   TRR; // The current effective ring number
     word15  TSR; // The current effective segment number
     word6   TBR; // The current bit offset as calculated from ITS and ITP 
                  // pointer pairs.
     word18  CA;  // The current computed address relative to the origin of the 
-                 // segment whose segment number is in TPR . TSR
+                 // segment whose segment number is in TPR.TSR
   };
 
-struct _ppr
+struct ppr_s
   {
     word3   PRR; // The number of the ring in which the process is executing. 
                  // It is set to the effective ring number of the procedure 
@@ -84,11 +73,11 @@ struct _ppr
     word15  PSR; // The segment number of the procedure being executed.
     word1   P;   // A flag controlling execution of privileged instructions. 
                  // Its value is 1 (permitting execution of privileged 
-                 // instructions) if PPR . PRR is 0 and the privileged bit in 
-                 // the segment descriptor word (SDW . P) for the procedure is 
+                 // instructions) if PPR.PRR is 0 and the privileged bit in 
+                 // the segment descriptor word (SDW.P) for the procedure is 
                  // 1; otherwise, its value is 0.
     word18  IC;  // The word offset from the origin of the procedure segment
-                 //  to the current instruction. (same as PPR . IC)
+                 //  to the current instruction. (same as PPR.IC)
   };
 
 /////
@@ -106,10 +95,10 @@ struct _ppr
 // (eawpn) instruction, then further modified in address register form
 // (assuming character size k) with the Add k-Bit Displacement to Address
 // Register (akbd) instruction, and finally invoked in operand descriptor form
-// by the use of MF . AR in an EIS multiword instruction .
+// by the use of MF.AR in an EIS multiword instruction .
 //
 // The reader's attention is directed to the presence of two bit number
-// registers, PRn . BITNO and ARn . BITNO. Because the Multics processor was
+// registers, PRn.BITNO and ARn.BITNO. Because the Multics processor was
 // implemented as an enhancement to an existing design, certain apparent
 // anomalies appear. One of these is the difference in the handling of
 // unaligned data items by the appending unit and decimal unit. The decimal
@@ -130,35 +119,35 @@ struct _ppr
 // this into account.
 // 
 //     * For Pointer Registers:
-//       - PRn . WORDNO The offset in words from the base or origin of the 
+//       - PRn.WORDNO The offset in words from the base or origin of the 
 //                    segment to the data item.
-//       - PRn . BITNO The number of the bit within PRn . WORDNO that is the
+//       - PRn.BITNO The number of the bit within PRn.WORDNO that is the
 //                   first bit of the data item. Data items aligned on word 
 //                   boundaries always have the value 0. Unaligned data items 
 //                   may have any value in the range [1,35].
 // 
 //     * For Address Registers:
-//       - ARn . WORDNO The offset in words relative to the current addressing 
-//                    base referent (segment origin, BAR . BASE, or absolute 0 
+//       - ARn.WORDNO The offset in words relative to the current addressing 
+//                    base referent (segment origin, BAR.BASE, or absolute 0 
 //                    depending on addressing mode) to the word containing the 
 //                    next data item element.
-//       - ARn . CHAR   The number of the 9-bit byte within ARn . WORDNO 
+//       - ARn.CHAR   The number of the 9-bit byte within ARn.WORDNO 
 //                    containing the first bit of the next data item element.
-//       - ARn . BITNO  The number of the bit within ARn . CHAR that is the
+//       - ARn.BITNO  The number of the bit within ARn.CHAR that is the
 //                    first bit of the next data item element.
 //
 
-struct _par
+struct par_s
   {
     word15  SNR;    // The segment number of the segment containing the data 
-                    //item described by the pointer register.
+                    // item described by the pointer register.
     word3   RNR;    // The final effective ring number value calculated during
                     // execution of the instruction that last loaded the PR.
 
-    word6  PR_BITNO;  // The number of the bit within PRn . WORDNO that is the 
-                    // first bit of the data item. Data items aligned on word 
-                    // boundaries always have the value 0. Unaligned data
-                    //  items may have any value in the range [1,35].
+    word6  PR_BITNO;  // The number of the bit within PRn.WORDNO that is the 
+                      // first bit of the data item. Data items aligned on word 
+                      // boundaries always have the value 0. Unaligned data
+                      //  items may have any value in the range [1,35].
     word2   AR_CHAR;
     word4   AR_BITNO;
 
@@ -166,12 +155,12 @@ struct _par
                     // segment to the data item.
   };
 
-// N.B. remember there are subtle differences between AR/PR . BITNO
+// N.B. remember there are subtle differences between AR/PR.BITNO
 
 #define AR    PAR
 #define PR    PAR
 
-struct _bar
+struct bar_s
   {
     word9 BASE;     // Contains the 9 high-order bits of an 18-bit address 
                     // relocation constant. The low-order bits are generated 
@@ -183,9 +172,9 @@ struct _bar
                     // 0 is truly 0, indicating a null memory range.
   };
 
-struct _dsbr
+struct dsbr_s
   {
-    word24  ADDR;   // If DSBR . U = 1, the 24-bit absolute main memory address
+    word24  ADDR;   // If DSBR.U = 1, the 24-bit absolute main memory address
                     //  of the origin of the current descriptor segment;
                     //  otherwise, the 24-bit absolute main memory address of
                     //  the page table for the current descriptor segment.
@@ -206,10 +195,10 @@ struct _dsbr
 // the descriptor segment whose description is currently loaded into the
 // descriptor segment base register (DSBR).
 
-struct _sdw
+struct sdw_s
   {
     word24  ADDR;    // The 24-bit absolute main memory address of the page
-                     //  table for the target segment if SDWAM . U = 0;
+                     //  table for the target segment if SDWAM.U = 0;
                      //  otherwise, the 24-bit absolute main memory address
                      //  of the origin of the target segment.
     word3   R1;      // Upper limit of read/write ring bracket
@@ -228,21 +217,21 @@ struct _sdw
                      //  access requests are allowed.
     word1   P;       // Privileged flag bit. If this bit is set ON, privileged
                      //  instructions from the segment may be executed if
-                     //  PPR . PRR is 0.
+                     //  PPR.PRR is 0.
     word1   U;       // Unpaged flag bit. If this bit is set ON, the segment
-                     //  is unpaged and SDWAM . ADDR is the 24-bit absolute
+                     //  is unpaged and SDWAM.ADDR is the 24-bit absolute
                      //  main memory address of the origin of the segment. If
                      //  this bit is set OFF, the segment is paged andis
-                     //  SDWAM . ADDR the 24-bit absolute main memory address of the page
-                     //  table for the segment.
+                     //  SDWAM.ADDR the 24-bit absolute main memory address of 
+                     //  the page table for the segment.
     word1   G;       // Gate control bit. If this bit is set OFF, calls and
                      //  transfers into the segment must be to an offset no
-                     //  greater than the value of SDWAM . CL as described
+                     //  greater than the value of SDWAM.CL as described
                      //  below.
     word1   C;       // Cache control bit. If this bit is set ON, data and/or
                      //  instructions from the segment may be placed in the
                      //  cache memory.
-    word14  EB;      // Call limiter (entry bound) value. If SDWAM . G is set
+    word14  EB;      // Call limiter (entry bound) value. If SDWAM.G is set
                      //  OFF, transfers of control into the segment must be to
                      //  segment addresses no greater than this value.
     word15  POINTER; // The effective segment number used to fetch this SDW
@@ -254,7 +243,7 @@ struct _sdw
     word2   FC;      // Directed fault number for page fault.
     word1   FE;      // Full/empty bit. If this bit is set ON, the SDW in the
                      //  register is valid. If this bit is set OFF, a hit is
-                     //  not possible. All SDWAM . F bits are set OFF by the
+                     //  not possible. All SDWAM.F bits are set OFF by the
                      //  instructions that clear the SDWAM.
 #ifdef DPS8M
     word6   USE;
@@ -262,7 +251,7 @@ struct _sdw
 #ifdef L68
     word4   USE;
 #endif
-                     // Usage count for the register. The SDWAM . USE field is
+                     // Usage count for the register. The SDWAM.USE field is
                      //  used to maintain a strict FIFO queue order among the
                      //  SDWs. When an SDW is matched, its USE value is set to
                      //  15 (newest) on the DPS/L68 and to 63 on the DPS 8M,
@@ -271,17 +260,17 @@ struct _sdw
                      //  and the queue is reordered.
   };
 
-typedef struct _sdw _sdw;
-typedef struct _sdw _sdw0;
+typedef struct sdw_s sdw_s;
+typedef struct sdw_s sdw0_s;
 
 #if 0
 // in-core SDW (i.e. not cached, or in SDWAM)
 
-struct _sdw0
+struct sdw0_s
   {
     // even word
     word24  ADDR;    // The 24-bit absolute main memory address of the page
-                     //  table for the target segment if SDWAM . U = 0;
+                     //  table for the target segment if SDWAM.U = 0;
                      //  otherwise, the 24-bit absolute main memory address of
                      //  the origin of the target segment.
     word3   R1;      // Upper limit of read/write ring bracket
@@ -307,16 +296,16 @@ struct _sdw0
                      //  access requests are allowed.
     word1   P;       // Privileged flag bit. If this bit is set ON,
                      //  privileged instructions from the segment may be
-                     //  executed if PPR . PRR is 0.
+                     //  executed if PPR.PRR is 0.
     word1   U;       // Unpaged flag bit. If this bit is set ON, the segment
-                     //  is unpaged and SDWAM . ADDR is the 24-bit absolute
+                     //  is unpaged and SDWAM.ADDR is the 24-bit absolute
                      //  main memory address of the origin of the segment.
                      //  If this bit is set OFF, the segment is paged and
-                     //  SDWAM . ADDR is the 24-bit absolute main memory
+                     //  SDWAM.ADDR is the 24-bit absolute main memory
                      //  address of the page table for the segment.
     word1   G;       // Gate control bit. If this bit is set OFF, calls and
                      //  transfers into the segment must be to an offset no
-                     //  greater than the value of SDWAM . CL as described
+                     //  greater than the value of SDWAM.CL as described
                      //  below.
     word1   C;       // Cache control bit. If this bit is set ON, data and/or
                      //  instructions from the segment may be placed in the
@@ -325,13 +314,13 @@ struct _sdw0
                      //  an offset less than EB if G=0
 };
 
-typedef struct _sdw0 _sdw0;
+typedef struct sdw0_s sdw0_s;
 #endif
 
 
 // PTW as used by APU
 
-struct _ptw
+struct ptw_s
  {
     word18  ADDR;    // The 18 high-order bits of the 24-bit absolute
                      //  main memory address of the page.
@@ -348,11 +337,11 @@ struct _ptw
     word15  POINTER; // The effective segment number used to fetch this PTW
                      //  from main memory.
     word12  PAGENO;  // The 12 high-order bits of the 18-bit computed
-                     //  address (TPR . CA) used to fetch this PTW from main
+                     //  address (TPR.CA) used to fetch this PTW from main
                      //  memory.
     word1   FE;      // Full/empty bit. If this bit is set ON, the PTW in
                      //  the register is valid. If this bit is set OFF, a
-                     //  hit is not possible. All PTWAM . F bits are set OFF
+                     //  hit is not possible. All PTWAM.F bits are set OFF
                      //  by the instructions that clear the PTWAM.
 #ifdef DPS8M
     word6   USE;
@@ -361,7 +350,7 @@ struct _ptw
 #ifdef L68
     word4   USE;
 #endif
-                     // Usage count for the register. The PTWAM . USE field
+                     // Usage count for the register. The PTWAM.USE field
                      //  is used to maintain a strict FIFO queue order
                      //  among the PTWs. When an PTW is matched its USE 
                      // value is set to 15 (newest) on the DPS/L68 and to
@@ -372,13 +361,13 @@ struct _ptw
     
   };
 
-typedef struct _ptw _ptw;
-typedef struct _ptw _ptw0;
+typedef struct ptw_s ptw_s;
+typedef struct ptw_s ptw0_s;
 
 #if 0
 // in-core PTW
 
-struct _ptw0
+struct ptw0_s
   {
     word18  ADDR;   // The 18 high-order bits of the 24-bit absolute main
                     //  memory address of the page.
@@ -391,28 +380,34 @@ struct _ptw0
     
   };
 
-typedef struct _ptw0 _ptw0;
+typedef struct ptw0_s ptw0_s;
 #endif
 
 //
 // Cache Mode Regsiter
 //
 
-struct _cache_mode_register
+struct cache_mode_register_s
   {
     word15   cache_dir_address;
     word1    par_bit;
     word1    lev_ful;
-    word1    csh1_on; // 1: The lower half of the cache memory is active and enabled as per the state of inst_on
-    word1    csh2_on; // 1: The upper half of the cache memory is active and enabled as per the state of inst_on
+    word1    csh1_on; // 1: The lower half of the cache memory is active and 
+                      // enabled as per the state of inst_on
+    word1    csh2_on; // 1: The upper half of the cache memory is active and 
+                      // enabled as per the state of inst_on
 #ifdef L68
-    word1    opnd_on; // 1: The cache memory (if active) is used for operands.
+    word1    opnd_on; // 1: The cache memory (if active) is used for
+                      //  operands.
 #endif
-    word1    inst_on; // 1: The cache memory (if active) is used for instructions.
-    // When the cache-to-register mode flag (bit 59 of the cache mode register) is set ON, the
-    // processor is forced to fetch the operands of all double-precision operations unit load operations
-    // from the cache memory. Y0,12 are ignored, Y15,21 select a column, and Y13,14 select a level. All
-    // other operations (e.g., instruction fetches, single-precision operands, etc.) are treated normally.
+    word1    inst_on; // 1: The cache memory (if active) is used for
+                      //  instructions.
+    // When the cache-to-register mode flag (bit 59 of the cache mode register)
+    // is set ON, the processor is forced to fetch the operands of all
+    // double-precision operations unit load operations from the cache memory.
+    // Y0,12 are ignored, Y15,21 select a column, and Y13,14 select a level.
+    // All other operations (e.g., instruction fetches, single-precision
+    // operands, etc.) are treated normally.
     word1    csh_reg;
     word1    str_asd;
     word1    col_ful;
@@ -428,89 +423,68 @@ struct _cache_mode_register
                         // processor is initialized.
   };
 
-typedef struct _cache_mode_register _cache_mode_register;
+typedef struct cache_mode_register_s cache_mode_register_s;
 
-#if 1
-typedef struct mode_register
+typedef struct mode_register_s
   {
     word36 r;
 #ifdef L68
-    word15 FFV;
-    word1 OC_TRAP;
-    word1 ADR_TRAP;
-    word9 OPCODE;
-    word1 OPCODEX;
+                    //  8M      L68
+    word15 FFV;     //  0       FFV     0 - 14
+    word1 OC_TRAP;  //  0       a           16
+    word1 ADR_TRAP; //  0       b           17
+    word9 OPCODE;   //  0       OPCODE 18 - 26
+    word1 OPCODEX;  //  0       OPCODE      27
 #endif
-    word1 sdpap;
-    word1 separ;
-    word1 emr;
-    word1 hrhlt;
+ // word1 cuolin;   //  a       c           18 control unit overlap inhibit
+ // word1 solin;    //  b       d           19 store overlap inhibit
+    word1 sdpap;    //  c       e           20 store incorrect data parity
+    word1 separ;    //  d       f           21 store incorrect ZAC
+ // word2 tm;       //  e       g      22 - 23 timing margins
+ // word2 vm;       //  f       h      24 - 25 voltage margins
+                    //  0       0           26 history register overflow trap
+                    //  0       0           27 strobe HR on opcode match
+    word1 hrhlt;    //  g       i           28 history register overflow trap
+
 #ifdef DPS8M
-    word1 hrxfr;
-#endif
-    word1 ihr;
-    word1 ihrrs;
-#ifdef DPS8M
-    word1 hexfp;
-#endif
-  } _mode_register;
-#else
-typedef struct mode_register
-  {
-#ifdef L68
-    word15 FFV;
-#ifdef L68
-    word1 isolts_tracks;
-#endif
-    word1 OC_TRAP;
-    word1 ADR_TRAP;
-    word10 OPCODE;
-#endif
-    word1 cuolin;
-    word1 solin;
-    word1 sdpap;
-    word1 separ;
-    word2 tm;
-    word2 vm;
-#ifdef L68
-    word2 isolts_tracks2;
-#endif
-    word1 hrhlt;
-#ifdef DPS8M
-    word1 hrxfr;
+    word1 hrxfr;    //  h       j           29 strobe HR on transfer made
 #endif
 #ifdef L68
-    word1 hropc;
+                    //  h       j           29 strobe HR on opcode match
 #endif
-    word1 ihr;
-    word1 ihrrs;
-// XXX This bit is used to track the position of the NORMAL/TEST switch
-//    word1 mrgctl;
+    word1 ihr;      //  i       k           30 Enable HR
+    word1 ihrrs;    //  j                   31 HR reset options
+                    //          l           31 HR lock control
+                    //  k                   32 margin control
+                    //          m           32 test mode indicator
 #ifdef DPS8M
-    word1 hexfp;
+    word1 hexfp;    //  l       0           33 hex mode
 #endif
-    word1 emr;
-  } _mode_register;
-#endif
+                    //  0       0           34
+     word1 emr;     //  m       n           35 enable MR
+  } mode_register_s;
 
 extern DEVICE cpu_dev;
 
-typedef struct MOPstruct MOPstruct;
+typedef struct MOP_struct_s
+  {
+    char * mopName;   // name of microoperation
+    int (* f) (void); // pointer to mop() [returns character to be stored]
+  } MOP_struct;
 
 // address of an EIS operand
-typedef struct EISaddr
-{
+typedef struct EISaddr_s
+  {
 #ifndef EIS_PTR
     word18  address;    // 18-bit virtual address
 #endif
-    //word18  lastAddress;  // memory acccesses are not expesive these days - >sheesh<
     
     word36  data;
     word1    bit;
-    bool    incr;      // when true increment bit address
-    bool    decr;      // when true decrement bit address
     eRW     mode;
     
+    int     last_bit_posn;  // track for caching tests
+
     // for type of data being address by this object
     
     // eisDataType _type;   // type of data - alphunumeric/numeric
@@ -524,11 +498,10 @@ typedef struct EISaddr
     
 #ifndef EIS_PTR4
     // for when using AR/PR register addressing
-    word15  SNR;        // The segment number of the segment containing the data item described by the pointer register.
-    word3   RNR;        // The effective ring number value calculated during execution of the instruction that last loaded
-    
-    //bool    bUsesAR;    // true when indirection via AR/PR is involved (TPR.{TRR,TSR} already set up)
-    
+    word15  SNR;        // The segment number of the segment containing the 
+                        //  data item described by the pointer register.
+    word3   RNR;        // The effective ring number value calculated during
+                        //  execution of the instruction that last loaded
     MemoryAccessType    mat;    // memory access type for operation
 #endif
 
@@ -546,15 +519,18 @@ typedef struct EISaddr
 
     bool cacheValid;
     bool cacheDirty;
-    //word36 cachedWord;
 #define paragraphSz 8
 #define paragraphMask 077777770
 #define paragraphOffsetMask 07
     word36 cachedParagraph [paragraphSz];
+#ifdef CWO
+    bool wordDirty [paragraphSz];
+#endif
     word18 cachedAddr;
 
-} EISaddr;
-typedef struct EISstruct
+  } EISaddr;
+
+typedef struct EISstruct_s
   {
     word36  op [3];         // raw operand descriptors
 #define OP1 op [0]          // 1st descriptor (2nd ins word)
@@ -630,7 +606,7 @@ typedef struct EISstruct
     word9   editInsertionTable [8];     // 8 9-bit chars
     
     int     mopIF;          // current micro-operation IF field
-    MOPstruct *m;           // pointer to current MOP struct
+    MOP_struct *m;           // pointer to current MOP struct
     
     word9   inBuffer [64];  // decimal unit input buffer
     word9   *in;            // pointer to current read position in inBuffer
@@ -695,11 +671,12 @@ typedef struct EISstruct
 
 // Instruction decode structure. Used to represent instrucion information
 
-struct DCDstruct
+typedef struct DCDstruct_s
   {
-    opCode * info;        // opCode *
+    struct opcode_s * info;        // opcode_s *
     uint32 opcode;        // opcode
     bool   opcodeX;       // opcode extension
+    uint32 opcode10;      // opcode | (opcodeX ? 01000 : 0)
     word18 address;       // bits 0-17 of instruction
     word1  b29;           // bit-29 - address via pointer register. Usually.
     bool   i;             // interrupt inhinit bit.
@@ -707,19 +684,15 @@ struct DCDstruct
     
     bool stiTally;      // for sti instruction
     bool restart;         // instruction is to be restarted
-  };
+  } DCDstruct;
 
 // Emulator-only interrupt and fault info
 
 typedef struct
   {
-    //bool any;             // true if any of the below are true
-    //bool int_pending;
-    bool fault_pending;
-    int fault [N_FAULT_GROUPS];
+    vol int fault [N_FAULT_GROUPS];
                           // only one fault in groups 1..6 can be pending
-    //bool interrupts [N_SCU_UNITS_MAX] [N_INTERRUPTS];
-    bool XIP [N_SCU_UNITS_MAX];
+    vol bool XIP [N_SCU_UNITS_MAX];
   } events_t;
 
 // Physical Switches
@@ -730,9 +703,7 @@ typedef struct
     uint FLT_BASE; // normally 7 MSB of 12bit fault base addr
     uint cpu_num;  // zero for CPU 'A', one for 'B' etc.
     word36 data_switches;
-    //uint port_enable; // 4 bits; enable ports A-D
-    //word36 port_config; // Read by rsw instruction; format unknown
-    //uint port_interlace; // 4 bits  Read by rsw instruction; 
+    word18 addr_switches;
     uint assignment [N_CPU_PORTS];
     uint interlace [N_CPU_PORTS]; // 0/2/4
     uint enable [N_CPU_PORTS];
@@ -742,24 +713,16 @@ typedef struct
     uint proc_speed; // 4 bits Read by rsw instruction; format unknown
 
     // Emulator run-time options (virtual switches)
-    uint invert_absolute; // If non-zero, invert the sense of the
-                          // ABSOLUTE bit in the STI instruction
-    uint b29_test;        // If non-zero, enable untested code
     uint dis_enable;      // If non-zero, DIS works
-    uint auto_append_disable; // If non-zero, bit29 does not force APPEND_mode
-    uint lprp_highonly;   // If non-zero lprp only sets the high bits
-    uint degenerate_mode; // If non-zero use the experimental ABSOLUTE mode
-    uint append_after;
-    uint epp_hack;
     uint halt_on_unimp;   // If non-zero, halt CPU on unimplemented instruction
                           // instead of faulting
     uint disable_wam;     // If non-zero, disable PTWAM, STWAM
-    uint disable_kbd_bkpt;
     uint report_faults;   // If set, faults are reported and ignored
     uint tro_enable;   // If set, Timer runout faults are generated.
     uint drl_fatal;
     uint serno;
     bool useMap;
+    bool disable_cache;
   } switches_t;
 
 #ifdef L68
@@ -782,8 +745,10 @@ typedef struct
     // Operations Unit/Address Modification
     bool directOperandFlag;
     word36 directOperand;
-    word6 characterOperandSize;
-    word6 characterOperandOffset;
+    word6 characterOperandSize; // just the left most bit
+    word3 characterOperandOffset; 
+    word18 character_address;
+    word36 character_data;
     bool crflag;
 #ifdef L68
     word2 eac;
@@ -816,18 +781,21 @@ enum APUH_e
 
 enum { 
 //   AL39 pg 64 APU hist.
-    apu_FLT = 1ll << (33 - 0),    //  0   l FLT Access violation or directed fault on this cycle
+    apu_FLT = 1ll << (33 - 0),    //  0   l FLT Access violation or directed
+                                  //            fault on this cycle
                                   //  1-2 a BSY    Data source for ESN
     apu_ESN_PSR = 0,              //                  00 PPR.PSR
     apu_ESN_SNR = 1ll << (33- 1), //                  01 PRn.SNR
     apu_ESN_TSR = 1ll << (33- 2), //                  10 TPR.TSR
                                   //                  11 not used
                                   //  3     PRAP
-    apu_HOLD = 1ll <<  (33- 4),   //  4     HOLD  An access violation or directed fault is waiting
+    apu_HOLD = 1ll <<  (33- 4),   //  4     HOLD  An access violation or
+                                  //              directed fault is waiting
                                   //  5     FRIW
                                   //  6     XSF
                                   //  7     STF
-    apu_TP_P = 1ll <<  (33- 8),   //  8     TP P    Guessing PPR.p set from SDW.P
+    apu_TP_P = 1ll <<  (33- 8),   //  8     TP P    Guessing PPR.p set from
+                                  //                SDW.P
     apu_PP_P = 1ll <<  (33- 9),   //  9     PP P    PPR.P?
                                   // 10     ?
                                   // 11     S-ON   Segment on?
@@ -845,9 +813,11 @@ enum {
     apu_FSDN = 1ll << (33-23),    // 23     FSDN   Fetch SDW non-paged 
     apu_FPTW = 1ll << (33-24),    // 24   e FPTW   Fetch PTW
     apu_MPTW = 1ll << (33-25),    // 25   g MPTW   Modify PTW
-                                  // 26   f FPT2 // Fetch prepage
-    apu_FAP  = 1ll << (33-27),    // 27   i FAP    Final address fetch from paged seg.
-    apu_FANP = 1ll << (33-28),    // 28   h FANP   Final address fetch from non-paged segment
+    apu_FPTW2 = 1ll << (33-26),   // 26   f FPT2   // Fetch prepage
+    apu_FAP  = 1ll << (33-27),    // 27   i FAP    Final address fetch from
+                                  //               paged seg.
+    apu_FANP = 1ll << (33-28),    // 28   h FANP   Final address fetch from
+                                  //               non-paged segment
                                   // 29     FAAB   Final address absolute?
     apu_FA   = 1ll << (33-30),    // 30     FA     Final address?
                                   // 31     EAAU
@@ -857,9 +827,7 @@ enum {
 
 typedef struct
   {
-#ifdef RALRx
-    _processor_cycle_type lastCycle;
-#endif
+    processor_cycle_type lastCycle;
 #ifdef PANEL
     word34 state;
 #endif
@@ -922,7 +890,8 @@ typedef struct
                    //
     word1 IRO_ISN; //  0    IRO       AVF Illegal Ring Order
                    //       ISN       SF  Illegal segment number
-    word1 OEB_IOC; //  1    ORB       AVF Out of execute bracket [sic] should be OEB?
+    word1 OEB_IOC; //  1    ORB       AVF Out of execute bracket [sic] should
+                   //                     be OEB?
                    //       IOC       IPF Illegal op code
     word1 EOFF_IAIM;
                    //  2    E-OFF     AVF Execute bit is off
@@ -987,12 +956,11 @@ typedef struct
                    //                  29       PRNO is valid
     word3 TSN_PRNO [3];
     word1 TSN_VALID [3];
-#define ISB29 (cpu.cu.TSN_VALID [0])
 
-                   // 30-35 TEMP BIT Current bit offset (TPR . TBR)
+                   // 30-35 TEMP BIT Current bit offset (TPR.TBR)
 
     /* word 4 */
-                   //  0-17 PPR . IC
+                   //  0-17 PPR.IC
     word18 IR;     // 18-35 Indicator register
                    //    18 ZER0
                    //    19 NEG
@@ -1013,7 +981,7 @@ typedef struct
                     
     /* word 5 */
 
-                   //  0-17 COMPUTED ADDRESS (TPR . CA)
+                   //  0-17 COMPUTED ADDRESS (TPR.CA)
     word1 repeat_first; 
                    // 18    RF  First cycle of all repeat instructions
     word1 rpt;     // 19    RPT Execute an Repeat (rpt) instruction
@@ -1026,11 +994,12 @@ typedef struct
     // 1   0   execute XEC          -> 0 0
     // 1   1   execute even of XED  -> 0 1
     // 0   1   execute odd of XED   -> 0 0
-    word1 xde;     // 24    XDE Execute instruction from Execute Double even pair
+    word1 xde;     // 24    XDE Execute instruction from Execute Double even
+                   //       pair
     word1 xdo;     // 25    XDO Execute instruction from Execute Double odd pair
-                   // 26    ITP Execute ITP indirect cycle
+    word1 itp;     // 26    ITP Execute ITP indirect cycle
     word1 rfi;     // 27    RFI Restart this instruction
-                   // 28    ITS Execute ITS indirect cycle
+    word1 its;     // 28    ITS Execute ITS indirect cycle
     word1 FIF;     // 29    FIF Fault occured during instruction fetch
     word6 CT_HOLD; // 30-35 CT HOLD contents of the "remember modifier" register
 
@@ -1282,11 +1251,13 @@ enum du_cycle1_e
     du1_GLP2  = 00100000000000ll, // PR address bit 1
     du1_GEA1  = 00040000000000ll, // Descriptor 1 active
     du1_GEM1  = 00020000000000ll, // 
-    du1_GED1  = 00010000000000ll, // Prepare alignment count for first numeric operand load
+    du1_GED1  = 00010000000000ll, // Prepare alignment count for first numeric 
+                                  // operand load
     du1_GDB   = 00004000000000ll, // Decimal to binary gate
     du1_GBD   = 00002000000000ll, // Binary to decimal gate
     du1_GSP   = 00001000000000ll, // Shift procedure gate
-    du1_GED2  = 00000400000000ll, // Prepare alignment count for second numeric operand load
+    du1_GED2  = 00000400000000ll, // Prepare alignment count for second numeric
+                                  //  operand load
     du1_GEA2  = 00000200000000ll, // Descriptor 2 active
     du1_GADD  = 00000100000000ll, // Add subtract execute gate
     du1_GCMP  = 00000040000000ll, // 
@@ -1365,7 +1336,7 @@ typedef struct du_unit_data_t
                       //  0- 8  9   Zeros
     word1 Z;          //     9  1   Z       All bit-string instruction results 
                       //                      are zero
-    word1 NOP;        //    10  1   Ø       Negative overpunch found in 6-4 
+    word1 NOP;        //    10  1   0       Negative overpunch found in 6-4 
                       //                      expanded move
     word24 CHTALLY;   // 12-35 24   CHTALLY The number of characters examined 
                       //                      by the scm, scmr, scd,
@@ -1525,8 +1496,6 @@ enum
 enum { CUH_XINT = 0100, CUH_IFT = 040, CUH_CRD = 020, CUH_MRD = 010,
        CUH_MSTO = 04, CUH_PIB = 02 };
 
-#define N_CPU_UNITS_MAX 8
-
 #ifdef DPS8M
 #define N_WAM_ENTRIES 64
 #define N_WAM_MASK 077
@@ -1539,7 +1508,17 @@ enum { CUH_XINT = 0100, CUH_IFT = 040, CUH_CRD = 020, CUH_MRD = 010,
 typedef struct
   {
     jmp_buf jmpMain; // This is the entry to the CPU state machine
-    cycles_t cycle;
+    cycles_e cycle;
+    unsigned long long cycleCnt;
+    unsigned long long instrCnt;
+    unsigned long long instrCntT0;
+    unsigned long long instrCntT1;
+    unsigned long long lockCnt;
+    unsigned long long lockImmediate;
+    unsigned long long lockWait;
+    unsigned long long lockWaitMax;
+    unsigned long long lockYield;
+    unsigned long faultCnt [N_FAULTS];
 
     // The following are all from the control unit history register:
 
@@ -1557,7 +1536,6 @@ typedef struct
                   // an XEC or XED instruction
     bool isXED; // The instruction being executed is the target of an
                 // XEC instruction
-    //bool isb29; // The instruction has a valid bit 29 set when fetched
 
     DCDstruct currentInstruction;
     EISstruct currentEISinstruction;
@@ -1578,6 +1556,10 @@ typedef struct
 
     word18   rX [8]; // index
     word27   rTR;    // timer [map: TR, 9 0's]
+#if defined(THREADZ) || defined(LOCKLESS)
+    struct timespec rTRTime; // time when rTR was set
+    uint     rTRsample;
+#endif
     word24   rY;     // address operand
     word6    rTAG;   // instruction tag
     word3    rRALR;  // ring alarm [3b] [map: 33 0's, RALR]
@@ -1586,25 +1568,23 @@ typedef struct
 
     word18 lnk;  // rpl link value
 
-    struct _tpr TPR;   // Temporary Pointer Register
-    struct _ppr PPR;   // Procedure Pointer Register
-    struct _par PAR [8]; // pointer/address resisters
-    struct _bar BAR;   // Base Address Register
-    struct _dsbr DSBR; // Descriptor Segment Base Register
-#ifndef WAM
-    //_sdw SDWAM0; // Segment Descriptor Word Associative Memory
-#else
-    _sdw SDWAM [N_WAM_ENTRIES]; // Segment Descriptor Word Associative Memory
+    struct tpr_s TPR;   // Temporary Pointer Register
+    struct ppr_s PPR;   // Procedure Pointer Register
+    struct par_s PAR [8]; // pointer/address resisters
+    struct bar_s BAR;   // Base Address Register
+    struct dsbr_s DSBR; // Descriptor Segment Base Register
+#ifdef WAM
+    sdw_s SDWAM [N_WAM_ENTRIES]; // Segment Descriptor Word Associative Memory
+#endif
 #ifdef L68
     word4 SDWAMR;
 #endif
 #ifdef DPS8M
     word6 SDWAMR;
 #endif
-#endif
-    _sdw * SDW; // working SDW
-    _sdw SDW0; // a SDW not in SDWAM
-    _sdw _s;
+    sdw_s * SDW; // working SDW
+    sdw_s SDW0; // a SDW not in SDWAM
+    sdw_s _s;
 #ifdef PANEL
     // Intermediate data collection for APU SCROLL 
     word18 lastPTWOffset;
@@ -1619,12 +1599,12 @@ typedef struct
     word1 panel7_enabled_light_state;
 // The state of the panel switches
     volatile word15 APU_panel_segno_sw;
-    volatile word1  APU_panel_enable_match_ptw_sw;
-    volatile word1  APU_panel_enable_match_sdw_sw;
+    volatile word1  APU_panel_enable_match_ptw_sw;  // lock
+    volatile word1  APU_panel_enable_match_sdw_sw;  // lock
     volatile word1  APU_panel_scroll_select_ul_sw;
     volatile word4  APU_panel_scroll_select_n_sw;
     volatile word4  APU_panel_scroll_wheel_sw;
-    volatile word18 APU_panel_addr_sw;
+    //volatile word18 APU_panel_addr_sw;
     volatile word18 APU_panel_enter_sw;
     volatile word18 APU_panel_display_sw;
     volatile word4  CP_panel_wheel_sw;
@@ -1640,15 +1620,15 @@ typedef struct
     volatile word4  DATA_panel_addr_stop_sw;
     volatile word1  DATA_panel_enable_sw;
     volatile word1  DATA_panel_validate_sw;
-    volatile word1  DATA_panel_auto_fast_sw;
-    volatile word1  DATA_panel_auto_slow_sw;
-    volatile word4  DATA_panel_cycle_sw;
-    volatile word1  DATA_panel_step_sw;
+    volatile word1  DATA_panel_auto_fast_sw;  // lock
+    volatile word1  DATA_panel_auto_slow_sw;  // lock
+    volatile word4  DATA_panel_cycle_sw;  // lock
+    volatile word1  DATA_panel_step_sw;  // lock
     volatile word1  DATA_panel_s_trig_sw;
-    volatile word1  DATA_panel_execute_sw;
+    volatile word1  DATA_panel_execute_sw;  // lock
     volatile word1  DATA_panel_scope_sw;
-    volatile word1  DATA_panel_init_sw;
-    volatile word1  DATA_panel_exec_sw;
+    volatile word1  DATA_panel_init_sw;  // lock
+    volatile word1  DATA_panel_exec_sw;  // lock
     volatile word4  DATA_panel_hr_sel_sw;
     volatile word4  DATA_panel_trackers_sw;
     volatile bool panelInitialize;
@@ -1718,28 +1698,29 @@ typedef struct
     // Address Modification tally
     word12 AM_tally;
 
-#ifndef WAM
-    //_ptw PTWAM0;
-#else
-    _ptw PTWAM [N_WAM_ENTRIES];
+    // Zone mask
+    word36 zone;
+    bool useZone;
+
+#ifdef WAM
+    ptw_s PTWAM [N_WAM_ENTRIES];
+#endif
 #ifdef L68
     word4 PTWAMR;
 #endif
 #ifdef DPS8M
     word6 PTWAMR;
 #endif
-#endif
-    _ptw * PTW;
-    _ptw0 PTW0; // a PTW not in PTWAM (PTWx1)
-    _cache_mode_register CMR;
-    _mode_register MR;
+    ptw_s * PTW;
+    ptw0_s PTW0; // a PTW not in PTWAM (PTWx1)
+    cache_mode_register_s CMR;
+    mode_register_s MR;
 
     // G7 faults
 
     bool bTroubleFaultCycle;
     uint g7FaultsPreset;
     uint g7Faults;
-    //_fault_subtype  g7SubFaultsPreset [N_FAULTS];
     _fault_subtype  g7SubFaults [N_FAULTS];
 
 #ifdef L68
@@ -1757,23 +1738,28 @@ typedef struct
     word36 Yblock8[8];      // 8-words
     word36 Yblock16[16];    // 16-words
     word36 Yblock32[32];    // 32-words
-    word36 scu_data[8];    // For SCU instruction
-#ifndef EVPOLL
+    word36 scu_data[8];     // For SCU instruction
+    struct
+      {
+        word15 PSR;
+        word3  PRR;
+        word18 IC;
+      } cu_data;            // For STCD instruction
+    uint rTRticks;
+#ifdef ISOLTS
     uint rTRlsb;
 #endif
-    // XXX this is used to store the fault/interrupt pair, and really should be IBW/IRODD
-    word36 instr_buf [2];
     uint64 lufCounter;
+    bool lufOccurred;
     bool secret_addressing_mode;
-    bool went_appending; // we will go....
-#if 0
-    bool bar_attempt;
-#endif
+    //bool went_appending; // we will go....
 #ifdef ROUND_ROBIN
     bool isRunning;
 #endif
     // Map memory to port
     int scbank_map [N_SCBANKS];
+    word24 scbank_base [N_SCBANKS];
+    // scu_unit_idx * 4u * 1024u * 1024u + scpg * SCBANK
     int scbank_pg_os [N_SCBANKS];
 
     uint history_cyclic [N_HIST_SETS]; // 0..63
@@ -1785,7 +1771,7 @@ typedef struct
     // Changes to the mode register history bits do not take affect until
     // the next instruction (ISOLTS 700 2a). Cache the values here so
     // that post register updates can see the old values.
-    _mode_register MR_cache;
+    mode_register_s MR_cache;
     
     // If the instruction wants overflow thrown after operand write
     bool dlyFlt;
@@ -1798,7 +1784,26 @@ typedef struct
 
 #ifdef ISOLTS
     uint shadowTR;
+    uint TR0; // The value that the TR was set to.
 #endif
+    word18 last_write;
+#ifdef LOCKLESS
+    word24 locked_addr;
+    word24 char_word_address;
+#endif
+    word24 rmw_address;
+    word24 pad[16];
+//#ifdef THREADZ
+//    // Set if this thread has set memlock
+//    bool havelock; // Vetinari 
+//bool have_tst_lock;
+//#endif
+#ifdef AFFINITY
+    bool set_affinity;
+    uint affinity;
+#endif
+    bool restart;
+    uint restart_address;
   } cpu_state_t;
 
 #ifdef M_SHARED
@@ -1806,14 +1811,23 @@ extern cpu_state_t * cpus;
 #else
 extern cpu_state_t cpus [N_CPU_UNITS_MAX];
 #endif
+
+#if defined(THREADZ) || defined(LOCKLESS)
+extern __thread cpu_state_t * restrict cpup;
+#else
 extern cpu_state_t * restrict cpup;
+#endif
 #define cpu (* cpup)
 
-uint setCPUnum (uint cpuNum);
-#ifdef ROUND_ROBIN
-extern uint currentRunningCPUnum;
+uint set_cpu_idx (uint cpuNum);
+#if defined(THREADZ) || defined(LOCKLESS)
+extern __thread uint current_running_cpu_idx;
 #else
-#define currentRunningCPUnum 0
+#ifdef ROUND_ROBIN
+extern uint current_running_cpu_idx;
+#else
+#define current_running_cpu_idx 0
+#endif
 #endif
 
 // Support code to access ARn.BITNO, ARn.CHAR, PRn.BITNO
@@ -1837,9 +1851,9 @@ static inline void SET_AR_CHAR_BITNO (uint n, word2 c, word4 b)
 
 bool sample_interrupts (void);
 t_stat simh_hooks (void);
-int OPSIZE (void);
-t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp);
-t_stat WriteOP (word18 addr, _processor_cycle_type acctyp);
+int operand_size (void);
+t_stat read_operand (word18 addr, processor_cycle_type cyctyp);
+t_stat write_operand (word18 addr, processor_cycle_type acctyp);
 
 #ifdef PANEL
 static inline void trackport (word24 a, word36 d)
@@ -1853,7 +1867,36 @@ static inline void trackport (word24 a, word36 d)
   }
 #endif
 
-#ifdef SPEED
+#ifdef THREADZ
+// Ugh. Circular dependencies XXX
+void lock_mem_rd (void);
+void lock_mem_wr (void);
+void unlock_mem (void);
+#define LOCK_MEM_RD lock_mem_rd ();
+#define LOCK_MEM_WR lock_mem_wr ();
+#define UNLOCK_MEM unlock_mem ();
+#else // ! THREADZ
+#ifdef TEST_FENCE
+#define LOCK_MEM_RD fence ();
+#define LOCK_MEM_WR fence ();
+#define UNLOCK_MEM fence ();
+#else
+#define LOCK_MEM_RD
+#define LOCK_MEM_WR
+#define UNLOCK_MEM
+#endif
+#endif // ! THREADZ
+
+#if defined(SPEED) && defined(INLINE_CORE)
+// Ugh. Circular dependencies XXX
+void doFault (_fault faultNumber, _fault_subtype faultSubtype, 
+              const char * faultMsg) NO_RETURN;
+extern const _fault_subtype fst_str_nea;
+#ifdef SCUMEM
+// Stupid dependency order
+int lookup_cpu_mem_map (word24 addr, word24 * offset);
+#endif
+
 static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
   {
     PNL (cpu.portBusy = true;)
@@ -1864,7 +1907,7 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
         int os = cpu.scbank_pg_os [pgnum];
         if (os < 0)
           {
-            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea}, __func__);
+            doFault (FAULT_STR, fst_str_nea, __func__);
           }
         addr = (uint) os + addr % SCBANK;
       }
@@ -1883,7 +1926,26 @@ static inline int core_read (word24 addr, word36 *data, UNUSED const char * ctx)
       }
 #endif
 #endif
+#ifdef SCUMEM
+    word24 offset;
+    int cpu_port_num = lookup_cpu_mem_map (addr, & offset);
+    if (! get_scu_in_use (current_running_cpu_idx, cpu_port_num))
+      {
+        sim_warn ("%s %012o has no SCU; faulting\n", __func__, addr);
+        doFault (FAULT_STR, fst_str_nea, __func__);
+      }
+    uint scuUnitIdx = get_scu_idx (current_running_cpu_idx, cpu_port_num);
+    LOCK_MEM_RD;
+    *data = scu [scuUnitIdx].M[offset] & DMASK;
+    UNLOCK_MEM;
+#else
+    LOCK_MEM_RD;
     *data = M[addr] & DMASK;
+    UNLOCK_MEM;
+#endif
+#ifdef TR_WORK_MEM
+    cpu.rTRticks ++;
+#endif
     PNL (trackport (addr, * data);)
     return 0;
   }
@@ -1898,7 +1960,7 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
         int os = cpu.scbank_pg_os [pgnum];
         if (os < 0)
           {
-            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea}, __func__);
+            doFault (FAULT_STR, fst_str_nea, __func__);
           }
         addr = (uint) os + addr % SCBANK;
       }
@@ -1915,11 +1977,31 @@ static inline int core_write (word24 addr, word36 data, UNUSED const char * ctx)
         cpu.MR.separ = 0;
       }
 #endif
+#ifdef SCUMEM
+    word24 offset;
+    int cpu_port_num = lookup_cpu_mem_map (addr, & offset);
+    if (! get_scu_in_use (current_running_cpu_idx, cpu_port_num))
+      {
+        sim_warn ("%s %012o has no SCU; faulting\n", __func__, addr);
+        doFault (FAULT_STR, fst_str_nea, __func__);
+      }
+    uint scuUnitIdx = get_scu_idx (current_running_cpu_idx, cpu_port_num);
+    LOCK_MEM_WR;
+    scu[scuUnitIdx].M[offset] = data & DMASK;
+    UNLOCK_MEM;
+#else
+    LOCK_MEM_WR;
     M[addr] = data & DMASK;
+    UNLOCK_MEM;
+#endif
+#ifdef TR_WORK_MEM
+    cpu.rTRticks ++;
+#endif
     PNL (trackport (addr, data);)
     return 0;
   }
-static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED const char * ctx)
+
+static inline int core_write_zone (word24 addr, word36 data, UNUSED const char * ctx)
   {
     PNL (cpu.portBusy = true;)
 #ifdef ISOLTS
@@ -1929,7 +2011,62 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED con
         int os = cpu.scbank_pg_os [pgnum];
         if (os < 0)
           {
-            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea}, __func__);
+            doFault (FAULT_STR, fst_str_nea, __func__);
+          }
+        addr = (uint) os + addr % SCBANK;
+      }
+#endif
+#ifdef ISOLTS
+    if (cpu.MR.sdpap)
+      {
+        sim_warn ("failing to implement sdpap\n");
+        cpu.MR.sdpap = 0;
+      }
+    if (cpu.MR.separ)
+      {
+        sim_warn ("failing to implement separ\n");
+        cpu.MR.separ = 0;
+      }
+#endif
+#ifdef SCUMEM
+    word24 offset;
+    int cpu_port_num = lookup_cpu_mem_map (addr, & offset);
+    if (! get_scu_in_use (current_running_cpu_idx, cpu_port_num))
+      {
+        sim_warn ("%s %012o has no SCU; faulting\n", __func__, addr);
+        doFault (FAULT_STR, fst_str_nea, __func__);
+      }
+    uint scuUnitIdx = get_scu_idx (current_running_cpu_idx, cpu_port_num);
+    LOCK_MEM_WR;
+    scu[scuUnitIdx].M[offset] = (scu[scuUnitIdx].M[offset] & ~cpu.zone) |
+                              (data & cpu.zone);
+    cpu.useZone = false; // Safety
+    UNLOCK_MEM;
+#else
+    LOCK_MEM_WR;
+    M[addr] = (M[addr] & ~cpu.zone) | (data & cpu.zone);
+    cpu.useZone = false; // Safety
+    UNLOCK_MEM;
+#endif
+#ifdef TR_WORK_MEM
+    cpu.rTRticks ++;
+#endif
+    PNL (trackport (addr, data);)
+    return 0;
+  }
+
+static inline int core_read2 (word24 addr, word36 *even, word36 *odd,
+                              UNUSED const char * ctx)
+  {
+    PNL (cpu.portBusy = true;)
+#ifdef ISOLTS
+    if (cpu.switches.useMap)
+      {
+        uint pgnum = addr / SCBANK;
+        int os = cpu.scbank_pg_os [pgnum];
+        if (os < 0)
+          {
+            doFault (FAULT_STR, fst_str_nea, __func__);
           }
         addr = (uint) os + addr % SCBANK;
       }
@@ -1948,13 +2085,34 @@ static inline int core_read2 (word24 addr, word36 *even, word36 *odd, UNUSED con
       }
 #endif
 #endif
+#ifdef SCUMEM
+    word24 offset;
+    int cpu_port_num = lookup_cpu_mem_map (addr, & offset);
+    if (! get_scu_in_use (current_running_cpu_idx, cpu_port_num))
+      {
+        sim_warn ("%s %012o has no SCU; faulting\n", __func__, addr);
+        doFault (FAULT_STR, fst_str_nea, __func__);
+      }
+    uint scuUnitIdx = get_scu_idx (current_running_cpu_idx, cpu_port_num);
+    LOCK_MEM_WR;
+    *even = scu [scuUnitIdx].M[offset++] & DMASK;
+    *odd = scu [scuUnitIdx].M[offset] & DMASK;
+    UNLOCK_MEM;
+#else
+    LOCK_MEM_WR;
     *even = M[addr++] & DMASK;
-    PNL (trackport (addr - 1, * even);)
     *odd = M[addr] & DMASK;
-    PNL (trackport (addr, * odd);)
+    UNLOCK_MEM;
+#endif
+#ifdef TR_WORK_MEM
+    cpu.rTRticks ++;
+#endif
+    PNL (trackport (addr - 1, * even);)
     return 0;
   }
-static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED const char * ctx)
+
+static inline int core_write2 (word24 addr, word36 even, word36 odd,
+                               UNUSED const char * ctx)
   {
     PNL (cpu.portBusy = true;)
 #ifdef ISOLTS
@@ -1964,7 +2122,7 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED cons
         int os = cpu.scbank_pg_os [pgnum];
         if (os < 0)
           {
-            doFault (FAULT_STR, (_fault_subtype) {.fault_str_subtype=flt_str_nea}, __func__);
+            doFault (FAULT_STR, fst_str_nea, __func__);
           }
         addr = (uint) os + addr % SCBANK;
       }
@@ -1981,69 +2139,196 @@ static inline int core_write2 (word24 addr, word36 even, word36 odd, UNUSED cons
         cpu.MR.separ = 0;
       }
 #endif
+#ifdef SCUMEM
+    word24 offset;
+    int cpu_port_num = lookup_cpu_mem_map (addr, & offset);
+    if (! get_scu_in_use (current_running_cpu_idx, cpu_port_num))
+      {
+        sim_warn ("%s %012o has no SCU; faulting\n", __func__, addr);
+        doFault (FAULT_STR, fst_str_nea, __func__);
+      }
+    uint scuUnitIdx = get_scu_idx (current_running_cpu_idx, cpu_port_num);
+    LOCK_MEM_WR;
+    scu [scuUnitIdx].M[offset++] = even & DMASK;
+    scu [scuUnitIdx].M[offset] = odd & DMASK;
+    UNLOCK_MEM;
+#else
+    LOCK_MEM_WR;
     M[addr++] = even;
-    PNL (trackport (addr - 1, even);)
     M[addr] = odd;
-    PNL (trackport (addr, odd);)
+    UNLOCK_MEM;
+#endif
+    PNL (trackport (addr - 1, even);)
+#ifdef TR_WORK_MEM
+    cpu.rTRticks ++;
+#endif
     return 0;
   }
-#else
+#else  // defined(SPEED) && defined(INLINE_CORE)
 int core_read (word24 addr, word36 *data, const char * ctx);
 int core_write (word24 addr, word36 data, const char * ctx);
+int core_write_zone (word24 addr, word36 data, const char * ctx);
 int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx);
 int core_write2 (word24 addr, word36 even, word36 odd, const char * ctx);
+#endif // defined(SPEED) && defined(INLINE_CORE)
+
+#ifdef LOCKLESS
+int core_read_lock (word24 addr, word36 *data, const char * ctx);
+int core_write_unlock (word24 addr, word36 data, const char * ctx);
+int core_unlock_all();
+
+#define DEADLOCK_DETECT	  0x40000000U
+#define MEM_LOCKED_BIT    61
+#define MEM_LOCKED        (1LLU<<MEM_LOCKED_BIT)
+
+#if defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
+#include <machine/atomic.h>
+
+#define LOCK_CORE_WORD(addr)			\
+  do									\
+    {									\
+      unsigned int i = DEADLOCK_DETECT;					\
+      while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) \
+	{								\
+	  i--;								\
+	  if ((i & 0xff) == 0) {					\
+	    pthread_yield();						\
+	    cpu.lockYield++;						\
+	  }								\
+	}								\
+      if (i == 0)							\
+	{								\
+	  sim_warn ("%s: locked %x addr %x deadlock\n", __FUNCTION__, cpu.locked_addr, addr); \
+	}								\
+      cpu.lockCnt++;							\
+      if (i == DEADLOCK_DETECT)						\
+	cpu.lockImmediate++;						\
+      cpu.lockWait += (DEADLOCK_DETECT-i);				\
+      cpu.lockWaitMax = ((DEADLOCK_DETECT-i) > cpu.lockWaitMax) ? (DEADLOCK_DETECT-i) : cpu.lockWaitMax; \
+    }									\
+  while (0)
+
+#define LOAD_ACQ_CORE_WORD(res, addr)			\
+  do							\
+    {							\
+      res = atomic_load_acq_64((volatile u_long *)&M[addr]);	\
+    }								\
+  while (0)
+
+#define STORE_REL_CORE_WORD(addr, data)					\
+  do									\
+    {									\
+      atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);	\
+    }									\
+  while (0)
+
+#else  // defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
+
+#ifdef MEMORY_ACCESS_NOT_STRONGLY_ORDERED
+#define MEM_BARRIER()   do { __sync_synchronize(); } while (0)
+#else
+#define MEM_BARRIER()   do {} while (0)
 #endif
-static inline void core_readN (word24 addr, word36 *data, uint n, UNUSED const char * ctx)
+
+#define LOCK_CORE_WORD(addr)						\
+     do									\
+       {								\
+	 unsigned int i = DEADLOCK_DETECT;					\
+	 while ((__sync_fetch_and_or((volatile u_long *)&M[addr], MEM_LOCKED) & MEM_LOCKED) \
+		&&  i > 0)						\
+	   {								\
+	    i--;							\
+	    if ((i & 0xff) == 0) {					\
+	      pthread_yield();						\
+	      cpu.lockYield++;						\
+	    }								\
+	   }								\
+	 if (i == 0)							\
+	   {								\
+	    sim_warn ("%s: locked %x addr %x deadlock\n", __FUNCTION__, cpu.locked_addr, addr); \
+	    }								\
+	 cpu.lockCnt++;							\
+	 if (i == DEADLOCK_DETECT)					\
+	   cpu.lockImmediate++;						\
+	 cpu.lockWait += (DEADLOCK_DETECT-i);				\
+	 cpu.lockWaitMax = ((DEADLOCK_DETECT-i) > cpu.lockWaitMax) ? (DEADLOCK_DETECT-i) : cpu.lockWaitMax; \
+       }								\
+     while (0)
+
+#define LOAD_ACQ_CORE_WORD(res, addr)			\
+     do							\
+       {						\
+	 res = M[addr];					\
+	 MEM_BARRIER();					\
+       }						\
+     while (0)
+
+#define STORE_REL_CORE_WORD(addr, data)					\
+  do									\
+    {									\
+      MEM_BARRIER();							\
+      M[addr] = data & DMASK;						\
+    }									\
+  while (0)
+
+#endif  // defined(__FreeBSD__) && !defined(USE_COMPILER_ATOMICS)
+#endif  // LOCKLESS
+
+static inline void core_readN (word24 addr, word36 * data, uint n,
+                               UNUSED const char * ctx)
   {
     for (uint i = 0; i < n; i ++)
-      core_read (addr + i, data + i, ctx);
+      {
+        core_read (addr + i, data + i, ctx);
+        HDBGMRead (addr + i, * (data + i));
+      }
   }
-static inline void core_writeN (word24 addr, word36 *data, uint n, UNUSED const char * ctx)
+
+static inline void core_writeN (word24 addr, word36 * data, uint n,
+                                UNUSED const char * ctx)
   {
     for (uint i = 0; i < n; i ++)
-      core_write (addr + i, data [i], ctx);
+      {
+        core_write (addr + i, data [i], ctx);
+      }
   }
 
 int is_priv_mode (void);
-void set_went_appending (void);
-void clr_went_appending (void);
-bool get_went_appending (void);
+//void set_went_appending (void);
+//void clr_went_appending (void);
+//bool get_went_appending (void);
 bool get_bar_mode (void);
-addr_modes_t get_addr_mode (void);
-void set_addr_mode (addr_modes_t mode);
-int query_scu_unit_num (int cpu_unit_num, int cpu_port_num);
-void init_opcodes (void);
-void decodeInstruction (word36 inst, DCDstruct * p);
-t_stat dpsCmd_Dump (int32 arg, const char *buf);
-t_stat dpsCmd_Init (int32 arg, const char *buf);
-t_stat dpsCmd_Segment (int32 arg, const char *buf);
-t_stat dpsCmd_Segments (int32 arg, const char *buf);
-//t_stat dumpKST (int32 arg, char * buf);
-t_stat memWatch (int32 arg, const char * buf);
-//_sdw0 *fetchSDW (word15 segno);
-_sdw *fetchSDW (word15 segno);
-//char *strSDW0 (_sdw0 *SDW);
-char *strSDW0 (_sdw *SDW);
-int query_scbank_map (word24 addr);
+addr_modes_e get_addr_mode (void);
+void set_addr_mode (addr_modes_e mode);
+void decode_instruction (word36 inst, DCDstruct * p);
+#ifndef SPEED
+t_stat set_mem_watch (int32 arg, const char * buf);
+#endif
+char *str_SDW0 (char * buf, sdw_s *SDW);
+#ifdef SCUMEM
+int lookup_cpu_mem_map (word24 addr, word24 * offset);
+#else
+int lookup_cpu_mem_map (word24 addr);
+#endif
 void cpu_init (void);
 void setup_scbank_map (void);
 #ifdef DPS8M
-//void addCUhist (word36 flags, word18 opcode, word24 address, word5 proccmd, word7 flags2);
-void addCUhist (void);
-void addDUOUhist (word36 flags, word18 ICT, word9 RS_REG, word9 flags2);
-void addAPUhist (word15 ESN, word21 flags, word24 RMA, word3 RTRR, word9 flags2);
-void addEAPUhist (word18 ZCA, word18 opcode);
+void add_CU_history (void);
+void add_DUOU_history (word36 flags, word18 ICT, word9 RS_REG, word9 flags2);
+void add_APU_history (word15 ESN, word21 flags, word24 RMA, word3 RTRR,
+                 word9 flags2);
+void add_EAPU_history (word18 ZCA, word18 opcode);
 #endif
 #ifdef L68
-//void addCUhist (word36 flags, word18 opcode, word18 address, word5 proccmd, word4 sel, word9 flags2);
-void addCUhist (void);
-// XXX addDUhist
-void addOUhist (void);
-void addDUhist (void);
-void addAPUhist (enum APUH_e op);
+void add_CU_history (void);
+void add_OU_history (void);
+void add_DU_history (void);
+void add_APU_history (enum APUH_e op);
 #endif
-void addHist (uint hset, word36 w0, word36 w1);
-uint getCPUnum (void);
-void addHistForce (uint hset, word36 w0, word36 w1);
-uint getCPUnum (void);
-
+void add_history_force (uint hset, word36 w0, word36 w1);
+word18 get_BAR_address(word18 addr);
+#if defined(THREADZ) || defined(LOCKLESS)
+t_stat threadz_sim_instr (void);
+void * cpu_thread_main (void * arg);
+#endif
+void cpu_reset_unit_idx (UNUSED uint cpun, bool clear_mem);

@@ -10,6 +10,9 @@
  */
 
 void fnpTelnetInit (void);
+void fnp3270Init (void);
 void * ltnConnect (uv_tcp_t * client);
+void * ltnConnect3270 (uv_tcp_t * client);
 void ltnRaw (telnet_t * client);
+void ltnEOR (telnet_t * tclient);
 void ltnDialout (telnet_t * client);

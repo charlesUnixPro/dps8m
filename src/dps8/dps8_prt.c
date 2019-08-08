@@ -27,10 +27,13 @@
 #include "dps8_iom.h"
 #include "dps8_prt.h"
 #include "dps8_sys.h"
-#include "dps8_utils.h"
 #include "dps8_faults.h"
-#include "dps8_cpu.h"
+#include "dps8_scu.h"
 #include "dps8_cable.h"
+#include "dps8_cpu.h"
+#include "dps8_utils.h"
+
+#define DBG_CTR 1
 
 //-- // XXX We use this where we assume there is only one unit
 //-- #define ASSUME0 0
@@ -58,6 +61,24 @@ static t_stat prt_set_device_name (UNIT * uptr, int32 value, const char * cptr, 
                      UNIT_IDLE )
 UNIT prt_unit [N_PRT_UNITS_MAX] =
   {
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
+    {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
     {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
     {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
     {UDATA (NULL, UNIT_FLAGS, 0), 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL},
@@ -108,8 +129,8 @@ static MTAB prt_mod [] =
     {
       MTAB_XTD | MTAB_VUN | MTAB_VALR | MTAB_NC, /* mask */
       0,            /* match */
-      "DEVICE_NAME",     /* print string */
-      "DEVICE_NAME",         /* match string */
+      "NAME",     /* print string */
+      "NAME",         /* match string */
       prt_set_device_name, /* validation routine */
       prt_show_device_name, /* display routine */
       "Select the boot drive", /* value descriptor */
@@ -150,7 +171,6 @@ DEVICE prt_dev = {
     NULL
 };
 
-#define MAX_DEV_NAME_LEN 64
 static struct prt_state
   {
     char device_name [MAX_DEV_NAME_LEN];
@@ -173,13 +193,15 @@ void prt_init (void)
       prt_state [i] . prtfile = -1;
   }
 
-static t_stat prt_reset (DEVICE * dptr)
+static t_stat prt_reset (UNUSED DEVICE * dptr)
   {
+#if 0
     for (uint i = 0; i < dptr -> numunits; i ++)
       {
         // sim_prt_reset (& prt_unit [i]);
-        sim_cancel (& prt_unit [i]);
+        // sim_cancel (& prt_unit [i]);
       }
+#endif
     return SCPE_OK;
   }
 
@@ -232,14 +254,21 @@ static int parseID (word36 * b, uint tally, char * qno, char * name)
         name [i] = (char) ch;
       }
     name [i] = 0;
-    return 1;
+    return IOM_CMD_IGNORED;
   }
 
-#ifdef __MINGW64__
+
+//#ifdef __MINGW64__
+#if defined (__MINGW64__) || defined (NEED_128)
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-
+// XXX Temporary hack; read 'NEED_128' as 'pandora'
+#ifdef NEED_128
+#define O_BINARY 0
+// XXX hack to allow testing on 64 bit non-pandora tool chains.
+#define mkstemps local_mkstemps
+#endif
 // Copied from https://searchcode.com/codesearch/view/32512650/
 static int mkstemps (char *pattern, int suffix_len)
 {
@@ -258,7 +287,7 @@ static int mkstemps (char *pattern, int suffix_len)
   if ((int) len < 6 + suffix_len
       || strncmp (&pattern[((int) len) - 6 - suffix_len], "XXXXXX", 6))
     {
-      return -1;
+      return IOM_CMD_ERROR;
     }
 
   XXXXXX = &pattern[((int) len) - 6 - suffix_len];
@@ -309,7 +338,7 @@ static int mkstemps (char *pattern, int suffix_len)
 
   /* We return the null string if we can't find a unique file name.  */
   pattern[0] = '\0';
-  return -1;
+  return IOM_CMD_ERROR;
 }
 #endif
 
@@ -376,18 +405,16 @@ static int eoj (word36 * buffer, uint tally)
       return 0;
     if (getbits36_9 (buffer [2], 0) != 005)
       return 0;
-    return 1;
+    return IOM_CMD_IGNORED;
   }
 
 static int prt_cmd (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
-    struct device * d = & cables -> cablesFromIomToDev [iomUnitIdx] .
-                      devices [chan] [p -> IDCW_DEV_CODE];
-    uint devUnitIdx = d -> devUnitIdx;
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
+    uint ctlr_unit_idx = get_ctlr_idx (iomUnitIdx, chan);
+    uint devUnitIdx = cables->urp_to_urd[ctlr_unit_idx][p->IDCW_DEV_CODE].unit_idx;
     UNIT * unitp = & prt_unit [devUnitIdx];
     int prt_unit_num = (int) PRT_UNIT_NUM (unitp);
-    //int iomUnitIdx = cables -> cablesFromIomToPrt [prt_unit_num] . iomUnitIdx;
 
     switch (p -> IDCW_DEV_CMD)
       {
@@ -407,7 +434,7 @@ static int prt_cmd (uint iomUnitIdx, uint chan)
 
             bool ptro, send, uff;
 
-            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+            int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
             if (rc < 0)
               {
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
@@ -472,7 +499,7 @@ static int prt_cmd (uint iomUnitIdx, uint chan)
 
             bool ptro, send, uff;
 
-            int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+            int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
             if (rc < 0)
               {
                 p -> stati = 05001; // BUG: arbitrary error code; config switch
@@ -517,12 +544,12 @@ static int prt_cmd (uint iomUnitIdx, uint chan)
             bool ptro, send, uff;
             for (uint ddcwIdx = 0; ddcwIdx < ddcwCnt; ddcwIdx ++)
               {
-                int rc = iomListService (iomUnitIdx, chan, & ptro, & send, & uff);
+                int rc = iom_list_service (iomUnitIdx, chan, & ptro, & send, & uff);
                 if (rc < 0)
                   {
                     p -> stati = 05001; // BUG: arbitrary error code; config switch
                     sim_printf ("%s list service failed\n", __func__);
-                    return -1;
+                    return IOM_CMD_ERROR;
                   }
                 if (uff)
                   {
@@ -532,13 +559,13 @@ static int prt_cmd (uint iomUnitIdx, uint chan)
                   {
                     sim_printf ("%s nothing to send\n", __func__);
                     p -> stati = 05001; // BUG: arbitrary error code; config switch
-                    return 1;
+                    return IOM_CMD_IGNORED;
                   }
                 if (p -> DCW_18_20_CP == 07 || p -> DDCW_22_23_TYPE == 2)
                   {
                     sim_printf ("%s expected DDCW\n", __func__);
                     p -> stati = 05001; // BUG: arbitrary error code; config switch
-                    return -1;
+                    return IOM_CMD_ERROR;
                   }
 
                 uint tally = p -> DDCW_TALLY;
@@ -551,7 +578,7 @@ static int prt_cmd (uint iomUnitIdx, uint chan)
                 // Copy from core to buffer
                 word36 buffer [tally];
                 uint wordsProcessed = 0;
-                iomIndirectDataService (iomUnitIdx, chan, buffer,
+                iom_indirect_data_service (iomUnitIdx, chan, buffer,
                                         & wordsProcessed, false);
 
 
@@ -649,25 +676,27 @@ sim_printf ("\n");
         case 040: // CMD 40 Reset status
           {
             p -> stati = 04000;
+            p -> initiate = false;
+            p -> isRead = false;
             sim_debug (DBG_NOTIFY, & prt_dev, "Reset status %d\n", prt_unit_num);
           }
           break;
 
-
         default:
           {
-            sim_warn ("prt daze %o\n", p -> IDCW_DEV_CMD);
-            p -> stati = 04501; // cmd reject, invalid opcode
-            p -> chanStatus = chanStatIncorrectDCW;
+            p->stati = 04501; // cmd reject, invalid opcode
+            p->chanStatus = chanStatIncorrectDCW;
+            if (p->IDCW_DEV_CMD != 051) // ignore bootload console probe
+              sim_warn ("prt daze %o\n", p -> IDCW_DEV_CMD);
           }
-          break;
+          return IOM_CMD_ERROR;
         }   
 
     if (p -> IDCW_CONTROL == 3) // marker bit set
       {
         send_marker_interrupt (iomUnitIdx, (int) chan);
       }
-    return 0;
+    return IOM_CMD_OK;
   }
 
 // 1 ignored command
@@ -675,19 +704,16 @@ sim_printf ("\n");
 // -1 problem
 int prt_iom_cmd (uint iomUnitIdx, uint chan)
   {
-    iomChanData_t * p = & iomChanData [iomUnitIdx] [chan];
+    iom_chan_data_t * p = & iom_chan_data [iomUnitIdx] [chan];
+
 // Is it an IDCW?
 
-    if (p -> DCW_18_20_CP == 7)
-      {
-        prt_cmd (iomUnitIdx, chan);
-      }
-    else // DDCW/TDCW
+    if (p -> DCW_18_20_CP != 7)
       {
         sim_printf ("%s expected IDCW\n", __func__);
-        return -1;
+        return IOM_CMD_ERROR;
       }
-    return 0;
+    return prt_cmd (iomUnitIdx, chan);
   }
 
 static t_stat prt_show_nunits (UNUSED FILE * st, UNUSED UNIT * uptr, UNUSED int val, UNUSED const void * desc)

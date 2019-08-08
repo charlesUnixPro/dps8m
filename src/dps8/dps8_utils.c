@@ -25,18 +25,23 @@
 #include "dps8.h"
 #include "dps8_sys.h"
 #include "dps8_faults.h"
+#include "dps8_scu.h"
+#include "dps8_iom.h"
+#include "dps8_cable.h"
 #include "dps8_cpu.h"
 #include "dps8_ins.h"
-#include "dps8_utils.h"
 #include "dps8_opcodetable.h"
+#include "dps8_utils.h"
+
+#define DBG_CTR 1
 
 /*
  * misc utility routines used by simulator
  */
 
-char * dumpFlags(word18 flags)
+char * dump_flags(char * buffer, word18 flags)
 {
-    static char buffer[256] = "";
+    //static char buffer[256] = "";
     
     sprintf(buffer, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
 #ifdef DPS8M
@@ -75,59 +80,33 @@ static char * dps8_strupr(char *str)
 
 //! get instruction info for IWB ...
 
-static opCode UnImp = {"(unimplemented)", 0, 0, 0, 0};
+static struct opcode_s unimplented = {"(unimplemented)", 0, 0, 0, 0};
 
-struct opCode *getIWBInfo(DCDstruct *i)
-{
-    opCode *p;
-    
-    if (i->opcodeX == false)
-        p = &NonEISopcodes[i->opcode];
-    else
-        p = &EISopcodes[i->opcode];
-    
-#ifndef QUIET_UNUSED
-    if (p->mne == 0)
-    {
-        int r = 1;
-    }
-#endif
-    
-    return p->mne ? p : &UnImp;
-}
+struct opcode_s * get_iwb_info  (DCDstruct * i)
+  {
+    struct opcode_s * p = &opcodes10[i->opcode10];
+    return p->mne ? p : &unimplented;
+  }
 
-char *disAssemble(word36 instruction)
+char *disassemble(char * result, word36 instruction)
 {
-    word9  opcode  = GET_OP(instruction);   ///< get opcode
-    int32  opcodeX = GET_OPX(instruction);  ///< opcode extension
+    uint32 opcode  = GET_OP(instruction);   ///< get opcode
+    uint32 opcodeX = GET_OPX(instruction);  ///< opcode extension
+    uint32 opcode10 = opcode | (opcodeX ? 01000 : 0);
     word18 address = GET_ADDR(instruction);
     word1  a       = GET_A(instruction);
     //int32 i       = GET_I(instruction);
     word6  tag     = GET_TAG(instruction);
 
-    static char result[132] = "???";
+    //static char result[132] = "???";
     strcpy(result, "???");
     
     // get mnemonic ...
-    // non-EIS first
-    if (!opcodeX)
-    {
-        if (NonEISopcodes[opcode].mne)
-            strcpy(result, NonEISopcodes[opcode].mne);
-    }
-    else
-    {
-        // EIS second...
-        if (EISopcodes[opcode].mne)
-            strcpy(result, EISopcodes[opcode].mne);
-        
-        if (EISopcodes[opcode].ndes > 0)
-        {
-            // XXX need to reconstruct multi-word EIS instruction.
+    if (opcodes10[opcode10].mne)
+        strcpy(result, opcodes10[opcode10].mne);
 
-        }
-    }
-    
+    // XXX need to reconstruct multi-word EIS instruction.
+
     char buff[64];
     
     if (a)
@@ -162,16 +141,15 @@ char *disAssemble(word36 instruction)
 }
 
 /*
- * getModString ()
+ * get_mod__string ()
  *
  * Convert instruction address modifier tag to printable string
  * WARNING: returns pointer to statically allocated string
  *
  */
 
-char *getModString(word6 tag)
+char *get_mod_string(char * msg, word6 tag)
 {
-    static char msg[256];
     strcpy(msg, "none");
     
     if (tag >= 0100)
@@ -199,7 +177,7 @@ char *getModString(word6 tag)
 word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 * flags, bool * ovf)
   {
     CPT (cpt2L, 17); // Add36b
-    sim_debug (DBG_TRACE, & cpu_dev, "Add36b op1 %012"PRIo64" op2 %012"PRIo64" carryin %o flagsToSet %06o flags %06o ovf %o\n", op1, op2, carryin, flagsToSet, * flags, * ovf); 
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Add36b op1 %012"PRIo64" op2 %012"PRIo64" carryin %o flagsToSet %06o flags %06o\n", op1, op2, carryin, flagsToSet, * flags); 
 // https://en.wikipedia.org/wiki/Two%27s_complement#Addition
 //
 // In general, any two N-bit numbers may be added without overflow, by first
@@ -280,7 +258,7 @@ word36 Add36b (word36 op1, word36 op2, word1 carryin, word18 flagsToSet, word18 
           CLRF (* flags, I_NEG);
       }
     
-    sim_debug (DBG_TRACE, & cpu_dev, "Add36b res %012"PRIo64" flags %06o ovf %o\n", res, * flags, * ovf); 
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Add36b res %012"PRIo64" flags %06o ovf %o\n", res, * flags, * ovf); 
     return res;
   }
 
@@ -545,7 +523,7 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
   {
     CPT (cpt2L, 21); // Add72b
 #ifdef ISOLTS
-//if (currentRunningCPUnum)
+//if (current_running_cpu_idx)
 //sim_printf ("Add72b op1 %012"PRIo64"%012"PRIo64" op2 %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o ovf %o\n",
  //(word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags, * ovf); 
 #endif
@@ -564,28 +542,58 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 // because it does not require access to the internals of the addition.
 
     // 73 bit arithmetic for the above N+1 algorithm
+#ifdef NEED_128
+    word74 op1e = and_128 (op1, MASK72);
+    word74 op2e = and_128 (op2, MASK72);
+    word74 ci = construct_128 (0, carryin ? 1 : 0);
+#else
     word74 op1e = op1 & MASK72;
     word74 op2e = op2 & MASK72;
     word74 ci = carryin ? 1 : 0;
+#endif
 
     // extend sign bits
+#ifdef NEED_128
+    if (isnonzero_128 (and_128 (op1e, SIGN72)))
+      op1e = or_128 (op1e, BIT73);
+    if (isnonzero_128 (and_128 (op2e, SIGN72)))
+      op2e = or_128 (op2e, BIT73);
+#else
     if (op1e & SIGN72)
       op1e |= BIT73;
     if (op2e & SIGN72)
       op2e |= BIT73;
+#endif
 
     // Do the math
+#ifdef NEED_128
+    word74 res = add_128 (op1e, add_128 (op2e, ci));
+#else
     word74 res = op1e + op2e + ci;
+#endif
 
     // Extract the overflow bits
+#ifdef NEED_128
+    bool r73 = isnonzero_128 (and_128 (res, BIT73));
+    bool r72 = isnonzero_128 (and_128 (res, SIGN72));
+#else
     bool r73 = res & BIT73 ? true : false;
     bool r72 = res & SIGN72 ? true : false;
+#endif
 
     // Extract the carry bit
+#ifdef NEED_128
+    bool r74 = isnonzero_128 (and_128 (res, BIT74));
+#else
     bool r74 = res & BIT74 ? true : false;
+#endif
    
     // Truncate the result
+#ifdef NEED_128
+    res = and_128 (res, MASK72);
+#else
     res &= MASK72;
+#endif
 
     // Check for overflow 
     * ovf = r73 ^ r72;
@@ -601,7 +609,7 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 #endif
 
 #ifdef ISOLTS
-//if (currentRunningCPUnum)
+//if (current_running_cpu_idx)
 //{
 ////char buf [1024];
 ////print_int128 (res, buf);
@@ -624,7 +632,11 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
     
     if (flagsToSet & I_ZERO)
       {
+#ifdef NEED_128
+        if (isnonzero_128 (res))
+#else
         if (res)
+#endif
           CLRF (* flags, I_ZERO);
         else
           SETF (* flags, I_ZERO);       // zero result
@@ -632,14 +644,18 @@ word72 Add72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
     
     if (flagsToSet & I_NEG)
       {
+#ifdef NEED_128
+        if (isnonzero_128 (and_128 (res, SIGN72)))
+#else
         if (res & SIGN72)
+#endif
           SETF (* flags, I_NEG);
         else
           CLRF (* flags, I_NEG);
       }
     
 #ifdef ISOLTS
-//if (currentRunningCPUnum)
+//if (current_running_cpu_idx)
 //{
 //sim_printf ("Sub72b res %012"PRIo64"%012"PRIo64" flags %06o ovf %o\n", (word36) ((res >> 36) & MASK36), (word36) (res & MASK36), * flags, * ovf); 
 //}
@@ -652,12 +668,17 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
   {
     CPT (cpt2L, 22); // Sub72b
 #ifdef ISOLTS
-//if (currentRunningCPUnum)
+//if (current_running_cpu_idx)
 //sim_printf ("Sub72b op1 %012"PRIo64"%012"PRIo64" op2 %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o ovf %o\n",
  //(word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags, * ovf); 
 #endif
-    sim_debug (DBG_TRACE, & cpu_dev, "Sub72b op1 %012"PRIo64"%012"PRIo64" op2 %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o\n",
+#ifdef NEED_128
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Sub72b op1 %012"PRIo64"%012"PRIo64" op2 %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o\n",
+ (word36) ((rshift_128 (op1, 36).l) & MASK36), (word36) (op1.l & MASK36), (word36) (rshift_128 (op2, 36).l & MASK36), (word36) (op2.l & MASK36), carryin, flagsToSet, * flags); 
+#else
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Sub72b op1 %012"PRIo64"%012"PRIo64" op2 %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o\n",
  (word36) ((op1 >> 36) & MASK36), (word36) (op1 & MASK36), (word36) ((op2 >> 36) & MASK36), (word36) (op2 & MASK36), carryin, flagsToSet, * flags); 
+#endif
 
 // https://en.wikipedia.org/wiki/Two%27s_complement
 //
@@ -670,29 +691,74 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
 //  If carry indicator OFF, then C(A) - C(Y) - 1 -> C(A)
 
     // 73 bit arithmetic for the above N+1 algorithm
+#ifdef NEED_128
+    word74 op1e = and_128 (op1, MASK72);
+    word74 op2e = and_128 (op2, MASK72);
+#else
     word74 op1e = op1 & MASK72;
     word74 op2e = op2 & MASK72;
+#endif
     // Note that carryin has an inverted sense for borrow
+#ifdef NEED_128
+    word74 ci = construct_128 (0, carryin ? 0 : 1);
+#else
     word74 ci = carryin ? 0 : 1;
+#endif
 
     // extend sign bits
+#ifdef NEED_128
+    if (isnonzero_128 (and_128 (op1e, SIGN72)))
+      op1e = or_128 (op1e, BIT73);
+    if (isnonzero_128 (and_128 (op2e, SIGN72)))
+      op2e = or_128 (op2e, BIT73);
+#else
     if (op1e & SIGN72)
       op1e |= BIT73;
     if (op2e & SIGN72)
       op2e |= BIT73;
+#endif
 
     // Do the math
+#ifdef NEED_128
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Sub72b op1e %012"PRIo64"%012"PRIo64" op2e %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o\n",
+ (word36) ((rshift_128 (op1e, 36).l) & MASK36), (word36) (op1e.l & MASK36), (word36) (rshift_128 (op2e, 36).l & MASK36), (word36) (op2e.l & MASK36), carryin, flagsToSet, * flags); 
+#else
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Sub72b op1e %012"PRIo64"%012"PRIo64" op2e %012"PRIo64"%012"PRIo64" carryin %o flagsToSet %06o flags %06o\n",
+ (word36) ((op1e >> 36) & MASK36), (word36) (op1e & MASK36), (word36) ((op2e >> 36) & MASK36), (word36) (op2e & MASK36), carryin, flagsToSet, * flags); 
+#endif
+#ifdef NEED_128
+    word74 res = subtract_128 (subtract_128 (op1e, op2e), ci);
+#else
     word74 res = op1e - op2e - ci;
+#endif
+#ifdef NEED_128
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Sub72b res %012"PRIo64"%012"PRIo64" flags %06o ovf %o\n", (word36) (rshift_128 (res, 36).l & MASK36), (word36) (res.l & MASK36), * flags, * ovf); 
+#else
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Sub72b res %012"PRIo64"%012"PRIo64" flags %06o ovf %o\n", (word36) ((res >> 36) & MASK36), (word36) (res & MASK36), * flags, * ovf); 
+#endif
 
     // Extract the overflow bits
+#ifdef NEED_128
+    bool r73 = isnonzero_128 (and_128 (res, BIT73));
+    bool r72 = isnonzero_128 (and_128 (res, SIGN72));
+#else
     bool r73 = res & BIT73 ? true : false;
     bool r72 = res & SIGN72 ? true : false;
+#endif
 
     // Extract the carry bit
+#ifdef NEED_128
+    bool r74 = isnonzero_128 (and_128 (res, BIT74));
+#else
     bool r74 = res & BIT74 ? true : false;
-   
+#endif   
+
     // Truncate the result
+#ifdef NEED_128
+    res = and_128 (res, MASK72);
+#else
     res &= MASK72;
+#endif
 
     // Check for overflow 
     * ovf = r73 ^ r72;
@@ -701,7 +767,7 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
     bool cry = r74;
 
 #ifdef ISOLTS
-//if (currentRunningCPUnum)
+//if (current_running_cpu_idx)
 //{
 ////char buf [1024];
 ////print_int128 (res, buf);
@@ -732,7 +798,11 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
     
     if (flagsToSet & I_ZERO)
       {
+#ifdef NEED_128
+        if (isnonzero_128 (res))
+#else
         if (res)
+#endif
           CLRF (* flags, I_ZERO);
         else
           SETF (* flags, I_ZERO);       // zero result
@@ -740,13 +810,21 @@ word72 Sub72b (word72 op1, word72 op2, word1 carryin, word18 flagsToSet, word18 
     
     if (flagsToSet & I_NEG)
       {
+#ifdef NEED_128
+        if (isnonzero_128 (and_128 (res, SIGN72)))
+#else
         if (res & SIGN72)
+#endif
           SETF (* flags, I_NEG);
         else
           CLRF (* flags, I_NEG);
       }
     
-    sim_debug (DBG_TRACE, & cpu_dev, "Sub72b res %012"PRIo64"%012"PRIo64" flags %06o ovf %o\n", (word36) ((res >> 36) & MASK36), (word36) (res & MASK36), * flags, * ovf); 
+#ifdef NEED_128
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Sub72b res %012"PRIo64"%012"PRIo64" flags %06o ovf %o\n", (word36) (rshift_128 (res, 36).l & MASK36), (word36) (res.l & MASK36), * flags, * ovf); 
+#else
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "Sub72b res %012"PRIo64"%012"PRIo64" flags %06o ovf %o\n", (word36) ((res >> 36) & MASK36), (word36) (res & MASK36), * flags, * ovf); 
+#endif
     return res;
   }
 
@@ -842,32 +920,6 @@ void copyBytes(int posn, word36 src, word36 *dst)
 }
 
 
-#ifndef QUIET_UNUSED
-word9 getByte(int posn, word36 src)
-{
-    // XXX what's wrong with the macro????
-    // XXX NB different parameter order
-//    word36 mask = 0;
-    
-//    switch (posn)
-//    {
-//        case 0: // byte 0 - (bits 0-8)
-//            mask |= 0777000000000LL;
-//            break;
-//        case 1: // byte 1 - (bits 9-17)
-//            mask |= 0000777000000LL;
-//            break;
-//        case 2: // byte 2 - (bits 18-26)
-//            mask |= 0000000777000LL;
-//            break;
-//        case 3: // byte 3 - (bits 27-35)
-//            mask |= 0000000000777LL;
-//            break;
-//    }
-    word9 byteVal = (word9) (src >> (9 * (3 - posn))) & 0777;   ///< get byte bits
-    return byteVal;
-}
-#endif
 
 void copyChars(int posn, word36 src, word36 *dst)
 {
@@ -925,7 +977,6 @@ void putByte(word36 *dst, word9 data, int posn)
 //            offset = 0;
 //            break;
 //    }
-    //*dst = bitfieldInsert36(*dst, (word36)data, offset, 9);
     putbits36_9 (dst, (uint) posn * 9, data);
 }
 
@@ -955,19 +1006,27 @@ void putChar(word36 *dst, word6 data, int posn)
 //            offset = 0;
 //            break;
 //    }
-    //*dst = bitfieldInsert36(*dst, (word36)data, offset, 6);
     putbits36_6 (dst, (uint) posn * 6, data);
 }
 
-word72 convertToWord72(word36 even, word36 odd)
+word72 convert_to_word72(word36 even, word36 odd)
 {
+#ifdef NEED_128
+    return or_128 (lshift_128 (construct_128 (0, even), 36), construct_128 (0, odd));
+#else
     return ((word72)even << 36) | (word72)odd;
+#endif
 }
 
-void convertToWord36(word72 src, word36 *even, word36 *odd)
+void convert_to_word36 (word72 src, word36 *even, word36 *odd)
 {
+#ifdef NEED_128
+    *even = rshift_128 (src, 36).l & DMASK;
+    *odd = src.l & DMASK;
+#else
     *even = (word36)(src >> 36) & DMASK;
     *odd = (word36)src & DMASK;
+#endif
 }
 
 void cmp36(word36 oP1, word36 oP2, word18 *flags)
@@ -1106,36 +1165,35 @@ void cmp72(word72 op1, word72 op2, word18 *flags)
     CPT (cpt2L, 27); // cmp72
    // The case of op1 == 400000000000000000000000 and op2 == 0 falls through
    // this code.
-#if 0
-    if (!(op1 & SIGN72) && (op2 & SIGN72) && (op1 > op2))
-        CLRF(*flags, I_ZERO | I_NEG | I_CARRY);
-    else if ((op1 & SIGN72) == (op2 & SIGN72) && (op1 > op2))
-    {
-        SETF(*flags, I_CARRY);
-        CLRF(*flags, I_ZERO | I_NEG);
-    } else if (((op1 & SIGN72) == (op2 & SIGN72)) && (op1 == op2))
-    {
-        SETF(*flags, I_ZERO | I_CARRY);
-        CLRF(*flags, I_NEG);
-    } else if (((op1 & SIGN72) == (op2 & SIGN72)) && (op1 < op2))
-    {
-        SETF(*flags, I_NEG);
-        CLRF(*flags, I_ZERO | I_CARRY);
-    } else if (((op1 & SIGN72) && !(op2 & SIGN72)) && (op1 < op2))
-    {
-        SETF(*flags, I_CARRY | I_NEG);
-        CLRF(*flags, I_ZERO);
-    }
-#else
 #ifdef L68
     cpu.ou.cycle |= ou_GOS;
 #endif
+#ifdef NEED_128
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op1 %016"PRIx64"%016"PRIx64"\n", op1.h, op1.l);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op2 %016"PRIx64"%016"PRIx64"\n", op2.h, op2.l);
+    int128 op1s =  SIGNEXT72_128 (and_128 (op1, MASK72));
+    int128 op2s =  SIGNEXT72_128 (and_128 (op2, MASK72));
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op1s %016"PRIx64"%016"PRIx64"\n", op1s.h, op1s.l);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op2s %016"PRIx64"%016"PRIx64"\n", op2s.h, op2s.l);
+#else
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op1 %016"PRIx64"%016"PRIx64"\n", (uint64_t) (op1>>64), (uint64_t) op1);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op2 %016"PRIx64"%016"PRIx64"\n", (uint64_t) (op2>>64), (uint64_t) op2);
     int128 op1s =  SIGNEXT72_128 (op1 & MASK72);
     int128 op2s =  SIGNEXT72_128 (op2 & MASK72);
-
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op1s %016"PRIx64"%016"PRIx64"\n", (uint64_t) (op1s>>64), (uint64_t) op1s);
+sim_debug (DBG_TRACEEXT, & cpu_dev, "op2s %016"PRIx64"%016"PRIx64"\n", (uint64_t) (op2s>>64), (uint64_t) op2s);
+#endif
+#ifdef NEED_128
+    if (isgt_s128 (op1s, op2s))
+#else
     if (op1s > op2s)
+#endif
       {
+#ifdef NEED_128
+        if (isnonzero_128 (and_128 (op2, SIGN72)))
+#else
         if (op2 & SIGN72)
+#endif
           CLRF (* flags, I_CARRY);
         else
           {
@@ -1144,7 +1202,11 @@ void cmp72(word72 op1, word72 op2, word18 *flags)
           }
         CLRF (* flags, I_ZERO | I_NEG);
       }
+#ifdef NEED_128
+    else if (iseq_128 (cast_128 (op1s), cast_128 (op2s)))
+#else
     else if (op1s == op2s)
+#endif
       {
         CPT (cpt2L, 28); // carry
         CPT (cpt2L, 30); // zero
@@ -1154,7 +1216,11 @@ void cmp72(word72 op1, word72 op2, word18 *flags)
     else /* op1s < op2s */
       {
         CPT (cpt2L, 31); // neg
+#ifdef NEED_128
+        if (isnonzero_128 (and_128 (op1, SIGN72)))
+#else
         if (op1 & SIGN72)
+#endif
           {
             CPT (cpt2L, 28); // carry
             SETF (* flags, I_CARRY);
@@ -1164,9 +1230,6 @@ void cmp72(word72 op1, word72 op2, word18 *flags)
         CLRF (* flags, I_ZERO);
         SETF (* flags, I_NEG);
       }
-
-
-#endif
 }
 
 /*
@@ -1305,20 +1368,20 @@ int strmask (char * str, char * mask)
  * (implemented as a small fsm, kinda...
  * (add support for embedded " later, much later...)
  */
-#define NORMAL 		1
-#define IN_STRING	2
-#define EOB			3
+#define NORMAL 1
+#define IN_STRING 2
+#define EOB 3
 
 char *
 Strtok(char *line, char *sep)
 {
     
-    static char *p;		/*!< current pointer position in input line	*/
+    static char *p; /*!< current pointer position in input line*/
     static int state = NORMAL;
     
-    char *q;			/*!< beginning of current field			*/
+    char *q; /*!< beginning of current field*/
     
-    if (line) {			/* 1st invocation						*/
+    if (line) { /* 1st invocation */
         p = line;
         state = NORMAL;
     }
@@ -1328,29 +1391,29 @@ Strtok(char *line, char *sep)
         switch (state) {
             case NORMAL:
                 switch (*p) {
-                    case 0:				///< at end of buffer
-                        state = EOB;	// set state to "end Of Buffer
+                    case 0: // at end of buffer
+                        state = EOB; // set state to "end Of Buffer
                         return q;
                         
-                    case '"':		///< beginning of a quoted string
-                        state = IN_STRING;	// we're in a string
+                    case '"': // beginning of a quoted string
+                        state = IN_STRING; // we're in a string
                         p++;
                         continue;
                         
-                    default:    ///< only a few special characters
-                        if (strchr(sep, *p) == NULL) {	// not a sep
-                            p++;				// goto next char
+                    default:    // only a few special characters
+                        if (strchr(sep, *p) == NULL) { // not a sep
+                            p++; // goto next char
                             continue;
                         } else {
-                            *p++ = (char)0;	/* ... iff >0	*/
-                            while (*p && strchr(sep, *p))	/* skip over seperator(s)*/
+                            *p++ = (char)0; /* ... iff >0 */
+                            while (*p && strchr(sep, *p)) /* skip over seperator(s)*/
                                 p++;
-                            return q;	/* return field		*/
+                            return q; /* return field */
                         }
                 }
                 
             case IN_STRING:
-                if (*p == 0) {		  /*!< incomplete quoted string	*/
+                if (*p == 0) {   /*!< incomplete quoted string */
                     state = EOB;
                     return q;
                 }
@@ -1359,12 +1422,12 @@ Strtok(char *line, char *sep)
                     p++;
                     continue;
                 }
-                state = NORMAL;			/* end of quoted string	*/
+                state = NORMAL; /* end of quoted string */
                 p++;
                 
                 continue;
                 
-            case EOB:					/*!< just in case	*/
+            case EOB: /* just in case */
                 state = NORMAL;
                 return NULL;
                 
@@ -1376,7 +1439,7 @@ Strtok(char *line, char *sep)
         
     }
     
-    return NULL;		/* no more fields in buffer		*/
+    return NULL; /* no more fields in buffer */
     
 }
 #if 0
@@ -1407,7 +1470,7 @@ char *rtrim(char *s)
 /** ------------------------------------------------------------------------- */
 char *ltrim(char *s)
 /**
- *	Removes the leading spaces from a string.
+ * Removes the leading spaces from a string.
  */
 {
     char *p;
@@ -1452,316 +1515,6 @@ stripquotes(char *s)
     if (s[nLast] == '"')
         s[nLast] = ' ';
     return trim(s);
-}
-
-#if 0
-/*!
- a - Bitfield to insert bits into.
- b - Bit pattern to insert.
- c - Bit offset number.
- d = Number of bits to insert.
- 
- Description
- 
- Returns the result of inserting bits B at offset C of length D in the bitfield A.
- */
-word72 bitfieldInsert72(word72 a, word72 b, int c, int d)
-{
-    word72 mask = ~((word72)-1 << d) << c;
-    mask = ~mask;
-    a &= mask;
-    return a | (b << c);
-}
-#endif
-
-#if 0
-/*!
- a - Bitfield to insert bits into.
- b - Bit pattern to insert.
- c - Bit offset number.
- d = Number of bits to insert.
- 
- Description
- 
- Returns the result of inserting bits B at offset C of length D in the bitfield A.
- 
- XXX: c & d should've been expressed in dps8 big-endian rather than little-endian numbering. Oh, well.
- 
- */
-word36 bitfieldInsert36(word36 a, word36 b, int c, int d)
-{
-    word36 mask = ~(0xffffffffffffffffLL << d) << c;
-    mask = ~mask;
-    a &= mask;
-    return a | (b << c);
-}
-#endif
-
-#if 0
-/*!
-a - Bitfield to insert bits into.
-b - Bit pattern to insert.
-c - Bit offset number.
-d = Number of bits to insert.
- 
- Description
- 
- Returns the result of inserting bits B at offset C of length D in the bitfield A.
-*/
-int bitfieldInsert(int a, int b, int c, int d)
-{
-    uint32 mask = ~(0xffffffff << d) << c;
-    mask = ~mask;
-    a &= mask;
-    return a | (b << c);
-}
-#endif
-
-#if 0
-/*!
- a -  Bitfield to extract bits from.
- b -  Bit offset number. Bit offsets start at 0.
- c - Number of bits to extract.
- 
- Description
- 
- Returns bits from offset b of length c in the bitfield a.
- */
-int bitfieldExtract(int a, int b, int c)
-{
-    int mask = ~((int)0xffffffff << c);
-    if (b > 0)
-        return (a >> b) & mask; // original pseudocode had b-1
-    else
-        return a & mask;
-}
-#endif
-
-#if 0
-/*!
- a -  Bitfield to extract bits from.
- b -  Bit offset number. Bit offsets start at 0.
- c - Number of bits to extract.
- 
- Description
- 
- Returns bits from offset b of length c in the bitfield a.
- NB: This would've been much easier to use of I changed, 'c', the bit offset to reflect the dps8s 36bit word!! Oh, well.
-
- */
-word36 bitfieldExtract36(word36 a, int b, int c)
-{
-    word36 mask = ~(0xffffffffffffffffLL  << c);
-    //printf("mask=%012"PRIo64"\n", mask);
-    if (b > 0)
-        return (a >> b) & mask; // original pseudocode had b-1
-    else
-        return a & mask;
-}
-#endif
-
-#if 0
-word72 bitfieldExtract72(word72 a, int b, int c)
-{
-    word72 mask = ~((word72)-1 << c);
-    if (b > 0)
-        return (a >> b) & mask; // original pseudocode had b-1
-    else
-        return a & mask;
-}
-#endif
-
-#ifndef QUIET_UNUSED
-/*!
- @param[in] x Bitfield to count bits in.
- 
- \brief Returns the count of set bits (value of 1) in the bitfield x.
- */
-int bitCount(int x)
-{
-    int i;
-    int res = 0;
-    for(i = 0; i < 32; i++) {
-        uint32 mask = 1 << i;
-        if (x & (int) mask)
-            res ++;
-    }
-    return res;
-}
-#endif 
-
-#ifndef QUIET_UNUSED
-/*!
- @param[in] x Bitfield to find LSB in.
- 
- \brief Returns the bit number of the least significant bit (value of 1) in the bitfield x. If no bits have the value 1 then -1 is returned.
- */
-int findLSB(int x)
-{
-    int i;
-    int mask;
-    int res = -1;
-    for(i = 0; i < 32; i++) {
-        mask = 1 << i;
-        if (x & mask) {
-            res = i;
-            break;
-        }
-    }
-    return res;
-}
-#endif
-
-
-#ifndef QUIET_UNUSED
-/*!
- @param[in] x  Bitfield to find MSB in.
- 
- \brief Returns the bit number of the most significant bit (value of 1) in the bitfield x. If the number is negative then the position of the first zero bit is returned. If no bits have the value 1 (or 0 in the negative case) then -1 is returned.
-
- from http://http.developer.nvidia.com/Cg/findMSB.html
-
- NB: the above site provides buggy "pseudocode". >sheesh<
- 
- */
-int findMSB(int x)
-{
-    int i;
-    int mask;
-    int res = -1;
-    if (x < 0) x = ~x;
-    for(i = 0; i < 32; i++) {
-        mask = (int) 0x80000000 >> i;
-        if (x & mask) {
-            res = 31 - i;
-            break;
-        }
-    }
-    return res;
-}
-#endif
-
-#ifndef QUIET_UNUSED
-/*!
- @param[in] x Bitfield to reverse.
- 
- \brief Returns the reverse of the bitfield x.
- */
-int bitfieldReverse(int x)
-{
-    int res = 0;
-    int i, shift, mask;
-    
-    for(i = 0; i < 32; i++) {
-        mask = 1 << i;
-        shift = 32 - 2*i - 1;
-        mask &= x;
-        mask = (shift > 0) ? mask << shift : mask >> -shift;
-        res |= mask;
-    }
-    
-    return res;
-}
-#endif
-
-
-#if 0
-/*
- * getbits36()
- *
- * Extract a range of bits from a 36-bit word.
- */
-
-word36 getbits36(word36 x, uint i, uint n) {
-    // bit 35 is right end, bit zero is 36th from the right
-    int shift = 35-(int)i-(int)n+1;
-    if (shift < 0 || shift > 35) {
-        sim_printf ("getbits36: bad args (%012"PRIo64",i=%d,n=%d)\n", x, i, n);
-        return 0;
-    } else
-        return (x >> (unsigned) shift) & ~ (~0U << n);
-}
-
-// ============================================================================
-
-/*
- * setbits36()
- *
- * Set a range of bits in a 36-bit word -- Returned value is x with n bits
- * starting at p set to the n lowest bits of val
- */
-
-word36 setbits36(word36 x, uint p, uint n, word36 val)
-{
-    int shift = 36 - (int) p - (int) n;
-    if (shift < 0 || shift > 35) {
-        sim_printf ("setbits36: bad args (%012"PRIo64",pos=%d,n=%d)\n", x, p, n);
-        return 0;
-    }
-    word36 mask = ~ (~0U<<n);  // n low bits on
-    mask <<= (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
-    // caller may provide val that is too big, e.g., a word with all bits
-    // set to one, so we mask val
-    word36 result = (x & ~ mask) | ((val&MASKBITS(n)) << (36 - p - n));
-    return result;
-}
-
-
-// ============================================================================
-
-/*
- * putbits36()
- *
- * Set a range of bits in a 36-bit word -- Sets the bits in the argument,
- * starting at p set to the n lowest bits of val
- */
-
-void putbits36 (word36 * x, uint p, uint n, word36 val)
-  {
-    int shift = 36 - (int) p - (int) n;
-    if (shift < 0 || shift > 35)
-      {
-        sim_printf ("putbits36: bad args (%012"PRIo64",pos=%d,n=%d)\n", * x, p, n);
-        return;
-      }
-    word36 mask = ~ (~0U << n);  // n low bits on
-    mask <<= (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
-    // caller may provide val that is too big, e.g., a word with all bits
-    // set to one, so we mask val
-    * x = (* x & ~mask) | ((val & MASKBITS (n)) << (36 - p - n));
-    return;
-  }
-#endif
-
-/*
- * bin2text()
- *
- * Display as bit string.
- * WARNING: returns pointer of two alternating static buffers
- *
- */
-
-#include <ctype.h>
-
-char *bin2text(uint64 word, int n)
-{
-    // WARNING: static buffer
-    static char str1[65];
-    static char str2[65];
-    static char *str = NULL;
-    if (str == NULL)
-        str = str1;
-    else if (str == str1)
-        str = str2;
-    else
-        str = str1;
-    str[n] = 0;
-    int i;
-    for (i = 0; i < n; ++ i) {
-        str[n-i-1] = ((word % 2) == 1) ? '1' : '0';
-        word >>= 1;
-    }
-    return str;
 }
 
 #include <ctype.h>
@@ -1946,7 +1699,7 @@ void sim_puts (char * str)
 // XXX what about config=addr7=123, where clist has a "addr%"?
 
 // return -2: error; -1: done; >= 0 option found
-int cfgparse (const char * tag, const char * cptr, config_list_t * clist, config_state_t * state, int64_t * result)
+int cfg_parse (const char * tag, const char * cptr, config_list_t * clist, config_state_t * state, int64_t * result)
   {
     if (! cptr)
       return -2;
@@ -2066,7 +1819,7 @@ done:
     return ret;
   }
 
-void cfgparse_done (config_state_t * state)
+void cfg_parse_done (config_state_t * state)
   {
     if (state -> copy)
       free (state -> copy);
@@ -2083,6 +1836,7 @@ void cfgparse_done (config_state_t * state)
 //   \t  tab
 //   \f  formfeed
 //   \r  carrriage return
+//   \0  null  // doesn't work, commented out.
 //
 // \\ doesn't seem to work...
 //  Also, a simh specific:
@@ -2097,7 +1851,9 @@ void cfgparse_done (config_state_t * state)
 //   \d  dollar
 //   \q  double quote
 //   \w  <backslash>
-//   \z  ^Z
+//   \z  ^D eof (DECism)
+//   \^  caret
+//   \x  expect; used by the autoinput parserj
 //
 // And a special case:
 //
@@ -2120,6 +1876,8 @@ char * strdupesc (const char * str)
           }
         if (p [1] == '\\')           //   \\    backslash
           * p = '\\';
+        else if (p [1] == 'a')       //   \a    ^A
+          * p = '\001';
         else if (p [1] == 'w')       //   \w    backslash
           * p = '\\';
         else if (p [1] == 'n')       //   \n    newline
@@ -2148,6 +1906,12 @@ char * strdupesc (const char * str)
           * p = '\004';
         else if (p [1] == 'k')       //  \k    caret
           * p = '^';
+        else if (p [1] == 'x')       //  \x    expect
+          * p = '\030';
+        else if (p [1] == 'y')       //  \y    expect
+          * p = '\031';
+        //else if (p [1] == '0')       //  \0    null; used as end of expect string
+          //* p = 0;
 
 #if 0
         else if (p [1] == 'T' && p [2] == 'Z')  // \TZ   time zone
@@ -2305,144 +2069,6 @@ void put36 (word36 val, uint8 * bits, uint woffset)
     // mask shouldn't be neccessary but is robust
   }
 
-#ifndef QUIET_UNUSED
-//
-//   extr9
-//     extract the word9 at coffset
-//
-//   | 012345678 | 012345678 |012345678 | 012345678 | 012345678 | 012345678 | 012345678 | 012345678 |
-//     0       1          2         3          4          5          6          7          8
-//     012345670   123456701  234567012   345670123   456701234   567012345   670123456   701234567  
-//
-
-word9 extr9 (uint8 * bits, uint coffset)
-  {
-    uint charNum = coffset % 8;
-    uint dwoffset = coffset / 8;
-    uint8 * p = bits + dwoffset * 9;
-
-    word9 w;
-    switch (charNum)
-      {
-        case 0:
-          w = ((((word9) p [0]) << 1) & 0776) | ((((word9) p [1]) >> 7) & 0001);
-          break;
-        case 1:
-          w = ((((word9) p [1]) << 2) & 0774) | ((((word9) p [2]) >> 6) & 0003);
-          break;
-        case 2:
-          w = ((((word9) p [2]) << 3) & 0770) | ((((word9) p [3]) >> 5) & 0007);
-          break;
-        case 3:
-          w = ((((word9) p [3]) << 4) & 0760) | ((((word9) p [4]) >> 4) & 0017);
-          break;
-        case 4:
-          w = ((((word9) p [4]) << 5) & 0740) | ((((word9) p [5]) >> 3) & 0037);
-          break;
-        case 5:
-          w = ((((word9) p [5]) << 6) & 0700) | ((((word9) p [6]) >> 2) & 0077);
-          break;
-        case 6:
-          w = ((((word9) p [6]) << 7) & 0600) | ((((word9) p [7]) >> 1) & 0177);
-          break;
-        case 7:
-          w = ((((word9) p [7]) << 8) & 0400) | ((((word9) p [8]) >> 0) & 0377);
-          break;
-      }
-    // mask shouldn't be neccessary but is robust
-    return w & 0777U;
-  }
-#endif
-
-#ifndef QUIET_UNUSED
-//
-//   extr18
-//     extract the word18 at coffset
-//
-//   |           11111111 |           11111111 |           11111111 |           11111111 |
-//   | 012345678901234567 | 012345678901234567 | 012345678901234567 | 012345678901234567 |
-//
-//     0       1       2          3       4          5       6          7       8
-//     012345670123456701   234567012345670123   456701234567012345   670123456701234567  
-//
-//     000000001111111122   222222333333334444   444455555555666666   667777777788888888
-//
-//       0  0  0  0  0  0     0  0  0  0  0  0     0  0  0  0  0  0     0  0  0  0  0  0
-//       7  7  6  0  0  0     7  7  0  0  0  0     7  4  0  0  0  0     6  0  0  0  0  0
-//       0  0  1  7  7  4     0  0  7  7  6  0     0  3  7  7  0  0     1  7  7  4  0  0
-//       0  0  0  0  0  3     0  0  0  0  1  7     0  0  0  0  7  7     0  0  0  3  7  7
-
-word18 extr18 (uint8 * bits, uint boffset)
-  {
-    uint byteNum = boffset % 4;
-    uint dwoffset = boffset / 4;
-    uint8 * p = bits + dwoffset * 18;
-
-    word18 w;
-    switch (byteNum)
-      {
-        case 0:
-          w = ((((word18) p [0]) << 10) & 0776000) | ((((word18) p [1]) << 2) & 0001774) | ((((word18) p [2]) >> 6) & 0000003);
-          break;
-        case 1:
-          w = ((((word18) p [2]) << 12) & 0770000) | ((((word18) p [3]) << 4) & 0007760) | ((((word18) p [4]) >> 4) & 0000017);
-          break;
-        case 2:
-          w = ((((word18) p [4]) << 14) & 0740000) | ((((word18) p [5]) << 6) & 0037700) | ((((word18) p [6]) >> 2) & 0000077);
-          break;
-        case 3:
-          w = ((((word18) p [6]) << 16) & 0600000) | ((((word18) p [7]) << 8) & 0177400) | ((((word18) p [8]) >> 0) & 0000377);
-          break;
-      }
-    // mask shouldn't be neccessary but is robust
-    return w & 0777777U;
-  }
-#endif
-
-//
-//  getbit
-//     Get a single bit. offset can be bigger when word size
-//
-
-uint8 getbit (void * bits, int offset)
-  {
-    unsigned int offsetInWord = (uint) offset % 36;
-    unsigned int revOffsetInWord = 35 - offsetInWord;
-    unsigned int offsetToStartOfWord = (uint) offset - offsetInWord;
-    unsigned int revOffset = offsetToStartOfWord + revOffsetInWord;
-
-    uint8 * p = (uint8 *) bits;
-    unsigned int byte_offset = revOffset / 8;
-    unsigned int bit_offset = revOffset % 8;
-    // flip the byte back
-    bit_offset = 7 - bit_offset;
-
-    uint8 byte = p [byte_offset];
-    byte >>= bit_offset;
-    byte &= 1;
-    //printf ("offset %d, byte_offset %d, bit_offset %d, byte %x, bit %x\n", offset, byte_offset, bit_offset, p [byte_offset], byte);
-    return byte;
-  }
-
-#ifndef QUIET_UNUSED
-//
-// extr
-//    Get a string of bits (up to 64)
-//
-
-uint64 extr (void * bits, int offset, int nbits)
-  {
-    uint64 n = 0;
-    int i;
-    for (i = nbits - 1; i >= 0; i --)
-      {
-        n <<= 1;
-        n |= getbit (bits, i + offset);
-        //printf ("%012lo\n", n);
-      }
-    return n;
-  }
-#endif
 
 int extractASCII36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, word36 *wordp)
   {
@@ -2518,7 +2144,8 @@ int insertWord36toBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, wo
     return 0;
   }
 
-static void print_uint128_r (__uint128_t n, char * p)
+#ifndef NEED_128
+static void print_uint128_r (uint128 n, char * p)
   {
     if (n == 0)
       return;
@@ -2535,7 +2162,7 @@ static void print_uint128_r (__uint128_t n, char * p)
       sim_printf("%c", (int) (n%10+0x30));
   }
 
-void print_int128 (__int128_t n, char * p)
+void print_int128 (int128 n, char * p)
   {
     if (n == 0)
       {
@@ -2553,12 +2180,57 @@ void print_int128 (__int128_t n, char * p)
           sim_printf ("-");
         n = -n;
       }
-    print_uint128_r ((__uint128_t) n, p);
+    print_uint128_r ((uint128) n, p);
   }
+#endif
 
-// Return simh's gtime as a long long.
-uint64 sim_timell (void)
+// https://gist.github.com/diabloneo/9619917
+
+void timespec_diff(struct timespec * start, struct timespec * stop,
+                   struct timespec * result)
+{
+    if ((stop->tv_nsec - start->tv_nsec) < 0) {
+        result->tv_sec = stop->tv_sec - start->tv_sec - 1;
+        result->tv_nsec = stop->tv_nsec - start->tv_nsec + 1000000000;
+    } else {
+        result->tv_sec = stop->tv_sec - start->tv_sec;
+        result->tv_nsec = stop->tv_nsec - start->tv_nsec;
+    }
+
+    return;
+}
+
+#if 0
+// Calculate current TR value
+
+void currentTR (word27 * trunits, bool * ovf)
   {
-    return (uint64) sim_gtime ();
+    struct timespec now, delta;
+    clock_gettime (CLOCK_BOOTTIME, & now);
+    timespec_diff (& cpu.rTRTime, & now, & delta);
+    if (delta.tv_sec > 263)
+      {
+        // The elapsed time is manifestly larger then the TR range
+        * trunits = (~0llu) & MASK27;
+        * ovf = true;
+        return;
+      }
+    // difference in nSecs
+    unsigned long dns = (unsigned long) delta.tv_sec * 1000000000 + 
+                        (unsigned long) delta.tv_nsec;
+    // in Timer ticks
+    unsigned long ticks = dns / 1953 /* 1953.125 */;
+
+    // Runout?
+    if (ticks >= cpu.rTR)
+      {
+        * trunits = (~0llu) & MASK27;
+        * ovf = true;
+        return;
+      }
+    * trunits = (cpu.rTR - ticks) & MASK27;
+    //sim_printf ("time left %f\n", (float) (* trunits) / 5120000);
+    * ovf = false;
   }
+#endif
 

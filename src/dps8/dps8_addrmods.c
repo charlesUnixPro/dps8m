@@ -1,7 +1,7 @@
 /*
  Copyright (c) 2007-2013 Michael Mondy
  Copyright 2012-2016 by Harry Reed
- Copyright 2013-2016 by Charles Anthony
+ Copyright 2013-2018 by Charles Anthony
 
  All rights reserved.
 
@@ -24,12 +24,20 @@
 #include "dps8_addrmods.h"
 #include "dps8_sys.h"
 #include "dps8_faults.h"
+#include "dps8_scu.h"
+#include "dps8_iom.h"
+#include "dps8_cable.h"
 #include "dps8_cpu.h"
 #include "dps8_append.h"
 #include "dps8_ins.h"
-#include "dps8_utils.h"
 #include "dps8_iefp.h"
 #include "dps8_opcodetable.h"
+#include "dps8_utils.h"
+#if defined(THREADZ) || defined(LOCKLESS)
+#include "threadz.h"
+#endif
+
+#define DBG_CTR cpu.cycleCnt
 
 // Computed Address Formation Flowcharts
 
@@ -37,7 +45,7 @@
 // return contents of register indicated by Td
 //
 
-static word18 getCr (word4 Tdes)
+static word18 get_Cr (word4 Tdes)
   {
     cpu.ou.directOperandFlag = false;
 
@@ -64,8 +72,8 @@ static word18 getCr (word4 Tdes)
           cpu.ou.directOperandFlag = true;
 
           sim_debug (DBG_ADDRMOD, & cpu_dev,
-                    "getCr(TD_DU): rY=%06o directOperand=%012"PRIo64"\n",
-                    cpu.rY, cpu.ou.directOperand);
+                    "%s(TD_DU): rY=%06o directOperand=%012"PRIo64"\n",
+                    __func__, cpu.rY, cpu.ou.directOperand);
 
           return 0;
 
@@ -84,26 +92,23 @@ static word18 getCr (word4 Tdes)
             cpu.ou.directOperandFlag = true;
 
             sim_debug (DBG_ADDRMOD, & cpu_dev,
-                       "getCr(TD_DL): rY=%06o directOperand=%012"PRIo64"\n",
-                       cpu.rY, cpu.ou.directOperand);
+                       "%s(TD_DL): rY=%06o directOperand=%012"PRIo64"\n",
+                       __func__, cpu.rY, cpu.ou.directOperand);
 
             return 0;
       }
     return 0;
   }
 
-// Warning: returns ptr to static buffer.
-
-static char * opDescSTR (void)
+static char * op_desc_str (char * temp)
   {
-    static char temp [256];
     DCDstruct * i = & cpu.currentInstruction;
 
     strcpy (temp, "");
 
     if (READOP (i))
       {
-        switch (OPSIZE ())
+        switch (operand_size ())
           {
             case 1:
               strcat (temp, "readCY");
@@ -132,7 +137,7 @@ static char * opDescSTR (void)
         if (strlen (temp))
           strcat (temp, "/");
 
-        switch (OPSIZE ())
+        switch (operand_size ())
           {
             case 1:
               strcat (temp, "writeCY");
@@ -173,40 +178,10 @@ static char * opDescSTR (void)
         strcat (temp, "prepareCA");
       }
 
-    return temp;    //"opDescSTR(???)";
+    return temp;    //"op_desc_str (???)";
   }
 
-#ifndef QUIET_UNUSED
-static char * operandSTR (void)
-  {
-    DCDstruct * i = & cpu.currentInstruction;
-    if (i -> info -> ndes > 0)
-      return "operandSTR(): MWEIS not handled yet";
-
-    static char temp [1024];
-
-    int n = OPSIZE ();
-    switch (n)
-      {
-        case 1:
-          sprintf (temp, "CY=%012"PRIo64"", cpu.CY);
-          break;
-        case 2:
-          sprintf (temp, "CYpair[0]=%012"PRIo64" CYpair[1]=%012"PRIo64"",
-                   cpu.Ypair [0], cpu.Ypair [1]);
-          break;
-        case 8:
-        case 16:
-        case 32:
-        default:
-          sprintf (temp, "Unhandled size: %d", n);
-          break;
-      }
-    return temp;
-}
-#endif
-
-static void doITP (void)
+static void do_ITP (void)
   {
     sim_debug (DBG_APPENDING, & cpu_dev,
                "ITP Pair: PRNUM=%o BITNO=%o WORDNO=%o MOD=%o\n",
@@ -239,10 +214,15 @@ static void doITP (void)
     cpu.rY = cpu.TPR.CA;
 
     cpu.rTAG = GET_ITP_MOD (cpu.itxPair);
+
+    cpu.cu.itp = 1;
+    cpu.cu.TSN_PRNO[0] = n;
+    cpu.cu.TSN_VALID[0] = 1;
+
     return;
   }
 
-static void doITS (void)
+static void do_ITS (void)
   {
     sim_debug (DBG_APPENDING, & cpu_dev,
                "ITS Pair: SEGNO=%o RN=%o WORDNO=%o BITNO=%o MOD=%o\n",
@@ -278,25 +258,26 @@ static void doITS (void)
 
     cpu.rTAG = GET_ITS_MOD (cpu.itxPair);
 
+    cpu.cu.its = 1;
+
     return;
   }
 
 
 // CANFAULT
-static void doITSITP (word6 Tag, word6 * newtag)
+static void do_ITS_ITP (word6 Tag, word6 * newtag)
   {
-    word6 indTag = GET_TAG (cpu.itxPair [0]);
+    word6 ind_tag = GET_TAG (cpu.itxPair [0]);
 
     sim_debug (DBG_APPENDING, & cpu_dev,
-               "doITS/ITP: %012"PRIo64" %012"PRIo64" Tag:%o\n",
+               "do_ITS/ITP: %012"PRIo64" %012"PRIo64" Tag:%o\n",
                cpu.itxPair[0], cpu.itxPair[1], Tag);
 
     if (! ((GET_TM (Tag) == TM_IR || GET_TM (Tag) == TM_RI) &&
            (ISITP (cpu.itxPair[0]) || ISITS (cpu.itxPair[0]))))
       {
-        sim_debug (DBG_APPENDING, & cpu_dev, "doITSITP: faulting\n");
-        doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
-                 "Incorrect address modifier");
+        sim_debug (DBG_APPENDING, & cpu_dev, "do_ITS_ITP: faulting\n");
+        doFault (FAULT_IPR, fst_ill_mod, "Incorrect address modifier");
       }
 
     // Whenever the processor is forming a virtual address two special address
@@ -320,22 +301,16 @@ static void doITSITP (word6 Tag, word6 * newtag)
     // address modifier will cause an illegal procedure, illegal modifier,
     // fault.
 
-    //cpu.itxPair [0] = indword;
 
-    //Read (address + 1, & cpu.itxPair [1], INDIRECT_WORD_FETCH);
-
-    //sim_debug (DBG_APPENDING, & cpu_dev,
-               //"doITS/ITP: YPair= %012"PRIo64" %012"PRIo64"\n",
-               //cpu.itxPair [0], cpu.itxPair [1]);
-
-    if (ISITS (indTag))
-        doITS ();
+    if (ISITS (ind_tag))
+        do_ITS ();
     else
-        doITP ();
+        do_ITP ();
 
     * newtag = GET_TAG (cpu.itxPair [1]);
-    //didITSITP = true;
-    set_went_appending ();
+    //set_went_appending ();
+    cpu.cu.XSF = 1;
+    sim_debug (DBG_APPENDING, & cpu_dev, "do_ITS_ITP sets XSF to 1\n");
   }
 
 
@@ -360,7 +335,7 @@ void updateIWB (word18 addr, word6 tag)
                * wb, GET_ADDR (* wb),
                extMods [GET_TAG (* wb)].mod);
 
-    decodeInstruction (IWB_IRODD, & cpu.currentInstruction);
+    decode_instruction (IWB_IRODD, & cpu.currentInstruction);
   }
 
 //
@@ -378,11 +353,25 @@ void updateIWB (word18 addr, word6 tag)
 //
 // CANFAULT
 
-t_stat doComputedAddressFormation (void)
+void do_caf (void)
   {
+//#ifdef CA_REWORK
+    if (cpu.currentInstruction.b29 == 0)
+      {
+        cpu.TPR.CA = GET_ADDR (IWB_IRODD);
+      }
+    else
+      {
+        word3 n = GET_PRN(IWB_IRODD);  // get PRn
+        word15 offset = GET_OFFSET(IWB_IRODD);
+        cpu.TPR.CA = (cpu.PAR[n].WORDNO + SIGNEXT15_18 (offset))
+                      & MASK18;
+      }
+//#endif
+    char buf [256];
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(Entry): operType:%s TPR.CA=%06o\n",
-                __func__, opDescSTR (), cpu.TPR.CA);
+                __func__, op_desc_str (buf), cpu.TPR.CA);
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "%s(Entry): CT_HOLD %o\n",
                 __func__, cpu.cu.CT_HOLD);
@@ -408,8 +397,7 @@ startCA:;
 
     if (++ lockupCnt > lockupLimit)
       {
-        doFault (FAULT_LUF, (_fault_subtype) {.bits=0},
-                 "Lockup in addrmod");
+        doFault (FAULT_LUF, fst_zero, "Lockup in addrmod");
       }
 
     Td = GET_TD (cpu.rTAG);
@@ -420,18 +408,42 @@ startCA:;
     // state and restart the fetch.
     if (cpu.cu.CT_HOLD)
       {
-//if (currentRunningCPUnum) sim_printf ("restart CT_HOLD %o\n", cpu.cu.CT_HOLD);
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "%s(startCA): IR mode restart; CT_HOLD %02o\n",
+                   "%s(startCA): restart; CT_HOLD %02o\n",
                    __func__, cpu.cu.CT_HOLD);
-        cpu.rTAG = cpu.cu.CT_HOLD;
-        Td = GET_TD (cpu.rTAG);
-        Tm = GET_TM (cpu.rTAG);
-        goto IR_MOD_1;
+	word6 save_rTAG = cpu.rTAG;
+	if (Tm == TM_IR)
+	  {
+	    cpu.rTAG = cpu.cu.CT_HOLD;
+	    Td = GET_TD (cpu.rTAG);
+	    Tm = GET_TM (cpu.rTAG);
+	    cpu.cu.CT_HOLD = save_rTAG;
+	  }
+#ifdef ISOLTS
+       else if (GET_TM(cpu.cu.CT_HOLD) == TM_IT && GET_TD (cpu.cu.CT_HOLD) == IT_DIC &&
+		cpu.cu.pot == 1 && GET_ADDR (IWB_IRODD) == cpu.TPR.CA)
+         {
+           cpu.TPR.CA--;
+           sim_warn ("%s: correct CA\n", __func__);
+         }
+#endif
+       else if (Tm == TM_IT && (Td == IT_IDC || Td == IT_DIC))
+         {
+           cpu.cu.pot = 1;
+         }
+      }
+    else
+      {
+	// not CT_HOLD
+	if (Tm == TM_IR || (Tm == TM_IT && (Td == IT_IDC || Td == IT_DIC)))
+	  cpu.cu.CT_HOLD = cpu.rTAG;
+	cpu.cu.its = 0;
+	cpu.cu.itp = 0;
+	cpu.cu.pot = 0;
       }
     sim_debug (DBG_ADDRMOD, & cpu_dev,
-               "%s(startCA): TAG=%02o(%s) Tm=%o Td=%o\n",
-               __func__, cpu.rTAG, getModString (cpu.rTAG), Tm, Td);
+               "%s(startCA): TAG=%02o(%s) Tm=%o Td=%o CT_HOLD %02o\n",
+               __func__, cpu.rTAG, get_mod_string (buf, cpu.rTAG), Tm, Td, cpu.cu.CT_HOLD);
 
     switch (Tm)
       {
@@ -450,7 +462,7 @@ startCA:;
     sim_printf ("%s(startCA): unknown Tm??? %o\n",
                 __func__, GET_TM (cpu.rTAG));
     sim_warn ("(startCA): unknown Tmi; can't happen!\n");
-    return SCPE_OK;
+    return;
 
 
     // Register modification. Fig 6-3
@@ -460,10 +472,10 @@ startCA:;
         if (Td == 0) // TPR.CA = address from opcode
           {
             //updateIWB (identity) // known that Td is 0.
-            return SCPE_OK;
+            return;
           }
 
-        word18 Cr = getCr (Td);
+        word18 Cr = get_Cr (Td);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD: Cr=%06o\n", Cr);
 
@@ -472,28 +484,16 @@ startCA:;
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "R_MOD: directOperand = %012"PRIo64"\n",
                        cpu.ou.directOperand);
-
-#ifdef XSF_IND
-            //cpu.TPR.CA = cpu.ou.directOperand;
-            //updateIWB (identity) // known that rTag is DL or DU
-#else
-            sim_debug (DBG_TRACE, & cpu_dev, "dl/du do %012llo IWB %012llo\n", cpu.ou.directOperand, IWB_IRODD);
-            updateIWB ((Td == TD_DU ? (cpu.ou.directOperand >> 18) :
-                                       cpu.ou.directOperand) & MASK18,
-                        cpu.rTAG);
-#endif
-            return SCPE_OK;
+            return;
           }
 
         // For the case of RPT/RPD, the instruction decoder has
         // verified that Tm is R or RI, and Td is X1..X7.
         if (cpu.cu.rpt || cpu.cu.rd | cpu.cu.rl)
           {
-#if 0 // executeInstruction has already cleared PRNO
-            //if (cpu.isb29)
-            if (ISB29)
+            if (cpu.currentInstruction.b29)
               {
-                word3 PRn = (i -> address >> 15) & MASK3;
+                word3 PRn = GET_PRN(IWB_IRODD);
                 CPTUR (cptUsePRn + PRn);
                 cpu.TPR.CA = (Cr & MASK15) + cpu.PR [PRn].WORDNO;
                 cpu.TPR.CA &= AMASK;
@@ -502,20 +502,6 @@ startCA:;
               {
                 cpu.TPR.CA = Cr;
               }
-#else
-            //if (cpu.isb29)
-            if (ISB29)
-              {
-                word3 PRn = cpu.cu.TSN_PRNO[0];
-                CPTUR (cptUsePRn + PRn);
-                cpu.TPR.CA = (Cr & MASK15) + cpu.PR [PRn].WORDNO;
-                cpu.TPR.CA &= AMASK;
-              }
-            else
-              {
-                cpu.TPR.CA = Cr;
-              }
-#endif
           }
         else
           {
@@ -525,12 +511,7 @@ startCA:;
         sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD: TPR.CA=%06o\n",
                    cpu.TPR.CA);
 
-        // If repeat, the indirection chain is limited, so it is not necessary
-        // to clear the tag; the delta code later on needs the tag to know
-        // which X register to update
-        if (! (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl))
-          updateIWB (cpu.TPR.CA, 0); // Known to be 0 or ,n
-        return SCPE_OK;
+        return;
       } // R_MOD
 
 
@@ -541,74 +522,43 @@ startCA:;
         sim_debug (DBG_ADDRMOD, & cpu_dev, "RI_MOD: Td=%o\n", Td);
 
         if (Td == TD_DU || Td == TD_DL)
-          doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+          doFault (FAULT_IPR, fst_ill_mod,
                    "RI_MOD: Td == TD_DU || Td == TD_DL");
-
-#ifdef OLD_CYCLE
-        word18 tmpCA = cpu.TPR.CA;
-#endif
 
         if (Td != 0)
           {
-            word18 Cr = getCr (Td);  // C(r)
+            word18 Cr = get_Cr (Td);  // C(r)
 
             // We don''t need to worry about direct operand here, since du
             // and dl are disallowed above
 
-#ifdef OLDCYCLE
-            sim_debug (DBG_ADDRMOD, & cpu_dev,
-                       "RI_MOD: Cr=%06o tmpCA(Before)=%06o\n", Cr, tmpCA);
-#else
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "RI_MOD: Cr=%06o CA(Before)=%06o\n", Cr, cpu.TPR.CA);
-#endif
 
             if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
               {
                  word6 Td_ = GET_TD (i -> tag);
                  uint Xn = X (Td_);  // Get Xn of next instruction
-#ifdef OLDCYCLE
-                 tmpCA = cpu.rX [Xn];
-#else
                  cpu.TPR.CA = cpu.rX [Xn];
-#endif
               }
             else
               {
-#ifdef OLDCYCLE
-                tmpCA += Cr;
-                tmpCA &= MASK18;   // keep to 18-bits
-#else
                 cpu.TPR.CA += Cr;
                 cpu.TPR.CA &= MASK18;   // keep to 18-bits
-#endif
               }
-#ifdef OLDCYCLE
-            sim_debug (DBG_ADDRMOD, & cpu_dev,
-                       "RI_MOD: tmpCA(After)=%06o\n", tmpCA);
-#else
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "RI_MOD: CA(After)=%06o\n", cpu.TPR.CA);
-#endif
           }
 
         // If the indirect word faults, on restart the CA will be the post
         // register modification value, so we want to prevent it from 
         // happening again on restart
 
-#ifdef XSF_IND // OLDCYCLE
-        updateIWB (cpu.TPR.CA, TM_RI | TD_N);
-#endif
-
         // in case it turns out to be a ITS/ITP
         iTAG = cpu.rTAG;
 
-#ifdef OLDCYCLE
-        Read2 (tmpCA, cpu.itxPair, INDIRECT_WORD_FETCH); //TM_RI);
-#else
-        //Read2 (cpu.TPR.CA, cpu.itxPair, INDIRECT_WORD_FETCH); //TM_RI);
+        word18 saveCA = cpu.TPR.CA;
         ReadIndirect ();
-#endif
 
         // "In the case of RI modification, only one indirect reference is made
         // per repeated execution. The TAG field of the indirect word is not
@@ -629,29 +579,25 @@ startCA:;
           {
             if (GET_TD (GET_TAG (cpu.itxPair[0])) == IT_F2)
               {
-#ifdef OLDCYCLE
-                cpu.TPR.CA = tmpCA;
-#endif
-                doFault (FAULT_F2, (_fault_subtype) {.bits=0},
-                         "RI_MOD: IT_F2 (0)");
+                doFault (FAULT_F2, fst_zero, "RI_MOD: IT_F2 (0)");
               }
             if (GET_TD (GET_TAG (cpu.itxPair[0])) == IT_F3)
               {
-#ifdef OLDCYCLE
-                cpu.TPR.CA = tmpCA;
-#endif
-                doFault (FAULT_F3, (_fault_subtype) {.bits=0},
-                         "RI_MOD: IT_F3");
+                doFault (FAULT_F3, fst_zero, "RI_MOD: IT_F3");
               }
           }
 
-        if (ISITP (cpu.itxPair[0]) || ISITS (cpu.itxPair[0]))
-          {
-#ifdef OLDCYCLE
-            doITSITP (iTAG, & cpu.rTAG);
-#else
-            doITSITP (iTAG, & cpu.rTAG);
+        if ((saveCA & 1) == 1 && (ISITP (cpu.itxPair[0]) || ISITS (cpu.itxPair[0])))
+	  {
+	    sim_warn ("%s: itp/its at odd address\n", __func__);
+#ifdef TESTING
+	    traceInstruction (0);
 #endif
+	  }
+
+	if ((saveCA & 1) == 0 && (ISITP (cpu.itxPair[0]) || ISITS (cpu.itxPair[0])))
+          {
+            do_ITS_ITP (iTAG, & cpu.rTAG);
           }
         else
           {
@@ -661,27 +607,22 @@ startCA:;
           }
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "RI_MOD: cpu.itxPair[0]=%012"PRIo64" TPR.CA=%06o rTAG=%02o\n",
+                   "RI_MOD: cpu.itxPair[0]=%012"PRIo64
+                   " TPR.CA=%06o rTAG=%02o\n",
                    cpu.itxPair[0], cpu.TPR.CA, cpu.rTAG);
         // If repeat, the indirection chain is limited, so it is not needed
         // to clear the tag; the delta code later on needs the tag to know
         // which X register to update
         if (cpu.cu.rpt || cpu.cu.rd || cpu.cu.rl)
-          return SCPE_OK;
+          return;
 
-#ifdef XSF_IND // OLDCYCLE
         updateIWB (cpu.TPR.CA, cpu.rTAG);
-#else
-        sim_debug (DBG_TRACE, & cpu_dev, "skipping updateIWB CA %06o tag %02o\n", cpu.TPR.CA, cpu.rTAG);
-#endif
         goto startCA;
       } // RI_MOD
 
     // Figure 6-5. Indirect Then Register Modification Flowchart
     IR_MOD:;
       {
-        cpu.cu.CT_HOLD = cpu.rTAG;
-
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "IR_MOD: CT_HOLD=%o %o\n", cpu.cu.CT_HOLD, Td);
 
@@ -689,8 +630,7 @@ startCA:;
 
         if (++ lockupCnt > lockupLimit)
           {
-            doFault (FAULT_LUF, (_fault_subtype) {.bits=0},
-                     "Lockup in addrmod IR mode");
+            doFault (FAULT_LUF, fst_zero, "Lockup in addrmod IR mode");
           }
 
         sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -701,12 +641,19 @@ startCA:;
         iTAG = cpu.rTAG;
 
         word18 saveCA = cpu.TPR.CA;
-        //Read2 (cpu.TPR.CA, cpu.itxPair, INDIRECT_WORD_FETCH);
         ReadIndirect ();
 
-        if (ISITP (cpu.itxPair[0]) || ISITS (cpu.itxPair[0]))
+        if ((saveCA & 1) == 1 && (ISITP (cpu.itxPair[0]) || ISITS (cpu.itxPair[0])))
+	  {
+	    sim_warn ("%s: itp/its at odd address\n", __func__);
+#ifdef TESTING
+	    traceInstruction (0);
+#endif
+	  }
+
+	if ((saveCA & 1) == 0 && (ISITP (cpu.itxPair[0]) || ISITS (cpu.itxPair[0])))
           {
-            doITSITP (iTAG, & cpu.rTAG);
+            do_ITS_ITP (iTAG, & cpu.rTAG);
           }
         else
           {
@@ -726,7 +673,7 @@ startCA:;
                    "IR_MOD1: cpu.itxPair[0]=%012"PRIo64
                    " TPR.CA=%06o Tm=%o Td=%02o (%s)\n",
                    cpu.itxPair[0], cpu.TPR.CA, Tm, Td,
-                   getModString (GET_TAG (cpu.itxPair[0])));
+                   get_mod_string (buf, GET_TAG (cpu.itxPair[0])));
 
         switch (Tm)
           {
@@ -743,13 +690,11 @@ startCA:;
                       {
                         case IT_F2:
                           cpu.TPR.CA = saveCA;
-                          doFault (FAULT_F2, (_fault_subtype) {.bits=0},
-                                   "TM_IT: IT_F2 (1)");
+                          doFault (FAULT_F2, fst_zero, "TM_IT: IT_F2 (1)"); 
 
                         case IT_F3:
                           cpu.TPR.CA = saveCA;
-                          doFault (FAULT_F3, (_fault_subtype) {.bits=0},
-                                   "TM_IT: IT_F3");
+                          doFault (FAULT_F3, fst_zero, "TM_IT: IT_F3");
                       }
                   }
                 // fall through to TM_R
@@ -757,7 +702,7 @@ startCA:;
 
             case TM_R:
               {
-                word18 Cr = getCr (GET_TD (cpu.cu.CT_HOLD));
+                word18 Cr = get_Cr (GET_TD (cpu.cu.CT_HOLD));
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IR_MOD(TM_R): CT_HOLD %o Cr=%06o\n",
@@ -780,18 +725,14 @@ startCA:;
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
                                "IR_MOD(TM_R): TPR.CA=%06o\n", cpu.TPR.CA);
 
-#ifdef XSF_IND // OLDCYCLE
                     updateIWB (cpu.TPR.CA, 0);
-#endif
                   }
-                cpu.cu.CT_HOLD = 0;
-                return SCPE_OK;
+                return;
               } // TM_R
 
             case TM_RI:
               {
-//if (currentRunningCPUnum) sim_printf ("TM_RI\n");
-                word18 Cr = getCr (Td);
+                word18 Cr = get_Cr (Td);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IR_MOD(TM_RI): Td=%o Cr=%06o TPR.CA(Before)=%06o\n",
@@ -826,16 +767,14 @@ startCA:;
 
             case TM_IR:
               {
-#ifdef XSF_IND // OLDCYCLE
                 updateIWB (cpu.TPR.CA, cpu.rTAG); // XXX guessing here...
-#endif
-                goto IR_MOD;
+                goto IR_MOD_1;
               } // TM_IR
           } // Tm
 
         sim_printf ("%s(IR_MOD): unknown Tm??? %o\n", 
                     __func__, GET_TM (cpu.rTAG));
-        return SCPE_OK;
+        return;
       } // IR_MOD
 
     IT_MOD:;
@@ -859,9 +798,7 @@ startCA:;
             case SPEC_ITP:
             case SPEC_ITS:
               {
-                doFault (FAULT_IPR,
-                         (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
-                         "ITx in IT_MOD)");
+                doFault(FAULT_IPR, fst_ill_mod, "ITx in IT_MOD)");
               }
 
             case 2:
@@ -869,28 +806,24 @@ startCA:;
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(): illegal procedure, illegal modifier, "
                            "fault Td=%o\n", Td);
-                doFault (FAULT_IPR,
-                         (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                doFault (FAULT_IPR, fst_ill_mod,
                          "IT_MOD(): illegal procedure, illegal modifier, "
                          "fault");
               }
 
             case IT_F1:
               {
-                doFault (FAULT_F1, (_fault_subtype) {.bits=0},
-                         "IT_MOD: IT_F1");
+                doFault(FAULT_F1, fst_zero, "IT_MOD: IT_F1");
               }
 
             case IT_F2:
               {
-                doFault (FAULT_F2, (_fault_subtype) {.bits=0},
-                         "IT_MOD: IT_F2 (2)");
+                doFault(FAULT_F2, fst_zero, "IT_MOD: IT_F2 (2)");
               }
 
             case IT_F3:
               {
-                doFault (FAULT_F3, (_fault_subtype) {.bits=0},
-                         "IT_MOD: IT_F3");
+                doFault(FAULT_F3, fst_zero, "IT_MOD: IT_F3");
               }
 
 
@@ -898,11 +831,11 @@ startCA:;
             case IT_SC:  // Sequence character (Td = 12)
             case IT_SCR: // Sequence character reverse (Td = 5)
               {
-	      // There is complexity with managing page faults and tracking
-	      // the indirect word address and the operand address.
+                // There is complexity with managing page faults and tracking
+                // the indirect word address and the operand address.
                 //
-	      // To address this, we force those pages in during PREPARE_CA,
-	      // so that they won't fault during operand read/write.
+                // To address this, we force those pages in during PREPARE_CA,
+                // so that they won't fault during operand read/write.
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD CI/SC/SCR reading indirect word from %06o\n",
@@ -913,8 +846,12 @@ startCA:;
                 //
 
                 word36 indword;
-                word18 indwordAddress = cpu.TPR.CA;
-                Read (indwordAddress, & indword, OPERAND_READ);
+                word18 indaddr = cpu.TPR.CA;
+                Read (indaddr, & indword, APU_DATA_READ);
+#ifdef LOCKLESS
+		word24 phys_address = cpu.iefpFinalAddress;
+#endif
+
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD CI/SC/SCR indword=%012"PRIo64"\n", indword);
 
@@ -922,67 +859,90 @@ startCA:;
                 // Parse and validate the indirect word
                 //
 
-                word18 Yi_ = GET_ADDR (indword);
-                cpu.ou.characterOperandSize = GET_TB (GET_TAG (indword));
-                cpu.ou.characterOperandOffset = GET_CF (GET_TAG (indword));
+                Yi = GET_ADDR (indword);
+                word6 sz = GET_TB (GET_TAG (indword));
+                word3 os = GET_CF (GET_TAG (indword));
+                word12 tally = GET_TALLY (indword);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD CI/SC/SCR size=%o offset=%o Yi=%06o\n",
-                           cpu.ou.characterOperandSize,
-                           cpu.ou.characterOperandOffset,
-                           Yi_);
+                           sz, os, Yi);
 
-                if (cpu.ou.characterOperandSize == TB6 &&
-                    cpu.ou.characterOperandOffset > 5)
+                if (sz == TB6 && os > 5)
                   // generate an illegal procedure, illegal modifier fault
-                  doFault (FAULT_IPR,
-                           (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                  doFault (FAULT_IPR, fst_ill_mod,
                            "co size == TB6 && offset > 5");
 
-                if (cpu.ou.characterOperandSize == TB9 &&
-                    cpu.ou.characterOperandOffset > 3)
+                if (sz == TB9 && os > 3)
                   // generate an illegal procedure, illegal modifier fault
-                  doFault (FAULT_IPR,
-                           (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
+                  doFault (FAULT_IPR, fst_ill_mod,
                            "co size == TB9 && offset > 3");
+
+                // Save data in OU registers for readOperands/writeOperands
+
+                cpu.TPR.CA = Yi;
+                cpu.ou.character_address = Yi;
+                cpu.ou.characterOperandSize = sz;
+                cpu.ou.characterOperandOffset = os;
 
                 // CI uses the address, and SC uses the pre-increment address;
                 // but SCR use the post-decrement address
                 if (Td == IT_SCR)
                   {
-		// For each reference to the indirect word, the character
-		// counter, cf, is reduced by 1 and the TALLY field is
-		// increased by 1 before the computed address is formed.
+                    // For each reference to the indirect word, the character
+                    // counter, cf, is reduced by 1 and the TALLY field is
+                    // increased by 1 before the computed address is formed.
                     //
-		// Character count arithmetic is modulo 6 for 6-bit
-		// characters and modulo 4 for 9-bit bytes. If the
-		// character count, cf, underflows to -1, it is reset to 5
-		// for 6-bit characters or to 3 for 9-bit bytes and ADDRESS
-		// is reduced by 1. ADDRESS arithmetic is modulo 2^18.
-		// TALLY arithmetic is modulo 4096.
+                    // Character count arithmetic is modulo 6 for 6-bit
+                    // characters and modulo 4 for 9-bit bytes. If the
+                    // character count, cf, underflows to -1, it is reset to 5
+                    // for 6-bit characters or to 3 for 9-bit bytes and ADDRESS
+                    // is reduced by 1. ADDRESS arithmetic is modulo 2^18.
+                    // TALLY arithmetic is modulo 4096.
                     //
-		// If the TALLY field overflows to 0, the tally runout
-		// indicator is set ON, otherwise it is set OFF. The
-		// computed address is the (possibly) decremented value of
-		// the ADDRESS field of the indirect word. The effective
-		// character/byte number is the decremented value of the
-		// character position count, cf, field of the indirect
-		// word.
+                    // If the TALLY field overflows to 0, the tally runout
+                    // indicator is set ON, otherwise it is set OFF. The
+                    // computed address is the (possibly) decremented value of
+                    // the ADDRESS field of the indirect word. The effective
+                    // character/byte number is the decremented value of the
+                    // character position count, cf, field of the indirect
+                    // word.
 
-                    if (cpu.ou.characterOperandOffset == 0)
+                    if (os == 0)
                       {
-                        if (cpu.ou.characterOperandSize == TB6)
-                            cpu.ou.characterOperandOffset = 5;
+                        if (sz == TB6)
+                            os = 5;
                         else
-                            cpu.ou.characterOperandOffset = 3;
-                        Yi_ -= 1;
-                        Yi_ &= MASK18;
+                            os = 3;
+                        Yi -= 1;
+                        Yi &= MASK18;
                       }
-                        else
+                    else
                       {
-                        cpu.ou.characterOperandOffset -= 1;
+                        os -= 1;
                       }
+
+                    CPT (cpt2L, 5); // Update IT Tally; SCR
+                    tally ++;
+                    tally &= 07777; // keep to 12-bits
+
+                    // Update saved values
+
+                    cpu.TPR.CA = Yi;
+                    cpu.ou.character_address = Yi;
+                    cpu.ou.characterOperandSize = sz;
+                    cpu.ou.characterOperandOffset = os;
                   }
+
+
+// What if readOperands and/of writeOperands fault? On restart, doCAF will be
+// called again and the indirect word would incorrectly be updated a second
+// time. 
+//
+// We don't care about read/write access violations; in general, they are not
+// restarted.
+//
+// We can avoid page faults by preemptively fetching the data word.
 
                 //
                 // Get the data word
@@ -990,20 +950,89 @@ startCA:;
 
                 cpu.cu.pot = 1;
 
-                word36 data;
-                Read (Yi_, & data, OPERAND_READ);
+#ifdef LOCKLESSXXX
+		// gives warnings as another lock is aquired in between
+                Read (cpu.TPR.CA, & cpu.ou.character_data, (i->info->flags & RMW) == STORE_OPERAND ? OPERAND_RMW : OPERAND_READ);
+#else
+                Read (cpu.TPR.CA, & cpu.ou.character_data, OPERAND_READ);
+#endif
+#ifdef LOCKLESS
+		cpu.char_word_address = cpu.iefpFinalAddress;
+#endif
+
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "IT_MOD CI/SC/SCR data=%012"PRIo64"\n", data);
+                           "IT_MOD CI/SC/SCR data=%012"PRIo64"\n",
+                           cpu.ou.character_data);
 
                 cpu.cu.pot = 0;
 
-                //
-                // Restore the CA to point to the indirect word
-                //
+                if (Td == IT_SC)
+                  {
+                    // For each reference to the indirect word, the character
+                    // counter, cf, is increased by 1 and the TALLY field is
+                    // reduced by 1 after the computed address is formed.
+                    // Character count arithmetic is modulo 6 for 6-bit
+                    // characters and modulo 4 for 9-bit bytes. If the
+                    // character count, cf, overflows to 6 for 6-bit characters
+                    // or to 4 for 9-bit bytes, it is reset to 0 and ADDRESS is
+                    // increased by 1. ADDRESS arithmetic is modulo 2^18. TALLY
+                    // arithmetic is modulo 4096. If the TALLY field is reduced
+                    // to 0, the tally runout indicator is set ON, otherwise it
+                    // is set OFF.
 
-                cpu.TPR.CA =  indwordAddress;
+                    os ++;
 
-                return SCPE_OK;
+                    if (((sz == TB6) && (os > 5)) ||
+                        ((sz == TB9) && (os > 3)))
+                      {
+                        os = 0;
+                        Yi += 1;
+                        Yi &= MASK18;
+                      }
+                    CPT (cpt2L, 6); // Update IT Tally; SC
+                    tally --;
+                    tally &= 07777; // keep to 12-bits
+                  }
+
+                if (Td == IT_SC || Td == IT_SCR)
+                  {
+                    sim_debug (DBG_ADDRMOD, & cpu_dev,
+                                   "update IT tally now %o\n", tally);
+
+                    //word36 new_indword = (word36) (((word36) Yi << 18) |
+                    //                    (((word36) tally & 07777) << 6) |
+                    //                    cpu.ou.characterOperandSize |
+                    //                    cpu.ou.characterOperandOffset);
+                    //Write (cpu.TPR.CA,  new_indword, APU_DATA_STORE);
+#ifdef LOCKLESS
+		    word36 indword_new;
+		    core_read_lock(phys_address, &indword_new, __func__);
+		    if (indword_new != indword)
+		      sim_warn("indword changed from %llo to %llo\n", indword, indword_new);
+#endif
+                    putbits36_18 (& indword, 0, Yi);
+                    putbits36_12 (& indword, 18, tally);
+                    putbits36_3  (& indword, 33, os);
+#ifdef LOCKLESS
+		    core_write_unlock(phys_address, indword, __func__);
+#else
+                    Write (indaddr, indword, APU_DATA_STORE);
+#endif
+
+                    SC_I_TALLY (tally == 0);
+
+                    sim_debug (DBG_ADDRMOD, & cpu_dev,
+                               "update IT wrote tally word %012"PRIo64
+                               " to %06o\n",
+                               indword, cpu.TPR.CA);
+                  }
+
+
+
+                // readOperand and writeOperand will not use cpu.TPR.CA; they
+                // will use the saved address, size, offset and data.
+                cpu.TPR.CA = cpu.ou.character_address;
+                return;
               } // IT_CI, IT_SC, IT_SCR
    
             case IT_I: // Indirect (Td = 11)
@@ -1012,13 +1041,6 @@ startCA:;
                            "IT_MOD(IT_I): reading indirect word from %06o\n",
                            cpu.TPR.CA);
 
-#ifdef TESTING
-{ static bool first = true;
-if (first) {
-first = false;
-sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n");
-}}
-#endif
                 //Read2 (cpu.TPR.CA, cpu.itxPair, INDIRECT_WORD_FETCH);
                 ReadIndirect ();
 
@@ -1027,10 +1049,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            cpu.itxPair[0]);
 
                 cpu.TPR.CA = GET_ADDR (cpu.itxPair[0]);
-
-                updateIWB (cpu.TPR.CA, 0);
-
-                return SCPE_OK;
+                return;
               } // IT_I
 
             case IT_AD: ///< Add delta (Td = 13)
@@ -1049,9 +1068,19 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            "IT_MOD(IT_AD): reading indirect word from %06o\n",
                            cpu.TPR.CA);
 
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
+#ifdef TEST_FENCE
+    fence ();
+#endif
+#ifdef THREADZ
+                lock_rmw ();
+#endif
+
                 word18 saveCA = cpu.TPR.CA;
                 word36 indword;
-                Read (cpu.TPR.CA, & indword, OPERAND_READ);
+                Read (cpu.TPR.CA, & indword, APU_DATA_RMW);
 
                 cpu.AM_tally = GET_TALLY (indword); // 12-bits
                 delta = GET_DELTA (indword); // 6-bits
@@ -1080,7 +1109,18 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 indword = (word36) (((word36) Yi << 18) |
                                     (((word36) cpu.AM_tally & 07777) << 6) |
                                     delta);
-                Write (saveCA, indword, OPERAND_STORE);
+#ifdef LOCKLESS
+		core_write_unlock(cpu.iefpFinalAddress, indword, __func__);
+#else
+		Write (saveCA, indword, APU_DATA_STORE);
+#endif
+
+#ifdef TEST_FENCE
+    fence ();
+#endif
+#ifdef THREADZ
+                unlock_rmw ();
+#endif
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_AD): wrote tally word %012"PRIo64
@@ -1088,10 +1128,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            indword, saveCA);
 
                 cpu.TPR.CA = computedAddress;
-
-                updateIWB (cpu.TPR.CA, 0); // XXX guessing here...
-
-                return SCPE_OK;
+                return;
               } // IT_AD
 
             case IT_SD: ///< Subtract delta (Td = 4)
@@ -1106,9 +1143,19 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 // otherwise it is set OFF. The computed address is the value
                 // of the decremented ADDRESS field of the indirect word.
 
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
+#ifdef TEST_FENCE
+    fence ();
+#endif
+#ifdef THREADZ
+                lock_rmw ();
+#endif
+
                 word18 saveCA = cpu.TPR.CA;
                 word36 indword;
-                Read (cpu.TPR.CA, & indword, OPERAND_READ);
+		Read (cpu.TPR.CA, & indword, APU_DATA_RMW);
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_SD): reading indirect word from %06o\n",
@@ -1131,7 +1178,6 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
 
                 cpu.AM_tally += 1;
                 cpu.AM_tally &= 07777; // keep to 12-bits
-                //SC_I_TALLY (cpu.AM_tally == 0);
                 if (cpu.AM_tally == 0)
                   SET_I_TALLY;
 
@@ -1139,7 +1185,18 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 indword = (word36) (((word36) Yi << 18) |
                                     (((word36) cpu.AM_tally & 07777) << 6) |
                                     delta);
-                Write (saveCA, indword, OPERAND_STORE);
+#ifdef LOCKLESS
+		core_write_unlock(cpu.iefpFinalAddress, indword, __func__);
+#else
+                Write (saveCA, indword, APU_DATA_STORE);
+#endif
+
+#ifdef TEST_FENCE
+    fence ();
+#endif
+#ifdef THREADZ
+                unlock_rmw ();
+#endif
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_SD): wrote tally word %012"PRIo64
@@ -1148,9 +1205,7 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
 
 
                 cpu.TPR.CA = Yi;
-                updateIWB (cpu.TPR.CA, 0); // XXX guessing here...
-
-                return SCPE_OK;
+                return;
               } // IT_SD
 
             case IT_DI: ///< Decrement address, increment tally (Td = 14)
@@ -1168,9 +1223,19 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            "IT_MOD(IT_DI): reading indirect word from %06o\n",
                            cpu.TPR.CA);
 
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
+#ifdef TEST_FENCE
+    fence ();
+#endif
+#ifdef THREADZ
+                lock_rmw ();
+#endif
+
                 word18 saveCA = cpu.TPR.CA;
                 word36 indword;
-                Read (cpu.TPR.CA, & indword, OPERAND_READ);
+                Read (cpu.TPR.CA, & indword, APU_DATA_RMW);
 
                 Yi = GETHI (indword);
                 cpu.AM_tally = GET_TALLY (indword); // 12-bits
@@ -1190,8 +1255,6 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 cpu.AM_tally += 1;
                 cpu.AM_tally &= 07777; // keep to 12-bits
                 SC_I_TALLY (cpu.AM_tally == 0);
-                //if (cpu.AM_tally == 0)
-                  //SET_I_TALLY;
 
                 // write back out indword
 
@@ -1204,12 +1267,20 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            "addr %06o\n",
                            indword, saveCA);
 
-                Write (saveCA, indword, OPERAND_STORE);
+#ifdef LOCKLESS
+		core_write_unlock(cpu.iefpFinalAddress, indword, __func__);
+#else
+                Write (saveCA, indword, APU_DATA_STORE);
+#endif
 
+#ifdef TEST_FENCE
+    fence ();
+#endif
+#ifdef THREADZ
+                unlock_rmw ();
+#endif
                 cpu.TPR.CA = Yi;
-                updateIWB (cpu.TPR.CA, 0); // XXX guessing here...
-
-                return SCPE_OK;
+                return;
               } // IT_DI
 
             case IT_ID: ///< Increment address, decrement tally (Td = 16)
@@ -1229,8 +1300,18 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            "IT_MOD(IT_ID): fetching indirect word from %06o\n",
                            cpu.TPR.CA);
 
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
+#ifdef TEST_FENCE
+    fence ();
+#endif
+#ifdef THREADZ
+                lock_rmw ();
+#endif
+
                 word36 indword;
-                Read (cpu.TPR.CA, & indword, OPERAND_READ);
+                Read (cpu.TPR.CA, & indword, APU_DATA_RMW);
 
                 Yi = GETHI (indword);
                 cpu.AM_tally = GET_TALLY (indword); // 12-bits
@@ -1265,12 +1346,21 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            "addr %06o\n",
                            indword, saveCA);
 
-                Write (saveCA, indword, OPERAND_STORE);
+#ifdef LOCKLESS
+		core_write_unlock(cpu.iefpFinalAddress, indword, __func__);
+#else
+                Write (saveCA, indword, APU_DATA_STORE);
+#endif
+
+#ifdef TEST_FENCE
+    fence ();
+#endif
+#ifdef THREADZ
+                unlock_rmw ();
+#endif
 
                 cpu.TPR.CA = computedAddress;
-                updateIWB (cpu.TPR.CA, 0); // XXX guessing here...
-
-                return SCPE_OK;
+                return;
               } // IT_ID
 
             // Decrement address, increment tally, and continue (Td = 15)
@@ -1286,23 +1376,35 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 // address is formed.
 
                 // a:RJ78/idc1
-	      // The address and tally fields are used as described under the
-	      // ID variation. The tag field uses the set of variations for
-	      // instruction address modification under the following
-	      // restrictions: no variation is permitted that requires an
-	      // indexing modification in the DIC cycle since the indexing
-	      // adder is being used by the tally phase of the operation.
-	      // Thus, permissible variations are any allowable form of IT or
-	      // IR, but if RI or R is used, R must equal N (RI and R forced
-	      // to N).
+                // The address and tally fields are used as described under the
+                // ID variation. The tag field uses the set of variations for
+                // instruction address modification under the following
+                // restrictions: no variation is permitted that requires an
+                // indexing modification in the DIC cycle since the indexing
+                // adder is being used by the tally phase of the operation.
+                // Thus, permissible variations are any allowable form of IT or
+                // IR, but if RI or R is used, R must equal N (RI and R forced
+                // to N).
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_DIC): fetching indirect word from %06o\n",
                            cpu.TPR.CA);
 
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
+#ifdef TEST_FENCE
+    fence ();
+#endif
+#ifdef THREADZ
+                lock_rmw ();
+#endif
+
                 word18 saveCA = cpu.TPR.CA;
                 word36 indword;
-                Read (cpu.TPR.CA, & indword, OPERAND_READ);
+                Read (cpu.TPR.CA, & indword, APU_DATA_RMW);
+
+                cpu.cu.pot = 0;
 
                 Yi = GETHI (indword);
                 cpu.AM_tally = GET_TALLY (indword); // 12-bits
@@ -1313,12 +1415,12 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            "tally=%04o idwtag=%02o\n", 
                            indword, Yi, cpu.AM_tally, idwtag);
 
+#ifdef ISOLTS
+                word24 YiSafe2 = Yi; // save indirect address for later use
+#endif
+
                 Yi -= 1;
                 Yi &= MASK18;
-
-                word24 YiSafe2 = Yi; // save indirect address for later use
-
-                cpu.TPR.CA = Yi;
 
                 cpu.AM_tally += 1;
                 cpu.AM_tally &= 07777; // keep to 12-bits
@@ -1336,44 +1438,52 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            "IT_MOD(IT_DIC): writing indword=%012"PRIo64" to "
                            "addr %06o\n", indword, saveCA);
 
-                Write (saveCA, indword, OPERAND_STORE);
-#if 0
+#ifdef LOCKLESS
+		core_write_unlock(cpu.iefpFinalAddress, indword, __func__);
+#else
+                Write (saveCA, indword, APU_DATA_STORE);
+#endif
+
+#ifdef TEST_FENCE
+    fence ();
+#endif
+#ifdef THREADZ
+                unlock_rmw ();
+#endif
                 // If the TAG of the indirect word invokes a register, that is,
                 // specifies r, ri, or ir modification, the effective Td value
                 // for the register is forced to "null" before the next
                 // computed address is formed.
 
-                cpu.TPR.CA = YiSafe2;
-
-                cpu.rTAG = idwtag;
-                Tm = GET_TM (cpu.rTAG);
-
-                if (Tm != TM_IT)
-                  {
-                    cpu.rTAG = idwtag & 0x70; // force R to 0
-                  }
-#else
                 // Thus, permissible variations are any allowable form of IT or
                 // IR, but if RI or R is used, R must equal N (RI and R forced
                 // to N).
-                cpu.TPR.CA = YiSafe2;
+                cpu.TPR.CA = Yi;
 
-                cpu.rTAG = idwtag;
+                sim_debug (DBG_ADDRMOD, & cpu_dev,
+                           "IT_MOD(IT_DIC): new CT_HOLD %02o new TAG %02o\n", 
+                           cpu.rTAG, idwtag);
+		cpu.cu.CT_HOLD = cpu.rTAG;
+		cpu.rTAG = idwtag;
+
                 Tm = GET_TM (cpu.rTAG);
                 if (Tm == TM_RI || Tm == TM_R)
                   {
                      if (GET_TD (cpu.rTAG) != 0)
                        {
-                         doFault (FAULT_IPR,
-                                 (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD},
-                                 "DIC Incorrect address modifier");
+                         doFault (FAULT_IPR, fst_ill_mod,
+                                  "DIC Incorrect address modifier");
                        }
                   }
-#endif
+
 // Set the tally after the indirect word is processed; if it faults, the IR
 // should be unchanged. ISOLTS ps791 test-02g
                 SC_I_TALLY (cpu.AM_tally == 0);
+#ifdef ISOLTS
+		updateIWB (YiSafe2, cpu.rTAG);
+#else
                 updateIWB (cpu.TPR.CA, cpu.rTAG);
+#endif
                 goto startCA;
               } // IT_DIC
 
@@ -1390,23 +1500,35 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                 // address is formed.
 
                 // a:RJ78/idc1
-	      // The address and tally fields are used as described under the
-	      // ID variation. The tag field uses the set of variations for
-	      // instruction address modification under the following
-	      // restrictions: no variation is permitted that requires an
-	      // indexing modification in the IDC cycle since the indexing
-	      // adder is being used by the tally phase of the operation.
-	      // Thus, permissible variations are any allowable form of IT or
-	      // IR, but if RI or R is used, R must equal N (RI and R forced
-	      // to N).
+                // The address and tally fields are used as described under the
+                // ID variation. The tag field uses the set of variations for
+                // instruction address modification under the following
+                // restrictions: no variation is permitted that requires an
+                // indexing modification in the IDC cycle since the indexing
+                // adder is being used by the tally phase of the operation.
+                // Thus, permissible variations are any allowable form of IT or
+                // IR, but if RI or R is used, R must equal N (RI and R forced
+                // to N).
 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_IDC): fetching indirect word from %06o\n",
                            cpu.TPR.CA);
 
+#ifdef TEST_OLIN
+          cmpxchg ();
+#endif
+#ifdef TEST_FENCE
+    fence ();
+#endif
+#ifdef THREADZ
+                lock_rmw ();
+#endif
+
                 word18 saveCA = cpu.TPR.CA;
                 word36 indword;
-                Read (cpu.TPR.CA, & indword, OPERAND_READ);
+                Read (cpu.TPR.CA, & indword, APU_DATA_RMW);
+
+                cpu.cu.pot = 0;
 
                 Yi = GETHI (indword);
                 cpu.AM_tally = GET_TALLY (indword); // 12-bits
@@ -1438,51 +1560,57 @@ sim_printf ("XXX this had b29 of 0; it may be necessary to clear TSN_VALID[0]\n"
                            " to addr %06o\n",
                            indword, saveCA);
 
-                Write (saveCA, indword, OPERAND_STORE);
+#ifdef LOCKLESS
+		core_write_unlock(cpu.iefpFinalAddress, indword, __func__);
+#else 
+                Write (saveCA, indword, APU_DATA_STORE);
+#endif
 
-#if 0
+#ifdef TEST_FENCE
+    fence ();
+#endif
+#ifdef THREADZ
+                unlock_rmw ();
+#endif
+
                 // If the TAG of the indirect word invokes a register, that is,
                 // specifies r, ri, or ir modification, the effective Td value
                 // for the register is forced to "null" before the next
                 // computed address is formed.
                 // But for the dps88 you can use everything but ir/ri.
 
-                // force R to 0 (except for IT)
-                cpu.TPR.CA = YiSafe;
-
-                cpu.rTAG = idwtag;
-                Tm = GET_TM (cpu.rTAG);
-
-                if (Tm != TM_IT)
-                  {
-                    cpu.rTAG = idwtag & 0x70; // force R to 0
-                  }
-#else
                 // Thus, permissible variations are any allowable form of IT or
                 // IR, but if RI or R is used, R must equal N (RI and R forced
                 // to N).
                 cpu.TPR.CA = YiSafe;
 
+		sim_debug (DBG_ADDRMOD, & cpu_dev,
+                           "IT_MOD(IT_IDC): new CT_HOLD %02o new TAG %02o\n", 
+                           cpu.rTAG, idwtag);
+		cpu.cu.CT_HOLD = cpu.rTAG;
                 cpu.rTAG = idwtag;
+
                 Tm = GET_TM (cpu.rTAG);
                 if (Tm == TM_RI || Tm == TM_R)
                   {
                      if (GET_TD (cpu.rTAG) != 0)
                        {
-                         doFault (FAULT_IPR, (_fault_subtype) {.fault_ipr_subtype=FR_ILL_MOD}, "IDC Incorrect address modifier");
+                         doFault (FAULT_IPR, fst_ill_mod,
+                                  "IDC Incorrect address modifier");
                        }
                   }
-#endif
+
 // Set the tally after the indirect word is processed; if it faults, the IR
 // should be unchanged. ISOLTS ps791 test-02f
                 SC_I_TALLY (cpu.AM_tally == 0);
                 updateIWB (cpu.TPR.CA, cpu.rTAG);
+
                 goto startCA;
               } // IT_IDC
           } // Td
         sim_printf ("IT_MOD/Td how did we get here?\n");
-        return SCPE_OK;
+        return;
      } // IT_MOD
-  } // doComputedAddressFormation
+  } // do_caf
 
 
