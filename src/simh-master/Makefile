@@ -28,8 +28,10 @@ sim_timer.o \
 sim_tmxr.o \
 sim_video.o
 
+ifneq ($(W),)
 #CFLAGS += -Wall 
 CFLAGS += -Wno-array-bounds -Wno-unevaluated-expression
+endif
 
 
 all: simh.a
