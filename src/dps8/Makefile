@@ -69,7 +69,10 @@ endif
 LIBS += $(LIBUV)
 
 ifeq ($(CROSS),MINGW64)
-CFLAGS += -DCROSS_MINGW64 -Wno-misleading-indentation -I../../../libuv/include
+CFLAGS += -DCROSS_MINGW64 -I../../../libuv/include
+ifneq ($(W),)
+CFLAGS += -Wno-misleading-indentation
+endif
 LIBS += -lwinmm -lws2_32 -lmingwex -luv -lwsock32 -lws2_32 -L../../../libuv/.libs
 endif
 
@@ -80,14 +83,19 @@ CFLAGS += -I../decNumber -I$(SIMHx)
 
 # gcc is reporting completely bogus 'conversion' warnings.
 
+ifneq ($(W),)
 ifeq ($(CC),clang)
 CFLAGS += -Wall -Wconversion -Wsign-conversion
 else
 CFLAGS += -Wall -Wno-conversion -Wsign-conversion
 endif
+endif
 
 ifneq ($(M32),)
-CFLAGS += -DNEED_128 -Wno-format-zero-length -Wno-sign-conversion
+CFLAGS += -DNEED_128
+ifneq ($(W),)
+CFLAGS += -Wno-format-zero-length -Wno-sign-conversion
+endif
 endif
 
 # The system_state code relies on M_SHARED.
