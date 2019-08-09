@@ -87,8 +87,10 @@ ifneq ($(CROSS),MINGW64)
 CFLAGS += -DHAVE_DLOPEN=so
 endif
 
+ifneq ($(W),)
 # Clang generates warning messages for code it generates itself...
 CFLAGS += -Wno-array-bounds
+endif
 
 LDFLAGS += -g
 
