@@ -8123,32 +8123,32 @@ elapsedtime ();
                        << (35- 2));
                 tmp |= (word36) ((cpu.switches.interlace[3] == 2 ? 1LL : 0LL)
                        << (35- 3));
-                tmp |= (word36) ((0b01L)  /* DPS8M */                         
+                tmp |= (word36) ((01L)  /* 0b01 DPS8M */                         
                        << (35- 5));
                 tmp |= (word36) ((cpu.switches.FLT_BASE & 0177LL)             
                        << (35-12));
-                tmp |= (word36) ((0b1L) /* ID_PROM installed */               
+                tmp |= (word36) ((01L) /* 0b1 ID_PROM installed */               
                        << (35-13));
-                tmp |= (word36) ((0b0000L)                                    
+                tmp |= (word36) ((00L) /* 0b0000 */
                        << (35-17));
                 //tmp |= (word36) ((0b111L)                                   
                        //<< (35-20));
                 // According to rsw.incl.pl1, Multics ignores this bit.
-                tmp |= (word36) ((0b0L)                                       
-                       << (35-18));  //BCD option off
-                tmp |= (word36) ((0b1L)                                       
-                       << (35-19));  //DPS option
-                tmp |= (word36) ((cpu.switches.disable_cache ? 0 : 1)                                       
-                       << (35-20));  //8K cache not installed
-                tmp |= (word36) ((0b00L)                                      
+                tmp |= (word36) ((00L) // 0b0 BCD option off
+                       << (35-18));
+                tmp |= (word36) ((01L) // 0b1 DPS option
+                       << (35-19));
+                tmp |= (word36) ((cpu.switches.disable_cache ? 0 : 1)  //8K cache 
+                       << (35-20));
+                tmp |= (word36) ((00L) // 0b00
                        << (35-22));
-                tmp |= (word36) ((0b1L)  /* DPS8M */                          
+                tmp |= (word36) ((01L)  /* 0b1 DPS8M */
                        << (35-23));
                 tmp |= (word36) ((cpu.switches.proc_mode & 01LL)              
                        << (35-24));
-                tmp |= (word36) ((0b0L)                                       
+                tmp |= (word36) ((00L) // 0b0
                        << (35-25)); // new product line (CPL/NPL)
-                tmp |= (word36) ((0b000L)                                     
+                tmp |= (word36) ((0L) // 0b000
                        << (35-28));
                 tmp |= (word36) ((cpu.switches.proc_speed & 017LL)            
                        << (35-32));
@@ -8339,57 +8339,60 @@ elapsedtime ();
 #endif
 
 #ifdef DPS8M
-                  cpu.rA |= (word36) ((0b01L)  /* DPS8M */
+                  cpu.rA |= (word36) ((01L)  /* 0b01 DPS8M */
                              << (35- 5));
 #endif
 #ifdef L68
-                  cpu.rA |= (word36) ((0b00L)  /* L68/DPS */
+                  cpu.rA |= (word36) ((00L)  /* 0b00 L68/DPS */
                              << (35- 5));
 #endif
                   cpu.rA |= (word36) ((cpu.switches.FLT_BASE & 0177LL)
                              << (35-12));
 #ifdef DPS8M
-                  cpu.rA |= (word36) ((0b1L) /* ID_PROM installed */
+                  cpu.rA |= (word36) ((01L) /* 0b1 ID_PROM installed */
                              << (35-13));
 #endif
-                  cpu.rA |= (word36) ((0b0000L) 
+                  cpu.rA |= (word36) ((0L) // 0b0000
                             << (35-17));
                   //cpu.rA |= (word36) ((0b111L)
                               //<< (35-20));
                   // According to rsw.incl.pl1, Multics ignores this bit.
-                  cpu.rA |= (word36) ((0b0L)
-                            << (35-18));  //BCD option off
+                  cpu.rA |= (word36) ((00L)  // 0b0 BCD option off
+                            << (35-18));
 #ifdef DPS8M
-                  cpu.rA |= (word36) ((0b1L)
-                            << (35-19));  // L68/DPS option: DPS
+                  cpu.rA |= (word36) ((01L)  // 0b1 L68/DPS option: DPS
+                            << (35-19));
 #endif
 #ifdef L68
-                  cpu.rA |= (word36) ((0b0L)
-                            << (35-19));  // L68/DPS option: L68
+                  cpu.rA |= (word36) ((00L)  // 0b0 L68/DPS option: L68
+                            << (35-19));
 #endif
 #ifdef DPS8M
+                                             // 8K cache
+                                             // 0b0: not installed
+                                             // 0b1: installed
                   cpu.rA |= (word36) ((cpu.switches.disable_cache ? 0 : 1)
-                            << (35-20));  //8K cache not installed
-                  cpu.rA |= (word36) ((0b00L)
+                            << (35-20));
+                  cpu.rA |= (word36) ((00L) // 0b00
                             << (35-22));
-                  cpu.rA |= (word36) ((0b1L)  /* DPS8M */
+                  cpu.rA |= (word36) ((01L)  /* 0b1 DPS8M */
                             << (35-23));
                   cpu.rA |= (word36) ((cpu.switches.proc_mode & 01LL)
                             << (35-24));
-                  cpu.rA |= (word36) ((0b0L)
-                            << (35-25)); // new product line (CPL/NPL)
-                  cpu.rA |= (word36) ((0b000L)
+                  cpu.rA |= (word36) ((00L) // 0b0 new product line (CPL/NPL)
+                            << (35-25));
+                  cpu.rA |= (word36) ((00L) // 0b000
                             << (35-28));
                   cpu.rA |= (word36) ((cpu.switches.proc_speed & 017LL)
                             << (35-32));
 #endif
 #ifdef L68
-                  cpu.rA |= (word36) ((0b0L)
-                            << (35-27)); // 2K cache disabled
-                  cpu.rA |= (word36) ((0b0L)
-                            << (35-28)); // GCOS mode extended memory disabled
-                  cpu.rA |= (word36) ((0b1110L)
-                            << (35-32)); // CPU ID
+                  cpu.rA |= (word36) ((00L) // 0b0 2K cache disabled
+                            << (35-27));
+                  cpu.rA |= (word36) ((00L) // 0b0 GCOS mode extended memory disabled
+                            << (35-28));
+                  cpu.rA |= (word36) ((016L) // 0b1110 CPU ID
+                            << (35-32));
 #endif
                   cpu.rA |= (word36) ((cpu.switches.cpu_num & 07LL)
                             << (35-35));

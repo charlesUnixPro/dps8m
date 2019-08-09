@@ -2389,7 +2389,7 @@ void scu_init (void)
         //  ID: 0000  8034, 8035
         //      0001  Level 68 SC
         //      0010  Level 66 SCU
-        scu [u].id = 0b0010;
+        scu [u].id = 02l; // 0b0010
         scu [u].mode_reg = 0; // used by T&D
         scu [u].elapsed_days = 0;
       }
