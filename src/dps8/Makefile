@@ -92,10 +92,10 @@ endif
 
 # The system_state code relies on M_SHARED.
 ifneq ($(CROSS),MINGW64)
-#ifeq ($(M_SHARED),1)
 CFLAGS += -DM_SHARED
+ifneq ($(OS),OSX)
 LDFLAGS += -lrt
-#endif
+endif
 endif
 
 # Configuration switches
