@@ -2856,12 +2856,6 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
               cpu.isExec = true;
               cpu.isXED = true;
 
-              core_read2 (addr, & cpu.cu.IWB, & cpu.cu.IRODD, __func__);
-              cpu.cu.xde = 1;
-              cpu.cu.xdo = 1;
-              cpu.isExec = true;
-              cpu.isXED = true;
-
               CPT (cpt1U, 33); // set fault exec cycle
               set_cpu_cycle (FAULT_EXEC_cycle);
 
