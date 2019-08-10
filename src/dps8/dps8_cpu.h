@@ -1804,6 +1804,15 @@ typedef struct
 #endif
     bool restart;
     uint restart_address;
+
+
+    // Caching some cabling data for interrupt handling.
+    // When a CPU calls get_highest_intr(), it needs to know
+    // what port on the SCU it is attached to. Because of port
+    // exapanders several CPUs can be attached to an SCU port,
+    // mapping from the CPU to the SCU is easier to query
+    uint scu_port[N_SCU_UNITS_MAX];
+
   } cpu_state_t;
 
 #ifdef M_SHARED
@@ -1819,9 +1828,21 @@ extern cpu_state_t * restrict cpup;
 #endif
 #define cpu (* cpup)
 
+
+#define N_STALL_POINTS 4
+struct stall_point_s
+  {
+    word15 segno;
+    word18 offset;
+    useconds_t time;
+  };
+extern struct stall_point_s stall_points [N_STALL_POINTS];
+extern bool stall_point_active;
+
 uint set_cpu_idx (uint cpuNum);
 #if defined(THREADZ) || defined(LOCKLESS)
 extern __thread uint current_running_cpu_idx;
+extern bool bce_dis_called;
 #else
 #ifdef ROUND_ROBIN
 extern uint current_running_cpu_idx;

@@ -8720,9 +8720,13 @@ elapsedtime ();
               {
                 sim_printf ("BCE DIS causes CPU halt\n");
                 sim_debug (DBG_MSG, & cpu_dev, "BCE DIS causes CPU halt\n");
+#ifdef LOCKLESS
+                bce_dis_called = true;
+#endif // LOCKLESS
                 longjmp (cpu.jmpMain, JMP_STOP);
               }
 
+#if 0
 #ifdef LOCKLESS
 // Changes to pxss.alm will move the address of the delete_me dis instuction
 // That dis has a distintive bit pattern; use the segment and IWB instead
@@ -8739,6 +8743,7 @@ elapsedtime ();
                 longjmp (cpu.jmpMain, JMP_STOP);
                 //stopCPUThread ();
               }
+#endif
 #endif
 #ifdef ROUND_ROBIN
           if (cpu.PPR.PSR == 034 && cpu.PPR.IC == 03535)

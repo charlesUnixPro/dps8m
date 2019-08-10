@@ -82,6 +82,9 @@ static uint64 luf_limits[] =
     32000*LOCKUP_KIPS/1000
   };
 
+struct stall_point_s stall_points [N_STALL_POINTS];
+bool stall_point_active = false;
+
 #ifdef PANEL
 static void panel_process_event (void);
 #endif
@@ -498,6 +501,75 @@ static t_stat cpu_set_kips (UNUSED UNIT * uptr, UNUSED int32 value,
     return SCPE_OK;
   }
 
+static t_stat cpu_show_stall (UNUSED FILE * st, UNUSED UNIT * uptr, 
+                             UNUSED int val, UNUSED const void * desc)
+  {
+    if (! stall_point_active)
+      {
+        sim_printf ("No stall points\n");
+        return SCPE_OK;
+      }
+
+    sim_printf ("Stall points\n");
+    for (int i = 0; i < N_STALL_POINTS; i ++)
+      if (stall_points[i].segno || stall_points[i].offset)
+        {
+          sim_printf ("%2d %05o:%06o %6u\n", i, stall_points[i].segno, stall_points[i].offset, stall_points[i].time);
+        }
+    return SCPE_OK;
+  }
+
+// set cpu stall=n=s:o=t
+//   n stall point number
+//   s segment number (octal)
+//   o offset (octal)
+//   t time in microseconds (decimal)
+
+static t_stat cpu_set_stall (UNUSED UNIT * uptr, UNUSED int32 value,
+                             const char * cptr, UNUSED void * desc)
+  {
+    if (! cptr)
+      return SCPE_ARG;
+
+    long n, s, o, t;
+
+    char * end;
+    n = strtol (cptr, & end, 0);
+    if (* end != '=')
+      return SCPE_ARG;
+    if (n < 0 || n >= N_STALL_POINTS)
+      return SCPE_ARG;
+
+    s = strtol (end + 1, & end, 8);
+    if (* end != ':')
+      return SCPE_ARG;
+    if (s < 0 || s > MASK15)
+      return SCPE_ARG;
+
+    o = strtol (end + 1, & end, 8);
+    if (* end != '=')
+      return SCPE_ARG;
+    if (o < 0 || o > MASK18)
+      return SCPE_ARG;
+
+    t = strtol (end + 1, & end, 0);
+    if (* end != 0)
+      return SCPE_ARG;
+    if (t < 0 || t >= 1000000)
+      return SCPE_ARG;
+
+    stall_points[n].segno = (word15) s;
+    stall_points[n].offset = (word18) o;
+    stall_points[n].time = (unsigned int) t;
+    stall_point_active = false;
+
+    for (int i = 0; i < N_STALL_POINTS; i ++)
+      if (stall_points[n].segno && stall_points[n].offset)
+        stall_point_active = true;
+
+    return SCPE_OK;
+  }
+
 static char * cycle_str (cycles_e cycle)
   {
     switch (cycle)
@@ -758,6 +830,17 @@ static MTAB cpu_mod[] =
       "KIPS",                    // match string
       cpu_set_kips,              // validation routine
       cpu_show_kips,             // display routine
+      NULL,                      // value descriptor
+      NULL                       // help
+    },
+
+    {
+      MTAB_dev_value,            // mask
+      0,                         // match
+      "STALL",                   // print string
+      "STALL",                   // match string
+      cpu_set_stall,             // validation routine
+      cpu_show_stall,            // display routine
       NULL,                      // value descriptor
       NULL                       // help
     },
@@ -1435,6 +1518,7 @@ static void panel_process_event (void)
   }
 #endif
 
+bool bce_dis_called = false;
 
 #if defined(THREADZ) || defined(LOCKLESS)
 // The hypervisor CPU for the threadz model
@@ -1506,12 +1590,12 @@ t_stat sim_instr (void)
             return STOP_STOP;
           }
 #endif
-#if 1
+#if 0
 
 // Check for all CPUs stopped
 
 // This doesn't work for multiple CPU Multics; only one processor does the
-// BCE dis; the other processors are doing the pxss 'dis 0776' dance; 
+// BCE dis; the other processors are doing the pxss 'dis 0777' dance; 
 
         uint n_running = 0;
         for (uint i = 0; i < cpu_dev.numunits; i ++)
@@ -1524,7 +1608,10 @@ t_stat sim_instr (void)
           return STOP_STOP;
 #endif
 
-// Loop runs at 1000Hhz
+        if (bce_dis_called)
+          return STOP_STOP;
+
+// Loop runs at 1000 Hz
 
 #ifdef LOCKLESS
         lock_iom();
@@ -2065,6 +2152,7 @@ setCPU:;
 // This event is to be distinguished from a Connect Input/Output Channel (cioc)
 // instruction encountered in the program sequence.
 
+
                 // check BAR bound and raise store fault if above
                 // pft 04d 10070, ISOLTS-776 06ad
                 if (get_bar_mode ())
@@ -2178,8 +2266,9 @@ setCPU:;
                 // fall through
           case PSEUDO_FETCH_cycle:
 
-            cpu.lufCounter ++;
             tmp_priv_mode = is_priv_mode ();
+            if (! (luf_flag && tmp_priv_mode))
+              cpu.lufCounter ++;
 #if 1
             if (cpu.lufCounter > luf_limits[cpu.CMR.luf])
               {
@@ -2275,6 +2364,24 @@ sim_debug (DBG_TRACEEXT, & cpu_dev, "fetchCycle bit 29 sets XSF to 0\n");
           case INTERRUPT_EXEC_cycle:
             {
               CPT (cpt1U, 22); // exec cycle
+
+#ifdef LOCKLESS
+                if (stall_point_active)
+                  {
+                    for (int i = 0; i < N_STALL_POINTS; i ++)
+                      if (stall_points[i].segno && stall_points[i].segno == cpu.PPR.PSR &&
+                          stall_points[i].offset && stall_points[i].offset == cpu.PPR.IC)
+                        {
+#ifdef CTRACE
+                          fprintf (stderr, "%10lu %s stall %d\n", seqno (), cpunstr[current_running_cpu_idx], i);
+#endif
+                          //sim_printf ("stall %2d %05o:%06o\n", i, stall_points[i].segno, stall_points[i].offset);
+                          //pthread_yield ();
+                          usleep(stall_points[i].time);
+                          break;
+                        }
+                  }
+#endif
 
               // The only time we are going to execute out of IRODD is
               // during RPD, at which time interrupts are automatically
@@ -3120,8 +3227,10 @@ int32 core_read_lock (word24 addr, word36 *data, const char * ctx)
 #endif
     LOCK_CORE_WORD(addr);
     if (cpu.locked_addr != 0) {
-      sim_warn ("core_read_lock: locked %x addr %x\n", cpu.locked_addr, addr);
-      core_unlock_all();
+      sim_warn ("core_read_lock: locked %08o locked_addr %08o %c %05o:%06o\n",
+                addr, cpu.locked_addr, current_running_cpu_idx + 'A',
+                cpu.PPR.PSR, cpu.PPR.IC);
+      core_unlock_all ();
     }
     cpu.locked_addr = addr;
     word36 v;
@@ -3226,8 +3335,10 @@ int core_write_unlock (word24 addr, word36 data, const char * ctx)
 #endif
     if (cpu.locked_addr != addr)
       {
-       sim_warn ("core_write_unlock: locked %x addr %x\n", cpu.locked_addr, addr);
-       core_unlock_all();
+        sim_warn ("core_write_unlock: locked %08o locked_addr %08o %c %05o:%06o\n",
+                  addr, cpu.locked_addr, current_running_cpu_idx + 'A',
+                  cpu.PPR.PSR, cpu.PPR.IC);
+       core_unlock_all ();
       }
       
     STORE_REL_CORE_WORD(addr, data);
@@ -3238,7 +3349,9 @@ int core_write_unlock (word24 addr, word36 data, const char * ctx)
 int core_unlock_all ()
 {
   if (cpu.locked_addr != 0) {
-      sim_warn ("core_unlock_all: locked %x\n", cpu.locked_addr);
+      sim_warn ("core_unlock_all: locked %08o %c %05o:%06o\n",
+                cpu.locked_addr, current_running_cpu_idx + 'A',
+                cpu.PPR.PSR, cpu.PPR.IC);
       STORE_REL_CORE_WORD(cpu.locked_addr, M[cpu.locked_addr]);
       cpu.locked_addr = 0;
   }
@@ -3423,7 +3536,9 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
     word36 v;
     LOAD_ACQ_CORE_WORD(v, addr);
     if (v & MEM_LOCKED)
-      sim_warn ("core_read2: even addr %x was locked\n", addr);
+      sim_warn ("core_read2: even locked %08o locked_addr %08o %c %05o:%06o\n",
+                addr, cpu.locked_addr, current_running_cpu_idx + 'A',
+                cpu.PPR.PSR, cpu.PPR.IC);
     *even = v & DMASK;
     addr++;
 #else
@@ -3458,7 +3573,9 @@ int core_read2 (word24 addr, word36 *even, word36 *odd, const char * ctx)
 #ifdef LOCKLESS
     LOAD_ACQ_CORE_WORD(v, addr);
     if (v & MEM_LOCKED)
-      sim_warn ("core_read2: odd addr %x was locked\n", addr);
+      sim_warn ("core_read2: odd locked %08o locked_addr %08o %c %05o:%06o\n",
+                addr, cpu.locked_addr, current_running_cpu_idx + 'A',
+                cpu.PPR.PSR, cpu.PPR.IC);
     *odd = v & DMASK;
 #else
     LOCK_MEM_RD;

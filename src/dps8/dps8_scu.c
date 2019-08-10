@@ -1388,7 +1388,14 @@ static void deliver_interrupts (uint scu_unit_idx)
               {
                 uint sn = 0;
                 if (scu[scu_unit_idx].ports[port].is_exp)
-                  sn = (uint) scu[scu_unit_idx].ports[port].xipmaskval;
+                  {
+                    sn = (uint) scu[scu_unit_idx].ports[port].xipmaskval;
+                    if (sn >= N_SCU_SUBPORTS)
+                      {
+                        sim_warn ("XIP mask not set; defaulting to subport 0\n");
+                        sn = 0;
+                      }
+                  }
                 if (! cables->scu_to_cpu[scu_unit_idx][port][sn].in_use)
                   {
                     sim_warn ("bad scu_unit_idx %u\n", scu_unit_idx);
@@ -2336,12 +2343,15 @@ uint scu_get_highest_intr (uint scu_unit_idx)
               continue;
             uint mask = scu [scu_unit_idx].exec_intr_mask [pima];
             uint port = scu [scu_unit_idx].mask_assignment [pima];
-            if (scu [scu_unit_idx].ports [port].type != ADEV_CPU ||
-		scu [scu_unit_idx].ports [port].dev_idx != current_running_cpu_idx) 
+//            if (scu [scu_unit_idx].ports [port].type != ADEV_CPU ||
+//              scu [scu_unit_idx].ports [port].dev_idx != current_running_cpu_idx) 
+            if (scu[scu_unit_idx].ports[port].type != ADEV_CPU ||
+                cpus[current_running_cpu_idx].scu_port[scu_unit_idx] != port)
               continue;
             if (scu [scu_unit_idx].cells [inum] &&
                 (mask & (1u << (31 - inum))) != 0)
               {
+                sim_debug (DBG_TRACE, & scu_dev, "scu_get_highest_intr inum %d pima %u mask 0%011o port %u cells 0%011o\n", inum, pima, mask, port, scu [scu_unit_idx].cells [inum]);
                 scu [scu_unit_idx].cells [inum] = false;
                 dump_intr_regs ("scu_get_highest_intr", scu_unit_idx);
                 deliver_interrupts (scu_unit_idx);
@@ -2380,7 +2390,8 @@ void scu_init (void)
                 scu[u].ports[p].dev_port[s] = -1;
                 scu[u].ports[p].subport_enables[s] = false;
                 scu[u].ports[p].xipmask[s] = false;
-                scu[u].ports[p].xipmaskval = -1;
+                // Invalid value for detecting uninitialized XIP mask.
+                scu[u].ports[p].xipmaskval = N_SCU_SUBPORTS;
               }
             scu[u].ports[p].type = ADEV_NONE;
             scu[u].ports[p].is_exp = false;

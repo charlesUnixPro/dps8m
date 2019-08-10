@@ -111,6 +111,8 @@ static t_addr parse_addr(DEVICE *dptr, const char *cptr, const char **optr);
 static void fprint_addr(FILE *stream, DEVICE *dptr, t_addr addr);
 #endif // TESTING
 
+int32 luf_flag = 1;
+
 //
 // Session ID is used for shared memory name identification
 //
@@ -3463,6 +3465,12 @@ static t_stat yield (int32 flag, UNUSED const char * cptr)
   }
 #endif
 
+static t_stat set_luf (int32 flag, UNUSED const char * cptr)
+  {
+    luf_flag = flag;
+    return SCPE_OK;
+  }
+ 
 #ifdef DBGEVENT
 uint n_dbgevents;
 struct dbgevent_t dbgevents[max_dbgevents];
@@ -3726,6 +3734,15 @@ static CTAB dps8_cmds[] =
     {"CLEAR_YIELD",         clear_yield,            1, "clear_yield: clear yield data\n", NULL, NULL},
     {"YIELD",               yield,                  1, "yield: define yield point\n", NULL, NULL},
 #endif
+
+//
+
+//
+// Hacks
+//
+
+    {"LUF",                 set_luf,                1, "Enable normal LUF handling\n", NULL, NULL},
+    {"NOLUF",               set_luf,                0, "Disable normal LUF handling\n", NULL, NULL},
 
 //
 // Misc.
