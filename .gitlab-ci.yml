@@ -3,6 +3,7 @@ image: "registry.gitlab.com/unused0/docker_images"
 
 stages:
   - build_linux
+  - build_linux_lockless
   - build_mingw
 
 #  - list
@@ -19,7 +20,18 @@ build linux:
   only:
     - master
   script:
-    - make
+    -  make LIBUV="/usr/lib64/libuv.a -lpthread"
+  artifacts:
+    paths:
+      - /builds/dps8m/dps8m/src/dps8/dps8
+      - /builds/dps8m/dps8m/src/utils/prt2pdf
+
+build linuxlockless:
+  stage: build_linux_lockless
+  only:
+    - master
+  script:
+    -  make LIBUV="/usr/lib64/libuv.a -lpthread" LOCKLESS=1
   artifacts:
     paths:
       - /builds/dps8m/dps8m/src/dps8/dps8
@@ -34,9 +46,9 @@ build mingw:
   artifacts:
     paths:
       - /builds/dps8m/dps8m/src/dps8/dps8.exe
-      - /builds/libuv-mingw/.libs/libuv-1.dll
-      - /usr/x86_64-w64-mingw32/sys-root/mingw/bin/libwinpthread-1.dll
       - /builds/dps8m/dps8m/src/utils/prt2pdf.exe
+#      - /builds/libuv-mingw/.libs/libuv-1.dll
+#      - /usr/x86_64-w64-mingw32/sys-root/mingw/bin/libwinpthread-1.dll
 
 #test:
 #  only:
