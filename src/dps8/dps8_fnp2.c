@@ -2648,7 +2648,7 @@ void processUserInput (uv_tcp_t * client, unsigned char * buf, ssize_t nread)
           }
 
         // buffer too full for anything more?
-        if (p->nPos >= sizeof(p->buffer))
+        if (p->nPos >= sizeof(p->buffer) - 1)
           {
             // yes. Only allow \n, \r, ^H, ^R
             switch (kar)

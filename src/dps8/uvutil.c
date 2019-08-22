@@ -183,7 +183,7 @@ static void accessLogon (uv_access * access, unsigned char * buf, ssize_t nread)
       {
         unsigned char kar = buf[nchar];
         // buffer too full for anything more?
-        if ((unsigned long) access->pwPos >= sizeof (access->pwBuffer))
+        if ((unsigned long) access->pwPos >= sizeof (access->pwBuffer) - 1)
           {
             // yes. Only allow \n, \r, ^H, ^R
             switch (kar)
