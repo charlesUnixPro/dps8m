@@ -1752,6 +1752,8 @@ sim_printf ("3270 controller found at unit %u line %u\r\n", devUnitIdx, lineno);
                 // 3270 controller connects immediately
                 // Set from CMF data now.
                 //fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].lineType  = 7 /* LINE_BSC */;
+                if (fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].lineType == 0) /* LINE_NONE */
+                  fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].lineType = 7; /* LINE_BSC */
                 fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].accept_new_terminal = true;
               }
           }
@@ -2320,7 +2322,15 @@ for (uint i = 0370*2; i <=0400*2; i ++)
 #endif
                      uint lineno = hsla * 32u + slot;
                      struct t_line * linep = & fudp->MState.line[lineno];
-                     linep->lineType = line_type ? line_type : 1; // Map none to ASCII
+#if 0
+                     if (line_type == 0)
+                       {
+                         sim_printf ("Note: mapping %c.%03d line type from 'none' to 'ASCII'\n",  hsla + 'a', slot);
+                         line_type = 1;
+                       }
+#endif
+                     //linep->lineType = line_type ? line_type : 1; // Map none to ASCII
+                     linep->lineType = line_type;
                   } // for slot
               } // if dev type 4 (LSLA)
           } // iom table entry

@@ -2826,6 +2826,8 @@ associate:;
 
     // Set from CMF data now.
     //fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].lineType = 1 /* LINE_ASCII */;
+    if (fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].lineType == 0) /* LINE_NONE */
+      fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].lineType = 1; /* LINE_ASCII */
     fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].accept_new_terminal = true;
     reset_line (& fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno]);
     ltnRaw (p->telnetp);
