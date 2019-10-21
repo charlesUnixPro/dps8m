@@ -174,8 +174,8 @@ typedef struct { int64_t h; uint64_t l; } __int128_t;
 // Multi-threading may require 'volatile' in some place; make it easy
 // to support both configurations
 
-#if defined(THREADZ) || defined(LOCKLESS)
 #define CWO
+#if defined(THREADZ) || defined(LOCKLESS)
 #define vol volatile
 #else
 #define vol
