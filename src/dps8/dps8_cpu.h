@@ -2209,7 +2209,7 @@ int core_unlock_all();
   do									\
     {									\
       unsigned int i = DEADLOCK_DETECT;					\
-      while ( atomic_testandset_64((volatile u_long *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) \
+      while ( atomic_testandset_64((volatile uint64_t *)&M[addr], MEM_LOCKED_BIT) == 1 && i > 0) \
 	{								\
 	  i--;								\
 	  if ((i & 0xff) == 0) {					\
@@ -2232,14 +2232,14 @@ int core_unlock_all();
 #define LOAD_ACQ_CORE_WORD(res, addr)			\
   do							\
     {							\
-      res = atomic_load_acq_64((volatile u_long *)&M[addr]);	\
+      res = atomic_load_acq_64((volatile uint64_t *)&M[addr]);	\
     }								\
   while (0)
 
 #define STORE_REL_CORE_WORD(addr, data)					\
   do									\
     {									\
-      atomic_store_rel_64((volatile u_long *)&M[addr], data & DMASK);	\
+      atomic_store_rel_64((volatile uint64_t *)&M[addr], data & DMASK);	\
     }									\
   while (0)
 
@@ -2255,7 +2255,7 @@ int core_unlock_all();
      do									\
        {								\
 	 unsigned int i = DEADLOCK_DETECT;					\
-	 while ((__sync_fetch_and_or((volatile u_long *)&M[addr], MEM_LOCKED) & MEM_LOCKED) \
+	 while ((__sync_fetch_and_or((volatile uint64_t *)&M[addr], MEM_LOCKED) & MEM_LOCKED) \
 		&&  i > 0)						\
 	   {								\
 	    i--;							\
