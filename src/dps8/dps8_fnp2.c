@@ -2824,7 +2824,10 @@ associate:;
     else if (! fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].listen)
       fnpuv_start_writestr (client, (unsigned char *) "Multics is not listening to this line\r\n");
 
-    fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].lineType = 1 /* LINE_ASCII */;
+    // Set from CMF data now.
+    //fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].lineType = 1 /* LINE_ASCII */;
+    if (fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].lineType == 0) /* LINE_NONE */
+      fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].lineType = 1; /* LINE_ASCII */
     fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno].accept_new_terminal = true;
     reset_line (& fnpData.fnpUnitData[fnp_unit_idx].MState.line[lineno]);
     ltnRaw (p->telnetp);

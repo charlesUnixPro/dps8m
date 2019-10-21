@@ -853,6 +853,8 @@ sim_printf ("[FNP emulation: dropping 2nd slave]\n");
       {
         uvClientData * p = (uvClientData *) server->data;
         struct t_line * linep = & fnpData.fnpUnitData[p->fnpno].MState.line[p->lineno];
+        if (linep->lineType == 0) /* LINE_NONE */
+          linep->lineType = 1; /* LINE_ASCII */
         linep->accept_new_terminal = true;
         reset_line (linep);
       }
@@ -941,6 +943,8 @@ static void on_dialout_connect (uv_connect_t * server, int status)
 
     uv_read_start ((uv_stream_t *) linep->line_client, alloc_buffer, fuv_read_cb);
     linep->listen = true;
+    if (linep->lineType == 0) /* LINE_NONE */
+      linep->lineType = 1; /* LINE_ASCII */
     linep->accept_new_terminal = true;
     linep->was_CR = false;
     linep->line_client->data = p;

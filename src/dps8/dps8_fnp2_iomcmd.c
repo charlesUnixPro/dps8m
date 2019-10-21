@@ -196,6 +196,12 @@ static int wcd (struct decoded_t *decoded_p)
           }
           break;
 
+        case  6: // set_line_type
+          {
+            linep->lineType = (word9) getbits36_18 (command_data[0], 0);
+          }
+          break;
+
         case  8: // set_framing_chars
           {
             sim_debug (DBG_TRACE, & fnp_dev, "[%u]    set_framing_chars\n", decoded_p->slot_no);
@@ -1037,7 +1043,6 @@ word36 pad;
         case  0: // terminal_accepted
         case  2: // disconnect_all_lines
         case  5: // input_accepted
-        case  6: // set_line_type
         case  7: // enter_receive
         case  9: // blast
         case 10: // accept_direct_output
@@ -1745,7 +1750,10 @@ sim_printf ("3270 controller found at unit %u line %u\r\n", devUnitIdx, lineno);
                 fnpData.ibm3270ctlr[ASSUME0].lineno = lineno;
                 
                 // 3270 controller connects immediately
-                fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].lineType  = 7 /* LINE_BSC */;
+                // Set from CMF data now.
+                //fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].lineType  = 7 /* LINE_BSC */;
+                if (fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].lineType == 0) /* LINE_NONE */
+                  fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].lineType = 7; /* LINE_BSC */
                 fnpData.fnpUnitData[devUnitIdx].MState.line[lineno].accept_new_terminal = true;
               }
           }
@@ -1755,7 +1763,7 @@ sim_printf ("3270 controller found at unit %u line %u\r\n", devUnitIdx, lineno);
       fnpuv3270Init (fnpData.telnet3270_port);
   }
 
-#if 0
+#if 1
 static word18 getl6core (uint iom_unit_idx, uint chan, word24 l66addr, uint addr)
   {
     word24 wos = addr / 2;
@@ -1900,7 +1908,7 @@ static void processMBX (uint iomUnitIdx, uint chan)
       }
     else if (command == 072) // bootload
       {
-#if 0
+#if 1
         word24 l66addr = (((word24) getbits36_6 (dia_pcw, 24)) << 18) |
                            (word24) getbits36_18 (dia_pcw, 0);
 
@@ -2053,10 +2061,12 @@ for (uint i = 0370*2; i <=0400*2; i ++)
           }
 #endif
 
-#if 0
+#if 1
         // Number of LSLAs
+#ifdef VERBOSE_BOOT
         word18 crnls = getl6core (iomUnitIdx, chan, l66addr + image_off, 0655);
         sim_printf ("Number of LSLAs (crnls) %d\n", crnls);
+#endif
 
         // Address of IOM table
         word18 criom = getl6core (iomUnitIdx, chan, l66addr + image_off, 0653);
@@ -2092,6 +2102,7 @@ for (uint i = 0370*2; i <=0400*2; i ++)
                     word3 slot_id = getl6core (iomUnitIdx, chan, l66addr + image_off, tblp + 2 * slot) & MASK3;
                     if (slot_id != 7)
                       {
+#ifdef VERBOSE_BOOT
                         char * slot_ids [8] = 
                           { 
                             "10 cps",
@@ -2104,23 +2115,32 @@ for (uint i = 0370*2; i <=0400*2; i ++)
                             "unused"
                           };
                         char * id = slot_ids[slot_id];
+#endif
                         if (! hdr)
                           {
                             hdr = true;
+#ifdef VERBOSE_BOOT
                             sim_printf ("LSLA table: card number, slot, slot_id, slot_id string\n");
+#endif
                           }
+#ifdef VERBOSE_BOOT
                         sim_printf ("%d %2d %d %s\n", lsla, slot, slot_id, id);
+#endif
                       }
                   } // for slot
               } // if dev type 4 (LSLA)
           } // iom table entry
+#ifdef VERBOSE_BOOT
         if (nfound != crnls)
           sim_printf ("LSLAs configured %d found %d\n", crnls, nfound);
+#endif
 
 
         // Number of HSLAs
+#ifdef VERBOSE_BOOT
         word18 crnhs = getl6core (iomUnitIdx, chan, l66addr + image_off, 0654);
         sim_printf ("Number of HSLAs (crnhs) %d\n", crnhs);
+#endif
 
         // Walk the HSLAs in the IOM table
         //  2 words/slot (flags, taddr)
@@ -2155,6 +2175,7 @@ for (uint i = 0370*2; i <=0400*2; i ++)
                     //
                     //   ptr bit(18)
 
+#ifdef VERBOSE_BOOT
                     char * line_types[23] =
                       {
                         "none      ",
@@ -2181,7 +2202,9 @@ for (uint i = 0370*2; i <=0400*2; i ++)
                         "HASP_OPR  ",
                         "invalid   "
                       };
+#endif
 
+#ifdef VERBOSE_BOOT
                     char * modem_types[8] =
                       {
                         "invalid      ",
@@ -2193,6 +2216,7 @@ for (uint i = 0370*2; i <=0400*2; i ++)
                         "Bell 208B    ",
                         "Bell 209A    "
                       };
+#endif
 
 #if 0
                     char * async_speeds[11] =
@@ -2283,20 +2307,37 @@ for (uint i = 0370*2; i <=0400*2; i ++)
                     if (! hdr)
                       {
                         hdr = true;
+#ifdef VERBOSE_BOOT
                         sim_printf ("HSLA table: card number, slot, "
                                     "sync/async, line type, modem_type, "
                                     "speed\n");
+#endif
                       }
+#ifdef VERBOSE_BOOT
                     sim_printf ("%d %2d %s %s %s %s\n",
                                  hsla, slot, async ? "async" :"sync ", 
                                  line_types[line_type],
                                  modem_types[modem_type],
                                  speed);
+#endif
+                     uint lineno = hsla * 32u + slot;
+                     struct t_line * linep = & fudp->MState.line[lineno];
+#if 0
+                     if (line_type == 0)
+                       {
+                         sim_printf ("Note: mapping %c.%03d line type from 'none' to 'ASCII'\n",  hsla + 'a', slot);
+                         line_type = 1;
+                       }
+#endif
+                     //linep->lineType = line_type ? line_type : 1; // Map none to ASCII
+                     linep->lineType = line_type;
                   } // for slot
               } // if dev type 4 (LSLA)
           } // iom table entry
+#ifdef VERBOSE_BOOT
         if (nfound != crnls)
           sim_printf ("LSLAs configured %d found %d\n", crnls, nfound);
+#endif
 #endif
 
 
