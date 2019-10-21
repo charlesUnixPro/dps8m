@@ -270,7 +270,7 @@ void fnpInit(void)
   {
     // 0 sets set service to service_undefined
     memset(& fnpData, 0, sizeof(fnpData));
-    fnpData.telnet_address = strdup ("127.0.0.1");
+    fnpData.telnet_address = strdup ("0.0.0.0");
     fnpData.telnet_port = 6180;
     fnpData.telnet3270_port = 3270;
     fnpTelnetInit ();
