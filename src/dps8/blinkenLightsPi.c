@@ -896,13 +896,15 @@ static void draw (unsigned int textX, unsigned int textY, char *arg)
 #include "dps8_sys.h"
 #include "dps8_faults.h"
 #include "dps8_cpu.h"
-
-#include "dps8_mp.h"
+#include "dps8_iom.h"
+#include "dps8_cable.h"
+#include "dps8_state.h"
 #include "shm.h"
 
-static pid_t sid;
-cpu_state_t * cpus;
-cpu_state_t * cpun;
+struct system_state_s * system_state;
+vol word36 * M = NULL;                                          // memory
+vol cpu_state_t * cpus;
+vol cpu_state_t * cpun;
 
 
 // Draw a number on the screen in binary. draw() will draw '+' as a white
@@ -923,7 +925,7 @@ static void draw_n (int n, word36 v, unsigned int col, unsigned int row)
   }
 
 //
-// Usage: blinkenLightsPi sid [cpu_number]
+// Usage: blinkenLightsPi [cpu_number]
 //
 
 int main (int argc, char * argv [])
@@ -931,27 +933,13 @@ int main (int argc, char * argv [])
 
 // Attach the DPS8M emulator shared memory
 
-// Get the SID from the command line
+// Get the optional CPU number from the command line
 
-    sid = getsid (0);
+    int cpunum = 0;
     if (argc > 1 && strlen (argv [1]))
       {
         char * end;
         long p = strtol (argv [1], & end, 0);
-        if (* end == 0)
-          {
-            sid = (pid_t) p;
-            argv [1] [0] = 0;
-          }
-      }
-
-// Get the optional CPU number from the command line
-
-    int cpunum = 0;
-    if (argc > 2 && strlen (argv [2]))
-      {
-        char * end;
-        long p = strtol (argv [2], & end, 0);
         if (* end == 0)
           {
             cpunum = (int) p;
@@ -966,12 +954,20 @@ int main (int argc, char * argv [])
 
 // Open the emulator CPU state memory segment
 
-    cpus = (cpu_state_t *) open_shm ("cpus", sid, sizeof (cpu_state_t) * N_CPU_UNITS_MAX);
-    if (! cpus)
+    for (;;)
       {
-        printf ("open_shm (cpus) failed\n");
-        return 1;
+        system_state = (struct system_state_s *)
+          open_shm ("state", sizeof (struct system_state_s));
+
+        if (system_state)
+          break;
+
+        printf ("No state file found; retry in 1 second\n");
+        sleep (1);
       }
+
+    M = system_state->M;
+    cpus = system_state->cpus;
 
 // Point to the selected CPU number
 
